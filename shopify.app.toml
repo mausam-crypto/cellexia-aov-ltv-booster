@@ -19,5 +19,10 @@ redirect_urls = [
   "https://cellexia-aov-ltv-booster.onrender.com/api/auth/callback"
 ]
 
+[app_proxy]
+url = "https://cellexia-aov-ltv-booster.onrender.com/proxy"
+subpath = "cellexia"
+prefix = "apps"
+
 [build]
 automatically_update_urls_on_dev = true
