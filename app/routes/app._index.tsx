@@ -790,10 +790,10 @@ export default function Dashboard() {
                 place the checkout blocks in the checkout editor.
               </Text>
               <InlineStack gap="300">
-                <Button url={themeEditorUrl} external>
+                <Button url={themeEditorUrl} target="_blank">
                   Open theme editor
                 </Button>
-                <Button url={checkoutEditorUrl} external>
+                <Button url={checkoutEditorUrl} target="_blank">
                   Open checkout editor
                 </Button>
               </InlineStack>

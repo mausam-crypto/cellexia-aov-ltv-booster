@@ -953,7 +953,7 @@ function DocumentField({
       {documentGid ? (
         <InlineStack gap="200" blockAlign="center">
           {documentFileUrl ? (
-            <Button variant="plain" url={documentFileUrl} external>
+            <Button variant="plain" url={documentFileUrl} target="_blank">
               View uploaded PDF
             </Button>
           ) : (
@@ -1811,7 +1811,7 @@ export default function ProductBoosterDetailPage() {
                 the translated version for their language.
               </Text>
               <InlineStack gap="200">
-                <Button url={metaobjectsUrl} external>
+                <Button url={metaobjectsUrl} target="_blank">
                   Open Content → Metaobjects
                 </Button>
               </InlineStack>

@@ -445,10 +445,10 @@ export default function SettingsPage() {
                   (Shopify Plus).
                 </Text>
                 <InlineStack gap="300">
-                  <Button url={themeEditorUrl} external>
+                  <Button url={themeEditorUrl} target="_blank">
                     Open theme editor (app embeds)
                   </Button>
-                  <Button url={checkoutEditorUrl} external>
+                  <Button url={checkoutEditorUrl} target="_blank">
                     Open checkout editor
                   </Button>
                 </InlineStack>

@@ -1226,7 +1226,7 @@ export default function PreviewCenter() {
                   </Text>
                   <BlockStack gap="200">
                     <InlineStack gap="200" blockAlign="center" wrap>
-                      <Button url={entryUrl} external>
+                      <Button url={entryUrl} target="_blank">
                         Product page
                       </Button>
                       <Text as="span" tone="subdued" variant="bodySm">
@@ -1235,7 +1235,7 @@ export default function PreviewCenter() {
                       </Text>
                     </InlineStack>
                     <InlineStack gap="200" blockAlign="center" wrap>
-                      <Button url={entryUrl} external>
+                      <Button url={entryUrl} target="_blank">
                         Cart drawer
                       </Button>
                       <Text as="span" tone="subdued" variant="bodySm">
@@ -1244,7 +1244,7 @@ export default function PreviewCenter() {
                       </Text>
                     </InlineStack>
                     <InlineStack gap="200" blockAlign="center" wrap>
-                      <Button url={entryUrl} external>
+                      <Button url={entryUrl} target="_blank">
                         Checkout preview
                       </Button>
                       <Text as="span" tone="subdued" variant="bodySm">

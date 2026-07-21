@@ -37,7 +37,7 @@ function FixButton({ check }: { check: HealthCheck }) {
   if (!check.fixUrl) return null;
   const external = check.fixUrl.startsWith("http");
   return (
-    <Button url={check.fixUrl} external={external} size="slim">
+    <Button url={check.fixUrl} target={external ? "_blank" : undefined} size="slim">
       {external ? "Open in Shopify admin" : "Open fix page"}
     </Button>
   );
