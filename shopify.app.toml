@@ -2,7 +2,7 @@
 
 client_id = "2aadc2719a5bc649804cb42c0cbb917c"
 name = "cellexia-aov-ltv-booster"
-application_url = "https://example.com"
+application_url = "https://cellexia-aov-ltv-booster.onrender.com"
 embedded = true
 
 [webhooks]
@@ -14,9 +14,9 @@ scopes = "read_files,read_locales,read_markets,read_metaobject_definitions,read_
 
 [auth]
 redirect_urls = [
-  "https://example.com/auth/callback",
-  "https://example.com/auth/shopify/callback",
-  "https://example.com/api/auth/callback"
+  "https://cellexia-aov-ltv-booster.onrender.com/auth/callback",
+  "https://cellexia-aov-ltv-booster.onrender.com/auth/shopify/callback",
+  "https://cellexia-aov-ltv-booster.onrender.com/api/auth/callback"
 ]
 
 [build]
