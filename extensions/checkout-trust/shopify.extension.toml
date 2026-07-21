@@ -1,0 +1,19 @@
+api_version = "2025-07"
+uid = "419757f0-789f-d169-ffa6-a9276f7489a4d79a4ba7"
+
+[[extensions]]
+name = "Cellexia Checkout Trust"
+handle = "cellexia-checkout-trust"
+type = "ui_extension"
+description = "Compact trust module (guarantee, secure checkout, Trustpilot, subscription hint) rendered as a checkout block."
+
+  [[extensions.targeting]]
+  module = "./src/Checkout.tsx"
+  target = "purchase.checkout.block.render"
+
+  [extensions.capabilities]
+  api_access = true
+
+  [[extensions.metafields]]
+  namespace = "$app:cellexia"
+  key = "config"

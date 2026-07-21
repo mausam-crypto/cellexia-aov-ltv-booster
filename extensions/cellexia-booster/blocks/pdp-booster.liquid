@@ -1,0 +1,793 @@
+{%- comment -%}
+  Cellexia Booster — PDP booster app embed (target: body).
+  Only active on product templates. Renders hidden, fully translated
+  <template> fragments; assets/cellexia-pdp.js clones them into the PDP
+  (.pdp__grey after .stock-msg, and after the sm-rc-widget container for the
+  subscription nudge). Graceful no-op when the selectors are missing.
+  Every widget requires its feature flag to be explicitly true — a missing
+  config metafield renders NOTHING (no config JSON, no templates, no CSS/JS
+  tags): missing config = hidden (safe default).
+  Market gating: a widget is visible only when its flag is on, its block
+  setting is on, AND its cfg.marketScopes entry matches the current market
+  (nil scope or mode "all" match everywhere; mode "selected" requires this
+  market's handle; an empty handle matches only non-selected scopes). The
+  market handle is exposed to cellexia-pdp.js via data-cx-market on the
+  config script tag for beacon attribution.
+
+  SPEC v3 — five PDP trust boosters (proof stack). Each is additionally
+  gated per product via the cellexia.pdp_flags JSON metafield (missing key
+  = true, only an explicit false hides) and, for the content widgets, on
+  the referenced metaobject content actually existing:
+    derm_survey            settings-driven (cfg.dermSurvey numbers/verifier)
+    clinical_study         cellexia.clinical_study metaobject reference
+    verified_before_after  cellexia.before_afters list (non-empty)
+    batch_transparency     cellexia.batch_transparency metaobject reference
+    empty_bottle_guarantee settings-driven (cfg.emptyBottleGuarantee.days)
+  All merchant metaobject text renders TRANSLATED automatically per
+  storefront language (Translate & Adapt). cellexia-pdp.js clones the
+  templates in CRO order into a .cx-proof-stack container inserted before
+  .pdp__tabs (or after it when the placement setting says below_tabs).
+{%- endcomment -%}
+{%- if request.page_type == 'product' -%}
+  {%- assign cfg = app.metafields.cellexia.config.value -%}
+  {%- assign cx_market = localization.market.handle | default: '' -%}
+  {%- comment -%}
+    SPEC v4 preview. cfg.preview comes from the app-data metafield and is
+    TOKENLESS ({ armed, draftFlags }). Every cx_draft_* boolean can only
+    become true when preview is armed, so all elsif-draft branches below
+    are provably dead when disarmed and the rendered page stays byte-
+    identical to v3.
+  {%- endcomment -%}
+  {%- assign cx_prev = cfg.preview -%}
+  {%- assign cx_prev_armed = false -%}
+  {%- if cx_prev.armed == true -%}
+    {%- assign cx_prev_armed = true -%}
+  {%- endif -%}
+  {%- liquid
+    assign show_badges = false
+    if cfg.trustBadges.enabled == true and block.settings.show_badges
+      assign cx_scope = cfg.marketScopes.trust_badges
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        assign show_badges = true
+      endif
+    endif
+
+    assign show_guarantee = false
+    if cfg.guarantee.enabled == true and block.settings.show_guarantee
+      assign cx_scope = cfg.marketScopes.guarantee
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        assign show_guarantee = true
+      endif
+    endif
+
+    assign show_trustpilot = false
+    if cfg.trustpilot.enabled == true and block.settings.show_trustpilot
+      assign cx_scope = cfg.marketScopes.trustpilot
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        assign show_trustpilot = true
+      endif
+    endif
+
+    assign show_nudge = false
+    if cfg.subscriptionNudge.enabled == true and block.settings.show_nudge
+      assign cx_scope = cfg.marketScopes.subscription_nudge
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        assign show_nudge = true
+      endif
+    endif
+    if customer.b2b?
+      assign show_nudge = false
+    endif
+
+    comment
+      SPEC v3 proof-stack widgets. Per-product opt-out: pdp_flags JSON
+      metafield — a missing metafield/key means TRUE (opted in); only an
+      explicit false hides. Content widgets additionally require their
+      metaobject content to exist (empty content = nothing to prove =
+      hidden, no orphan headings, no beacon).
+    endcomment
+    assign cx_pdp_flags = product.metafields.cellexia.pdp_flags.value
+
+    assign show_survey = false
+    if cfg.dermSurvey.enabled == true and block.settings.show_derm_survey
+      assign cx_scope = cfg.marketScopes.derm_survey
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        if cx_pdp_flags.derm_survey != false
+          assign show_survey = true
+        endif
+      endif
+    endif
+
+    assign show_study = false
+    if cfg.clinicalStudy.enabled == true and block.settings.show_clinical_study
+      assign cx_scope = cfg.marketScopes.clinical_study
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        if cx_pdp_flags.clinical_study != false
+          assign cx_study = product.metafields.cellexia.clinical_study.value
+          if cx_study
+            assign show_study = true
+          endif
+        endif
+      endif
+    endif
+
+    assign show_ba = false
+    assign cx_ba_count = 0
+    if cfg.beforeAfter.enabled == true and block.settings.show_before_after
+      assign cx_scope = cfg.marketScopes.verified_before_after
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        if cx_pdp_flags.verified_before_after != false
+          assign cx_bas = product.metafields.cellexia.before_afters.value
+          assign cx_ba_count = cx_bas.size | default: 0
+          if cx_ba_count > 0
+            assign show_ba = true
+          endif
+        endif
+      endif
+    endif
+
+    assign show_batch = false
+    assign cx_batch_ing_count = 0
+    assign cx_batch_coa_count = 0
+    if cfg.batchTransparency.enabled == true and block.settings.show_batch
+      assign cx_scope = cfg.marketScopes.batch_transparency
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        if cx_pdp_flags.batch_transparency != false
+          assign cx_batch = product.metafields.cellexia.batch_transparency.value
+          if cx_batch
+            assign cx_batch_ing_count = cx_batch.ingredients.value.size | default: 0
+            assign cx_batch_coa_count = cx_batch.certificates.value.size | default: 0
+            if cx_batch_ing_count > 0 or cx_batch_coa_count > 0
+              assign show_batch = true
+            endif
+          endif
+        endif
+      endif
+    endif
+
+    assign show_bottle = false
+    if cfg.emptyBottleGuarantee.enabled == true and block.settings.show_bottle
+      assign cx_scope = cfg.marketScopes.empty_bottle_guarantee
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        if cx_pdp_flags.empty_bottle_guarantee != false
+          assign show_bottle = true
+        endif
+      endif
+    endif
+
+    assign threshold = cfg.global.freeShippingThreshold | default: 150
+    assign threshold_money = threshold | times: 100 | money
+    assign guarantee_days = cfg.guarantee.days | default: 60
+    assign tp_rating = cfg.trustpilot.rating | default: 4.8
+    assign tp_rating_rounded = tp_rating | round: 1
+    assign tp_sep = 'trustpilot.decimal_separator' | t
+    assign tp_count = cfg.trustpilot.reviewCount | default: 1000
+    assign tp_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
+    assign nudge_pct = cfg.subscriptionNudge.discountPct | default: 5
+    assign survey_recommend = cfg.dermSurvey.recommend | default: 9
+    assign survey_outof = cfg.dermSurvey.outOf | default: 10
+    assign survey_n = cfg.dermSurvey.sampleSize | default: 270
+    assign survey_verifier = cfg.dermSurvey.verifierName
+    assign survey_url = cfg.dermSurvey.verificationUrl
+    assign bottle_days = cfg.emptyBottleGuarantee.days | default: 60
+
+    comment
+      SPEC v4 preview drafts. A widget is draft-rendered (inert hidden
+      template carrying data-cx-draft="1") when preview is armed AND its
+      embed show_* setting is on AND (its draftFlags entry is exactly
+      true OR its live flag is on ignoring market scope — market
+      simulation needs a template for widgets live only in the simulated
+      market). Per-product pdp_flags and content-present checks still
+      apply — a draft flag cannot conjure missing content, and a draft
+      can never show a widget the embed settings hide. All cx_draft_*
+      stay false when disarmed.
+    endcomment
+    assign cx_draft_badges = false
+    assign cx_draft_guarantee = false
+    assign cx_draft_trustpilot = false
+    assign cx_draft_nudge = false
+    assign cx_draft_survey = false
+    assign cx_draft_study = false
+    assign cx_draft_ba = false
+    assign cx_draft_batch = false
+    assign cx_draft_bottle = false
+    if cx_prev_armed
+      assign cx_prev_flags = cx_prev.draftFlags
+
+      if block.settings.show_badges
+        if cx_prev_flags.trust_badges == true or cfg.trustBadges.enabled == true
+          assign cx_draft_badges = true
+        endif
+      endif
+
+      if block.settings.show_guarantee
+        if cx_prev_flags.guarantee == true or cfg.guarantee.enabled == true
+          assign cx_draft_guarantee = true
+        endif
+      endif
+
+      if block.settings.show_trustpilot
+        if cx_prev_flags.trustpilot == true or cfg.trustpilot.enabled == true
+          assign cx_draft_trustpilot = true
+        endif
+      endif
+
+      if block.settings.show_nudge
+        if cx_prev_flags.subscription_nudge == true or cfg.subscriptionNudge.enabled == true
+          assign cx_draft_nudge = true
+        endif
+      endif
+      if customer.b2b?
+        assign cx_draft_nudge = false
+      endif
+
+      if block.settings.show_derm_survey and cx_pdp_flags.derm_survey != false
+        if cx_prev_flags.derm_survey == true or cfg.dermSurvey.enabled == true
+          assign cx_draft_survey = true
+        endif
+      endif
+
+      if block.settings.show_clinical_study and cx_pdp_flags.clinical_study != false
+        if cx_prev_flags.clinical_study == true or cfg.clinicalStudy.enabled == true
+          unless cx_study
+            assign cx_study = product.metafields.cellexia.clinical_study.value
+          endunless
+          if cx_study
+            assign cx_draft_study = true
+          endif
+        endif
+      endif
+
+      if block.settings.show_before_after and cx_pdp_flags.verified_before_after != false
+        if cx_prev_flags.verified_before_after == true or cfg.beforeAfter.enabled == true
+          unless cx_bas
+            assign cx_bas = product.metafields.cellexia.before_afters.value
+            assign cx_ba_count = cx_bas.size | default: 0
+          endunless
+          if cx_ba_count > 0
+            assign cx_draft_ba = true
+          endif
+        endif
+      endif
+
+      if block.settings.show_batch and cx_pdp_flags.batch_transparency != false
+        if cx_prev_flags.batch_transparency == true or cfg.batchTransparency.enabled == true
+          unless cx_batch
+            assign cx_batch = product.metafields.cellexia.batch_transparency.value
+            if cx_batch
+              assign cx_batch_ing_count = cx_batch.ingredients.value.size | default: 0
+              assign cx_batch_coa_count = cx_batch.certificates.value.size | default: 0
+            endif
+          endunless
+          if cx_batch_ing_count > 0 or cx_batch_coa_count > 0
+            assign cx_draft_batch = true
+          endif
+        endif
+      endif
+
+      if block.settings.show_bottle and cx_pdp_flags.empty_bottle_guarantee != false
+        if cx_prev_flags.empty_bottle_guarantee == true or cfg.emptyBottleGuarantee.enabled == true
+          assign cx_draft_bottle = true
+        endif
+      endif
+    endif
+
+    assign cx_draft_any = false
+    if cx_draft_badges or cx_draft_guarantee or cx_draft_trustpilot or cx_draft_nudge or cx_draft_survey or cx_draft_study or cx_draft_ba or cx_draft_batch or cx_draft_bottle
+      assign cx_draft_any = true
+    endif
+  -%}
+  {%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_ba or show_batch or show_bottle or cx_draft_any -%}
+    {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+    <script type="application/json" id="cx-pdp-config" data-cx-market="{{ cx_market | escape }}">
+      {
+        "b2b": {% if customer.b2b? %}true{% else %}false{% endif %},
+        "currency": {{ cart.currency.iso_code | json }},
+        "placement": {{ block.settings.proof_placement | default: 'above_tabs' | json }}
+        {%- if cx_prev_armed -%}
+        , "preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}}
+        {%- endif %}
+      }
+    </script>
+    {%- if show_badges or cx_draft_badges -%}
+      {%- comment -%}
+        Fall back to the default badge list only when no list was ever saved
+        (trustBadges.items absent). An explicitly-saved empty array means the
+        merchant deselected every badge, so no template is rendered at all.
+      {%- endcomment -%}
+      {%- liquid
+        if cfg.trustBadges.items
+          assign badge_keys = cfg.trustBadges.items
+        else
+          assign badge_keys = 'secure_checkout,free_shipping_over,money_back,clinically_proven' | split: ','
+        endif
+      -%}
+      {%- if badge_keys.size > 0 -%}
+      <template id="cx-tpl-pdp-badges"{% unless show_badges %} data-cx-draft="1"{% endunless %}>
+        <div class="cx-pdp-badges" data-cx-feature="trust_badges">
+          <ul class="cx-badges__list cx-badges__list--pdp list-reset d-flex">
+            {%- assign catalog = 'secure_checkout,free_shipping_over,money_back,dermatologist_tested,cruelty_free,clinically_proven,ssl_encrypted,easy_returns' | split: ',' -%}
+            {%- for key in badge_keys -%}
+              {%- assign badge_key = key | strip -%}
+              {%- comment -%}
+                The free-shipping threshold is stored in shop currency, but `money`
+                formats it in the buyer's presentment currency without converting,
+                so skip this badge when the two currencies differ.
+              {%- endcomment -%}
+              {%- if badge_key == 'free_shipping_over' and cart.currency.iso_code != shop.currency -%}
+                {%- continue -%}
+              {%- endif -%}
+              {%- liquid
+                assign icon = 'check'
+                case badge_key
+                  when 'secure_checkout'
+                    assign icon = 'lock'
+                  when 'free_shipping_over'
+                    assign icon = 'truck'
+                  when 'money_back'
+                    assign icon = 'shield-check'
+                  when 'dermatologist_tested'
+                    assign icon = 'droplet'
+                  when 'cruelty_free'
+                    assign icon = 'leaf'
+                  when 'clinically_proven'
+                    assign icon = 'check'
+                  when 'ssl_encrypted'
+                    assign icon = 'lock'
+                  when 'easy_returns'
+                    assign icon = 'refresh'
+                endcase
+              -%}
+              {%- if catalog contains badge_key -%}
+                <li class="cx-badges__item d-flex align-center">
+                  {% render 'cx-icons', icon: icon, size: 18 %}
+                  <span class="cx-badges__label">
+                    {%- case badge_key -%}
+                      {%- when 'secure_checkout' -%}{{ 'badges.secure_checkout' | t }}
+                      {%- when 'free_shipping_over' -%}{{ 'badges.free_shipping_over' | t: amount: threshold_money }}
+                      {%- when 'money_back' -%}{{ 'badges.money_back' | t: days: guarantee_days }}
+                      {%- when 'dermatologist_tested' -%}{{ 'badges.dermatologist_tested' | t }}
+                      {%- when 'cruelty_free' -%}{{ 'badges.cruelty_free' | t }}
+                      {%- when 'clinically_proven' -%}{{ 'badges.clinically_proven' | t }}
+                      {%- when 'ssl_encrypted' -%}{{ 'badges.ssl_encrypted' | t }}
+                      {%- when 'easy_returns' -%}{{ 'badges.easy_returns' | t }}
+                    {%- endcase -%}
+                  </span>
+                </li>
+              {%- endif -%}
+            {%- endfor -%}
+          </ul>
+        </div>
+      </template>
+      {%- endif -%}
+    {%- endif -%}
+    {%- if show_guarantee or cx_draft_guarantee -%}
+      <template id="cx-tpl-pdp-guarantee"{% unless show_guarantee %} data-cx-draft="1"{% endunless %}>
+        <div class="cx-guarantee cx-guarantee--compact cx-guarantee--pdp" data-cx-feature="guarantee">
+          <div class="cx-guarantee__icon" aria-hidden="true">
+            {% render 'cx-icons', icon: 'shield-check', size: 22 %}
+          </div>
+          <div class="cx-guarantee__content">
+            <h3 class="cx-guarantee__title heading--five">{{ 'guarantee.title' | t: days: guarantee_days }}</h3>
+          </div>
+        </div>
+      </template>
+    {%- endif -%}
+    {%- if show_trustpilot or cx_draft_trustpilot -%}
+      <template id="cx-tpl-pdp-trustpilot"{% unless show_trustpilot %} data-cx-draft="1"{% endunless %}>
+        <div class="cx-trustpilot cx-trustpilot--pdp" data-cx-feature="trustpilot">
+          <div class="cx-trustpilot__main d-flex align-center">
+            {% render 'cx-trustpilot-stars', rating: tp_rating, uid: 'pdp', size: 16 %}
+            <span class="cx-trustpilot__rating">{{ tp_rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
+            <span class="cx-trustpilot__count">{{ 'trustpilot.reviews_count' | t: count: tp_count }}</span>
+            <span class="cx-trustpilot__brand d-flex align-center">
+              {% render 'cx-icons', icon: 'star', size: 14, class: 'cx-trustpilot__brand-star' %}
+              <span>Trustpilot</span>
+            </span>
+          </div>
+          {%- if tp_url != blank -%}
+            <a class="cx-trustpilot__link no-dec" href="{{ tp_url }}" target="_blank" rel="noopener nofollow">{{ 'trustpilot.view' | t }}</a>
+          {%- endif -%}
+        </div>
+      </template>
+    {%- endif -%}
+    {%- if show_nudge or cx_draft_nudge -%}
+      <template id="cx-tpl-pdp-nudge"{% unless show_nudge %} data-cx-draft="1"{% endunless %}>
+        <div class="cx-nudge cx-nudge--panel cx-nudge--pdp" data-cx-feature="subscription_nudge">
+          <div class="cx-nudge__icon" aria-hidden="true">
+            {% render 'cx-icons', icon: 'refresh', size: 22 %}
+          </div>
+          <div class="cx-nudge__content">
+            <h3 class="cx-nudge__title heading--five">{{ 'subscription.nudge_title' | t }}</h3>
+            <p class="cx-nudge__body">{{ 'subscription.nudge_body' | t: percent: nudge_pct }}</p>
+          </div>
+        </div>
+      </template>
+    {%- endif -%}
+    {%- comment -%}
+      ------------------------------------------------------------------
+      SPEC v3 proof stack templates. Rendered fully translated server-
+      side (real t: params — no sentinel re-substitution needed, nothing
+      is rewritten by JS). cellexia-pdp.js clones them in CRO order:
+      derm_survey → clinical_study → verified_before_after →
+      batch_transparency → empty_bottle_guarantee.
+      ------------------------------------------------------------------
+    {%- endcomment -%}
+    {%- if show_survey or cx_draft_survey -%}
+      {%- liquid
+        assign survey_title = block.settings.survey_title_override
+        if survey_title == blank
+          assign survey_title = 'survey.title' | t
+        endif
+      -%}
+      <template id="cx-tpl-pdp-survey"{% unless show_survey %} data-cx-draft="1"{% endunless %}>
+        <section class="cx-proof cx-survey" data-cx-feature="derm_survey">
+          <p class="cx-survey__stat">
+            <span aria-hidden="true">{{ survey_recommend }}<span class="cx-survey__stat-sep">/</span>{{ survey_outof }}</span>
+            <span class="sr-only">{{ 'survey.stat' | t: recommend: survey_recommend, outof: survey_outof }}</span>
+          </p>
+          <h2 class="cx-survey__title heading--two">{{ survey_title }}</h2>
+          <p class="cx-survey__sample">{{ 'survey.sample' | t: n: survey_n }}</p>
+          {%- if survey_verifier != blank -%}
+            <div class="cx-survey__seal d-flex align-center justify-center">
+              <span class="cx-survey__seal-icon" aria-hidden="true">{% render 'cx-icons', icon: 'seal-check', size: 28 %}</span>
+              <span class="cx-survey__seal-text">
+                <span class="cx-survey__seal-badge">{{ 'survey.verified_badge' | t }}</span>
+                <span class="cx-survey__seal-name">{{ 'survey.verified_by' | t: name: survey_verifier }}</span>
+              </span>
+            </div>
+          {%- endif -%}
+          {%- if survey_url != blank -%}
+            <p class="cx-survey__method"><a class="cx-proof__link no-dec" href="{{ survey_url }}" target="_blank" rel="noopener nofollow">{{ 'survey.methodology' | t }}</a></p>
+          {%- endif -%}
+        </section>
+      </template>
+    {%- endif -%}
+    {%- if show_study or cx_draft_study -%}
+      <template id="cx-tpl-pdp-study"{% unless show_study %} data-cx-draft="1"{% endunless %}>
+        <section class="cx-proof cx-study" data-cx-feature="clinical_study">
+          <p class="cx-proof__eyebrow eyebrow eyebrow--sm">{{ 'study.eyebrow' | t }}</p>
+          {%- if cx_study.title.value != blank -%}
+            <h2 class="cx-study__heading heading--two">{{ cx_study.title.value }}</h2>
+          {%- endif -%}
+          {%- if cx_study.concern.value != blank -%}
+            <p class="cx-study__concern">{{ cx_study.concern.value }}</p>
+          {%- endif -%}
+          {%- assign cx_results = cx_study.results.value -%}
+          {%- assign cx_results_count = cx_results.size | default: 0 -%}
+          {%- if cx_results_count > 0 -%}
+            {%- for cx_res in cx_results -%}
+              {%- liquid
+                # number_decimal renders "93.0" — strip the trailing .0 for
+                # whole numbers, keep real decimals (e.g. 2.5) untouched.
+                assign cx_res_value = cx_res.value.value
+                assign cx_res_floor = cx_res_value | floor
+                if cx_res_value == cx_res_floor
+                  assign cx_res_value = cx_res_floor
+                endif
+              -%}
+              {%- if forloop.first -%}
+                <div class="cx-study__hero">
+                  <span class="cx-study__hero-value">{{ cx_res_value }}<span class="cx-study__hero-suffix">{{ cx_res.suffix.value }}</span></span>
+                  {%- if cx_res.label.value != blank -%}
+                    <span class="cx-study__hero-label">{{ cx_res.label.value }}</span>
+                  {%- endif -%}
+                </div>
+                {%- if cx_results_count > 1 -%}<ul class="cx-study__grid list-reset">{%- endif -%}
+              {%- else -%}
+                <li class="cx-study__stat">
+                  <span class="cx-study__stat-value">{{ cx_res_value }}<span class="cx-study__stat-suffix">{{ cx_res.suffix.value }}</span></span>
+                  {%- if cx_res.label.value != blank -%}
+                    <span class="cx-study__stat-label">{{ cx_res.label.value }}</span>
+                  {%- endif -%}
+                </li>
+              {%- endif -%}
+              {%- if forloop.last and cx_results_count > 1 -%}</ul>{%- endif -%}
+            {%- endfor -%}
+          {%- endif -%}
+          {%- liquid
+            assign cx_study_n = cx_study.sample_size.value
+            assign cx_study_weeks = cx_study.duration_weeks.value
+            assign cx_study_lab = cx_study.lab_name.value
+          -%}
+          {%- if cx_study_n != blank and cx_study_weeks != blank and cx_study_lab != blank -%}
+            {%- comment -%}
+              The week fragment is pre-composed via the pluralized
+              study.weeks_count key so every locale inflects the counted
+              noun correctly, then interpolated as {{ weeks }}.
+            {%- endcomment -%}
+            {%- assign cx_weeks_label = 'study.weeks_count' | t: count: cx_study_weeks -%}
+            <p class="cx-study__method">{{ 'study.methodology' | t: n: cx_study_n, weeks: cx_weeks_label, lab: cx_study_lab }}</p>
+          {%- endif -%}
+          {%- if cx_study.instruments.value != blank -%}
+            <p class="cx-study__method">{{ 'study.instruments' | t: methods: cx_study.instruments.value }}</p>
+          {%- endif -%}
+          {%- if cx_study.study_url.value != blank -%}
+            <p class="cx-study__method"><a class="cx-proof__link no-dec" href="{{ cx_study.study_url.value }}" target="_blank" rel="noopener nofollow">{{ 'study.view_study' | t }}</a></p>
+          {%- endif -%}
+          {%- if cx_study.footnote.value != blank -%}
+            <p class="cx-study__footnote">{{ cx_study.footnote.value }}</p>
+          {%- else -%}
+            <p class="cx-study__footnote">{{ 'study.footnote_default' | t }}</p>
+          {%- endif -%}
+        </section>
+      </template>
+    {%- endif -%}
+    {%- if show_ba or cx_draft_ba -%}
+      <template id="cx-tpl-pdp-ba"{% unless show_ba %} data-cx-draft="1"{% endunless %}>
+        <section class="cx-proof cx-ba" data-cx-feature="verified_before_after">
+          <p class="cx-proof__eyebrow eyebrow eyebrow--sm">{{ 'ba.eyebrow' | t }}</p>
+          <h2 class="cx-ba__title heading--two">{{ 'ba.title' | t }}</h2>
+          <div class="cx-ba__row{% if cx_ba_count > 1 %} cx-ba__row--multi{% endif %}">
+            {%- for cx_ba in cx_bas -%}
+              {%- assign cx_ba_weeks = cx_ba.weeks.value -%}
+              <figure class="cx-ba__entry">
+                <div class="cx-ba__grid">
+                  <div class="cx-ba__panel">
+                    {%- if cx_ba.before_image.value -%}
+                      {%- assign cx_ba_before_h = cx_ba.before_image.value.height | times: 900 | divided_by: cx_ba.before_image.value.width -%}
+                      <img class="cx-ba__img"
+                        src="{{ cx_ba.before_image.value | image_url: width: 900 }}"
+                        srcset="{{ cx_ba.before_image.value | image_url: width: 900 }} 1x, {{ cx_ba.before_image.value | image_url: width: 1800 }} 2x"
+                        alt="{{ 'ba.before' | t }} — {{ product.title | escape }}"
+                        loading="lazy" width="900" height="{{ cx_ba_before_h }}">
+                    {%- endif -%}
+                    <span class="cx-ba__tag cx-ba__tag--before">{{ 'ba.before' | t }}</span>
+                  </div>
+                  <div class="cx-ba__panel">
+                    {%- if cx_ba.after_image.value -%}
+                      {%- assign cx_ba_after_h = cx_ba.after_image.value.height | times: 900 | divided_by: cx_ba.after_image.value.width -%}
+                      <img class="cx-ba__img"
+                        src="{{ cx_ba.after_image.value | image_url: width: 900 }}"
+                        srcset="{{ cx_ba.after_image.value | image_url: width: 900 }} 1x, {{ cx_ba.after_image.value | image_url: width: 1800 }} 2x"
+                        alt="{{ 'ba.after' | t }} — {{ product.title | escape }}"
+                        loading="lazy" width="900" height="{{ cx_ba_after_h }}">
+                    {%- endif -%}
+                    <span class="cx-ba__tag cx-ba__tag--after">{{ 'ba.after' | t }}</span>
+                  </div>
+                </div>
+                <div class="cx-ba__chips d-flex">
+                  <span class="cx-ba__chip">
+                    {%- render 'cx-icons', icon: 'calendar', size: 14 -%}
+                    <span>{{ 'ba.week_0' | t }}{% if cx_ba.before_date.value %} · {{ cx_ba.before_date.value | date: format: 'abbreviated_date' }}{% endif %}</span>
+                  </span>
+                  {%- if cx_ba_weeks != blank or cx_ba.after_date.value -%}
+                    <span class="cx-ba__chip">
+                      {%- render 'cx-icons', icon: 'calendar', size: 14 -%}
+                      <span>
+                        {%- if cx_ba_weeks != blank -%}{{ 'ba.week_n' | t: weeks: cx_ba_weeks }}{%- endif -%}
+                        {%- if cx_ba_weeks != blank and cx_ba.after_date.value %} · {% endif -%}
+                        {%- if cx_ba.after_date.value -%}{{ cx_ba.after_date.value | date: format: 'abbreviated_date' }}{%- endif -%}
+                      </span>
+                    </span>
+                  {%- endif -%}
+                </div>
+                {%- if cx_ba.imaging.value != blank and cx_ba.clinic.value != blank -%}
+                  <figcaption class="cx-ba__caption">{{ 'ba.captured' | t: imaging: cx_ba.imaging.value, clinic: cx_ba.clinic.value }}</figcaption>
+                {%- endif -%}
+                {%- if cx_ba.verifier_name.value != blank -%}
+                  <div class="cx-ba__verify">
+                    <div class="cx-ba__verify-head d-flex align-center">
+                      {% render 'cx-icons', icon: 'shield-check', size: 20 %}
+                      <span class="cx-ba__verify-name">
+                        {%- if cx_ba.verifier_license.value != blank -%}
+                          {{ 'ba.verified_by' | t: name: cx_ba.verifier_name.value, license: cx_ba.verifier_license.value }}
+                        {%- else -%}
+                          {{ cx_ba.verifier_name.value }}
+                        {%- endif -%}
+                      </span>
+                    </div>
+                    {%- if cx_ba.statement.value != blank -%}
+                      <blockquote class="cx-ba__statement">{{ cx_ba.statement.value }}</blockquote>
+                    {%- endif -%}
+                    {%- if cx_ba.verification_url.value != blank -%}
+                      <p class="cx-ba__verify-link"><a class="cx-proof__link no-dec" href="{{ cx_ba.verification_url.value }}" target="_blank" rel="noopener nofollow">{{ 'ba.view_verification' | t }}</a></p>
+                    {%- endif -%}
+                  </div>
+                {%- endif -%}
+              </figure>
+            {%- endfor -%}
+          </div>
+        </section>
+      </template>
+    {%- endif -%}
+    {%- if show_batch or cx_draft_batch -%}
+      <template id="cx-tpl-pdp-batch"{% unless show_batch %} data-cx-draft="1"{% endunless %}>
+        <section class="cx-proof cx-batch" data-cx-feature="batch_transparency">
+          <p class="cx-proof__eyebrow eyebrow eyebrow--sm">{{ 'batch.eyebrow' | t }}</p>
+          <h2 class="cx-batch__title heading--two">{{ 'batch.title' | t }}</h2>
+          {%- if cx_batch.intro.value != blank -%}
+            <p class="cx-batch__intro">{{ cx_batch.intro.value | newline_to_br }}</p>
+          {%- endif -%}
+          {%- if cx_batch_ing_count > 0 -%}
+            <div class="cx-batch__table-wrap">
+              <table class="cx-batch__table">
+                <thead>
+                  <tr>
+                    <th scope="col">{{ 'batch.col_ingredient' | t }}</th>
+                    <th scope="col">{{ 'batch.col_concentration' | t }}</th>
+                    <th scope="col">{{ 'batch.col_form' | t }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {%- for cx_ing in cx_batch.ingredients.value -%}
+                    {%- liquid
+                      assign cx_conc = cx_ing.concentration.value
+                      assign cx_conc_floor = cx_conc | floor
+                      if cx_conc == cx_conc_floor
+                        assign cx_conc = cx_conc_floor
+                      endif
+                    -%}
+                    <tr>
+                      <td>
+                        {{ cx_ing.name.value }}
+                        {%- if cx_ing.note.value != blank -%}
+                          <span class="cx-batch__note">{{ cx_ing.note.value }}</span>
+                        {%- endif -%}
+                      </td>
+                      <td class="cx-batch__conc">{% if cx_conc != blank %}{{ cx_conc }}&nbsp;%{% endif %}</td>
+                      <td>{{ cx_ing.form.value }}</td>
+                    </tr>
+                  {%- endfor -%}
+                </tbody>
+              </table>
+            </div>
+          {%- endif -%}
+          {%- if cx_batch_coa_count > 0 -%}
+            <h3 class="cx-batch__coa-title heading--five">{{ 'batch.coa_title' | t }}</h3>
+            <ul class="cx-batch__coas list-reset">
+              {%- for cx_coa in cx_batch.certificates.value -%}
+                {%- liquid
+                  assign cx_coa_url = cx_coa.document_url.value
+                  if cx_coa_url == blank
+                    assign cx_coa_url = cx_coa.document.value.url
+                  endif
+                -%}
+                <li class="cx-batch__coa">
+                  <span class="cx-batch__coa-batch">{{ 'batch.batch_no' | t: batch: cx_coa.batch.value }}</span>
+                  {%- if cx_coa.issued.value -%}
+                    <span class="cx-batch__coa-meta">
+                      {%- render 'cx-icons', icon: 'calendar', size: 14 -%}
+                      <span>{{ cx_coa.issued.value | date: format: 'abbreviated_date' }}</span>
+                    </span>
+                  {%- endif -%}
+                  {%- if cx_coa.lab.value != blank -%}
+                    <span class="cx-batch__coa-meta">{{ 'batch.tested_by' | t: lab: cx_coa.lab.value }}</span>
+                  {%- endif -%}
+                  {%- if cx_coa_url != blank -%}
+                    <a class="cx-batch__coa-link cx-proof__link no-dec" href="{{ cx_coa_url }}" target="_blank" rel="noopener nofollow">
+                      {%- render 'cx-icons', icon: 'download', size: 14 -%}
+                      <span>{{ 'batch.download' | t }}</span>
+                    </a>
+                  {%- endif -%}
+                </li>
+              {%- endfor -%}
+            </ul>
+          {%- endif -%}
+          <p class="cx-batch__honesty">{{ 'batch.honesty' | t }}</p>
+        </section>
+      </template>
+    {%- endif -%}
+    {%- if show_bottle or cx_draft_bottle -%}
+      {%- liquid
+        assign bottle_title = block.settings.bottle_title_override
+        if bottle_title == blank
+          assign bottle_title = 'bottle.title' | t
+        endif
+      -%}
+      <template id="cx-tpl-pdp-bottle"{% unless show_bottle %} data-cx-draft="1"{% endunless %}>
+        <section class="cx-proof cx-bottle" data-cx-feature="empty_bottle_guarantee">
+          <div class="cx-bottle__icon" aria-hidden="true">{% render 'cx-icons', icon: 'bottle', size: 26 %}</div>
+          <div class="cx-bottle__content">
+            <h2 class="cx-bottle__title">{{ bottle_title }}</h2>
+            {%- comment -%}
+              The day fragment is pre-composed via the pluralized
+              bottle.days_count key so every locale inflects the counted
+              noun correctly, then interpolated as {{ days }}.
+            {%- endcomment -%}
+            {%- assign cx_days_label = 'bottle.days_count' | t: count: bottle_days -%}
+            <p class="cx-bottle__body">{{ 'bottle.body' | t: days: cx_days_label }}</p>
+            <ul class="cx-bottle__points list-reset">
+              <li class="cx-bottle__point">{% render 'cx-icons', icon: 'check', size: 16 %}<span>{{ 'bottle.point_1' | t }}</span></li>
+              <li class="cx-bottle__point">{% render 'cx-icons', icon: 'check', size: 16 %}<span>{{ 'bottle.point_2' | t }}</span></li>
+              <li class="cx-bottle__point">{% render 'cx-icons', icon: 'check', size: 16 %}<span>{{ 'bottle.point_3' | t }}</span></li>
+            </ul>
+            {%- if shop.refund_policy.url != blank -%}
+              <a class="cx-bottle__terms" href="{{ shop.refund_policy.url }}">{{ 'bottle.terms' | t }}</a>
+            {%- endif -%}
+          </div>
+        </section>
+      </template>
+    {%- endif -%}
+    <script src="{{ 'cellexia-pdp.js' | asset_url }}" defer></script>
+  {%- endif -%}
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Cellexia PDP booster",
+  "target": "body",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "show_badges",
+      "label": "Show trust badges on product pages",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_guarantee",
+      "label": "Show guarantee on product pages",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_trustpilot",
+      "label": "Show Trustpilot strip on product pages",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_nudge",
+      "label": "Show subscription nudge on product pages",
+      "default": true
+    },
+    {
+      "type": "header",
+      "content": "Trust boosters (proof stack)"
+    },
+    {
+      "type": "select",
+      "id": "proof_placement",
+      "label": "Placement",
+      "options": [
+        { "value": "above_tabs", "label": "Above the product tabs" },
+        { "value": "below_tabs", "label": "Below the product tabs" }
+      ],
+      "default": "above_tabs"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_derm_survey",
+      "label": "Show dermatologist survey",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_clinical_study",
+      "label": "Show clinical study",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_before_after",
+      "label": "Show verified before/after",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_batch",
+      "label": "Show batch transparency",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_bottle",
+      "label": "Show empty bottle guarantee",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "survey_title_override",
+      "label": "Survey title override",
+      "info": "Leave blank to use the translated default."
+    },
+    {
+      "type": "text",
+      "id": "bottle_title_override",
+      "label": "Guarantee title override",
+      "info": "Leave blank to use the translated default."
+    }
+  ]
+}
+{% endschema %}

@@ -1,0 +1,328 @@
+{%- comment -%}
+  Cellexia Booster — Cart booster app embed (target: body). The flagship.
+  Renders a JSON config blob + fully translated <template> fragments; all
+  behavior lives in assets/cellexia-cart.js (injected between
+  .mini-cart__list and .mini-cart__footer so it survives refreshMiniCart).
+  Gating is two-level: a missing config metafield renders NOTHING at all
+  (no beacon, no config JSON, no templates, no CSS/JS tags): missing
+  config = hidden (safe default). When the config exists, a tiny inline
+  session beacon always runs — one "session" event per browser session,
+  the experiment tracker's conversion denominator — independent of any
+  feature flag; the cart widgets (config JSON, templates, CSS/JS) stay
+  master-gated on cartUpsell.enabled == true.
+  Market gating: each cart feature key (cart_volume_upsell, free_shipping_bar,
+  cart_subscription_upsell, cart_trust_row) is visible only when its sub-flag
+  is on AND its cfg.marketScopes entry matches the current market (nil scope
+  or mode "all" match everywhere; mode "selected" requires this market's
+  handle; an empty handle matches only non-selected scopes). The per-market
+  booleans are precomputed HERE and emitted as `effective` in the config JSON
+  — cellexia-cart.js consumes them as-is, no scope logic in JS. The legacy
+  settings.show* keys carry the same market-aware values for back-compat.
+{%- endcomment -%}
+{%- assign cfg = app.metafields.cellexia.config.value -%}
+{%- if cfg -%}
+{%- assign cx_market = localization.market.handle | default: '' -%}
+{%- comment -%}
+  SPEC v4 preview. cfg.preview comes from the app-data metafield and is
+  TOKENLESS ({ armed, draftFlags }) — the raw token never reaches page-
+  visible Liquid. Every cx_draft_* boolean below can only become true when
+  preview is armed, so all draft branches are provably dead when disarmed
+  and the rendered page stays byte-identical to v3.
+{%- endcomment -%}
+{%- assign cx_prev = cfg.preview -%}
+{%- assign cx_prev_armed = false -%}
+{%- if cx_prev.armed == true -%}
+  {%- assign cx_prev_armed = true -%}
+{%- endif -%}
+{%- assign cx_draft_volume = false -%}
+{%- assign cx_draft_shipbar = false -%}
+{%- assign cx_draft_subscription = false -%}
+{%- assign cx_draft_trustrow = false -%}
+{%- if cx_prev_armed -%}
+  {%- liquid
+    assign cx_prev_flags = cx_prev.draftFlags
+    if cx_prev_flags.cart_volume_upsell == true
+      assign cx_draft_volume = true
+    endif
+    if cx_prev_flags.free_shipping_bar == true
+      assign cx_draft_shipbar = true
+    endif
+    if cx_prev_flags.cart_subscription_upsell == true
+      assign cx_draft_subscription = true
+    endif
+    if cx_prev_flags.cart_trust_row == true
+      assign cx_draft_trustrow = true
+    endif
+    comment
+      Market simulation: the trust row template must also exist when its
+      NON-SCOPE gates pass (live master + sub-flag on) even though this
+      market's scope check fails, so a preview simulating a market where
+      it is live finds a template. Still armed-only — real visitors'
+      effective.trustRow stays false and the JS never clones it.
+    endcomment
+    if cfg.cartUpsell.enabled == true and cfg.cartUpsell.showTrustRow != false
+      assign cx_draft_trustrow = true
+    endif
+  -%}
+{%- endif -%}
+{%- assign cx_cart_draft_any = false -%}
+{%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow -%}
+  {%- assign cx_cart_draft_any = true -%}
+{%- endif -%}
+<script>
+  (function () {
+    // Once-per-session "session" beacon — the experiment tracker's
+    // conversion-rate denominator. Depends ONLY on the config metafield
+    // existing, never on a feature flag. When sessionStorage is
+    // unavailable (private mode, storage blocked) we cannot dedupe, so we
+    // send NOTHING rather than spam a beacon per page view.
+    try {
+      var KEY = 'cx_session_sent';
+      var store = window.sessionStorage;
+      if (!store || store.getItem(KEY)) return;
+      {%- if cx_prev_armed %}
+      if (store.getItem('cx_preview_ok')) return; // server-verified preview browser — never a session
+      {%- endif %}
+      store.setItem(KEY, '1');
+      if (store.getItem(KEY) !== '1') return; // write silently dropped
+      var root = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
+      var payload = JSON.stringify({ feature: 'site', type: 'session', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: {{ cart.currency.iso_code | json }} });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
+      } else if (window.fetch) {
+        window.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
+      }
+    } catch (e) { /* never break the theme */ }
+  })();
+</script>
+{%- if cfg.cartUpsell.enabled == true or cx_cart_draft_any -%}
+  {%- liquid
+    assign threshold = cfg.global.freeShippingThreshold | default: 150
+    assign guarantee_days = cfg.guarantee.days | default: 60
+    assign tp_rating = cfg.trustpilot.rating | default: 4.8
+    assign tp_rating_rounded = tp_rating | round: 1
+    assign tp_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
+
+    # Per-market effective booleans: LIVE master on AND sub-flag on (missing
+    # sub-flag = true) AND market scope match. SPEC v4: this block can now
+    # also render for an armed preview draft with the master OFF — the live
+    # effective booleans must stay false then (they are what real visitors'
+    # JS obeys), so each computation is additionally guarded on the live
+    # master. When disarmed the surrounding gate already implies the master
+    # is on, so cx_live_cart is true and the results are identical to v3.
+    assign cx_live_cart = false
+    if cfg.cartUpsell.enabled == true
+      assign cx_live_cart = true
+    endif
+
+    assign cx_eff_volume = false
+    if cx_live_cart
+      unless cfg.cartUpsell.showVolumeUpsell == false
+        assign cx_scope = cfg.marketScopes.cart_volume_upsell
+        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+          assign cx_eff_volume = true
+        endif
+      endunless
+    endif
+
+    assign cx_eff_shipbar = false
+    if cx_live_cart
+      unless cfg.cartUpsell.showFreeShippingBar == false
+        assign cx_scope = cfg.marketScopes.free_shipping_bar
+        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+          assign cx_eff_shipbar = true
+        endif
+      endunless
+    endif
+
+    assign cx_eff_subscription = false
+    if cx_live_cart
+      unless cfg.cartUpsell.showSubscriptionUpsell == false
+        assign cx_scope = cfg.marketScopes.cart_subscription_upsell
+        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+          assign cx_eff_subscription = true
+        endif
+      endunless
+    endif
+
+    assign cx_eff_trustrow = false
+    if cx_live_cart
+      unless cfg.cartUpsell.showTrustRow == false
+        assign cx_scope = cfg.marketScopes.cart_trust_row
+        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+          assign cx_eff_trustrow = true
+        endif
+      endunless
+    endif
+
+    # Trustpilot strip inside the trust row: explicit master + its own scope.
+    assign cx_tp_on = false
+    if cfg.trustpilot.enabled == true
+      assign cx_scope = cfg.marketScopes.trustpilot
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        assign cx_tp_on = true
+      endif
+    endif
+  -%}
+  {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+  <script type="application/json" id="cx-cart-config">
+    {
+      "settings": {
+        "showFreeShippingBar": {{ cx_eff_shipbar }},
+        "showVolumeUpsell": {{ cx_eff_volume }},
+        "showSubscriptionUpsell": {{ cx_eff_subscription }},
+        "showTrustRow": {{ cx_eff_trustrow }},
+        "highlightQuantity": {{ cfg.cartUpsell.highlightQuantity | default: 3 }},
+        "subscriptionDiscountPct": {{ cfg.cartUpsell.subscriptionDiscountPct | default: 5 }},
+        "sellingPlanKeyword": {{ cfg.cartUpsell.sellingPlanKeyword | default: 'Continuous Treatment' | json }},
+        "volumeOffers": {% if cfg.cartUpsell.volumeOffers %}{{ cfg.cartUpsell.volumeOffers | json }}{% else %}[{"quantity":2,"discountPct":15},{"quantity":3,"discountPct":20}]{% endif %},
+        "trustpilotEnabled": {{ cx_tp_on }},
+        "cartPage": {% if block.settings.enable_cart_page %}true{% else %}false{% endif %}
+      },
+      "market": {{ cx_market | json }},
+      "effective": {
+        "volume": {{ cx_eff_volume }},
+        "shipbar": {{ cx_eff_shipbar }},
+        "subscription": {{ cx_eff_subscription }},
+        "trustRow": {{ cx_eff_trustrow }}
+      },
+      {%- if cx_prev_armed %}
+      "preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}},
+      {%- endif %}
+      "thresholdCents": {{ threshold | times: 100 }},
+      "b2b": {% if customer.b2b? %}true{% else %}false{% endif %},
+      "currency": {{ cart.currency.iso_code | json }},
+      "overrides": {
+        "volumeTitle": {{ block.settings.volume_title_override | default: '' | json }},
+        "subscriptionTitle": {{ block.settings.subscription_title_override | default: '' | json }}
+      },
+      "strings": {
+        "shipbar.away_html": {{ 'shipbar.away_html' | t: amount: '@@AMOUNT@@' | json }},
+        "shipbar.unlocked": {{ 'shipbar.unlocked' | t | json }},
+        "volume.title": {{ 'volume.title' | t | json }},
+        "volume.upgrade_to": {{ 'volume.upgrade_to' | t: count: '@@COUNT@@' | json }},
+        "volume.save_pct": {{ 'volume.save_pct' | t: percent: '@@PERCENT@@' | json }},
+        "volume.per_unit": {{ 'volume.per_unit' | t: price: '@@PRICE@@' | json }},
+        "volume.best_value": {{ 'volume.best_value' | t | json }},
+        "volume.most_popular": {{ 'volume.most_popular' | t | json }},
+        "volume.current_pack": {{ 'volume.current_pack' | t | json }},
+        "volume.upgraded": {{ 'volume.upgraded' | t | json }},
+        "volume.error": {{ 'volume.error' | t | json }},
+        "subscription.switch_title": {{ 'subscription.switch_title' | t | json }},
+        "subscription.switch_cta": {{ 'subscription.switch_cta' | t: percent: '@@PERCENT@@' | json }},
+        "subscription.benefits": {{ 'subscription.benefits' | t: percent: '@@PERCENT@@' | json }},
+        "subscription.switched": {{ 'subscription.switched' | t | json }},
+        "subscription.error": {{ 'subscription.error' | t | json }},
+        "badges.secure_checkout": {{ 'badges.secure_checkout' | t | json }},
+        "badges.money_back": {{ 'badges.money_back' | t: days: guarantee_days | json }},
+        "a11y.loading": {{ 'a11y.loading' | t | json }},
+        "a11y.close": {{ 'a11y.close' | t | json }}
+      },
+      "products": {
+        {%- assign cx_seen = ',' -%}
+        {%- assign cx_first = true -%}
+        {%- for item in cart.items -%}
+          {%- assign cx_pid = item.product_id | append: '' -%}
+          {%- assign cx_tok = ',' | append: cx_pid | append: ',' -%}
+          {%- unless cx_seen contains cx_tok -%}
+            {%- assign cx_seen = cx_seen | append: cx_pid | append: ',' -%}
+            {%- unless cx_first -%},{%- endunless -%}
+            {%- assign cx_first = false -%}
+            {{ cx_pid | json }}: {
+              "variants": [
+                {%- for variant in item.product.variants -%}
+                  {"id": {{ variant.id | json }}, "option1": {{ variant.option1 | json }}, "price": {{ variant.price | json }}, "compare_at_price": {{ variant.compare_at_price | default: 'null' }}, "available": {{ variant.available | json }}, "position": {{ forloop.index }}}{%- unless forloop.last -%},{%- endunless -%}
+                {%- endfor -%}
+              ],
+              "sellingPlanGroups": [
+                {%- for group in item.product.selling_plan_groups -%}
+                  {"id": {{ group.id | json }}, "name": {{ group.name | json }}, "plans": [
+                    {%- for plan in group.selling_plans -%}
+                      {"id": {{ plan.id | json }}, "name": {{ plan.name | json }}, "valueType": {{ plan.price_adjustments[0].value_type | json }}, "value": {{ plan.price_adjustments[0].value | default: 0 }}}{%- unless forloop.last -%},{%- endunless -%}
+                    {%- endfor -%}
+                  ]}{%- unless forloop.last -%},{%- endunless -%}
+                {%- endfor -%}
+              ]
+            }
+          {%- endunless -%}
+        {%- endfor -%}
+      }
+    }
+  </script>
+  {%- if cx_eff_trustrow -%}
+    <template id="cx-tpl-trust-row">
+      <div class="cx-trust-row" data-cx-feature="trust_badges">
+        <span class="cx-trust-row__item d-flex align-center">
+          {%- render 'cx-icons', icon: 'lock', size: 16 -%}
+          <span>{{ 'badges.secure_checkout' | t }}</span>
+        </span>
+        <span class="cx-trust-row__item d-flex align-center">
+          {%- render 'cx-icons', icon: 'shield-check', size: 16 -%}
+          <span>{{ 'badges.money_back' | t: days: guarantee_days }}</span>
+        </span>
+        {%- if cx_tp_on -%}
+          <a class="cx-trust-row__item cx-trust-row__item--link d-flex align-center no-dec" href="{{ tp_url }}" target="_blank" rel="noopener nofollow">
+            {%- render 'cx-trustpilot-stars', rating: tp_rating, uid: 'cart-trust', size: 14 -%}
+            <span>{%- assign tp_sep = 'trustpilot.decimal_separator' | t -%}{{ tp_rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
+          </a>
+        {%- endif -%}
+      </div>
+    </template>
+  {%- elsif cx_draft_trustrow -%}
+    {%- comment -%}
+      SPEC v4 draft-only render (armed preview, feature not live in this
+      market — drafted on OR live-ignoring-scope for market simulation):
+      identical markup marked inert via data-cx-draft. Real visitors' JS
+      never reveals it — effective.trustRow stays false — only a server-
+      verified preview session clones it.
+    {%- endcomment -%}
+    <template id="cx-tpl-trust-row" data-cx-draft="1">
+      <div class="cx-trust-row" data-cx-feature="trust_badges">
+        <span class="cx-trust-row__item d-flex align-center">
+          {%- render 'cx-icons', icon: 'lock', size: 16 -%}
+          <span>{{ 'badges.secure_checkout' | t }}</span>
+        </span>
+        <span class="cx-trust-row__item d-flex align-center">
+          {%- render 'cx-icons', icon: 'shield-check', size: 16 -%}
+          <span>{{ 'badges.money_back' | t: days: guarantee_days }}</span>
+        </span>
+        {%- if cx_tp_on -%}
+          <a class="cx-trust-row__item cx-trust-row__item--link d-flex align-center no-dec" href="{{ tp_url }}" target="_blank" rel="noopener nofollow">
+            {%- render 'cx-trustpilot-stars', rating: tp_rating, uid: 'cart-trust', size: 14 -%}
+            <span>{%- assign tp_sep = 'trustpilot.decimal_separator' | t -%}{{ tp_rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
+          </a>
+        {%- endif -%}
+      </div>
+    </template>
+  {%- endif -%}
+  <script src="{{ 'cellexia-cart.js' | asset_url }}" defer></script>
+{%- endif -%}
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Cellexia cart booster",
+  "target": "body",
+  "settings": [
+    {
+      "type": "text",
+      "id": "volume_title_override",
+      "label": "Volume upsell title override",
+      "info": "Leave blank to use the translated default."
+    },
+    {
+      "type": "text",
+      "id": "subscription_title_override",
+      "label": "Subscription switch title override",
+      "info": "Leave blank to use the translated default."
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_cart_page",
+      "label": "Also show on the cart page",
+      "default": true,
+      "info": "Injects the same widgets after the cart table on /cart."
+    }
+  ]
+}
+{% endschema %}

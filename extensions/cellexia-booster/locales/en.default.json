@@ -1,0 +1,114 @@
+{
+  "shipbar": {
+    "away_html": "You're {{ amount }} away from free shipping",
+    "unlocked": "Congratulations — you've unlocked free shipping!"
+  },
+  "volume": {
+    "title": "Save more per unit",
+    "upgrade_to": "Upgrade to {{ count }} units",
+    "save_pct": "Save {{ percent }}%",
+    "per_unit": "{{ price }} / unit",
+    "best_value": "Best value",
+    "most_popular": "Most popular",
+    "current_pack": "Your current pack",
+    "upgraded": "Pack upgraded — you're saving more per unit",
+    "error": "Something went wrong. Please try again."
+  },
+  "subscription": {
+    "switch_title": "Make it a Continuous Treatment Plan",
+    "switch_cta": "Switch & save {{ percent }}%",
+    "benefits": "Save {{ percent }}% on every delivery. Skip, pause or cancel anytime.",
+    "switched": "Continuous Treatment Plan activated",
+    "nudge_title": "Never run out",
+    "nudge_body": "Join the Continuous Treatment Plan: save {{ percent }}% on every delivery, free shipping included. Cancel anytime.",
+    "error": "Something went wrong. Please try again."
+  },
+  "badges": {
+    "secure_checkout": "Secure checkout",
+    "free_shipping_over": "Free shipping over {{ amount }}",
+    "money_back": "{{ days }}-day money-back guarantee",
+    "dermatologist_tested": "Dermatologist tested",
+    "cruelty_free": "Cruelty free",
+    "clinically_proven": "Clinically proven",
+    "ssl_encrypted": "SSL-encrypted payment",
+    "easy_returns": "Easy returns"
+  },
+  "guarantee": {
+    "title": "{{ days }}-Day Money-Back Guarantee",
+    "body": "Love your results or your money back. Not fully satisfied within {{ days }} days? We'll refund you — no questions asked."
+  },
+  "trustpilot": {
+    "decimal_separator": ".",
+    "excellent": "Excellent",
+    "reviews_count": "{{ count }} reviews on",
+    "view": "See our reviews on Trustpilot"
+  },
+  "clinical": {
+    "eyebrow": "Clinical results",
+    "title": "Proven by science",
+    "stat_improvement": "saw visibly improved skin",
+    "stat_hydration": "reported deeper hydration",
+    "stat_visible": "weeks to first visible results",
+    "footnote": "Results from an independent clinical study.",
+    "source_label": "Study details"
+  },
+  "a11y": {
+    "close": "Close",
+    "loading": "Loading",
+    "rating_out_of_5": "Rated {{ rating }} out of 5"
+  },
+  "study": {
+    "eyebrow": "Independent clinical study",
+    "methodology": "n = {{ n }} participants · {{ weeks }} · {{ lab }}",
+    "weeks_count": {
+      "one": "{{ count }}-week study",
+      "other": "{{ count }}-week study"
+    },
+    "instruments": "Instrument-measured: {{ methods }}",
+    "view_study": "View study summary",
+    "footnote_default": "Measured under dermatological control. Individual results may vary."
+  },
+  "ba": {
+    "eyebrow": "Verified results",
+    "title": "Real results, independently verified",
+    "before": "Before",
+    "after": "After",
+    "week_0": "Week 0",
+    "week_n": "Week {{ weeks }}",
+    "captured": "Unretouched {{ imaging }} images captured at {{ clinic }}",
+    "verified_by": "Verified by {{ name }} — License {{ license }}",
+    "view_verification": "View verification"
+  },
+  "batch": {
+    "eyebrow": "Full transparency",
+    "title": "What's inside — exactly",
+    "col_ingredient": "Ingredient",
+    "col_concentration": "Actual concentration",
+    "col_form": "Form",
+    "coa_title": "Certificates of analysis",
+    "batch_no": "Batch {{ batch }}",
+    "tested_by": "Tested by {{ lab }}",
+    "download": "Download certificate",
+    "honesty": "Every batch is independently tested and published. Judge for yourself."
+  },
+  "bottle": {
+    "title": "Use every last drop",
+    "body": "Take {{ days }}. If you don't love your results, return the empty bottle for a full refund.",
+    "days_count": {
+      "one": "{{ count }} day",
+      "other": "{{ count }} days"
+    },
+    "point_1": "Works or it's free — even with an empty bottle",
+    "point_2": "No questions asked",
+    "point_3": "Full refund to your original payment method",
+    "terms": "See guarantee terms"
+  },
+  "survey": {
+    "stat": "{{ recommend }} out of {{ outof }}",
+    "title": "dermatologists surveyed would recommend Cellexia",
+    "sample": "Independent survey of {{ n }} board-certified dermatologists",
+    "verified_badge": "Third-party verified",
+    "verified_by": "Survey verified by {{ name }}",
+    "methodology": "See survey methodology"
+  }
+}

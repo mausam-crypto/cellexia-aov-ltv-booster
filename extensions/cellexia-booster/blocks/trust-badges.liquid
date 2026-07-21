@@ -1,0 +1,165 @@
+{%- comment -%}
+  Cellexia Booster — Trust badges app block (target: section).
+  Reads app.metafields.cellexia.config.value; renders ONLY when
+  trustBadges.enabled is explicitly true AND the trust_badges market scope
+  matches the current market. Missing config = hidden (safe default).
+{%- endcomment -%}
+{%- assign cfg = app.metafields.cellexia.config.value -%}
+{%- liquid
+  # Market gating: visible = flag explicitly true AND (scope nil OR
+  # scope.mode != 'selected' OR scope.markets contains the current market
+  # handle). An empty handle matches only non-selected scopes.
+  assign cx_market = localization.market.handle | default: ''
+  assign cx_on = false
+  if cfg.trustBadges.enabled == true
+    assign cx_scope = cfg.marketScopes.trust_badges
+    if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+      assign cx_on = true
+    endif
+  endif
+-%}
+{%- if cx_on -%}
+  {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+  {%- liquid
+    assign style = block.settings.style
+    if style == 'auto' or style == blank
+      assign style = cfg.trustBadges.style | default: 'light'
+    endif
+    assign threshold = cfg.global.freeShippingThreshold | default: 150
+    assign threshold_money = threshold | times: 100 | money
+    assign days = cfg.guarantee.days | default: 60
+    assign catalog = 'secure_checkout,free_shipping_over,money_back,dermatologist_tested,cruelty_free,clinically_proven,ssl_encrypted,easy_returns' | split: ','
+    if block.settings.use_config and cfg.trustBadges.items
+      assign badge_keys = cfg.trustBadges.items
+    elsif block.settings.use_config
+      assign badge_keys = 'secure_checkout,free_shipping_over,money_back,clinically_proven' | split: ','
+    else
+      assign picked = ''
+      for key in catalog
+        assign setting_key = 'badge_' | append: key
+        if block.settings[setting_key]
+          assign picked = picked | append: key | append: ','
+        endif
+      endfor
+      assign badge_keys = picked | split: ','
+    endif
+  -%}
+  {%- if badge_keys.size > 0 -%}
+  <div class="cx-badges cx-badges--{{ style }} cx-badges--align-{{ block.settings.alignment | default: 'center' }}" {{ block.shopify_attributes }} data-cx-feature="trust_badges">
+    <ul class="cx-badges__list list-reset d-flex">
+      {%- for key in badge_keys -%}
+        {%- assign badge_key = key | strip -%}
+        {%- comment -%}
+          The free-shipping threshold is stored in shop currency, but `money`
+          formats it in the buyer's presentment currency without converting,
+          so skip this badge when the two currencies differ.
+        {%- endcomment -%}
+        {%- if badge_key == 'free_shipping_over' and cart.currency.iso_code != shop.currency -%}
+          {%- continue -%}
+        {%- endif -%}
+        {%- liquid
+          assign icon = 'check'
+          case badge_key
+            when 'secure_checkout'
+              assign icon = 'lock'
+            when 'free_shipping_over'
+              assign icon = 'truck'
+            when 'money_back'
+              assign icon = 'shield-check'
+            when 'dermatologist_tested'
+              assign icon = 'droplet'
+            when 'cruelty_free'
+              assign icon = 'leaf'
+            when 'clinically_proven'
+              assign icon = 'check'
+            when 'ssl_encrypted'
+              assign icon = 'lock'
+            when 'easy_returns'
+              assign icon = 'refresh'
+          endcase
+        -%}
+        {%- if catalog contains badge_key -%}
+        <li class="cx-badges__item d-flex align-center">
+          {% render 'cx-icons', icon: icon, size: 20 %}
+          <span class="cx-badges__label">
+            {%- case badge_key -%}
+              {%- when 'secure_checkout' -%}{{ 'badges.secure_checkout' | t }}
+              {%- when 'free_shipping_over' -%}{{ 'badges.free_shipping_over' | t: amount: threshold_money }}
+              {%- when 'money_back' -%}{{ 'badges.money_back' | t: days: days }}
+              {%- when 'dermatologist_tested' -%}{{ 'badges.dermatologist_tested' | t }}
+              {%- when 'cruelty_free' -%}{{ 'badges.cruelty_free' | t }}
+              {%- when 'clinically_proven' -%}{{ 'badges.clinically_proven' | t }}
+              {%- when 'ssl_encrypted' -%}{{ 'badges.ssl_encrypted' | t }}
+              {%- when 'easy_returns' -%}{{ 'badges.easy_returns' | t }}
+            {%- endcase -%}
+          </span>
+        </li>
+        {%- endif -%}
+      {%- endfor -%}
+    </ul>
+  </div>
+  <script>
+    (function () {
+      try {
+        var w = window;
+        w.__cxSeen = w.__cxSeen || {};
+        if (w.__cxSeen.trust_badges_block) return;
+        w.__cxSeen.trust_badges_block = 1;
+        var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
+        var payload = JSON.stringify({ feature: 'trust_badges', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
+        } else if (w.fetch) {
+          w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
+        }
+      } catch (e) { /* never break the theme */ }
+    })();
+  </script>
+  {%- endif -%}
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Cellexia trust badges",
+  "target": "section",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "use_config",
+      "label": "Use badge selection from app settings",
+      "default": true,
+      "info": "When enabled, the badges configured in the Cellexia dashboard are shown in their saved order."
+    },
+    { "type": "checkbox", "id": "badge_secure_checkout", "label": "Secure checkout", "default": true },
+    { "type": "checkbox", "id": "badge_free_shipping_over", "label": "Free shipping over threshold", "default": true },
+    { "type": "checkbox", "id": "badge_money_back", "label": "Money-back guarantee", "default": true },
+    { "type": "checkbox", "id": "badge_dermatologist_tested", "label": "Dermatologist tested", "default": false },
+    { "type": "checkbox", "id": "badge_cruelty_free", "label": "Cruelty free", "default": false },
+    { "type": "checkbox", "id": "badge_clinically_proven", "label": "Clinically proven", "default": true },
+    { "type": "checkbox", "id": "badge_ssl_encrypted", "label": "SSL-encrypted payment", "default": false },
+    { "type": "checkbox", "id": "badge_easy_returns", "label": "Easy returns", "default": false },
+    {
+      "type": "select",
+      "id": "style",
+      "label": "Style",
+      "options": [
+        { "value": "auto", "label": "From app settings" },
+        { "value": "light", "label": "Light" },
+        { "value": "dark", "label": "Dark" }
+      ],
+      "default": "auto"
+    },
+    {
+      "type": "select",
+      "id": "alignment",
+      "label": "Alignment",
+      "options": [
+        { "value": "start", "label": "Start" },
+        { "value": "center", "label": "Center" },
+        { "value": "end", "label": "End" }
+      ],
+      "default": "center"
+    }
+  ]
+}
+{% endschema %}

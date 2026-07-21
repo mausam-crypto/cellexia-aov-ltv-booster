@@ -1,0 +1,114 @@
+{
+  "shipbar": {
+    "away_html": "Nog {{ amount }} tot gratis verzending",
+    "unlocked": "Gefeliciteerd – je bestelling wordt gratis verzonden!"
+  },
+  "volume": {
+    "title": "Bespaar meer per stuk",
+    "upgrade_to": "Upgrade naar {{ count }} stuks",
+    "save_pct": "Bespaar {{ percent }}%",
+    "per_unit": "{{ price }} / stuk",
+    "best_value": "Voordeligste keuze",
+    "most_popular": "Meest gekozen",
+    "current_pack": "Je huidige pakket",
+    "upgraded": "Pakket geüpgraded – je bespaart nu meer per stuk",
+    "error": "Er is iets misgegaan. Probeer het opnieuw."
+  },
+  "subscription": {
+    "switch_title": "Maak er een Doorlopend Behandelplan van",
+    "switch_cta": "Stap over & bespaar {{ percent }}%",
+    "benefits": "Bespaar {{ percent }}% op elke levering. Sla over, pauzeer of annuleer wanneer je wilt.",
+    "switched": "Doorlopend Behandelplan geactiveerd",
+    "nudge_title": "Nooit meer zonder",
+    "nudge_body": "Sluit je aan bij het Doorlopend Behandelplan: bespaar {{ percent }}% op elke levering, inclusief gratis verzending. Op elk moment opzegbaar.",
+    "error": "Er is iets misgegaan. Probeer het opnieuw."
+  },
+  "badges": {
+    "secure_checkout": "Veilig afrekenen",
+    "free_shipping_over": "Gratis verzending vanaf {{ amount }}",
+    "money_back": "{{ days }} dagen geld-terug-garantie",
+    "dermatologist_tested": "Dermatologisch getest",
+    "cruelty_free": "Dierproefvrij",
+    "clinically_proven": "Klinisch bewezen",
+    "ssl_encrypted": "SSL-versleutelde betaling",
+    "easy_returns": "Eenvoudig retourneren"
+  },
+  "guarantee": {
+    "title": "{{ days }} dagen geld-terug-garantie",
+    "body": "Blij met je resultaten of je geld terug. Niet volledig tevreden binnen {{ days }} dagen? Dan betalen we je terug – zonder vragen."
+  },
+  "trustpilot": {
+    "decimal_separator": ",",
+    "excellent": "Uitstekend",
+    "reviews_count": "{{ count }} beoordelingen op",
+    "view": "Bekijk onze beoordelingen op Trustpilot"
+  },
+  "clinical": {
+    "eyebrow": "Klinische resultaten",
+    "title": "Wetenschappelijk bewezen",
+    "stat_improvement": "zag een zichtbaar verbeterde huid",
+    "stat_hydration": "meldde diepere hydratatie",
+    "stat_visible": "weken tot de eerste zichtbare resultaten",
+    "footnote": "Resultaten uit een onafhankelijk klinisch onderzoek.",
+    "source_label": "Details van het onderzoek"
+  },
+  "a11y": {
+    "close": "Sluiten",
+    "loading": "Laden",
+    "rating_out_of_5": "Beoordeeld met {{ rating }} van de 5"
+  },
+  "study": {
+    "eyebrow": "Onafhankelijk klinisch onderzoek",
+    "methodology": "n = {{ n }} deelnemers · onderzoek van {{ weeks }} · {{ lab }}",
+    "weeks_count": {
+      "one": "{{ count }} week",
+      "other": "{{ count }} weken"
+    },
+    "instruments": "Instrumenteel gemeten: {{ methods }}",
+    "view_study": "Bekijk de samenvatting van het onderzoek",
+    "footnote_default": "Gemeten onder dermatologisch toezicht. Individuele resultaten kunnen variëren."
+  },
+  "ba": {
+    "eyebrow": "Geverifieerde resultaten",
+    "title": "Echte resultaten, onafhankelijk geverifieerd",
+    "before": "Voor",
+    "after": "Na",
+    "week_0": "Week 0",
+    "week_n": "Week {{ weeks }}",
+    "captured": "Ongeretoucheerde {{ imaging }}-opnamen, gemaakt bij {{ clinic }}",
+    "verified_by": "Geverifieerd door {{ name }} – licentienummer {{ license }}",
+    "view_verification": "Bekijk verificatie"
+  },
+  "batch": {
+    "eyebrow": "Volledige transparantie",
+    "title": "Wat erin zit – exact",
+    "col_ingredient": "Ingrediënt",
+    "col_concentration": "Werkelijke concentratie",
+    "col_form": "Vorm",
+    "coa_title": "Analysecertificaten",
+    "batch_no": "Batch {{ batch }}",
+    "tested_by": "Getest door {{ lab }}",
+    "download": "Certificaat downloaden",
+    "honesty": "Elke batch wordt onafhankelijk getest en gepubliceerd. Oordeel zelf."
+  },
+  "bottle": {
+    "title": "Gebruik de fles tot de laatste druppel",
+    "body": "Neem {{ days }} de tijd. Niet blij met je resultaten? Stuur de lege fles terug en ontvang het volledige aankoopbedrag terug.",
+    "days_count": {
+      "one": "{{ count }} dag",
+      "other": "{{ count }} dagen"
+    },
+    "point_1": "Het werkt of het is gratis – ook met een lege fles",
+    "point_2": "Zonder vragen",
+    "point_3": "Volledige terugbetaling via je oorspronkelijke betaalmethode",
+    "terms": "Bekijk de garantievoorwaarden"
+  },
+  "survey": {
+    "stat": "{{ recommend }} van de {{ outof }}",
+    "title": "ondervraagde dermatologen zouden Cellexia aanbevelen",
+    "sample": "Onafhankelijke enquête onder {{ n }} geregistreerde dermatologen",
+    "verified_badge": "Extern geverifieerd",
+    "verified_by": "Enquête geverifieerd door {{ name }}",
+    "methodology": "Bekijk de methodologie van de enquête"
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "shipbar": {
+    "away_html": "Enää {{ amount }} ilmaiseen toimitukseen",
+    "unlocked": "Onneksi olkoon — saat ilmaisen toimituksen!"
+  },
+  "volume": {
+    "title": "Säästä enemmän kappaletta kohden",
+    "upgrade_to": "Päivitä {{ count }} kappaleeseen",
+    "save_pct": "Säästä {{ percent }} %",
+    "per_unit": "{{ price }} / kpl",
+    "best_value": "Paras arvo",
+    "most_popular": "Suosituin",
+    "current_pack": "Nykyinen pakkauksesi",
+    "upgraded": "Pakkaus päivitetty — säästät enemmän kappaletta kohden",
+    "error": "Jokin meni vikaan. Yritä uudelleen."
+  },
+  "subscription": {
+    "switch_title": "Vaihda Jatkuvaan hoito-ohjelmaan",
+    "switch_cta": "Vaihda ja säästä {{ percent }} %",
+    "benefits": "Säästä {{ percent }} % jokaisesta toimituksesta. Ohita, laita tauolle tai peruuta milloin tahansa.",
+    "switched": "Jatkuva hoito-ohjelma aktivoitu",
+    "nudge_title": "Älä jää ilman",
+    "nudge_body": "Liity Jatkuvaan hoito-ohjelmaan: säästä {{ percent }} % jokaisesta toimituksesta, ilmainen toimitus sisältyy. Peruuta milloin tahansa.",
+    "error": "Jokin meni vikaan. Yritä uudelleen."
+  },
+  "badges": {
+    "secure_checkout": "Turvallinen maksaminen",
+    "free_shipping_over": "Ilmainen toimitus yli {{ amount }} tilauksiin",
+    "money_back": "{{ days }} päivän rahat takaisin -takuu",
+    "dermatologist_tested": "Dermatologisesti testattu",
+    "cruelty_free": "Ei testattu eläimillä",
+    "clinically_proven": "Kliinisesti todistettu",
+    "ssl_encrypted": "SSL-salattu maksu",
+    "easy_returns": "Helppo palautus"
+  },
+  "guarantee": {
+    "title": "{{ days }} päivän rahat takaisin -takuu",
+    "body": "Rakastu tuloksiin tai saat rahasi takaisin. Etkö ole täysin tyytyväinen {{ days }} päivän kuluessa? Palautamme rahasi — kyselemättä."
+  },
+  "trustpilot": {
+    "decimal_separator": ",",
+    "excellent": "Erinomainen",
+    "reviews_count": "{{ count }} arvostelua palvelussa",
+    "view": "Katso arvostelumme Trustpilot-palvelussa"
+  },
+  "clinical": {
+    "eyebrow": "Kliiniset tulokset",
+    "title": "Tieteellisesti todistettu",
+    "stat_improvement": "havaitsi silminnähden parantuneen ihon",
+    "stat_hydration": "raportoi syvemmästä kosteutuksesta",
+    "stat_visible": "viikkoa ensimmäisiin näkyviin tuloksiin",
+    "footnote": "Tulokset riippumattomasta kliinisestä tutkimuksesta.",
+    "source_label": "Tutkimuksen tiedot"
+  },
+  "a11y": {
+    "close": "Sulje",
+    "loading": "Ladataan",
+    "rating_out_of_5": "Arvosana {{ rating }} / 5"
+  },
+  "study": {
+    "eyebrow": "Riippumaton kliininen tutkimus",
+    "methodology": "n = {{ n }} osallistujaa · {{ weeks }} · {{ lab }}",
+    "weeks_count": {
+      "one": "{{ count }} viikon tutkimus",
+      "other": "{{ count }} viikon tutkimus"
+    },
+    "instruments": "Laitemittaukset: {{ methods }}",
+    "view_study": "Katso tutkimuksen tiivistelmä",
+    "footnote_default": "Mittaukset tehty dermatologin valvonnassa. Yksilölliset tulokset voivat vaihdella."
+  },
+  "ba": {
+    "eyebrow": "Varmennetut tulokset",
+    "title": "Aidot tulokset, riippumattomasti varmennetut",
+    "before": "Ennen",
+    "after": "Jälkeen",
+    "week_0": "Viikko 0",
+    "week_n": "Viikko {{ weeks }}",
+    "captured": "Retusoimattomat {{ imaging }}-kuvat, kuvattu klinikalla {{ clinic }}",
+    "verified_by": "Varmentanut {{ name }} — lisenssi {{ license }}",
+    "view_verification": "Katso varmennus"
+  },
+  "batch": {
+    "eyebrow": "Täysi läpinäkyvyys",
+    "title": "Mitä sisällä on — tarkalleen",
+    "col_ingredient": "Ainesosa",
+    "col_concentration": "Todellinen pitoisuus",
+    "col_form": "Muoto",
+    "coa_title": "Analyysitodistukset",
+    "batch_no": "Erä {{ batch }}",
+    "tested_by": "Testannut {{ lab }}",
+    "download": "Lataa todistus",
+    "honesty": "Jokainen erä testataan riippumattomasti, ja tulokset julkaistaan. Arvioi itse."
+  },
+  "bottle": {
+    "title": "Käytä viimeistä pisaraa myöten",
+    "body": "Ota {{ days }} aikaa. Jos et rakastu tuloksiin, palauta tyhjä pullo ja saat täyden hyvityksen.",
+    "days_count": {
+      "one": "{{ count }} päivä",
+      "other": "{{ count }} päivää"
+    },
+    "point_1": "Toimii tai se on ilmainen — vaikka pullo olisi tyhjä",
+    "point_2": "Kyselemättä",
+    "point_3": "Täysi hyvitys alkuperäiselle maksutavallesi",
+    "terms": "Katso takuuehdot"
+  },
+  "survey": {
+    "stat": "{{ recommend }} / {{ outof }}",
+    "title": "kyselyyn vastanneista ihotautilääkäreistä suosittelisi Cellexiaa",
+    "sample": "Riippumaton kysely, johon osallistui {{ n }} ihotautien erikoislääkäriä",
+    "verified_badge": "Kolmannen osapuolen varmentama",
+    "verified_by": "Kyselyn on varmentanut {{ name }}",
+    "methodology": "Katso kyselyn menetelmäkuvaus"
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "shipbar": {
+    "away_html": "あと{{ amount }}で送料無料になります",
+    "unlocked": "おめでとうございます。送料無料になりました！"
+  },
+  "volume": {
+    "title": "まとめ買いで1個あたりお得に",
+    "upgrade_to": "{{ count }}個セットにアップグレード",
+    "save_pct": "{{ percent }}%お得",
+    "per_unit": "{{ price }}／個",
+    "best_value": "一番お得",
+    "most_popular": "一番人気",
+    "current_pack": "現在のセット",
+    "upgraded": "セットをアップグレードしました。1個あたりさらにお得になりました",
+    "error": "エラーが発生しました。もう一度お試しください。"
+  },
+  "subscription": {
+    "switch_title": "継続トリートメントプランに切り替え",
+    "switch_cta": "切り替えて{{ percent }}%お得",
+    "benefits": "毎回のお届けが{{ percent }}%オフ。スキップ・一時停止・解約はいつでも可能です。",
+    "switched": "継続トリートメントプランが有効になりました",
+    "nudge_title": "切らす心配なし",
+    "nudge_body": "継続トリートメントプランにご登録いただくと、毎回のお届けが{{ percent }}%オフ、さらに送料無料。解約はいつでも可能です。",
+    "error": "エラーが発生しました。もう一度お試しください。"
+  },
+  "badges": {
+    "secure_checkout": "安全な決済",
+    "free_shipping_over": "{{ amount }}以上で送料無料",
+    "money_back": "{{ days }}日間返金保証",
+    "dermatologist_tested": "皮膚科医テスト済み",
+    "cruelty_free": "クルエルティフリー",
+    "clinically_proven": "臨床的に実証済み",
+    "ssl_encrypted": "SSL暗号化決済",
+    "easy_returns": "返品も簡単"
+  },
+  "guarantee": {
+    "title": "{{ days }}日間返金保証",
+    "body": "結果にご満足いただけなければ、全額返金。{{ days }}日以内にご満足いただけない場合は、理由を問わず返金いたします。"
+  },
+  "trustpilot": {
+    "decimal_separator": ".",
+    "excellent": "素晴らしい",
+    "reviews_count": "{{ count }}件のレビュー：",
+    "view": "Trustpilotでレビューを見る"
+  },
+  "clinical": {
+    "eyebrow": "臨床結果",
+    "title": "科学が実証する効果",
+    "stat_improvement": "が目に見える肌の改善を実感",
+    "stat_hydration": "がより深いうるおいを実感",
+    "stat_visible": "週間で最初の目に見える変化を実感",
+    "footnote": "独立した臨床試験による結果です。",
+    "source_label": "試験の詳細"
+  },
+  "a11y": {
+    "close": "閉じる",
+    "loading": "読み込み中",
+    "rating_out_of_5": "5点満点中{{ rating }}点の評価"
+  },
+  "study": {
+    "eyebrow": "独立した臨床試験",
+    "methodology": "n = {{ n }}名の被験者 · {{ weeks }}の試験 · {{ lab }}",
+    "weeks_count": {
+      "other": "{{ count }}週間"
+    },
+    "instruments": "機器による測定：{{ methods }}",
+    "view_study": "試験概要を見る",
+    "footnote_default": "皮膚科医の管理下で測定された結果です。効果には個人差があります。"
+  },
+  "ba": {
+    "eyebrow": "検証済みの結果",
+    "title": "独立した検証を受けた、実際の結果",
+    "before": "使用前",
+    "after": "使用後",
+    "week_0": "0週目",
+    "week_n": "{{ weeks }}週目",
+    "captured": "{{ clinic }}にて撮影された無修正の{{ imaging }}画像",
+    "verified_by": "{{ name }}により検証済み — ライセンス番号 {{ license }}",
+    "view_verification": "検証内容を見る"
+  },
+  "batch": {
+    "eyebrow": "完全な透明性",
+    "title": "配合成分を、正確に公開",
+    "col_ingredient": "成分",
+    "col_concentration": "実際の配合濃度",
+    "col_form": "形態",
+    "coa_title": "分析証明書",
+    "batch_no": "バッチ {{ batch }}",
+    "tested_by": "{{ lab }}による検査済み",
+    "download": "証明書をダウンロード",
+    "honesty": "すべてのバッチは独立機関で検査され、結果が公開されています。ご自身の目でお確かめください。"
+  },
+  "bottle": {
+    "title": "最後の一滴までお使いください",
+    "body": "{{ days }}、じっくりお試しください。結果にご満足いただけなければ、空のボトルをご返送いただくだけで全額返金いたします。",
+    "days_count": {
+      "other": "{{ count }}日間"
+    },
+    "point_1": "効果がなければ無料 — 空のボトルでも対象",
+    "point_2": "理由は一切問いません",
+    "point_3": "元のお支払い方法へ全額返金",
+    "terms": "保証規約を見る"
+  },
+  "survey": {
+    "stat": "{{ outof }}人中{{ recommend }}人",
+    "title": "の皮膚科医がCellexiaを推奨すると回答",
+    "sample": "皮膚科専門医{{ n }}名を対象とした独立調査",
+    "verified_badge": "第三者機関による検証済み",
+    "verified_by": "調査は{{ name }}により検証済み",
+    "methodology": "調査方法を見る"
+  }
+}

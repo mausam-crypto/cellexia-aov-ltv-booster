@@ -1,0 +1,7 @@
+{
+  "title": "Protezione dell'ordine",
+  "description": "Proteggi il tuo ordine da smarrimento, furto e danni durante il trasporto.",
+  "price_label": "per {{price}}",
+  "added": "Il tuo ordine è protetto",
+  "error": "Impossibile aggiornare la Protezione dell'ordine. Riprova."
+}

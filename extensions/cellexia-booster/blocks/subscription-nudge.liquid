@@ -1,0 +1,109 @@
+{%- comment -%}
+  Cellexia Booster — Subscription nudge app block (target: section).
+  Promotes the Joy "Continuous Treatment Plan". Hidden for B2B customers;
+  renders ONLY when subscriptionNudge.enabled is explicitly true in the
+  config metafield AND the subscription_nudge market scope matches the
+  current market. Missing config = hidden (safe default).
+{%- endcomment -%}
+{%- assign cfg = app.metafields.cellexia.config.value -%}
+{%- liquid
+  # Market gating: visible = flag explicitly true AND (scope nil OR
+  # scope.mode != 'selected' OR scope.markets contains the current market
+  # handle). An empty handle matches only non-selected scopes. B2B hides.
+  assign cx_market = localization.market.handle | default: ''
+  assign cx_on = false
+  if cfg.subscriptionNudge.enabled == true
+    assign cx_scope = cfg.marketScopes.subscription_nudge
+    if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+      assign cx_on = true
+    endif
+  endif
+  if customer.b2b?
+    assign cx_on = false
+  endif
+-%}
+{%- if cx_on -%}
+  {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+  {%- liquid
+    assign discount_pct = cfg.subscriptionNudge.discountPct | default: 5
+    if block.settings.discount_override != blank
+      assign discount_num = block.settings.discount_override | plus: 0
+      if discount_num > 0
+        assign discount_pct = discount_num
+      endif
+    endif
+    assign title_text = block.settings.title_override
+    if title_text == blank
+      assign title_text = 'subscription.nudge_title' | t
+    endif
+    assign body_text = block.settings.body_override
+    if body_text == blank
+      assign body_text = 'subscription.nudge_body' | t: percent: discount_pct
+    endif
+  -%}
+  <div class="cx-nudge cx-nudge--{{ block.settings.style | default: 'panel' }}" {{ block.shopify_attributes }} data-cx-feature="subscription_nudge">
+    <div class="cx-nudge__icon" aria-hidden="true">
+      {% render 'cx-icons', icon: 'refresh', size: 24 %}
+    </div>
+    <div class="cx-nudge__content">
+      <h3 class="cx-nudge__title heading--four">{{ title_text }}</h3>
+      <p class="cx-nudge__body">{{ body_text }}</p>
+    </div>
+  </div>
+  <script>
+    (function () {
+      try {
+        var w = window;
+        if (w.isB2BCustomer === true) return;
+        w.__cxSeen = w.__cxSeen || {};
+        if (w.__cxSeen.subscription_nudge) return;
+        w.__cxSeen.subscription_nudge = 1;
+        var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
+        var payload = JSON.stringify({ feature: 'subscription_nudge', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
+        } else if (w.fetch) {
+          w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
+        }
+      } catch (e) { /* never break the theme */ }
+    })();
+  </script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Subscription nudge",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "title_override",
+      "label": "Title override",
+      "info": "Leave blank to use the translated default."
+    },
+    {
+      "type": "text",
+      "id": "body_override",
+      "label": "Body override",
+      "info": "Leave blank to use the translated default."
+    },
+    {
+      "type": "text",
+      "id": "discount_override",
+      "label": "Discount % override",
+      "info": "Leave blank to use the percentage configured in the Cellexia dashboard."
+    },
+    {
+      "type": "select",
+      "id": "style",
+      "label": "Style",
+      "options": [
+        { "value": "panel", "label": "Grey panel" },
+        { "value": "accent", "label": "Accent panel" },
+        { "value": "outline", "label": "Outline card" }
+      ],
+      "default": "panel"
+    }
+  ]
+}
+{% endschema %}

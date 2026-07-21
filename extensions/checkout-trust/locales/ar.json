@@ -1,0 +1,8 @@
+{
+  "guarantee_title": "ضمان استرداد المال خلال {{days}} يومًا",
+  "guarantee_body": "أحِب نتائجك أو استرد أموالك، دون أي أسئلة.",
+  "secure": "دفع آمن مشفّر بتقنية SSL",
+  "clinical": "تركيبات مثبتة سريريًا",
+  "trustpilot": "{{rating}}/5 · {{count}} من التقييمات على Trustpilot",
+  "subscription_hint": "يوفّر أعضاء برنامج العلاج المستمر {{percent}}% على كل توصيل."
+}

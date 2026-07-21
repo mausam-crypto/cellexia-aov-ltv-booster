@@ -1,0 +1,116 @@
+{
+  "shipbar": {
+    "away_html": "Mai ai {{ amount }} până la livrarea gratuită",
+    "unlocked": "Felicitări — ai deblocat livrarea gratuită!"
+  },
+  "volume": {
+    "title": "Economisește mai mult per unitate",
+    "upgrade_to": "Treci la {{ count }} unități",
+    "save_pct": "Economisește {{ percent }}%",
+    "per_unit": "{{ price }} / unitate",
+    "best_value": "Cel mai avantajos",
+    "most_popular": "Cel mai popular",
+    "current_pack": "Pachetul tău actual",
+    "upgraded": "Pachet actualizat — economisești mai mult per unitate",
+    "error": "A apărut o eroare. Te rugăm să încerci din nou."
+  },
+  "subscription": {
+    "switch_title": "Transformă-l într-un Plan de Tratament Continuu",
+    "switch_cta": "Schimbă și economisește {{ percent }}%",
+    "benefits": "Economisești {{ percent }}% la fiecare livrare. Sari peste, pui pauză sau anulezi oricând.",
+    "switched": "Planul de Tratament Continuu a fost activat",
+    "nudge_title": "Nu rămâne niciodată fără produs",
+    "nudge_body": "Alătură-te Planului de Tratament Continuu: economisești {{ percent }}% la fiecare livrare, cu transport gratuit inclus. Anulezi oricând.",
+    "error": "A apărut o eroare. Te rugăm să încerci din nou."
+  },
+  "badges": {
+    "secure_checkout": "Plată securizată",
+    "free_shipping_over": "Livrare gratuită peste {{ amount }}",
+    "money_back": "Garanția banilor înapoi în {{ days }} de zile",
+    "dermatologist_tested": "Testat dermatologic",
+    "cruelty_free": "Netestat pe animale",
+    "clinically_proven": "Dovedit clinic",
+    "ssl_encrypted": "Plată criptată SSL",
+    "easy_returns": "Retururi ușoare"
+  },
+  "guarantee": {
+    "title": "Garanția banilor înapoi în {{ days }} de zile",
+    "body": "Bucură-te de rezultate sau primești banii înapoi. Nu te-au convins pe deplin în {{ days }} de zile? Îți returnăm banii — fără întrebări."
+  },
+  "trustpilot": {
+    "decimal_separator": ",",
+    "excellent": "Excelent",
+    "reviews_count": "{{ count }} de recenzii pe",
+    "view": "Vezi recenziile noastre pe Trustpilot"
+  },
+  "clinical": {
+    "eyebrow": "Rezultate clinice",
+    "title": "Dovedit de știință",
+    "stat_improvement": "au observat o piele vizibil îmbunătățită",
+    "stat_hydration": "au raportat o hidratare mai profundă",
+    "stat_visible": "săptămâni până la primele rezultate vizibile",
+    "footnote": "Rezultate dintr-un studiu clinic independent.",
+    "source_label": "Detaliile studiului"
+  },
+  "a11y": {
+    "close": "Închide",
+    "loading": "Se încarcă",
+    "rating_out_of_5": "Evaluat cu {{ rating }} din 5"
+  },
+  "study": {
+    "eyebrow": "Studiu clinic independent",
+    "methodology": "n = {{ n }} participanți · studiu de {{ weeks }} · {{ lab }}",
+    "weeks_count": {
+      "one": "{{ count }} săptămână",
+      "few": "{{ count }} săptămâni",
+      "other": "{{ count }} de săptămâni"
+    },
+    "instruments": "Măsurători instrumentale: {{ methods }}",
+    "view_study": "Vezi rezumatul studiului",
+    "footnote_default": "Măsurat sub control dermatologic. Rezultatele individuale pot varia."
+  },
+  "ba": {
+    "eyebrow": "Rezultate verificate",
+    "title": "Rezultate reale, verificate independent",
+    "before": "Înainte",
+    "after": "După",
+    "week_0": "Săptămâna 0",
+    "week_n": "Săptămâna {{ weeks }}",
+    "captured": "Imagini {{ imaging }} neretușate, realizate la {{ clinic }}",
+    "verified_by": "Verificat de {{ name }} — Licența {{ license }}",
+    "view_verification": "Vezi verificarea"
+  },
+  "batch": {
+    "eyebrow": "Transparență totală",
+    "title": "Ce conține — exact",
+    "col_ingredient": "Ingredient",
+    "col_concentration": "Concentrația reală",
+    "col_form": "Formă",
+    "coa_title": "Certificate de analiză",
+    "batch_no": "Lot {{ batch }}",
+    "tested_by": "Testat de {{ lab }}",
+    "download": "Descarcă certificatul",
+    "honesty": "Fiecare lot este testat independent, iar rezultatele sunt publicate. Convinge-te."
+  },
+  "bottle": {
+    "title": "Folosește până la ultima picătură",
+    "body": "Ai la dispoziție {{ days }}. Dacă rezultatele nu te conving, trimite înapoi flaconul gol și îți returnăm banii integral.",
+    "days_count": {
+      "one": "{{ count }} zi",
+      "few": "{{ count }} zile",
+      "other": "{{ count }} de zile"
+    },
+    "point_1": "Funcționează sau e gratuit — chiar și cu flaconul gol",
+    "point_2": "Fără întrebări",
+    "point_3": "Rambursare integrală prin metoda de plată inițială",
+    "terms": "Vezi termenii garanției"
+  },
+  "survey": {
+    "stat": "{{ recommend }} din {{ outof }}",
+    "title": "dermatologi chestionați ar recomanda Cellexia",
+    "sample": "Sondaj independent realizat în rândul a {{ n }} de medici dermatologi certificați",
+    "verified_badge": "Verificat de o terță parte",
+    "verified_by": "Sondaj verificat de {{ name }}",
+    "methodology": "Vezi metodologia sondajului"
+  }
+}

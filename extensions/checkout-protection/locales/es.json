@@ -1,0 +1,7 @@
+{
+  "title": "Protección del pedido",
+  "description": "Protege tu pedido contra pérdida, robo y daños durante el transporte.",
+  "price_label": "por {{price}}",
+  "added": "Tu pedido está protegido",
+  "error": "No se ha podido actualizar la Protección del pedido. Inténtalo de nuevo."
+}

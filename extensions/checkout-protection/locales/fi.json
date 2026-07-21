@@ -1,0 +1,7 @@
+{
+  "title": "Tilausturva",
+  "description": "Suojaa tilauksesi katoamiselta, varkaudelta ja kuljetusvaurioilta.",
+  "price_label": "hintaan {{price}}",
+  "added": "Tilauksesi on suojattu",
+  "error": "Tilausturvan päivitys ei onnistunut. Yritä uudelleen."
+}

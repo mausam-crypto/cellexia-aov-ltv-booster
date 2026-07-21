@@ -1,0 +1,23 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "2aadc2719a5bc649804cb42c0cbb917c"
+name = "cellexia-aov-ltv-booster"
+application_url = "https://example.com"
+embedded = true
+
+[webhooks]
+api_version = "2026-10"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_files,read_locales,read_markets,read_metaobject_definitions,read_metaobjects,read_orders,read_products,read_publications,read_translations,write_files,write_metaobject_definitions,write_metaobjects,write_products,write_publications"
+
+[auth]
+redirect_urls = [
+  "https://example.com/auth/callback",
+  "https://example.com/auth/shopify/callback",
+  "https://example.com/api/auth/callback"
+]
+
+[build]
+automatically_update_urls_on_dev = true

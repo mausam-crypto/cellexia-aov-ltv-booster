@@ -1,0 +1,7 @@
+{
+  "title": "Protection de commande",
+  "description": "Protégez votre commande contre la perte, le vol et les dommages pendant le transport.",
+  "price_label": "pour {{price}}",
+  "added": "Votre commande est protégée",
+  "error": "Impossible de mettre à jour la Protection de commande. Veuillez réessayer."
+}

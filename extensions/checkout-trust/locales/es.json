@@ -1,0 +1,8 @@
+{
+  "guarantee_title": "Garantía de reembolso de {{days}} días",
+  "guarantee_body": "Resultados que te encanten o te devolvemos el dinero, sin preguntas.",
+  "secure": "Pago seguro con cifrado SSL",
+  "clinical": "Fórmulas clínicamente probadas",
+  "trustpilot": "{{rating}}/5 · {{count}} reseñas en Trustpilot",
+  "subscription_hint": "Los miembros del Plan de Tratamiento Continuo ahorran un {{percent}}% en cada entrega."
+}

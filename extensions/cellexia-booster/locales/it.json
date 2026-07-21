@@ -1,0 +1,114 @@
+{
+  "shipbar": {
+    "away_html": "Ti mancano {{ amount }} per la spedizione gratuita",
+    "unlocked": "Congratulazioni — hai sbloccato la spedizione gratuita!"
+  },
+  "volume": {
+    "title": "Risparmia di più per unità",
+    "upgrade_to": "Passa a {{ count }} unità",
+    "save_pct": "Risparmia il {{ percent }}%",
+    "per_unit": "{{ price }} / unità",
+    "best_value": "Più conveniente",
+    "most_popular": "Il più scelto",
+    "current_pack": "Il tuo formato attuale",
+    "upgraded": "Formato aggiornato — stai risparmiando di più per unità",
+    "error": "Si è verificato un errore. Riprova."
+  },
+  "subscription": {
+    "switch_title": "Trasformalo in un Piano di Trattamento Continuo",
+    "switch_cta": "Passa al piano e risparmia il {{ percent }}%",
+    "benefits": "Risparmia il {{ percent }}% su ogni consegna. Salta, metti in pausa o annulla quando vuoi.",
+    "switched": "Piano di Trattamento Continuo attivato",
+    "nudge_title": "Non restare mai senza",
+    "nudge_body": "Unisciti al Piano di Trattamento Continuo: risparmi il {{ percent }}% su ogni consegna, spedizione gratuita inclusa. Annulla quando vuoi.",
+    "error": "Si è verificato un errore. Riprova."
+  },
+  "badges": {
+    "secure_checkout": "Pagamento sicuro",
+    "free_shipping_over": "Spedizione gratuita oltre {{ amount }}",
+    "money_back": "Garanzia di rimborso di {{ days }} giorni",
+    "dermatologist_tested": "Dermatologicamente testato",
+    "cruelty_free": "Cruelty free",
+    "clinically_proven": "Clinicamente provato",
+    "ssl_encrypted": "Pagamento con crittografia SSL",
+    "easy_returns": "Resi facili"
+  },
+  "guarantee": {
+    "title": "Garanzia soddisfatti o rimborsati di {{ days }} giorni",
+    "body": "Ama i tuoi risultati, o ti rimborsiamo. Non sei pienamente soddisfatto entro {{ days }} giorni? Ti restituiamo l'importo — senza domande."
+  },
+  "trustpilot": {
+    "decimal_separator": ",",
+    "excellent": "Eccellente",
+    "reviews_count": "{{ count }} recensioni su",
+    "view": "Leggi le nostre recensioni su Trustpilot"
+  },
+  "clinical": {
+    "eyebrow": "Risultati clinici",
+    "title": "Dimostrato dalla scienza",
+    "stat_improvement": "ha notato una pelle visibilmente migliorata",
+    "stat_hydration": "ha riscontrato un'idratazione più profonda",
+    "stat_visible": "settimane per i primi risultati visibili",
+    "footnote": "Risultati di uno studio clinico indipendente.",
+    "source_label": "Dettagli dello studio"
+  },
+  "a11y": {
+    "close": "Chiudi",
+    "loading": "Caricamento",
+    "rating_out_of_5": "Valutazione di {{ rating }} su 5"
+  },
+  "study": {
+    "eyebrow": "Studio clinico indipendente",
+    "methodology": "n = {{ n }} partecipanti · studio di {{ weeks }} · {{ lab }}",
+    "weeks_count": {
+      "one": "{{ count }} settimana",
+      "other": "{{ count }} settimane"
+    },
+    "instruments": "Misurazioni strumentali: {{ methods }}",
+    "view_study": "Consulta la sintesi dello studio",
+    "footnote_default": "Misurato sotto controllo dermatologico. I risultati individuali possono variare."
+  },
+  "ba": {
+    "eyebrow": "Risultati verificati",
+    "title": "Risultati reali, verificati in modo indipendente",
+    "before": "Prima",
+    "after": "Dopo",
+    "week_0": "Settimana 0",
+    "week_n": "Settimana {{ weeks }}",
+    "captured": "Immagini {{ imaging }} non ritoccate, acquisite presso {{ clinic }}",
+    "verified_by": "Verificato da {{ name }} — Licenza {{ license }}",
+    "view_verification": "Vedi la verifica"
+  },
+  "batch": {
+    "eyebrow": "Trasparenza totale",
+    "title": "Cosa contiene — esattamente",
+    "col_ingredient": "Ingrediente",
+    "col_concentration": "Concentrazione effettiva",
+    "col_form": "Forma",
+    "coa_title": "Certificati di analisi",
+    "batch_no": "Lotto {{ batch }}",
+    "tested_by": "Analizzato da {{ lab }}",
+    "download": "Scarica il certificato",
+    "honesty": "Ogni lotto è analizzato in modo indipendente e pubblicato. Giudica tu."
+  },
+  "bottle": {
+    "title": "Usalo fino all'ultima goccia",
+    "body": "Prenditi {{ days }}. Se non ami i tuoi risultati, restituisci il flacone vuoto per un rimborso completo.",
+    "days_count": {
+      "one": "{{ count }} giorno",
+      "other": "{{ count }} giorni"
+    },
+    "point_1": "Funziona o è gratis — anche a flacone vuoto",
+    "point_2": "Senza domande",
+    "point_3": "Rimborso completo sul tuo metodo di pagamento originale",
+    "terms": "Consulta le condizioni della garanzia"
+  },
+  "survey": {
+    "stat": "{{ recommend }} su {{ outof }}",
+    "title": "dermatologi intervistati consiglierebbero Cellexia",
+    "sample": "Sondaggio indipendente condotto su {{ n }} dermatologi specialisti",
+    "verified_badge": "Verificato da terzi",
+    "verified_by": "Sondaggio verificato da {{ name }}",
+    "methodology": "Consulta la metodologia del sondaggio"
+  }
+}

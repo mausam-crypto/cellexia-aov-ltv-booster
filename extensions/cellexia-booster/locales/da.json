@@ -1,0 +1,114 @@
+{
+  "shipbar": {
+    "away_html": "Du er kun {{ amount }} fra gratis fragt",
+    "unlocked": "Tillykke – du har opnået gratis fragt!"
+  },
+  "volume": {
+    "title": "Spar mere pr. stk.",
+    "upgrade_to": "Opgrader til {{ count }} stk.",
+    "save_pct": "Spar {{ percent }} %",
+    "per_unit": "{{ price }} / stk.",
+    "best_value": "Bedste værdi",
+    "most_popular": "Mest populær",
+    "current_pack": "Din nuværende pakke",
+    "upgraded": "Pakken er opgraderet – du sparer nu mere pr. stk.",
+    "error": "Noget gik galt. Prøv igen."
+  },
+  "subscription": {
+    "switch_title": "Gør det til en Løbende behandlingsplan",
+    "switch_cta": "Skift & spar {{ percent }} %",
+    "benefits": "Spar {{ percent }} % på hver levering. Spring over, sæt på pause eller opsig når som helst.",
+    "switched": "Løbende behandlingsplan aktiveret",
+    "nudge_title": "Løb aldrig tør",
+    "nudge_body": "Tilmeld dig vores Løbende behandlingsplan: spar {{ percent }} % på hver levering – gratis fragt inkluderet. Opsig når som helst.",
+    "error": "Noget gik galt. Prøv igen."
+  },
+  "badges": {
+    "secure_checkout": "Sikker checkout",
+    "free_shipping_over": "Gratis fragt ved køb over {{ amount }}",
+    "money_back": "{{ days }} dages pengene-tilbage-garanti",
+    "dermatologist_tested": "Dermatologisk testet",
+    "cruelty_free": "Uden dyreforsøg",
+    "clinically_proven": "Klinisk dokumenteret",
+    "ssl_encrypted": "SSL-krypteret betaling",
+    "easy_returns": "Nem returnering"
+  },
+  "guarantee": {
+    "title": "{{ days }} dages pengene-tilbage-garanti",
+    "body": "Elsk dine resultater – eller få pengene tilbage. Ikke helt tilfreds inden for {{ days }} dage? Vi refunderer dig – uden spørgsmål."
+  },
+  "trustpilot": {
+    "decimal_separator": ",",
+    "excellent": "Fremragende",
+    "reviews_count": "{{ count }} anmeldelser på",
+    "view": "Se vores anmeldelser på Trustpilot"
+  },
+  "clinical": {
+    "eyebrow": "Kliniske resultater",
+    "title": "Videnskabeligt dokumenteret",
+    "stat_improvement": "oplevede synligt forbedret hud",
+    "stat_hydration": "rapporterede dybere hydrering",
+    "stat_visible": "uger til de første synlige resultater",
+    "footnote": "Resultater fra et uafhængigt klinisk studie.",
+    "source_label": "Detaljer om studiet"
+  },
+  "a11y": {
+    "close": "Luk",
+    "loading": "Indlæser",
+    "rating_out_of_5": "Bedømt {{ rating }} ud af 5"
+  },
+  "study": {
+    "eyebrow": "Uafhængigt klinisk studie",
+    "methodology": "n = {{ n }} deltagere · {{ weeks }} · {{ lab }}",
+    "weeks_count": {
+      "one": "{{ count }} uges studie",
+      "other": "{{ count }} ugers studie"
+    },
+    "instruments": "Instrumentelt målt: {{ methods }}",
+    "view_study": "Se resumé af studiet",
+    "footnote_default": "Målt under dermatologisk kontrol. Individuelle resultater kan variere."
+  },
+  "ba": {
+    "eyebrow": "Verificerede resultater",
+    "title": "Ægte resultater, uafhængigt verificeret",
+    "before": "Før",
+    "after": "Efter",
+    "week_0": "Uge 0",
+    "week_n": "Uge {{ weeks }}",
+    "captured": "Uretoucherede {{ imaging }}-billeder, taget hos {{ clinic }}",
+    "verified_by": "Verificeret af {{ name }} – licensnr. {{ license }}",
+    "view_verification": "Se verificering"
+  },
+  "batch": {
+    "eyebrow": "Fuld gennemsigtighed",
+    "title": "Hvad den indeholder – helt præcist",
+    "col_ingredient": "Ingrediens",
+    "col_concentration": "Faktisk koncentration",
+    "col_form": "Form",
+    "coa_title": "Analysecertifikater",
+    "batch_no": "Batch {{ batch }}",
+    "tested_by": "Testet af {{ lab }}",
+    "download": "Download certifikat",
+    "honesty": "Hver batch testes uafhængigt og offentliggøres. Døm selv."
+  },
+  "bottle": {
+    "title": "Brug hver eneste dråbe",
+    "body": "Tag dig {{ days }}. Hvis du ikke elsker dine resultater, kan du returnere den tomme flaske og få det fulde beløb refunderet.",
+    "days_count": {
+      "one": "{{ count }} dag",
+      "other": "{{ count }} dage"
+    },
+    "point_1": "Det virker, eller det er gratis – selv med en tom flaske",
+    "point_2": "Uden spørgsmål",
+    "point_3": "Fuld refusion til din oprindelige betalingsmetode",
+    "terms": "Se garantivilkår"
+  },
+  "survey": {
+    "stat": "{{ recommend }} ud af {{ outof }}",
+    "title": "adspurgte dermatologer ville anbefale Cellexia",
+    "sample": "Uafhængig undersøgelse blandt {{ n }} speciallæger i dermatologi",
+    "verified_badge": "Verificeret af tredjepart",
+    "verified_by": "Undersøgelsen er verificeret af {{ name }}",
+    "methodology": "Se undersøgelsens metode"
+  }
+}

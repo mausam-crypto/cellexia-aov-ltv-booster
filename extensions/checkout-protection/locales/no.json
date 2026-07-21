@@ -1,0 +1,7 @@
+{
+  "title": "Ordrebeskyttelse",
+  "description": "Beskytt bestillingen din mot tap, tyveri og skade under transport.",
+  "price_label": "for {{price}}",
+  "added": "Bestillingen din er beskyttet",
+  "error": "Kunne ikke oppdatere ordrebeskyttelsen. Prøv igjen."
+}

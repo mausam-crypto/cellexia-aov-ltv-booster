@@ -1,0 +1,7 @@
+{
+  "title": "Rendelésvédelem",
+  "description": "Védd meg a rendelésed az elvesztéstől, a lopástól és a szállítás közbeni sérüléstől.",
+  "price_label": "ára: {{price}}",
+  "added": "A rendelésed védve van",
+  "error": "A rendelésvédelem frissítése nem sikerült. Kérjük, próbáld újra."
+}

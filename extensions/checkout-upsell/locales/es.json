@@ -1,0 +1,9 @@
+{
+  "title": "Completa tu rutina",
+  "subtitle": "Añádelo antes de que se envíe tu pedido, sin coste de envío adicional",
+  "add": "Añadir",
+  "adding": "Añadiendo…",
+  "added": "Añadido",
+  "save_pct": "Ahorra un {{percent}}%",
+  "error": "No se ha podido añadir el producto. Inténtalo de nuevo."
+}

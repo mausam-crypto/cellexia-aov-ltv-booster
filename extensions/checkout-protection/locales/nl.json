@@ -1,0 +1,7 @@
+{
+  "title": "Bestelbescherming",
+  "description": "Bescherm je bestelling tegen verlies, diefstal en transportschade.",
+  "price_label": "voor {{price}}",
+  "added": "Je bestelling is beschermd",
+  "error": "Bestelbescherming kon niet worden bijgewerkt. Probeer het opnieuw."
+}

@@ -1,0 +1,114 @@
+{
+  "shipbar": {
+    "away_html": "Már csak {{ amount }} választ el az ingyenes szállítástól",
+    "unlocked": "Gratulálunk — elérted az ingyenes szállítást!"
+  },
+  "volume": {
+    "title": "Takaríts meg többet darabonként",
+    "upgrade_to": "Válts {{ count }} darabra",
+    "save_pct": "Takaríts meg {{ percent }}%-ot",
+    "per_unit": "{{ price }} / db",
+    "best_value": "Legjobb ár-érték arány",
+    "most_popular": "Legnépszerűbb",
+    "current_pack": "Jelenlegi csomagod",
+    "upgraded": "Csomag frissítve — darabonként többet takarítasz meg",
+    "error": "Hiba történt. Kérjük, próbáld újra."
+  },
+  "subscription": {
+    "switch_title": "Váltsd át Folyamatos Kezelési Programra",
+    "switch_cta": "Válts és takaríts meg {{ percent }}%-ot",
+    "benefits": "Takaríts meg {{ percent }}%-ot minden szállításnál. Bármikor kihagyhatod, szüneteltetheted vagy lemondhatod.",
+    "switched": "Folyamatos Kezelési Program aktiválva",
+    "nudge_title": "Soha ne fogyj ki",
+    "nudge_body": "Csatlakozz a Folyamatos Kezelési Programhoz: {{ percent }}% megtakarítás minden szállításnál, ingyenes kiszállítással. Bármikor lemondhatod.",
+    "error": "Hiba történt. Kérjük, próbáld újra."
+  },
+  "badges": {
+    "secure_checkout": "Biztonságos fizetés",
+    "free_shipping_over": "Ingyenes szállítás {{ amount }} felett",
+    "money_back": "{{ days }} napos pénzvisszafizetési garancia",
+    "dermatologist_tested": "Bőrgyógyászatilag tesztelt",
+    "cruelty_free": "Állatkísérlet-mentes",
+    "clinically_proven": "Klinikailag igazolt",
+    "ssl_encrypted": "SSL-titkosított fizetés",
+    "easy_returns": "Egyszerű visszaküldés"
+  },
+  "guarantee": {
+    "title": "{{ days }} napos pénzvisszafizetési garancia",
+    "body": "Szeresd az eredményeket, vagy visszakapod a pénzed. Nem vagy teljesen elégedett {{ days }} napon belül? Visszatérítjük a pénzed — kérdések nélkül."
+  },
+  "trustpilot": {
+    "decimal_separator": ",",
+    "excellent": "Kiváló",
+    "reviews_count": "{{ count }} értékelés itt:",
+    "view": "Nézd meg értékeléseinket a Trustpilot oldalán"
+  },
+  "clinical": {
+    "eyebrow": "Klinikai eredmények",
+    "title": "Tudományosan bizonyított",
+    "stat_improvement": "tapasztalt láthatóan javuló bőrképet",
+    "stat_hydration": "számolt be mélyebb hidratáltságról",
+    "stat_visible": "hét az első látható eredményekig",
+    "footnote": "Az eredmények független klinikai vizsgálatból származnak.",
+    "source_label": "A vizsgálat részletei"
+  },
+  "a11y": {
+    "close": "Bezárás",
+    "loading": "Betöltés",
+    "rating_out_of_5": "Értékelés: {{ rating }} az 5-ből"
+  },
+  "study": {
+    "eyebrow": "Független klinikai vizsgálat",
+    "methodology": "n = {{ n }} résztvevő · {{ weeks }} · {{ lab }}",
+    "weeks_count": {
+      "one": "{{ count }} hetes vizsgálat",
+      "other": "{{ count }} hetes vizsgálat"
+    },
+    "instruments": "Műszeres mérés: {{ methods }}",
+    "view_study": "Nézd meg a vizsgálati összefoglalót",
+    "footnote_default": "Bőrgyógyászati ellenőrzés mellett mérve. Az egyéni eredmények eltérhetnek."
+  },
+  "ba": {
+    "eyebrow": "Ellenőrzött eredmények",
+    "title": "Valódi eredmények, függetlenül ellenőrizve",
+    "before": "Előtte",
+    "after": "Utána",
+    "week_0": "0. hét",
+    "week_n": "{{ weeks }}. hét",
+    "captured": "Retusálatlan {{ imaging }}-felvételek, helyszín: {{ clinic }}",
+    "verified_by": "Ellenőrizte: {{ name }} — engedélyszám: {{ license }}",
+    "view_verification": "Nézd meg az ellenőrzést"
+  },
+  "batch": {
+    "eyebrow": "Teljes átláthatóság",
+    "title": "Mi van benne — pontosan",
+    "col_ingredient": "Összetevő",
+    "col_concentration": "Tényleges koncentráció",
+    "col_form": "Forma",
+    "coa_title": "Analízistanúsítványok",
+    "batch_no": "Gyártási tétel: {{ batch }}",
+    "tested_by": "Bevizsgálta: {{ lab }}",
+    "download": "Tanúsítvány letöltése",
+    "honesty": "Minden gyártási tételt függetlenül bevizsgáltatunk, és az eredményeket közzétesszük. Ítéld meg magad."
+  },
+  "bottle": {
+    "title": "Használd el az utolsó cseppig",
+    "body": "Adj magadnak {{ days }}. Ha nem szereted az eredményeket, küldd vissza az üres flakont, és a teljes árat visszatérítjük.",
+    "days_count": {
+      "one": "{{ count }} napot",
+      "other": "{{ count }} napot"
+    },
+    "point_1": "Működik, vagy ingyen van — akár üres flakonnal is",
+    "point_2": "Kérdések nélkül",
+    "point_3": "Teljes visszatérítés az eredeti fizetési módra",
+    "terms": "Nézd meg a garancia feltételeit"
+  },
+  "survey": {
+    "stat": "{{ outof }}-ből {{ recommend }}",
+    "title": "megkérdezett bőrgyógyász ajánlaná a Cellexiát",
+    "sample": "Független felmérés {{ n }} szakvizsgázott bőrgyógyász körében",
+    "verified_badge": "Harmadik fél által ellenőrizve",
+    "verified_by": "A felmérést ellenőrizte: {{ name }}",
+    "methodology": "Nézd meg a felmérés módszertanát"
+  }
+}

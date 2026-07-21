@@ -1,0 +1,7 @@
+{
+  "title": "Bestellschutz",
+  "description": "Schützen Sie Ihre Bestellung vor Verlust, Diebstahl und Transportschäden.",
+  "price_label": "für {{price}}",
+  "added": "Ihre Bestellung ist geschützt",
+  "error": "Der Bestellschutz konnte nicht aktualisiert werden. Bitte versuchen Sie es erneut."
+}

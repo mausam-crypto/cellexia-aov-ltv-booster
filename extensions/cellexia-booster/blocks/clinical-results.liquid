@@ -1,0 +1,143 @@
+{%- comment -%}
+  Cellexia Booster — Clinical results stat band app block (target: section).
+  Stats (value / suffix / labelKey) come from the config metafield; block
+  settings can override each stat label per instance. Renders ONLY when
+  clinicalResults.enabled is explicitly true AND the clinical_results market
+  scope matches the current market. Missing config = hidden (safe default).
+  The hardcoded default claims apply ONLY when the stats field is nil
+  (config predates it); an explicitly-saved EMPTY stats array hides the
+  whole block — no orphan eyebrow/title/footnote, no impression beacon.
+{%- endcomment -%}
+{%- assign cfg = app.metafields.cellexia.config.value -%}
+{%- liquid
+  # Market gating: visible = flag explicitly true AND (scope nil OR
+  # scope.mode != 'selected' OR scope.markets contains the current market
+  # handle). An empty handle matches only non-selected scopes.
+  assign cx_market = localization.market.handle | default: ''
+  assign cx_on = false
+  if cfg.clinicalResults.enabled == true
+    assign cx_scope = cfg.marketScopes.clinical_results
+    if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+      assign cx_on = true
+    endif
+  endif
+  # An explicitly-saved EMPTY stats array means "no stat claims": hide the
+  # whole block. The defaults below apply only when stats is nil (config
+  # predates the field).
+  assign cx_stats = cfg.clinicalResults.stats
+  if cx_stats and cx_stats.size == 0
+    assign cx_on = false
+  endif
+-%}
+{%- if cx_on -%}
+  {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+  {%- liquid
+    assign eyebrow_text = block.settings.eyebrow_override
+    if eyebrow_text == blank
+      assign eyebrow_text = 'clinical.eyebrow' | t
+    endif
+    assign title_text = block.settings.title_override
+    if title_text == blank
+      assign title_text = 'clinical.title' | t
+    endif
+    assign footnote_key = cfg.clinicalResults.footnoteKey | default: 'clinical.footnote'
+    assign stats = cfg.clinicalResults.stats
+  -%}
+  <div class="cx-clinical" {{ block.shopify_attributes }} data-cx-feature="clinical_results">
+    <p class="cx-clinical__eyebrow eyebrow eyebrow--sm">{{ eyebrow_text }}</p>
+    <h2 class="cx-clinical__title heading--two">{{ title_text }}</h2>
+    <ul class="cx-clinical__stats list-reset d-flex">
+      {%- if stats and stats.size > 0 -%}
+        {%- for stat in stats limit: 4 -%}
+          {%- liquid
+            assign override_key = 'label_override_' | append: forloop.index
+            assign label_text = block.settings[override_key]
+            if label_text == blank and stat.labelKey contains 'clinical.'
+              # The dashboard stores labelKey "custom" for free-text stats;
+              # only real clinical.* keys go through the translation filter.
+              assign label_text = stat.labelKey | t
+            endif
+          -%}
+          <li class="cx-clinical__stat text-center">
+            <span class="cx-clinical__value">{{ stat.value }}<span class="cx-clinical__suffix">{{ stat.suffix }}</span></span>
+            {%- if label_text != blank -%}
+              <span class="cx-clinical__label">{{ label_text }}</span>
+            {%- endif -%}
+          </li>
+        {%- endfor -%}
+      {%- else -%}
+        {%- comment -%} Defaults matching DEFAULT_SETTINGS.clinicalResults.stats {%- endcomment -%}
+        <li class="cx-clinical__stat text-center">
+          <span class="cx-clinical__value">93<span class="cx-clinical__suffix">%</span></span>
+          <span class="cx-clinical__label">{%- if block.settings.label_override_1 != blank -%}{{ block.settings.label_override_1 }}{%- else -%}{{ 'clinical.stat_improvement' | t }}{%- endif -%}</span>
+        </li>
+        <li class="cx-clinical__stat text-center">
+          <span class="cx-clinical__value">89<span class="cx-clinical__suffix">%</span></span>
+          <span class="cx-clinical__label">{%- if block.settings.label_override_2 != blank -%}{{ block.settings.label_override_2 }}{%- else -%}{{ 'clinical.stat_hydration' | t }}{%- endif -%}</span>
+        </li>
+        <li class="cx-clinical__stat text-center">
+          <span class="cx-clinical__value">4<span class="cx-clinical__suffix">wk</span></span>
+          <span class="cx-clinical__label">{%- if block.settings.label_override_3 != blank -%}{{ block.settings.label_override_3 }}{%- else -%}{{ 'clinical.stat_visible' | t }}{%- endif -%}</span>
+        </li>
+      {%- endif -%}
+    </ul>
+    {%- if block.settings.show_footnote -%}
+      <p class="cx-clinical__footnote">{{ footnote_key | t }}</p>
+    {%- endif -%}
+    {%- if block.settings.cta_url != blank -%}
+      <a class="cx-clinical__cta btn btn--tert" href="{{ block.settings.cta_url }}">
+        {%- if block.settings.cta_text != blank -%}{{ block.settings.cta_text }}{%- else -%}{{ 'clinical.source_label' | t }}{%- endif -%}
+      </a>
+    {%- endif -%}
+  </div>
+  <script>
+    (function () {
+      try {
+        var w = window;
+        w.__cxSeen = w.__cxSeen || {};
+        if (w.__cxSeen.clinical_results) return;
+        w.__cxSeen.clinical_results = 1;
+        var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
+        var payload = JSON.stringify({ feature: 'clinical_results', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
+        } else if (w.fetch) {
+          w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
+        }
+      } catch (e) { /* never break the theme */ }
+    })();
+  </script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Cellexia clinical results",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow_override",
+      "label": "Eyebrow override",
+      "info": "Leave blank to use the translated default."
+    },
+    {
+      "type": "text",
+      "id": "title_override",
+      "label": "Title override",
+      "info": "Leave blank to use the translated default."
+    },
+    { "type": "text", "id": "label_override_1", "label": "Stat 1 label override" },
+    { "type": "text", "id": "label_override_2", "label": "Stat 2 label override" },
+    { "type": "text", "id": "label_override_3", "label": "Stat 3 label override" },
+    { "type": "text", "id": "label_override_4", "label": "Stat 4 label override" },
+    {
+      "type": "checkbox",
+      "id": "show_footnote",
+      "label": "Show methodology footnote",
+      "default": true
+    },
+    { "type": "text", "id": "cta_text", "label": "Link text", "info": "Leave blank to use the translated default." },
+    { "type": "text", "id": "cta_url", "label": "Link URL", "info": "Leave blank to hide the link." }
+  ]
+}
+{% endschema %}

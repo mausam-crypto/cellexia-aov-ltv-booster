@@ -1,0 +1,7 @@
+{
+  "title": "Orderskydd",
+  "description": "Skydda din beställning mot förlust, stöld och skador under transporten.",
+  "price_label": "för {{price}}",
+  "added": "Din beställning är skyddad",
+  "error": "Orderskyddet kunde inte uppdateras. Försök igen."
+}

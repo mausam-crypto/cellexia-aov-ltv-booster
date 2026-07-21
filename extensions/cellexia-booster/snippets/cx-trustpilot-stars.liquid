@@ -1,0 +1,49 @@
+{%- comment -%}
+  Cellexia Booster — Trustpilot-style 5-star row with fractional fill.
+  Usage: {% render 'cx-trustpilot-stars', rating: 4.8, uid: block.id %}
+  Params:
+    rating (number 0-5, required — defaults to 0)
+    uid    (string used to namespace SVG gradient ids; default 'cx')
+    size   (star size in px, default 20)
+    color  (filled-star color, default Trustpilot green #00b67a)
+    empty  (empty-star color, default #d8d8d8)
+{%- endcomment -%}
+{%- liquid
+  assign cx_rating = rating | default: 0 | times: 1.0
+  if cx_rating > 5
+    assign cx_rating = 5.0
+  endif
+  if cx_rating < 0
+    assign cx_rating = 0.0
+  endif
+  assign cx_uid = uid | default: 'cx' | handleize
+  assign cx_size = size | default: 20
+  assign cx_fill = color | default: '#00b67a'
+  assign cx_empty = empty | default: '#d8d8d8'
+  assign cx_rating_label = cx_rating | round: 1
+-%}
+<span class="cx-stars" role="img" aria-label="{{ 'a11y.rating_out_of_5' | t: rating: cx_rating_label }}">
+  {%- for i in (1..5) -%}
+    {%- liquid
+      assign cx_prev = i | minus: 1
+      assign cx_part = cx_rating | minus: cx_prev
+      if cx_part > 1
+        assign cx_part = 1.0
+      endif
+      if cx_part < 0
+        assign cx_part = 0.0
+      endif
+      assign cx_pct = cx_part | times: 100 | round
+      assign cx_grad_id = 'cxtp-' | append: cx_uid | append: '-' | append: i | append: '-' | append: cx_pct
+    -%}
+    <svg class="cx-stars__star" width="{{ cx_size }}" height="{{ cx_size }}" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="{{ cx_grad_id }}" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="{{ cx_pct }}%" stop-color="{{ cx_fill }}"/>
+          <stop offset="{{ cx_pct }}%" stop-color="{{ cx_empty }}"/>
+        </linearGradient>
+      </defs>
+      <path fill="url(#{{ cx_grad_id }})" d="M10 1.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L1.6 7.7l5.8-.8z"/>
+    </svg>
+  {%- endfor -%}
+</span>

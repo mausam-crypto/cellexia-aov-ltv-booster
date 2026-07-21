@@ -1,0 +1,7 @@
+{
+  "title": "Order Protection",
+  "description": "Protect your order against loss, theft and damage in transit.",
+  "price_label": "for {{price}}",
+  "added": "Your order is protected",
+  "error": "Couldn't update Order Protection. Please try again."
+}

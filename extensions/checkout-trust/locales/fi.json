@@ -1,0 +1,8 @@
+{
+  "guarantee_title": "{{days}} päivän rahat takaisin -takuu",
+  "guarantee_body": "Rakastu tuloksiin tai saat rahasi takaisin — kyselemättä.",
+  "secure": "Turvallinen SSL-salattu maksaminen",
+  "clinical": "Kliinisesti todistetut koostumukset",
+  "trustpilot": "{{rating}}/5 · {{count}} arvostelua Trustpilot-palvelussa",
+  "subscription_hint": "Jatkuvan hoito-ohjelman jäsenet säästävät {{percent}} % jokaisesta toimituksesta."
+}

@@ -1,0 +1,8 @@
+{
+  "guarantee_title": "Garantie satisfait ou remboursé de {{days}} jours",
+  "guarantee_body": "Aimez vos résultats ou soyez remboursé(e) — sans justification.",
+  "secure": "Paiement sécurisé par chiffrement SSL",
+  "clinical": "Formules cliniquement prouvées",
+  "trustpilot": "{{rating}}/5 · {{count}} avis sur Trustpilot",
+  "subscription_hint": "Les membres du Programme de Traitement Continu économisent {{percent}} % sur chaque livraison."
+}

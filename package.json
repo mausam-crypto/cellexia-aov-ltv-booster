@@ -1,0 +1,58 @@
+{
+  "name": "cellexia-aov-ltv-booster",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "remix vite:build",
+    "dev": "shopify app dev",
+    "config:link": "shopify app config link",
+    "generate": "shopify app generate",
+    "deploy": "shopify app deploy",
+    "config:use": "shopify app config use",
+    "env": "shopify app env",
+    "start": "remix-serve ./build/server/index.js",
+    "docker-start": "npm run setup && npm run start",
+    "setup": "prisma generate && prisma migrate deploy",
+    "shopify": "shopify",
+    "prisma": "prisma",
+    "typecheck": "tsc --noEmit",
+    "vite": "vite"
+  },
+  "engines": {
+    "node": "^18.20 || ^20.10 || >=21.0.0"
+  },
+  "workspaces": [
+    "extensions/*"
+  ],
+  "dependencies": {
+    "@prisma/client": "^6.2.1",
+    "@remix-run/dev": "^2.16.1",
+    "@remix-run/fs-routes": "^2.16.1",
+    "@remix-run/node": "^2.16.1",
+    "@remix-run/react": "^2.16.1",
+    "@remix-run/serve": "^2.16.1",
+    "@shopify/app-bridge-react": "^4.1.6",
+    "@shopify/polaris": "^13.9.0",
+    "@shopify/polaris-icons": "^9.3.0",
+    "@shopify/shopify-app-remix": "^3.7.0",
+    "@shopify/shopify-app-session-storage-prisma": "^6.0.0",
+    "dotenv": "^16.6.1",
+    "isbot": "^5.1.0",
+    "prisma": "^6.2.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "vite-tsconfig-paths": "^5.0.1"
+  },
+  "devDependencies": {
+    "@shopify/cli": "^3.77.0",
+    "@types/node": "^22.2.0",
+    "@types/react": "^18.2.31",
+    "@types/react-dom": "^18.2.14",
+    "prettier": "^3.2.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "trustedDependencies": [
+    "@shopify/plugin-cloudflare"
+  ]
+}

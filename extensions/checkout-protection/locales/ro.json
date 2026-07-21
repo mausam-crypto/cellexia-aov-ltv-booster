@@ -1,0 +1,7 @@
+{
+  "title": "Protecția comenzii",
+  "description": "Protejează-ți comanda împotriva pierderii, furtului și deteriorării în timpul transportului.",
+  "price_label": "pentru {{price}}",
+  "added": "Comanda ta este protejată",
+  "error": "Protecția comenzii nu a putut fi actualizată. Te rugăm să încerci din nou."
+}

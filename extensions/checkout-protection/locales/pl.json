@@ -1,0 +1,7 @@
+{
+  "title": "Ochrona zamówienia",
+  "description": "Chroń swoje zamówienie przed zgubieniem, kradzieżą i uszkodzeniem w transporcie.",
+  "price_label": "za {{price}}",
+  "added": "Twoje zamówienie jest chronione",
+  "error": "Nie udało się zaktualizować ochrony zamówienia. Spróbuj ponownie."
+}

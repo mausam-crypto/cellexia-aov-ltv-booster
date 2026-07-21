@@ -1,0 +1,8 @@
+{
+  "guarantee_title": "{{days}} napos pénzvisszafizetési garancia",
+  "guarantee_body": "Szeresd az eredményeket, vagy visszakapod a pénzed — kérdések nélkül.",
+  "secure": "Biztonságos, SSL-titkosított fizetés",
+  "clinical": "Klinikailag igazolt formulák",
+  "trustpilot": "{{rating}}/5 · {{count}} értékelés a Trustpilot oldalán",
+  "subscription_hint": "A Folyamatos Kezelési Program tagjai {{percent}}%-ot takarítanak meg minden szállításnál."
+}
