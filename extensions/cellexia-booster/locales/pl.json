@@ -21,7 +21,11 @@
     "switched": "Plan Ciągłej Kuracji aktywowany",
     "nudge_title": "Zawsze miej zapas",
     "nudge_body": "Dołącz do Planu Ciągłej Kuracji: oszczędzaj {{ percent }}% na każdej dostawie, z darmową wysyłką w zestawie. Anuluj w dowolnym momencie.",
-    "error": "Coś poszło nie tak. Spróbuj ponownie."
+    "error": "Coś poszło nie tak. Spróbuj ponownie.",
+    "switch_all_cta": "Zamień wszystko i oszczędzaj {{ percent }}%",
+    "partial": "Produkty z możliwością subskrypcji: {{ eligible }} z {{ total }}",
+    "remove": "Usuń subskrypcję",
+    "removed": "Subskrypcja usunięta"
   },
   "badges": {
     "secure_checkout": "Bezpieczna płatność",

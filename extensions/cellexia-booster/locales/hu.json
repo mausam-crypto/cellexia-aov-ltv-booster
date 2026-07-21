@@ -21,7 +21,11 @@
     "switched": "Folyamatos Kezelési Program aktiválva",
     "nudge_title": "Soha ne fogyj ki",
     "nudge_body": "Csatlakozz a Folyamatos Kezelési Programhoz: {{ percent }}% megtakarítás minden szállításnál, ingyenes kiszállítással. Bármikor lemondhatod.",
-    "error": "Hiba történt. Kérjük, próbáld újra."
+    "error": "Hiba történt. Kérjük, próbáld újra.",
+    "switch_all_cta": "Válts át mindent és takaríts meg {{ percent }}%-ot",
+    "partial": "A {{ total }} termékből {{ eligible }} rendelhető előfizetéssel",
+    "remove": "Előfizetés eltávolítása",
+    "removed": "Előfizetés eltávolítva"
   },
   "badges": {
     "secure_checkout": "Biztonságos fizetés",

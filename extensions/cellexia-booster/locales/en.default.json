@@ -17,8 +17,12 @@
   "subscription": {
     "switch_title": "Make it a Continuous Treatment Plan",
     "switch_cta": "Switch & save {{ percent }}%",
+    "switch_all_cta": "Upgrade all & save {{ percent }}%",
+    "partial": "{{ eligible }} of {{ total }} products can be subscribed",
     "benefits": "Save {{ percent }}% on every delivery. Skip, pause or cancel anytime.",
     "switched": "Continuous Treatment Plan activated",
+    "remove": "Remove subscription",
+    "removed": "Subscription removed",
     "nudge_title": "Never run out",
     "nudge_body": "Join the Continuous Treatment Plan: save {{ percent }}% on every delivery, free shipping included. Cancel anytime.",
     "error": "Something went wrong. Please try again."

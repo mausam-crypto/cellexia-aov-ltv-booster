@@ -257,6 +257,7 @@ interface CartFormState {
   showVolumeUpsell: boolean;
   offers: OfferRowState[];
   highlightQuantity: string;
+  maxOfferGroups: string;
   showSubscriptionUpsell: boolean;
   subscriptionDiscountPct: string;
   sellingPlanKeyword: string;
@@ -280,6 +281,7 @@ function initialFormState(settings: BoosterSettings): CartFormState {
       discountPct: String(offer.discountPct),
     })),
     highlightQuantity: String(cartUpsell.highlightQuantity),
+    maxOfferGroups: String(cartUpsell.maxOfferGroups),
     showSubscriptionUpsell: cartUpsell.showSubscriptionUpsell,
     subscriptionDiscountPct: String(cartUpsell.subscriptionDiscountPct),
     sellingPlanKeyword: cartUpsell.sellingPlanKeyword,
@@ -481,6 +483,7 @@ export default function CartFeaturesPage() {
           Number.isInteger(highlight) && highlight >= 2
             ? highlight
             : fallbackHighlight,
+        maxOfferGroups: Number(state.maxOfferGroups),
         showSubscriptionUpsell: state.showSubscriptionUpsell,
         subscriptionDiscountPct: Number(state.subscriptionDiscountPct),
         sellingPlanKeyword: state.sellingPlanKeyword.trim(),
@@ -714,6 +717,20 @@ export default function CartFeaturesPage() {
                   disabled={highlightOptions.length === 0}
                   onChange={(highlightQuantity) =>
                     setState((previous) => ({ ...previous, highlightQuantity }))
+                  }
+                />
+                <Select
+                  label="When several products qualify"
+                  helpText="Full upgrade offers are shown for at most this many cart products, highest line value first; the remaining qualifying products collapse behind a “show more” toggle so the drawer stays scannable."
+                  options={[
+                    { label: "1 product", value: "1" },
+                    { label: "2 products", value: "2" },
+                    { label: "3 products", value: "3" },
+                    { label: "4 products", value: "4" },
+                  ]}
+                  value={state.maxOfferGroups}
+                  onChange={(maxOfferGroups) =>
+                    setState((previous) => ({ ...previous, maxOfferGroups }))
                   }
                 />
               </BlockStack>

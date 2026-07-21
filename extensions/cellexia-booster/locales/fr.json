@@ -21,7 +21,11 @@
     "switched": "Programme de Traitement Continu activé",
     "nudge_title": "Ne soyez jamais à court",
     "nudge_body": "Rejoignez le Programme de Traitement Continu : économisez {{ percent }} % sur chaque livraison, frais de port offerts. Annulez à tout moment.",
-    "error": "Une erreur s'est produite. Veuillez réessayer."
+    "error": "Une erreur s'est produite. Veuillez réessayer.",
+    "switch_all_cta": "Tout changer et économiser {{ percent }} %",
+    "partial": "Produits éligibles à l'abonnement : {{ eligible }} sur {{ total }}",
+    "remove": "Retirer l'abonnement",
+    "removed": "Abonnement retiré"
   },
   "badges": {
     "secure_checkout": "Paiement sécurisé",

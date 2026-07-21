@@ -18,6 +18,7 @@ import {
   Divider,
   InlineStack,
   Layout,
+  Link,
   List,
   Page,
   RadioButton,
@@ -135,6 +136,39 @@ const ALL_FEATURE_KEYS: FeatureKey[] = FEATURE_GROUPS.flatMap(
 const UNPREVIEWABLE_FEATURE_KEYS: ReadonlySet<FeatureKey> = new Set<FeatureKey>(
   ["clinical_results"],
 );
+
+/**
+ * Where a merchant fixes a not-ready feature (client-safe literal map — the
+ * component must not touch the server-only FEATURE_KEYS/FEATURE_DEFS). The
+ * checkout features are configured on the Checkout features page; the three
+ * PDP content widgets need per-product content under Product boosters.
+ * Readiness reasons come from the loader (featureReadiness); this map only
+ * supplies the destination link per not-ready-capable feature.
+ */
+const NOT_READY_FIX_LINKS: Partial<
+  Record<FeatureKey, { url: string; label: string }>
+> = {
+  checkout_upsell: {
+    url: "/app/features/checkout",
+    label: "Configure on the Checkout features page",
+  },
+  checkout_protection: {
+    url: "/app/features/checkout",
+    label: "Configure on the Checkout features page",
+  },
+  clinical_study: {
+    url: "/app/products",
+    label: "Add content under Product boosters",
+  },
+  verified_before_after: {
+    url: "/app/products",
+    label: "Add content under Product boosters",
+  },
+  batch_transparency: {
+    url: "/app/products",
+    label: "Add content under Product boosters",
+  },
+};
 
 const UTC_MONTHS = [
   "Jan",
@@ -768,6 +802,18 @@ export default function PreviewCenter() {
     draftKeys.length === checkedKeys.length &&
     draftKeys.every((key) => checked.has(key));
 
+  // Draft-flagged features that are not ready render NOTHING in a preview
+  // session (e.g. a checkout upsell with no variants selected) — the classic
+  // "checkout preview looks broken" trap. Union of the armed draft flags and
+  // the current selection, so the warning covers both the launch buttons
+  // (armed drafts) and what "Arm/Update preview" is about to flag.
+  const notReadyPreviewKeys = ALL_FEATURE_KEYS.filter(
+    (key) =>
+      (checked.has(key) || preview.draftFlags[key] === true) &&
+      !UNPREVIEWABLE_FEATURE_KEYS.has(key) &&
+      !features[key].ready,
+  );
+
   const marketLockedBy = (handle: string): string[] =>
     runningExperiments
       .filter(
@@ -1197,6 +1243,28 @@ export default function PreviewCenter() {
                   activates them.
                 </Text>
               </BlockStack>
+              {notReadyPreviewKeys.length > 0 ? (
+                <Banner
+                  tone="warning"
+                  title="These previewed features will render nothing until configured:"
+                >
+                  <List>
+                    {notReadyPreviewKeys.map((key) => {
+                      const fix = NOT_READY_FIX_LINKS[key];
+                      return (
+                        <List.Item key={key}>
+                          <Text as="span" fontWeight="semibold">
+                            {features[key].label}
+                          </Text>{" "}
+                          — {features[key].readinessNote ??
+                            "Not configured yet."}{" "}
+                          {fix ? <Link url={fix.url}>{fix.label}</Link> : null}
+                        </List.Item>
+                      );
+                    })}
+                  </List>
+                </Banner>
+              ) : null}
               <InlineStack gap="200" blockAlign="center" wrap>
                 <Button
                   variant="primary"
@@ -1250,7 +1318,9 @@ export default function PreviewCenter() {
                       <Text as="span" tone="subdued" variant="bodySm">
                         The hub's “Preview checkout” button builds a tagged
                         preview cart (excluded from analytics) and opens the
-                        real checkout.
+                        real checkout. Blocks must be placed in the checkout
+                        editor once (Settings → Checkout → Customize) —
+                        placement cannot be done by the app.
                       </Text>
                     </InlineStack>
                   </BlockStack>

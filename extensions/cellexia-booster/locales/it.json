@@ -21,7 +21,11 @@
     "switched": "Piano di Trattamento Continuo attivato",
     "nudge_title": "Non restare mai senza",
     "nudge_body": "Unisciti al Piano di Trattamento Continuo: risparmi il {{ percent }}% su ogni consegna, spedizione gratuita inclusa. Annulla quando vuoi.",
-    "error": "Si è verificato un errore. Riprova."
+    "error": "Si è verificato un errore. Riprova.",
+    "switch_all_cta": "Passa tutto al piano e risparmia il {{ percent }}%",
+    "partial": "Prodotti idonei all'abbonamento: {{ eligible }} su {{ total }}",
+    "remove": "Rimuovi l'abbonamento",
+    "removed": "Abbonamento rimosso"
   },
   "badges": {
     "secure_checkout": "Pagamento sicuro",

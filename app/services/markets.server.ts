@@ -21,6 +21,8 @@ export interface MarketSummary {
   handle: string;
   enabled: boolean;
   primary: boolean;
+  /** Market base currency (ISO 4217, e.g. "EUR"); "" when unavailable. */
+  currencyCode: string;
 }
 
 const MARKETS_QUERY = `#graphql
@@ -32,6 +34,11 @@ const MARKETS_QUERY = `#graphql
         handle
         enabled
         primary
+        currencySettings {
+          baseCurrency {
+            currencyCode
+          }
+        }
       }
     }
   }
@@ -68,6 +75,9 @@ export async function listMarkets(
           handle: string;
           enabled: boolean;
           primary: boolean;
+          currencySettings?: {
+            baseCurrency?: { currencyCode?: string | null } | null;
+          } | null;
         }[];
       };
     };
@@ -78,6 +88,10 @@ export async function listMarkets(
     handle: node.handle,
     enabled: Boolean(node.enabled),
     primary: Boolean(node.primary),
+    currencyCode:
+      typeof node.currencySettings?.baseCurrency?.currencyCode === "string"
+        ? node.currencySettings.baseCurrency.currencyCode
+        : "",
   }));
 }
 

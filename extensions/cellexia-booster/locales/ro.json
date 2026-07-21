@@ -21,7 +21,11 @@
     "switched": "Planul de Tratament Continuu a fost activat",
     "nudge_title": "Nu rămâne niciodată fără produs",
     "nudge_body": "Alătură-te Planului de Tratament Continuu: economisești {{ percent }}% la fiecare livrare, cu transport gratuit inclus. Anulezi oricând.",
-    "error": "A apărut o eroare. Te rugăm să încerci din nou."
+    "error": "A apărut o eroare. Te rugăm să încerci din nou.",
+    "switch_all_cta": "Schimbă tot și economisește {{ percent }}%",
+    "partial": "Produse eligibile pentru abonament: {{ eligible }} din {{ total }}",
+    "remove": "Elimină abonamentul",
+    "removed": "Abonament eliminat"
   },
   "badges": {
     "secure_checkout": "Plată securizată",

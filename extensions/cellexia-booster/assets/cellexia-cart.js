@@ -98,8 +98,32 @@
   // Current market handle for beacon attribution ('' when unknown).
   var MARKET = typeof cfg.market === 'string' ? cfg.market : '';
 
+  // Shopify's Liquid `t` filter HTML-escapes translated strings (every key
+  // not ending in _html), so the config JSON strings map arrives with
+  // entities like &amp; / &#39; baked in. Everything this runtime renders
+  // flows through textContent/createTextNode — NEVER innerHTML — so the
+  // entities must be decoded once, at the consumption point. The detached
+  // <textarea> is an RCDATA element: parsing its content decodes character
+  // references but can never create elements or execute scripts. Decoded
+  // strings must only ever reach textContent afterwards, never innerHTML.
+  var decodeArea = null;
+  function decodeEntities(str) {
+    if (typeof str !== 'string' || str.indexOf('&') === -1) return str;
+    try {
+      if (!decodeArea) decodeArea = document.createElement('textarea');
+      decodeArea.innerHTML = str;
+      return decodeArea.value;
+    } catch (e) {
+      return str;
+    }
+  }
+
   function t(key, params) {
-    var str = typeof STRINGS[key] === 'string' ? STRINGS[key] : key;
+    // Decode the base string BEFORE sentinel/param substitution: the
+    // @@TOKENS@@ sentinels are plain ASCII (untouched by the decode) and
+    // JS-supplied param values are never entity-encoded, so they must not
+    // be run through the decoder.
+    var str = typeof STRINGS[key] === 'string' ? decodeEntities(STRINGS[key]) : key;
     if (params) {
       Object.keys(params).forEach(function (p) {
         var value = String(params[p]);
@@ -213,25 +237,53 @@
     themeStale: null
   };
 
-  function thresholdCents() {
-    var cents = Number(cfg.thresholdCents);
-    if (!(cents > 0)) {
-      var mini = document.querySelector('section.mini-cart[data-freeship], .mini-cart[data-freeship]');
-      if (mini) {
-        var attr = Number(mini.getAttribute('data-freeship'));
-        if (attr > 0) cents = attr;
-      }
-    }
-    if (!(cents > 0)) cents = 15000;
-    // The config/data-freeship threshold is in the SHOP's currency, but the
-    // cart's items_subtotal_price is in the buyer's presentment currency —
-    // convert so the comparison happens in presentment cents.
+  function shopRate() {
+    // Shopify.currency.rate converts shop-currency amounts into the buyer's
+    // presentment currency. Guarded: anything missing/invalid means rate 1.
     var rate = 1;
     try {
       var r = Number(window.Shopify && window.Shopify.currency && window.Shopify.currency.rate);
       if (r > 0) rate = r;
     } catch (e) { /* noop */ }
-    return Math.round(cents * rate);
+    return rate;
+  }
+
+  function thresholdCents() {
+    // SPEC v4.5 — per-market currency-aware threshold. Liquid emits
+    // cfg.threshold = { cents, currency }: the freeShipping.byMarket entry
+    // for the current market when one exists (typically already in the
+    // market's own currency), else the global shop-currency fallback.
+    var th = cfg.threshold;
+    if (th && typeof th === 'object') {
+      var cents = Number(th.cents);
+      var currency = typeof th.currency === 'string' ? th.currency : '';
+      if (cents > 0) {
+        if (currency && currency === activeCurrency()) {
+          // Threshold already in the cart's presentment currency — compare
+          // directly, NO rate conversion.
+          return Math.round(cents);
+        }
+        // currency === cfg.shopCurrency: a shop-currency threshold, so the
+        // guarded Shopify.currency.rate conversion applies (the pre-v4.5
+        // behavior). Any OTHER currency: that same shop→presentment rate is
+        // the only conversion available client-side, so it doubles as the
+        // best-effort path.
+        return Math.round(cents * shopRate());
+      }
+    }
+    // Legacy fallbacks — all SHOP-currency semantics: the pre-v4.5 config
+    // field (stale cached markup), the theme's data-freeship attribute,
+    // then the 15000 last resort.
+    var legacy = Number(cfg.thresholdCents);
+    if (!(legacy > 0)) {
+      var mini = document.querySelector('section.mini-cart[data-freeship], .mini-cart[data-freeship]');
+      if (mini) {
+        var attr = Number(mini.getAttribute('data-freeship'));
+        if (attr > 0) legacy = attr;
+      }
+    }
+    if (!(legacy > 0)) legacy = 15000;
+    return Math.round(legacy * shopRate());
   }
 
   // -------------------------------------------------------------- cart data
@@ -369,26 +421,62 @@
 
   // ----------------------------------------------------------- subscriptions
 
-  function findPlanForItem(item) {
-    var product = productFor(item);
-    if (!product || !Array.isArray(product.sellingPlanGroups) || product.sellingPlanGroups.length === 0) {
-      return null;
-    }
-    var keyword = String(SETTINGS.sellingPlanKeyword || '').toLowerCase();
-    var fallback = null;
-    for (var g = 0; g < product.sellingPlanGroups.length; g++) {
-      var group = product.sellingPlanGroups[g] || {};
+  // v4.7 LIVE BUG FIX — Joy Subscription attaches selling plans PER VARIANT:
+  // on this store the volume-tier variants (2-Jar/3-Jar) carry NO plan
+  // allocations, and /cart/change.js returns 422 ("Cannot apply selling plan
+  // to variant") whenever a plan is applied to a variant lacking that
+  // allocation. Empirically proven on the live store: allocated plan on an
+  // allocated variant = 200; selling_plan: null (remove) = 200; unallocated
+  // variant or unallocated plan = 422. Eligibility therefore keys on the
+  // line's OWN variant's planAllocations ([{planId, price}], emitted by both
+  // the Liquid products map and the proxy cart-data endpoint); the product-
+  // level sellingPlanGroups only supply names + discount metadata for the
+  // keyword match and the savings display.
+
+  function planMetaById(product) {
+    var meta = {};
+    var groups = product && Array.isArray(product.sellingPlanGroups) ? product.sellingPlanGroups : [];
+    for (var g = 0; g < groups.length; g++) {
+      var group = groups[g] || {};
       var plans = Array.isArray(group.plans) ? group.plans : [];
       for (var p = 0; p < plans.length; p++) {
         var plan = plans[p];
-        if (!plan || !plan.id) continue;
-        if (!fallback) fallback = plan;
-        if (!keyword) continue;
-        var groupName = String(group.name || '').toLowerCase();
-        var planName = String(plan.name || '').toLowerCase();
-        if (groupName.indexOf(keyword) !== -1 || planName.indexOf(keyword) !== -1) {
-          return plan;
+        if (plan && plan.id != null) {
+          meta[String(plan.id)] = { plan: plan, groupName: String(group.name || '') };
         }
+      }
+    }
+    return meta;
+  }
+
+  function findPlanForItem(item) {
+    var product = productFor(item);
+    if (!product) return null;
+    var variant = currentVariant(product, item.variant_id);
+    var allocations = variant && Array.isArray(variant.planAllocations) ? variant.planAllocations : [];
+    if (!allocations.length) return null;
+    var meta = planMetaById(product);
+    var keyword = String(SETTINGS.sellingPlanKeyword || '').toLowerCase();
+    var fallback = null;
+    for (var i = 0; i < allocations.length; i++) {
+      var alloc = allocations[i];
+      if (!alloc || alloc.planId == null) continue;
+      var m = meta[String(alloc.planId)] || null;
+      var candidate = {
+        id: alloc.planId,
+        name: m ? String(m.plan.name || '') : '',
+        valueType: m ? m.plan.valueType : null,
+        value: m ? m.plan.value : 0,
+        // Per-variant subscription price in cents (powers the savings
+        // display when present); null when the allocation carries none.
+        allocPrice: alloc.price != null && isFinite(Number(alloc.price)) ? Number(alloc.price) : null
+      };
+      if (!fallback) fallback = candidate;
+      if (!keyword || !m) continue;
+      var groupName = m.groupName.toLowerCase();
+      var planName = String(m.plan.name || '').toLowerCase();
+      if (groupName.indexOf(keyword) !== -1 || planName.indexOf(keyword) !== -1) {
+        return candidate;
       }
     }
     return fallback;
@@ -399,6 +487,22 @@
       return Number(plan.value);
     }
     return Number(SETTINGS.subscriptionDiscountPct) || 5;
+  }
+
+  function linePlanPercent(item, plan) {
+    // The variant's own allocation price is the authoritative subscription
+    // price — when present and actually lower than the one-time price, the
+    // real per-line saving beats any product-level plan metadata.
+    if (plan && plan.allocPrice != null && plan.allocPrice > 0) {
+      var product = productFor(item);
+      var variant = product ? currentVariant(product, item.variant_id) : null;
+      var base = variant ? Number(variant.price) : 0;
+      if (base > 0 && plan.allocPrice < base) {
+        var pct = Math.round(((base - plan.allocPrice) / base) * 100);
+        if (pct > 0) return pct;
+      }
+    }
+    return planPercent(plan);
   }
 
   function itemHasPlan(item) {
@@ -462,6 +566,25 @@
     renderAll();
   }
 
+  function safeThemeRefresh(cart, wasDrawerOpen) {
+    // v4.7: a THEME render throw after a SUCCESSFUL cart mutation must never
+    // surface the error notice. Every path through the theme refresh is
+    // caught here; on throw we fall back to quietRefresh semantics
+    // (badge/subtotal/own widgets only — quietRefresh's DOM work is itself
+    // internally guarded).
+    try {
+      if (wasDrawerOpen && drawerIsOpen()) {
+        themeRefresh(cart);
+      } else {
+        // Buyer closed the drawer mid-request — refresh quietly so the
+        // theme's refreshMiniCart()/showMini() doesn't force it back open.
+        quietRefresh(cart);
+      }
+    } catch (e) {
+      try { quietRefresh(cart); } catch (e2) { /* noop */ }
+    }
+  }
+
   function isCartPageContext(node) {
     return !!(state.pageRoot && node && state.pageRoot.contains(node));
   }
@@ -505,13 +628,7 @@
           window.location.reload();
           return;
         }
-        if (wasDrawerOpen && drawerIsOpen()) {
-          themeRefresh(cart);
-        } else {
-          // Buyer closed the drawer mid-request — refresh quietly so the
-          // theme's refreshMiniCart()/showMini() doesn't force it back open.
-          quietRefresh(cart);
-        }
+        safeThemeRefresh(cart, wasDrawerOpen);
         return ensureProductData(cart).then(function () {
           setNotice('success', t('volume.upgraded'));
         });
@@ -524,38 +641,79 @@
       });
   }
 
-  function performSubscribe(item, plan, sourceNode) {
-    if (state.busy) return;
+  function performSubscribeAll(lines, sourceNode) {
+    if (state.busy || !lines || !lines.length) return;
     // Capture context before renderAll() clears the widget roots and
     // detaches sourceNode.
     var onCartPage = isCartPageContext(sourceNode);
     var wasDrawerOpen = drawerIsOpen();
     state.busy = true;
     renderAll();
-    cartRequest('cart/change.js', { id: item.key, selling_plan: plan.id })
+    var okCount = 0;
+    var failCount = 0;
+    // SEQUENTIAL promise chain — one /cart/change.js per eligible line, each
+    // with that line's OWN allocated plan id. Sequencing is load-bearing:
+    // changing a line replaces only that line's key (never reused), so the
+    // other lines' captured keys stay valid for the rest of the chain.
+    var chain = Promise.resolve();
+    lines.forEach(function (line) {
+      chain = chain.then(function () {
+        return cartRequest('cart/change.js', { id: line.item.key, selling_plan: line.plan.id })
+          .then(function () { okCount++; }, function () { failCount++; });
+      });
+    });
+    chain
+      .then(function () { return fetchCart().catch(function () { return null; }); })
       .then(function (cart) {
-        state.cart = cart && cart.items ? cart : state.cart;
         state.busy = false;
-        track('subscription_upsell', 'subscribe', {
-          quantity: item.quantity,
-          meta: { variant: item.variant_id, plan: plan.id }
-        });
+        if (cart && cart.items) state.cart = cart;
+        if (okCount > 0) {
+          track('subscription_upsell', 'subscribe', { quantity: okCount });
+        }
         if (onCartPage) {
           window.location.reload();
           return;
         }
-        if (cart && cart.items) {
-          if (wasDrawerOpen && drawerIsOpen()) {
-            themeRefresh(cart);
-          } else {
-            // Buyer closed the drawer mid-request — refresh quietly so the
-            // theme's refreshMiniCart()/showMini() doesn't force it back open.
-            quietRefresh(cart);
-          }
+        safeThemeRefresh(cart && cart.items ? cart : state.cart, wasDrawerOpen);
+        if (okCount > 0 && failCount === 0) {
           setNotice('success', t('subscription.switched'));
         } else {
-          refresh().then(function () { setNotice('success', t('subscription.switched')); });
+          setNotice('error', t('subscription.error'));
         }
+      })
+      .catch(function () {
+        // Defensive only: per-line failures are swallowed inside the chain,
+        // so this fires solely on unexpected throws — never leave busy stuck.
+        state.busy = false;
+        refresh().then(function () {
+          setNotice('error', t('subscription.error'));
+        });
+      });
+  }
+
+  function performUnsubscribe(lineKey, sourceNode) {
+    if (state.busy) return;
+    // The remove control lives inside the THEME's own row (not our widget
+    // roots), so cart-page context is detected against the cart table —
+    // isCartPageContext() only covers our injected pageRoot.
+    var onCartPage = false;
+    try {
+      var table = document.querySelector('.cart__table');
+      onCartPage = !!(table && sourceNode && table.contains(sourceNode));
+    } catch (e) { onCartPage = false; }
+    var wasDrawerOpen = drawerIsOpen();
+    state.busy = true;
+    renderAll();
+    cartRequest('cart/change.js', { id: lineKey, selling_plan: null })
+      .then(function (cart) {
+        state.busy = false;
+        if (cart && cart.items) state.cart = cart;
+        if (onCartPage) {
+          window.location.reload();
+          return;
+        }
+        safeThemeRefresh(cart && cart.items ? cart : state.cart, wasDrawerOpen);
+        setNotice('success', t('subscription.removed'));
       })
       .catch(function () {
         state.busy = false;
@@ -607,75 +765,181 @@
     return 'free_shipping_bar';
   }
 
-  function renderVolume(container) {
-    if (!featureOn('volume') || !state.cart || !Array.isArray(state.cart.items)) return null;
-    var rendered = false;
+  // ------------------------------------------------- offer groups (v4.5)
+  //
+  // With several qualifying cart lines the drawer used to stack every offer
+  // with no product attribution. Now: every volume-offer group and every
+  // subscription-switch row gets a product label whenever the cart holds
+  // more than one distinct product (hidden with only one), eligible lines
+  // are ranked by final_line_price DESC, at most settings.maxOfferGroups
+  // per offer type render in full, and the rest collapse behind ONE shared
+  // "+ N more offers" toggle — a single collapsed container holds both
+  // overflow types (volume groups first, then subscription rows). Collapse
+  // state intentionally resets on re-render. Impression beacons unchanged:
+  // each feature fires only when at least one of its groups is visible
+  // (the cap is >= 1, so an eligible type always has a visible group).
+
+  function distinctProductCount() {
+    if (!state.cart || !Array.isArray(state.cart.items)) return 0;
+    var seen = {};
+    var count = 0;
     state.cart.items.forEach(function (item) {
-      var candidates = upgradeCandidates(item);
-      if (!candidates.length) return;
-      rendered = true;
-      var box = el('div', 'cx-volume');
-      box.setAttribute('data-cx-feature', 'cart_upsell');
-      var title = cfg.overrides.volumeTitle || t('volume.title');
-      box.appendChild(el('p', 'cx-volume__title heading--five', title));
-      var product = productFor(item);
-      var current = product ? currentVariant(product, item.variant_id) : null;
-      if (current && current.option1) {
-        box.appendChild(el('p', 'cx-volume__current', t('volume.current_pack') + ' — ' + current.option1));
+      var pid = String(item.product_id);
+      if (!seen[pid]) {
+        seen[pid] = true;
+        count++;
       }
-      var tiles = el('div', 'cx-volume__tiles');
-      candidates.forEach(function (candidate) {
-        var isHighlight = Number(SETTINGS.highlightQuantity) === candidate.quantity;
-        var tile = el('button', 'cx-volume__tile' + (isHighlight ? ' cx-volume__tile--highlight' : ''));
-        tile.type = 'button';
-        tile.disabled = state.busy;
-        if (isHighlight) tile.appendChild(el('span', 'cx-volume__chip', t('volume.best_value')));
-        tile.appendChild(el('span', 'cx-volume__qty', t('volume.upgrade_to', { count: candidate.quantity })));
-        tile.appendChild(el('span', 'cx-volume__unit', t('volume.per_unit', { price: money(candidate.perUnitCents) })));
-        if (candidate.percent > 0) {
-          tile.appendChild(el('span', 'cx-volume__save', t('volume.save_pct', { percent: candidate.percent })));
-        }
-        tile.addEventListener('click', function () {
-          track('cart_upsell', 'click', { quantity: candidate.quantity });
-          performUpgrade(item, candidate, tile);
-        });
-        tiles.appendChild(tile);
-      });
-      box.appendChild(tiles);
-      container.appendChild(box);
     });
-    return rendered ? 'cart_upsell' : null;
+    return count;
   }
 
-  function renderSubscriptionSwitch(container) {
-    if (!featureOn('subscription') || isB2B()) return null;
-    if (!state.cart || !Array.isArray(state.cart.items)) return null;
-    var rendered = false;
-    state.cart.items.forEach(function (item) {
-      if (itemHasPlan(item)) return;
-      var plan = findPlanForItem(item);
-      if (!plan) return;
-      rendered = true;
-      var pct = planPercent(plan);
-      var box = el('div', 'cx-subswitch');
-      box.setAttribute('data-cx-feature', 'subscription_upsell');
-      var title = cfg.overrides.subscriptionTitle || t('subscription.switch_title');
-      var head = el('div', 'cx-subswitch__head d-flex align-center');
-      head.appendChild(el('p', 'cx-subswitch__title heading--five', title));
-      box.appendChild(head);
-      box.appendChild(el('p', 'cx-subswitch__product', item.product_title || ''));
-      box.appendChild(el('p', 'cx-subswitch__benefits', t('subscription.benefits', { percent: pct })));
-      var cta = el('button', 'cx-subswitch__cta btn btn--secondary', t('subscription.switch_cta', { percent: pct }));
-      cta.type = 'button';
-      cta.disabled = state.busy;
-      cta.addEventListener('click', function () {
-        track('subscription_upsell', 'click', { meta: { plan: plan.id } });
-        performSubscribe(item, plan, cta);
+  function maxOfferGroups() {
+    var n = Math.floor(Number(SETTINGS.maxOfferGroups));
+    return n >= 1 ? n : 2;
+  }
+
+  function lineValue(item) {
+    var v = Number(item.final_line_price != null ? item.final_line_price : item.line_price);
+    return isFinite(v) ? v : 0;
+  }
+
+  function byLineValueDesc(a, b) {
+    return lineValue(b.item) - lineValue(a.item);
+  }
+
+  function productLabel(item) {
+    // item.product_title comes from the cart.js AJAX JSON (raw text, never
+    // HTML-escaped) and is rendered via textContent — no decode, no markup.
+    return el('p', 'cx-offer__product', item.product_title || '');
+  }
+
+  function buildVolumeGroup(item, candidates, showLabel) {
+    var box = el('div', 'cx-volume');
+    box.setAttribute('data-cx-feature', 'cart_upsell');
+    if (showLabel) box.appendChild(productLabel(item));
+    var title = cfg.overrides.volumeTitle || t('volume.title');
+    box.appendChild(el('p', 'cx-volume__title heading--five', title));
+    var product = productFor(item);
+    var current = product ? currentVariant(product, item.variant_id) : null;
+    if (current && current.option1) {
+      box.appendChild(el('p', 'cx-volume__current', t('volume.current_pack') + ' — ' + current.option1));
+    }
+    var tiles = el('div', 'cx-volume__tiles');
+    candidates.forEach(function (candidate) {
+      var isHighlight = Number(SETTINGS.highlightQuantity) === candidate.quantity;
+      var tile = el('button', 'cx-volume__tile' + (isHighlight ? ' cx-volume__tile--highlight' : ''));
+      tile.type = 'button';
+      tile.disabled = state.busy;
+      if (isHighlight) tile.appendChild(el('span', 'cx-volume__chip', t('volume.best_value')));
+      tile.appendChild(el('span', 'cx-volume__qty', t('volume.upgrade_to', { count: candidate.quantity })));
+      tile.appendChild(el('span', 'cx-volume__unit', t('volume.per_unit', { price: money(candidate.perUnitCents) })));
+      if (candidate.percent > 0) {
+        tile.appendChild(el('span', 'cx-volume__save', t('volume.save_pct', { percent: candidate.percent })));
+      }
+      tile.addEventListener('click', function () {
+        track('cart_upsell', 'click', { quantity: candidate.quantity });
+        performUpgrade(item, candidate, tile);
       });
-      box.appendChild(cta);
-      container.appendChild(box);
+      tiles.appendChild(tile);
     });
-    return rendered ? 'subscription_upsell' : null;
+    box.appendChild(tiles);
+    return box;
+  }
+
+  function buildSubscriptionCard(lines, totalLines) {
+    // v4.7 UX redesign: ONE consolidated card for every eligible line —
+    // benefits percent is the MAX per-line plan discount, the single CTA
+    // switches every eligible line via the sequential chain.
+    var maxPct = 0;
+    lines.forEach(function (line) {
+      var pct = linePlanPercent(line.item, line.plan);
+      if (pct > maxPct) maxPct = pct;
+    });
+    var box = el('div', 'cx-subswitch');
+    box.setAttribute('data-cx-feature', 'subscription_upsell');
+    var title = cfg.overrides.subscriptionTitle || t('subscription.switch_title');
+    var head = el('div', 'cx-subswitch__head d-flex align-center');
+    head.appendChild(el('p', 'cx-subswitch__title heading--five', title));
+    box.appendChild(head);
+    box.appendChild(el('p', 'cx-subswitch__benefits', t('subscription.benefits', { percent: maxPct })));
+    if (lines.length < totalLines) {
+      box.appendChild(el('p', 'cx-subswitch__partial', t('subscription.partial', { eligible: lines.length, total: totalLines })));
+    }
+    var ctaKey = lines.length >= 2 ? 'subscription.switch_all_cta' : 'subscription.switch_cta';
+    var cta = el('button', 'cx-subswitch__cta btn btn--secondary', t(ctaKey, { percent: maxPct }));
+    cta.type = 'button';
+    cta.disabled = state.busy;
+    cta.addEventListener('click', function () {
+      track('subscription_upsell', 'click', { quantity: lines.length });
+      performSubscribeAll(lines, cta);
+    });
+    box.appendChild(cta);
+    return box;
+  }
+
+  function renderOffers(container, context) {
+    var features = [];
+    if (!state.cart || !Array.isArray(state.cart.items)) return features;
+    var showLabels = distinctProductCount() > 1;
+    var cap = maxOfferGroups();
+    var overflow = [];
+
+    if (featureOn('volume')) {
+      var volumeLines = [];
+      state.cart.items.forEach(function (item) {
+        var candidates = upgradeCandidates(item);
+        if (candidates.length) volumeLines.push({ item: item, candidates: candidates });
+      });
+      volumeLines.sort(byLineValueDesc);
+      volumeLines.forEach(function (line, index) {
+        var box = buildVolumeGroup(line.item, line.candidates, showLabels);
+        if (index < cap) container.appendChild(box);
+        else overflow.push(box);
+      });
+      if (volumeLines.length) features.push('cart_upsell');
+    }
+
+    if (featureOn('subscription') && !isB2B()) {
+      var subLines = [];
+      state.cart.items.forEach(function (item) {
+        if (itemHasPlan(item)) return;
+        var plan = findPlanForItem(item);
+        if (plan) subLines.push({ item: item, plan: plan });
+      });
+      // ONE consolidated card (v4.7) — rendered outside the cap/overflow
+      // system; highest-value line first so the sequential subscribe chain
+      // mutates the most valuable line first.
+      subLines.sort(byLineValueDesc);
+      if (subLines.length) {
+        container.appendChild(buildSubscriptionCard(subLines, state.cart.items.length));
+      }
+      if (subLines.length) features.push('subscription_upsell');
+    }
+
+    if (overflow.length) {
+      var panelId = 'cx-offers-overflow-' + context;
+      var toggle = el('button', 'cx-offers-more');
+      toggle.type = 'button';
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.setAttribute('aria-controls', panelId);
+      toggle.appendChild(el('span', 'cx-offers-more__label', '+ ' + overflow.length + ' more offers'));
+      var chevron = el('span', 'cx-offers-more__chevron');
+      chevron.setAttribute('aria-hidden', 'true');
+      toggle.appendChild(chevron);
+      var panel = el('div', 'cx-offers-overflow');
+      panel.id = panelId;
+      panel.hidden = true;
+      overflow.forEach(function (node) { panel.appendChild(node); });
+      toggle.addEventListener('click', function () {
+        var expanded = toggle.getAttribute('aria-expanded') === 'true';
+        toggle.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        panel.hidden = expanded;
+      });
+      container.appendChild(toggle);
+      container.appendChild(panel);
+    }
+
+    return features;
   }
 
   function renderTrustRow(container) {
@@ -701,8 +965,8 @@
     renderNotice(root);
     var f;
     f = renderShipbar(root); if (f) features.push(f);
-    f = renderVolume(root); if (f) features.push(f);
-    f = renderSubscriptionSwitch(root); if (f) features.push(f);
+    var offerFeatures = renderOffers(root, context);
+    for (var i = 0; i < offerFeatures.length; i++) features.push(offerFeatures[i]);
     f = renderTrustRow(root); if (f) features.push(f);
     root.setAttribute('data-cx-context', context);
     return features;
@@ -774,6 +1038,61 @@
     return root;
   }
 
+  function decorateSubscriptionRows() {
+    // v4.7 per-line remove: after every theme re-render (refreshMiniCart
+    // rebuilds the .product--cart rows from scratch, dropping anything we
+    // added), inject a small "Remove subscription" text-button next to each
+    // subscribed row's .delivery span — drawer rows and the cart page table
+    // rows alike (wherever .delivery exists). Idempotent via the
+    // data-cx-decorated marker; row -> cart line matching by data-varid +
+    // selling-plan presence (first unused match); everything null-guarded.
+    try {
+      if (!featureOn('subscription')) return;
+      // Never decorate mid-mutation: a button minted disabled would stay
+      // disabled forever behind the idempotency marker. The completion
+      // renderAll (setNotice / quietRefresh) runs this pass again with
+      // busy=false immediately after.
+      if (state.busy) return;
+      if (!state.cart || !Array.isArray(state.cart.items)) return;
+      var rows = document.querySelectorAll('.product--cart');
+      if (!rows.length) return;
+      var used = {};
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (!row || row.getAttribute('data-cx-decorated') === '1') continue;
+        var delivery = row.querySelector('.delivery');
+        if (!delivery || !delivery.parentNode) continue;
+        var varid = row.getAttribute('data-varid');
+        if (!varid) continue;
+        var line = null;
+        for (var j = 0; j < state.cart.items.length; j++) {
+          var item = state.cart.items[j];
+          if (!item || !item.key || used[item.key]) continue;
+          if (String(item.variant_id) === String(varid) && itemHasPlan(item)) {
+            line = item;
+            break;
+          }
+        }
+        if (!line) continue;
+        used[line.key] = true;
+        row.setAttribute('data-cx-decorated', '1');
+        var btn = el('button', 'cx-sub-remove');
+        btn.type = 'button';
+        var glyph = el('span', 'cx-sub-remove__x', '×');
+        glyph.setAttribute('aria-hidden', 'true');
+        btn.appendChild(glyph);
+        btn.appendChild(document.createTextNode(' ' + t('subscription.remove')));
+        (function (lineKey, node) {
+          node.addEventListener('click', function () {
+            performUnsubscribe(lineKey, node);
+          });
+        })(line.key, btn);
+        if (delivery.nextSibling) delivery.parentNode.insertBefore(btn, delivery.nextSibling);
+        else delivery.parentNode.appendChild(btn);
+      }
+    } catch (e) { /* never break the theme */ }
+  }
+
   function renderAll() {
     try {
       var drawerRoot = ensureDrawerRoot();
@@ -786,6 +1105,7 @@
         var pageFeatures = renderInto(pageRoot, 'page');
         firePageImpressions(pageFeatures);
       }
+      decorateSubscriptionRows();
     } catch (e) { /* never break the theme */ }
   }
 
@@ -821,6 +1141,10 @@
     var list = document.querySelector('.mini-cart__list');
     if (list) {
       var listObserver = new MutationObserver(function () {
+        // Decorate immediately with the cart we already hold (mutation
+        // handlers update state.cart before the theme re-renders), then let
+        // the debounced refresh reconcile with a fresh cart fetch.
+        decorateSubscriptionRows();
         scheduleRefresh();
       });
       listObserver.observe(list, { childList: true });
@@ -834,6 +1158,36 @@
       window.sessionStorage.removeItem('cx_preview_token');
       window.sessionStorage.removeItem('cx_preview_market');
       window.sessionStorage.removeItem('cx_preview_ok');
+      window.sessionStorage.removeItem('cx_preview_tagged');
+    } catch (e) { /* noop */ }
+  }
+
+  // v4.6: keep the preview cart tagged so ANY route into checkout (drawer
+  // button, /cart page, direct /checkout) carries the `_cx_preview`
+  // attribute the checkout extensions verify — not just the hub's button.
+  // The attribute value is the token HASH (server-computed, returned by
+  // preview-config to verified sessions); extensions compare it with plain
+  // string equality. Fire-and-forget; a failed tag just means the merchant
+  // falls back to the hub button.
+  function setPreviewCartTag(value, keepalive) {
+    try {
+      if (!window.fetch) return;
+      window.fetch(routeRoot() + 'cart/update.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ attributes: { _cx_preview: value } }),
+        keepalive: keepalive === true
+      }).catch(function () { /* fire and forget */ });
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function ensurePreviewCartTag(tokenHash) {
+    if (typeof tokenHash !== 'string' || !tokenHash) return;
+    try {
+      var store = window.sessionStorage;
+      if (store && store.getItem('cx_preview_tagged') === tokenHash) return;
+      setPreviewCartTag(tokenHash, false);
+      if (store) store.setItem('cx_preview_tagged', tokenHash);
     } catch (e) { /* noop */ }
   }
 
@@ -865,6 +1219,10 @@
       var exit = el('button', 'cx-preview-bar__exit', 'Exit preview');
       exit.type = 'button';
       exit.addEventListener('click', function () {
+        // Best-effort untag (keepalive survives the reload) so the
+        // merchant's next REAL checkout from this browser carries no
+        // preview attribute at all.
+        setPreviewCartTag('', true);
         clearPreviewSession();
         window.location.reload();
       });
@@ -904,9 +1262,15 @@
           };
           try { window.sessionStorage.setItem('cx_preview_ok', '1'); } catch (e) { /* noop */ }
           injectPreviewBar();
+          // v4.6: auto-tag the cart with the server-supplied token hash so
+          // every path into checkout previews the checkout blocks too.
+          ensurePreviewCartTag(typeof data.tokenHash === 'string' ? data.tokenHash : '');
         } else if (out.status === 200 && out.body && out.body.valid === false) {
           // Authoritative verdict: rotated/disarmed token — back to normal,
           // and count the session the inline beacon skipped (FINDING 10).
+          // Also untag the cart so the stale attribute doesn't linger on a
+          // real visitor's future orders (webhook tolerates it, hygiene).
+          setPreviewCartTag('', false);
           clearPreviewSession();
           fireMissedSessionBeacon();
         } else {

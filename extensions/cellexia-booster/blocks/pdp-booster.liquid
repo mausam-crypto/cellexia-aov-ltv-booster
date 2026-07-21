@@ -157,6 +157,23 @@
 
     assign threshold = cfg.global.freeShippingThreshold | default: 150
     assign threshold_money = threshold | times: 100 | money
+    comment
+      SPEC v4.5: per-market free-shipping threshold. When the current market
+      has a byMarket entry whose currencyCode equals the cart's presentment
+      currency, `money` formats its amount correctly — render it. Otherwise
+      fall back to the global shop-currency threshold, which is only safe to
+      render when the presentment currency IS the shop currency (the
+      pre-v4.5 skip-when-mismatch semantics).
+    endcomment
+    assign cx_fs = cfg.freeShipping.byMarket[cx_market]
+    assign cx_fs_badge_ok = false
+    assign cx_fs_badge_money = threshold_money
+    if cx_fs and cx_fs.currencyCode == cart.currency.iso_code
+      assign cx_fs_badge_money = cx_fs.amount | times: 100 | round | money
+      assign cx_fs_badge_ok = true
+    elsif cart.currency.iso_code == shop.currency
+      assign cx_fs_badge_ok = true
+    endif
     assign guarantee_days = cfg.guarantee.days | default: 60
     assign tp_rating = cfg.trustpilot.rating | default: 4.8
     assign tp_rating_rounded = tp_rating | round: 1
@@ -310,11 +327,13 @@
             {%- for key in badge_keys -%}
               {%- assign badge_key = key | strip -%}
               {%- comment -%}
-                The free-shipping threshold is stored in shop currency, but `money`
-                formats it in the buyer's presentment currency without converting,
-                so skip this badge when the two currencies differ.
+                `money` formats in the buyer's presentment currency without
+                converting, so the badge renders only when a threshold in that
+                exact currency exists: the market's byMarket entry, or the
+                global shop-currency threshold when presentment == shop
+                currency (cx_fs_badge_ok / cx_fs_badge_money, precomputed).
               {%- endcomment -%}
-              {%- if badge_key == 'free_shipping_over' and cart.currency.iso_code != shop.currency -%}
+              {%- if badge_key == 'free_shipping_over' and cx_fs_badge_ok == false -%}
                 {%- continue -%}
               {%- endif -%}
               {%- liquid
@@ -344,7 +363,7 @@
                   <span class="cx-badges__label">
                     {%- case badge_key -%}
                       {%- when 'secure_checkout' -%}{{ 'badges.secure_checkout' | t }}
-                      {%- when 'free_shipping_over' -%}{{ 'badges.free_shipping_over' | t: amount: threshold_money }}
+                      {%- when 'free_shipping_over' -%}{{ 'badges.free_shipping_over' | t: amount: cx_fs_badge_money }}
                       {%- when 'money_back' -%}{{ 'badges.money_back' | t: days: guarantee_days }}
                       {%- when 'dermatologist_tested' -%}{{ 'badges.dermatologist_tested' | t }}
                       {%- when 'cruelty_free' -%}{{ 'badges.cruelty_free' | t }}

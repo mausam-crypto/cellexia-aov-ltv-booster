@@ -88,8 +88,15 @@ Any Node host works (Fly.io, Render, Railway, Heroku, a VPS). A `Dockerfile` is 
    - `SHOPIFY_APP_URL` — your public https URL
    - `SCOPES` — copy the exact list from `shopify.app.toml`
    - `DATABASE_URL` — Postgres connection string
-3. **URLs**: set `application_url` and the three `redirect_urls` in `shopify.app.toml`
-   to your host URL, then `npm run deploy` (or edit in the Partner dashboard).
+3. **URLs — all FOUR places**: in `shopify.app.toml` set to your host URL:
+   `application_url`, the three `redirect_urls`, **and `[app_proxy] url`** — the proxy
+   URL is your host **plus `/proxy`** (e.g. `https://app.example.com/proxy`). Then
+   `npm run deploy`. ⚠️ Forgetting the app proxy is the #1 silent breakage: the admin
+   works fine, but preview links, storefront analytics and cart data all 404 on
+   `/apps/cellexia/*`. If you created the app via `shopify app config link`, ALSO verify
+   the `[app_proxy]` block still exists in the toml afterwards (the CLI rewrites the file
+   from remote config and drops the block if the remote app had no proxy). The
+   **Setup & health** page's "App proxy reachable" check verifies this end-to-end.
 4. Start: `npm run setup && npm run start` (or the Docker image, which does both).
 5. Open the app from the store admin once — OAuth completes and sessions persist.
 
@@ -154,6 +161,13 @@ translate overrides in Translate & Adapt like any theme content.
 
 ## 8. Troubleshooting
 
+- **Preview link / `/apps/cellexia/*` returns 404 on the storefront**: the App Proxy is
+  missing or points at the wrong upstream. Check Setup & health → "App proxy reachable".
+  Fix: Partner Dashboard → your app → App setup → **App proxy**: prefix `apps`, subpath
+  `cellexia`, URL `https://<your-app-host>/proxy` — or set `[app_proxy] url` in
+  `shopify.app.toml` and `npm run deploy`. Verify by opening
+  `https://<store>/apps/cellexia/track` — it must answer
+  `{"ok":true,"service":"cellexia-booster"}`.
 - **Widgets don't render**: (a) feature enabled? (b) Settings saved at least once?
   (c) app embeds enabled in THE PUBLISHED theme? (d) market scope includes the market
   you're viewing? (e) for PDP content widgets — product has content AND its per-product

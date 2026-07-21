@@ -21,7 +21,11 @@
     "switched": "Kontinuerlig behandlingsplan aktiverad",
     "nudge_title": "Stå aldrig utan",
     "nudge_body": "Gå med i vår Kontinuerliga behandlingsplan: spara {{ percent }} % på varje leverans – fri frakt ingår. Avsluta när du vill.",
-    "error": "Något gick fel. Försök igen."
+    "error": "Något gick fel. Försök igen.",
+    "switch_all_cta": "Byt allt & spara {{ percent }} %",
+    "partial": "Produkter som kan prenumereras på: {{ eligible }} av {{ total }}",
+    "remove": "Ta bort prenumeration",
+    "removed": "Prenumeration borttagen"
   },
   "badges": {
     "secure_checkout": "Säker kassa",

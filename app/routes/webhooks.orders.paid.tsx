@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { marketCountryMap } from "../services/markets.server";
+import { tokenHashFor } from "../services/preview.server";
 
 interface OrderLineItem {
   quantity: number;
@@ -48,9 +49,13 @@ const COUNTRY_CODE_PATTERN = /^[A-Za-z]{2}$/;
  * `_cx_preview` cart attribute (surfaced by Shopify as an order note
  * attribute) and are skipped entirely — preview checkouts must never
  * pollute analytics or experiments. The skip requires an exact match
- * against the CURRENT PreviewState token: cart attributes are settable by
- * any buyer via the public cart API, so a mere non-empty `_cx_preview`
- * must never be enough to hide an order from analytics.
+ * against the CURRENT PreviewState token — either its raw form (legacy
+ * preview carts tagged before the hash-attribute contract) or its sha256
+ * hex hash (the current contract: the attribute carries tokenHashFor(token),
+ * the same value checkout extensions compare against preview.tokenHash).
+ * Cart attributes are settable by any buyer via the public cart API, so a
+ * mere non-empty `_cx_preview` must never be enough to hide an order from
+ * analytics.
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, topic, payload, admin } = await authenticate.webhook(request);
@@ -59,11 +64,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const order = payload as unknown as OrderPayload;
 
   // v4 preview guard: skip ONLY when the `_cx_preview` note attribute
-  // exactly equals the shop's current PreviewState token (row exists, token
-  // non-empty). Anything else — missing row, empty token, mismatch, or a
-  // failed lookup — counts the order: a buyer-forgeable attribute must not
-  // be able to suppress analytics. On a genuine match, acknowledge the
-  // webhook (200, so Shopify does not retry) WITHOUT writing an OrderStat.
+  // exactly equals the shop's current PreviewState token — raw form OR its
+  // sha256 hex hash (row exists, token non-empty). The hash is the current
+  // contract (preview carts are tagged with tokenHashFor(token)); the raw
+  // form is tolerated for carts tagged before the transition. Anything
+  // else — missing row, empty token, mismatch, or a failed lookup — counts
+  // the order: a buyer-forgeable attribute must not be able to suppress
+  // analytics. On a genuine match, acknowledge the webhook (200, so Shopify
+  // does not retry) WITHOUT writing an OrderStat.
   const previewAttribute =
     (order.note_attributes ?? []).find(
       (a) => a.name === "_cx_preview" && a.value,
@@ -76,16 +84,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (
         previewState &&
         typeof previewState.token === "string" &&
-        previewState.token.length > 0 &&
-        previewState.token === previewAttribute
+        previewState.token.length > 0
       ) {
-        console.log(
-          `Skipping OrderStat for preview order ${order.id} on ${shop} (_cx_preview attribute matches the current preview token)`,
-        );
-        return new Response();
+        const matchedForm =
+          previewAttribute === previewState.token
+            ? "raw token"
+            : previewAttribute === tokenHashFor(previewState.token)
+              ? "token hash"
+              : null;
+        if (matchedForm) {
+          console.log(
+            `Skipping OrderStat for preview order ${order.id} on ${shop} (_cx_preview attribute matches the current preview ${matchedForm})`,
+          );
+          return new Response();
+        }
       }
       console.log(
-        `Counting order ${order.id} on ${shop} despite _cx_preview attribute (it does not match the current preview token)`,
+        `Counting order ${order.id} on ${shop} despite _cx_preview attribute (it matches neither the current preview token nor its sha256 hash)`,
       );
     } catch (error) {
       // Lookup failure → count the order (never let an unverifiable

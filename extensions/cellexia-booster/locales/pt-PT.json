@@ -21,7 +21,11 @@
     "switched": "Plano de Tratamento Contínuo ativado",
     "nudge_title": "Nunca fique sem o seu produto",
     "nudge_body": "Adira ao Plano de Tratamento Contínuo: poupe {{ percent }}% em cada entrega, com envio gratuito incluído. Cancele quando quiser.",
-    "error": "Ocorreu um erro. Por favor, tente novamente."
+    "error": "Ocorreu um erro. Por favor, tente novamente.",
+    "switch_all_cta": "Mude tudo e poupe {{ percent }}%",
+    "partial": "Produtos elegíveis para subscrição: {{ eligible }} de {{ total }}",
+    "remove": "Remover a subscrição",
+    "removed": "Subscrição removida"
   },
   "badges": {
     "secure_checkout": "Pagamento seguro",

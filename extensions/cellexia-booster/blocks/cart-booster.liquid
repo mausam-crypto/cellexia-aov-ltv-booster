@@ -98,6 +98,10 @@
 {%- if cfg.cartUpsell.enabled == true or cx_cart_draft_any -%}
   {%- liquid
     assign threshold = cfg.global.freeShippingThreshold | default: 150
+    # SPEC v4.5: per-market free-shipping threshold ({ amount, currencyCode }).
+    # nil when this market has no entry (or the market handle is empty) —
+    # the config JSON then falls back to the global shop-currency threshold.
+    assign cx_fs = cfg.freeShipping.byMarket[cx_market]
     assign guarantee_days = cfg.guarantee.days | default: 60
     assign tp_rating = cfg.trustpilot.rating | default: 4.8
     assign tp_rating_rounded = tp_rating | round: 1
@@ -172,6 +176,7 @@
         "showVolumeUpsell": {{ cx_eff_volume }},
         "showSubscriptionUpsell": {{ cx_eff_subscription }},
         "showTrustRow": {{ cx_eff_trustrow }},
+        "maxOfferGroups": {{ cfg.cartUpsell.maxOfferGroups | default: 2 }},
         "highlightQuantity": {{ cfg.cartUpsell.highlightQuantity | default: 3 }},
         "subscriptionDiscountPct": {{ cfg.cartUpsell.subscriptionDiscountPct | default: 5 }},
         "sellingPlanKeyword": {{ cfg.cartUpsell.sellingPlanKeyword | default: 'Continuous Treatment' | json }},
@@ -189,6 +194,8 @@
       {%- if cx_prev_armed %}
       "preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}},
       {%- endif %}
+      "threshold": {"cents": {% if cx_fs %}{{ cx_fs.amount | times: 100 | round }}{% else %}{{ threshold | times: 100 }}{% endif %}, "currency": {% if cx_fs %}{{ cx_fs.currencyCode | json }}{% else %}{{ shop.currency | json }}{% endif %}},
+      "shopCurrency": {{ shop.currency | json }},
       "thresholdCents": {{ threshold | times: 100 }},
       "b2b": {% if customer.b2b? %}true{% else %}false{% endif %},
       "currency": {{ cart.currency.iso_code | json }},
@@ -213,6 +220,10 @@
         "subscription.benefits": {{ 'subscription.benefits' | t: percent: '@@PERCENT@@' | json }},
         "subscription.switched": {{ 'subscription.switched' | t | json }},
         "subscription.error": {{ 'subscription.error' | t | json }},
+        "subscription.switch_all_cta": {{ 'subscription.switch_all_cta' | t: percent: '@@PERCENT@@' | json }},
+        "subscription.partial": {{ 'subscription.partial' | t: eligible: '@@ELIGIBLE@@', total: '@@TOTAL@@' | json }},
+        "subscription.remove": {{ 'subscription.remove' | t | json }},
+        "subscription.removed": {{ 'subscription.removed' | t | json }},
         "badges.secure_checkout": {{ 'badges.secure_checkout' | t | json }},
         "badges.money_back": {{ 'badges.money_back' | t: days: guarantee_days | json }},
         "a11y.loading": {{ 'a11y.loading' | t | json }},
@@ -231,7 +242,11 @@
             {{ cx_pid | json }}: {
               "variants": [
                 {%- for variant in item.product.variants -%}
-                  {"id": {{ variant.id | json }}, "option1": {{ variant.option1 | json }}, "price": {{ variant.price | json }}, "compare_at_price": {{ variant.compare_at_price | default: 'null' }}, "available": {{ variant.available | json }}, "position": {{ forloop.index }}}{%- unless forloop.last -%},{%- endunless -%}
+                  {"id": {{ variant.id | json }}, "option1": {{ variant.option1 | json }}, "price": {{ variant.price | json }}, "compare_at_price": {{ variant.compare_at_price | default: 'null' }}, "available": {{ variant.available | json }}, "position": {{ forloop.index }}, "planAllocations": [
+                    {%- for alloc in variant.selling_plan_allocations -%}
+                      {"planId": {{ alloc.selling_plan.id | json }}, "price": {{ alloc.price | json }}}{%- unless forloop.last -%},{%- endunless -%}
+                    {%- endfor -%}
+                  ]}{%- unless forloop.last -%},{%- endunless -%}
                 {%- endfor -%}
               ],
               "sellingPlanGroups": [
@@ -249,34 +264,8 @@
       }
     }
   </script>
-  {%- if cx_eff_trustrow -%}
-    <template id="cx-tpl-trust-row">
-      <div class="cx-trust-row" data-cx-feature="trust_badges">
-        <span class="cx-trust-row__item d-flex align-center">
-          {%- render 'cx-icons', icon: 'lock', size: 16 -%}
-          <span>{{ 'badges.secure_checkout' | t }}</span>
-        </span>
-        <span class="cx-trust-row__item d-flex align-center">
-          {%- render 'cx-icons', icon: 'shield-check', size: 16 -%}
-          <span>{{ 'badges.money_back' | t: days: guarantee_days }}</span>
-        </span>
-        {%- if cx_tp_on -%}
-          <a class="cx-trust-row__item cx-trust-row__item--link d-flex align-center no-dec" href="{{ tp_url }}" target="_blank" rel="noopener nofollow">
-            {%- render 'cx-trustpilot-stars', rating: tp_rating, uid: 'cart-trust', size: 14 -%}
-            <span>{%- assign tp_sep = 'trustpilot.decimal_separator' | t -%}{{ tp_rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
-          </a>
-        {%- endif -%}
-      </div>
-    </template>
-  {%- elsif cx_draft_trustrow -%}
-    {%- comment -%}
-      SPEC v4 draft-only render (armed preview, feature not live in this
-      market — drafted on OR live-ignoring-scope for market simulation):
-      identical markup marked inert via data-cx-draft. Real visitors' JS
-      never reveals it — effective.trustRow stays false — only a server-
-      verified preview session clones it.
-    {%- endcomment -%}
-    <template id="cx-tpl-trust-row" data-cx-draft="1">
+  {%- if cx_eff_trustrow or cx_draft_trustrow -%}
+    <template id="cx-tpl-trust-row"{% unless cx_eff_trustrow %} data-cx-draft="1"{% endunless %}>
       <div class="cx-trust-row" data-cx-feature="trust_badges">
         <span class="cx-trust-row__item d-flex align-center">
           {%- render 'cx-icons', icon: 'lock', size: 16 -%}

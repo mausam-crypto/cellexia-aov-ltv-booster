@@ -5,7 +5,11 @@ import {
   getSettings,
   isFeatureOnForMarket,
 } from "../models/settings.server";
-import { getPreviewState, verifyToken } from "../services/preview.server";
+import {
+  getPreviewState,
+  tokenHashFor,
+  verifyToken,
+} from "../services/preview.server";
 
 /**
  * Preview runtime config endpoint, reached through the Shopify App Proxy:
@@ -24,13 +28,23 @@ import { getPreviewState, verifyToken } from "../services/preview.server";
  *     simulatedMarket,          // market handle or null
  *     marketSimulated,          // false → bar shows "current market"
  *     liveEffectiveForMarket,   // Record<FeatureKey, boolean> — what is LIVE
- *   }                           //   in the simulated market, so the preview
+ *                               //   in the simulated market, so the preview
  *                               //   shows live ∪ draft (exactly what going
  *                               //   live would look like). null simulated
  *                               //   market uses the empty handle, which
  *                               //   matches "all"-scoped features but no
  *                               //   "selected"-scope lists — the JS never
  *                               //   does scope logic itself.
+ *     tokenHash,                // sha256 hex of the raw token — the exact
+ *   }                           //   value the storefront runtime writes to
+ *                               //   the `_cx_preview` cart attribute so ANY
+ *                               //   path into checkout carries it (checkout
+ *                               //   extensions compare attribute ===
+ *                               //   preview.tokenHash, plain string
+ *                               //   equality). Safe to expose here: only a
+ *                               //   verified raw-token bearer receives it,
+ *                               //   and checkout sessions already see the
+ *                               //   same hash via the shop metafield.
  * Invalid token → { valid: false } with 200 (no detail leakage, no retries).
  *
  * Unexpected server errors → { valid: false, retriable: true } with 503, so
@@ -84,6 +98,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         simulatedMarket,
         marketSimulated: simulatedMarket !== null && simulatedMarket !== "",
         liveEffectiveForMarket,
+        tokenHash: tokenHashFor(state.token),
       },
       { headers: JSON_HEADERS },
     );

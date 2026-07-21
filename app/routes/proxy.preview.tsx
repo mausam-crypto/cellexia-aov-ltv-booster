@@ -3,6 +3,7 @@ import { authenticate } from "../shopify.server";
 import {
   sanitizeMarketHandle,
   sanitizeProductHandle,
+  tokenHashFor,
   verifyToken,
 } from "../services/preview.server";
 
@@ -20,9 +21,14 @@ import {
  *
  * TOKEN RULES: the raw token is interpolated ONLY into inline <script>
  * strings on this page — the previewing merchant's own browser, which is the
- * entry-URL bearer anyway. It never reaches the app-data metafield or any
- * page a real visitor can load without the token. The inline script also
- * strips the token-bearing query string from the address bar
+ * entry-URL bearer anyway — and its sole job there is seeding sessionStorage.
+ * It never reaches the app-data metafield or any page a real visitor can
+ * load without the token. The "Preview checkout" button tags the cart's
+ * `_cx_preview` attribute with the token's sha256 HEX HASH (tokenHashFor,
+ * computed server-side while building this page), NEVER the raw token:
+ * checkout extensions compare attribute === preview.tokenHash with plain
+ * string equality (no SubtleCrypto in extension runtimes). The inline script
+ * also strips the token-bearing query string from the address bar
  * (history.replaceState) right after seeding sessionStorage, so third-party
  * trackers in the theme layout cannot pick it up via page_location/referrer.
  *
@@ -57,10 +63,12 @@ const INVALID_BODY = `{% layout none %}<!doctype html>
 
 const buildHubBody = (
   token: string,
+  tokenHash: string,
   productHandle: string,
   market: string,
 ): string => {
   const tokenJs = jsString(token);
+  const tokenHashJs = jsString(tokenHash);
   const marketJs = jsString(market);
 
   // `cx_preview_ok` is the key the storefront runtime keys its inline
@@ -104,11 +112,16 @@ const buildHubBody = (
     ? `{% if cx_preview_product.first_available_variant %}{{ cx_preview_product.first_available_variant.id | json }}{% elsif cx_preview_product.variants.first %}{{ cx_preview_product.variants.first.id | json }}{% else %}null{% endif %}`
     : "null";
 
+  // The `_cx_preview` cart attribute carries the sha256 HEX HASH of the
+  // token (computed server-side in the loader) — never the raw token.
+  // Checkout extensions compare attribute === preview.tokenHash with plain
+  // string equality, and the orders webhook skips analytics for orders whose
+  // attribute matches the current token or its hash.
   const checkoutScript = `<script>
 (function () {
   var btn = document.getElementById('cx-preview-checkout');
   if (!btn) return;
-  var token = ${tokenJs};
+  var tokenHash = ${tokenHashJs};
   var variantId = ${variantIdLiquid};
   var idle = btn.textContent;
   btn.addEventListener('click', function () {
@@ -128,7 +141,7 @@ const buildHubBody = (
         return fetch('/cart/update.js', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ attributes: { _cx_preview: token } })
+          body: JSON.stringify({ attributes: { _cx_preview: tokenHash } })
         });
       })
       .then(function (res) {
@@ -183,7 +196,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return new Response(INVALID_BODY, { headers: LIQUID_HEADERS });
   }
 
-  return new Response(buildHubBody(token, productHandle, market), {
-    headers: LIQUID_HEADERS,
-  });
+  return new Response(
+    buildHubBody(token, tokenHashFor(token), productHandle, market),
+    { headers: LIQUID_HEADERS },
+  );
 };

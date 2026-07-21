@@ -181,6 +181,11 @@ pass|warn|fail, detail, fixHint, fixUrl?}`:
    ("analytics will populate after first paid order; production needs Protected
    customer data approval").
 9. **preview-hygiene**: PreviewState.armed && armedAt older than 48h → warn "disarm".
+10. **app-proxy** (added after a production incident): server-side fetch of
+   https://<shop>/apps/cellexia/track — our proxy loader answers
+   {"ok":true,"service":"cellexia-booster"}; Shopify 404 = proxy not registered (fail
+   with toml/Partner-dashboard fix); non-app response = wrong upstream URL (fail);
+   password-page/network issues degrade to warn.
 All checks individually try/caught — a check that throws reports fail with the error
 message, never breaks the page.
 

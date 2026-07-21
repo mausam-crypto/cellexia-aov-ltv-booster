@@ -21,7 +21,11 @@
     "switched": "Jatkuva hoito-ohjelma aktivoitu",
     "nudge_title": "Älä jää ilman",
     "nudge_body": "Liity Jatkuvaan hoito-ohjelmaan: säästä {{ percent }} % jokaisesta toimituksesta, ilmainen toimitus sisältyy. Peruuta milloin tahansa.",
-    "error": "Jokin meni vikaan. Yritä uudelleen."
+    "error": "Jokin meni vikaan. Yritä uudelleen.",
+    "switch_all_cta": "Vaihda kaikki ja säästä {{ percent }} %",
+    "partial": "Kestotilaukseen soveltuvat tuotteet: {{ eligible }} / {{ total }}",
+    "remove": "Poista kestotilaus",
+    "removed": "Kestotilaus poistettu"
   },
   "badges": {
     "secure_checkout": "Turvallinen maksaminen",

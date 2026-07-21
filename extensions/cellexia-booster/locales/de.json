@@ -21,7 +21,11 @@
     "switched": "Kontinuierlicher Behandlungsplan aktiviert",
     "nudge_title": "Nie wieder ohne Nachschub",
     "nudge_body": "Werden Sie Teil des Kontinuierlichen Behandlungsplans: Sparen Sie {{ percent }} % bei jeder Lieferung, kostenloser Versand inklusive. Jederzeit kündbar.",
-    "error": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
+    "error": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
+    "switch_all_cta": "Alle wechseln & {{ percent }} % sparen",
+    "partial": "Abonnierbare Produkte: {{ eligible }} von {{ total }}",
+    "remove": "Abonnement entfernen",
+    "removed": "Abonnement entfernt"
   },
   "badges": {
     "secure_checkout": "Sicherer Checkout",

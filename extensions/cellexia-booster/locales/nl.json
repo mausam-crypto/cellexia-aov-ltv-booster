@@ -21,7 +21,11 @@
     "switched": "Doorlopend Behandelplan geactiveerd",
     "nudge_title": "Nooit meer zonder",
     "nudge_body": "Sluit je aan bij het Doorlopend Behandelplan: bespaar {{ percent }}% op elke levering, inclusief gratis verzending. Op elk moment opzegbaar.",
-    "error": "Er is iets misgegaan. Probeer het opnieuw."
+    "error": "Er is iets misgegaan. Probeer het opnieuw.",
+    "switch_all_cta": "Zet alles om & bespaar {{ percent }}%",
+    "partial": "Producten geschikt voor een abonnement: {{ eligible }} van {{ total }}",
+    "remove": "Abonnement verwijderen",
+    "removed": "Abonnement verwijderd"
   },
   "badges": {
     "secure_checkout": "Veilig afrekenen",

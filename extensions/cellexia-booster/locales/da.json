@@ -21,7 +21,11 @@
     "switched": "Løbende behandlingsplan aktiveret",
     "nudge_title": "Løb aldrig tør",
     "nudge_body": "Tilmeld dig vores Løbende behandlingsplan: spar {{ percent }} % på hver levering – gratis fragt inkluderet. Opsig når som helst.",
-    "error": "Noget gik galt. Prøv igen."
+    "error": "Noget gik galt. Prøv igen.",
+    "switch_all_cta": "Skift alt & spar {{ percent }} %",
+    "partial": "Produkter med mulighed for abonnement: {{ eligible }} af {{ total }}",
+    "remove": "Fjern abonnement",
+    "removed": "Abonnement fjernet"
   },
   "badges": {
     "secure_checkout": "Sikker checkout",

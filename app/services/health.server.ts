@@ -826,6 +826,87 @@ async function checkPreviewHygiene(shop: string): Promise<HealthCheck> {
 }
 
 // ---------------------------------------------------------------------------
+// 10. app-proxy (end-to-end probe)
+// ---------------------------------------------------------------------------
+
+/**
+ * Probes the storefront App Proxy path end-to-end: fetches
+ * https://<shop>/apps/cellexia/track, which Shopify must forward (signed) to
+ * this app's /proxy/track loader — that loader answers
+ * {"ok":true,"service":"cellexia-booster"}. This is the wiring behind preview
+ * links, analytics beacons and the cart-data endpoint; a placeholder or
+ * missing [app_proxy] configuration is invisible everywhere else in the
+ * admin, so this check exists to make it loud.
+ */
+async function checkAppProxy(shop: string): Promise<HealthCheck> {
+  return runCheck("app-proxy", "App proxy reachable", async () => {
+    const probeUrl = `https://${shop}/apps/cellexia/track`;
+    const expectedUpstream = `${(process.env.SHOPIFY_APP_URL ?? "https://<your-app-host>").replace(/\/+$/, "")}/proxy`;
+    const fixHint =
+      `The App Proxy must forward /apps/cellexia to ${expectedUpstream}. ` +
+      `Set [app_proxy] url = "${expectedUpstream}" (prefix "apps", subpath "cellexia") in shopify.app.toml and run npm run deploy — ` +
+      `or configure it in the Partner Dashboard under App setup → App proxy.`;
+
+    let response: Response;
+    let text = "";
+    try {
+      response = await fetch(probeUrl, {
+        redirect: "follow",
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(8000),
+      });
+      text = await response.text();
+    } catch (error) {
+      return {
+        status: "warn" as const,
+        detail: `Could not reach ${probeUrl} from the app server (${errorMessage(error)}). Open it in a browser: it should return {"ok":true,"service":"cellexia-booster"}.`,
+        fixHint,
+      };
+    }
+
+    let parsed: { ok?: unknown; service?: unknown } | null = null;
+    try {
+      parsed = JSON.parse(text) as { ok?: unknown; service?: unknown };
+    } catch {
+      parsed = null;
+    }
+
+    if (parsed?.service === "cellexia-booster") {
+      return {
+        status: "pass" as const,
+        detail:
+          "The storefront /apps/cellexia path reaches this app — preview links, beacons and cart data are wired.",
+        fixHint: "Nothing to do.",
+      };
+    }
+    if (
+      response.status === 200 &&
+      /password/i.test(text) &&
+      text.includes("<html")
+    ) {
+      return {
+        status: "warn" as const,
+        detail:
+          "The store appears to be password-protected, so the proxy could not be verified from the server. Open the probe URL in a browser while logged in to the storefront.",
+        fixHint,
+      };
+    }
+    if (response.status === 404) {
+      return {
+        status: "fail" as const,
+        detail: `Shopify returned 404 for ${probeUrl} — the App Proxy is not registered (or was dropped by a config link). Preview links, analytics beacons and cart data ALL depend on it.`,
+        fixHint,
+      };
+    }
+    return {
+      status: "fail" as const,
+      detail: `${probeUrl} answered HTTP ${response.status} with something that is not this app — the App Proxy likely points at the wrong host or path (it must target ${expectedUpstream}, note the /proxy suffix).`,
+      fixHint,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Orchestrator
 // ---------------------------------------------------------------------------
 
@@ -853,6 +934,7 @@ export async function runHealthChecks(
     const theme = await fetchThemeFiles(admin);
     return [
       crashed,
+      await checkAppProxy(shop),
       await checkThemeEmbeds(theme, themeEditorUrl),
       await checkThemeCompat(theme),
       await checkWebhooks(admin, shop),
@@ -873,6 +955,7 @@ export async function runHealthChecks(
   const theme = await fetchThemeFiles(admin);
   const [
     configMetafields,
+    appProxy,
     themeEmbeds,
     themeCompat,
     webhooks,
@@ -883,6 +966,7 @@ export async function runHealthChecks(
     previewHygiene,
   ] = await Promise.all([
     checkConfigMetafields(admin, shop, settings),
+    checkAppProxy(shop),
     checkThemeEmbeds(theme, themeEditorUrl),
     checkThemeCompat(theme),
     checkWebhooks(admin, shop),
@@ -895,6 +979,7 @@ export async function runHealthChecks(
 
   return [
     configMetafields,
+    appProxy,
     themeEmbeds,
     themeCompat,
     webhooks,

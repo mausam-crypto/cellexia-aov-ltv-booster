@@ -28,7 +28,11 @@ const sanitizeHandle = (handle: string) =>
 const PRODUCT_BODY_LIQUID = (accessor: string) => `{
         "variants": [
           {%- for variant in ${accessor}.variants -%}
-            {"id": {{ variant.id | json }}, "option1": {{ variant.option1 | json }}, "price": {{ variant.price | json }}, "compare_at_price": {{ variant.compare_at_price | default: 'null' }}, "available": {{ variant.available | json }}, "position": {{ forloop.index }}}{%- unless forloop.last -%},{%- endunless -%}
+            {"id": {{ variant.id | json }}, "option1": {{ variant.option1 | json }}, "price": {{ variant.price | json }}, "compare_at_price": {{ variant.compare_at_price | default: 'null' }}, "available": {{ variant.available | json }}, "position": {{ forloop.index }}, "planAllocations": [
+              {%- for alloc in variant.selling_plan_allocations -%}
+                {"planId": {{ alloc.selling_plan.id | json }}, "price": {{ alloc.price | json }}}{%- unless forloop.last -%},{%- endunless -%}
+              {%- endfor -%}
+            ]}{%- unless forloop.last -%},{%- endunless -%}
           {%- endfor -%}
         ],
         "sellingPlanGroups": [

@@ -44,16 +44,26 @@ import {
  * it can never (re-)offer or auto-add, and it disappears once the line is
  * gone.
  *
- * PREVIEW (v4): when the shop metafield carries `preview.armed: true` AND
- * the SHA-256 digest of the cart's `_cx_preview` attribute (the raw preview
- * token) equals the (non-empty) `preview.tokenHash`, the offer additionally
- * counts as enabled when
- * `preview.draftFlags.checkout_protection === true`, bypassing market gating
- * for that draft grant only (the preview cart belongs to the merchant). The
- * `defaultOn` auto-add is SUPPRESSED entirely in preview mode — a preview
- * cart is never auto-mutated; the manual toggle still works. Outside preview
- * mode every gate is byte-identical to v3 — all preview logic sits behind
- * the single `previewActive` boolean, which requires the exact hash match.
+ * PREVIEW (v5): the cart's `_cx_preview` attribute carries the SHA-256 HEX
+ * digest of the preview token, computed server-side by the app — so the
+ * preview gate is a plain synchronous string comparison against the
+ * (non-empty) `preview.tokenHash` from the shop metafield. No SubtleCrypto
+ * dependency (v4 hashed the raw token inside the extension; SubtleCrypto's
+ * silent unavailability in some checkout sandboxes disabled preview
+ * entirely). When the metafield carries `preview.armed: true` AND the
+ * attribute equals the hash, the offer additionally counts as enabled when
+ * `preview.draftFlags.checkout_protection === true`, bypassing market
+ * gating for that draft grant only (the preview cart belongs to the
+ * merchant). The `defaultOn` auto-add is SUPPRESSED entirely in preview
+ * mode — a preview cart is never auto-mutated; the manual toggle still
+ * works. Outside preview mode every gate is unchanged — all preview logic
+ * sits behind the single `previewActive` boolean.
+ *
+ * PREVIEW DIAGNOSTICS: when `_cx_preview` is present (merchant preview
+ * carts only — real buyers never carry it) and this block would otherwise
+ * render nothing, it renders one subdued line explaining why. When the
+ * attribute is absent, behavior is byte-identical to before: every
+ * diagnostic path sits behind the attribute-present check.
  */
 
 /** Mirrors DEFAULT_SETTINGS.checkoutProtection in app/models/settings.server.ts. */
@@ -166,13 +176,13 @@ function resolveConfig(
 }
 
 /**
- * Resolves the `preview` section from the shop metafield config (v4). Safe
+ * Resolves the `preview` section from the shop metafield config (v5). Safe
  * default: preview is INERT (disarmed, no flags, empty token hash) whenever
  * the section is missing or malformed. Only the SHA-256 hex digest of the
- * preview token (`tokenHash`) reaches this extension via the checkout-only
- * shop metafield — the raw token travels solely in the merchant's own
- * `_cx_preview` cart attribute. A legacy `preview.token` field, if present,
- * is ignored.
+ * preview token (`tokenHash`) ever reaches the checkout: the shop metafield
+ * carries it here, and the merchant's `_cx_preview` cart attribute carries
+ * the same digest (computed server-side) — the raw token never leaves the
+ * app. A legacy `preview.token` field, if present, is ignored.
  */
 function resolvePreview(root: Record<string, unknown> | undefined): PreviewConfig {
   if (!root || !isPlainObject(root.preview)) return DEFAULT_PREVIEW;
@@ -190,19 +200,46 @@ function resolvePreview(root: Record<string, unknown> | undefined): PreviewConfi
 }
 
 /**
- * SHA-256 hex digest of a UTF-8 string via SubtleCrypto (available in the
- * checkout web-worker sandbox). Resolves to undefined when SubtleCrypto is
- * unavailable so callers fail closed (preview stays inactive).
+ * Builds the merchant-facing reason shown when a preview cart (the
+ * `_cx_preview` attribute is present) would otherwise see nothing here.
+ * Checks run in order, most fundamental first. Hardcoded English on
+ * purpose: this line renders only on merchant preview carts — real buyers
+ * never carry the attribute — so it is a merchant tool, not buyer copy.
  */
-async function sha256Hex(value: string): Promise<string | undefined> {
-  if (typeof crypto === 'undefined' || !crypto.subtle) return undefined;
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(value),
+function protectionPreviewDiagnosis(input: {
+  configFound: boolean;
+  preview: PreviewConfig;
+  attributeValue: string | undefined;
+  featureVisible: boolean;
+  hasVariantId: boolean;
+}): string {
+  if (!input.configFound) {
+    return 'config metafield not found — save Settings once in the app and check Setup & health';
+  }
+  if (!input.preview.armed) {
+    return "preview is not armed — arm it in the app's Preview page";
+  }
+  if (input.attributeValue !== input.preview.tokenHash) {
+    return 'preview link is stale — reopen the preview from the app (token rotated?)';
+  }
+  if (!input.featureVisible) {
+    return 'the order protection feature is not draft-enabled for this preview';
+  }
+  if (!input.hasVariantId) {
+    return 'the Order Protection product has not been created — use the Checkout features page';
+  }
+  // Only remaining nothing-to-show path: the configured variant could not
+  // be loaded or is not available for sale.
+  return 'the Order Protection product is unavailable or could not be loaded — check the Checkout features page';
+}
+
+/** Single subdued diagnostic line, prefixed so merchants can spot it. */
+function PreviewDiagnostic({reason}: {reason: string}) {
+  return (
+    <Text size="small" appearance="subdued">
+      {`Cellexia preview: ${reason}`}
+    </Text>
   );
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 /**
@@ -269,40 +306,18 @@ function Extension() {
     market?.handle,
   );
 
-  // v4 preview: the single gate for ALL preview behavior. Requires the shop
-  // metafield to be armed, a non-empty token hash AND that the SHA-256
-  // digest of the cart's `_cx_preview` attribute (set by the merchant's
-  // preview hub, carrying the raw token) equals that hash. The digest is
-  // async, so the match lives in state and starts false (fail closed): a
-  // preview cart renders live-only for a frame until the digest resolves,
-  // which is acceptable. `useAttributeValues` yields `undefined` while
-  // attributes are absent, which can never match a non-empty hash.
+  // v5 preview: the single gate for ALL preview behavior. The `_cx_preview`
+  // cart attribute (set by the merchant's preview hub) carries the SHA-256
+  // hex digest of the preview token, computed server-side — so the gate is
+  // a plain synchronous string comparison with no SubtleCrypto dependency.
+  // `useAttributeValues` yields `undefined` while the attribute is absent,
+  // which can never match a non-empty hash.
   const preview = useMemo(() => resolvePreview(configRoot), [configRoot]);
   const [previewAttributeValue] = useAttributeValues(['_cx_preview']);
-  const [previewTokenMatches, setPreviewTokenMatches] = useState(false);
-  useEffect(() => {
-    // Fail closed while inputs are unusable or the digest is pending.
-    setPreviewTokenMatches(false);
-    const tokenHash = preview.tokenHash;
-    if (tokenHash.length === 0) return;
-    if (
-      typeof previewAttributeValue !== 'string' ||
-      previewAttributeValue.length === 0
-    ) {
-      return;
-    }
-    let cancelled = false;
-    void sha256Hex(previewAttributeValue).then((hex) => {
-      if (!cancelled) {
-        setPreviewTokenMatches(hex !== undefined && hex === tokenHash);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [previewAttributeValue, preview.tokenHash]);
   const previewActive =
-    preview.armed && preview.tokenHash.length > 0 && previewTokenMatches;
+    preview.armed === true &&
+    preview.tokenHash.length > 0 &&
+    previewAttributeValue === preview.tokenHash;
   // Draft grant: in preview mode the offer counts as enabled when its draft
   // flag is explicitly true — market gating is bypassed for the draft grant
   // only (the preview cart is the merchant's own). The live path is
@@ -311,6 +326,23 @@ function Extension() {
   const draftEnabled =
     previewActive && preview.draftFlags.checkout_protection === true;
   const featureVisible = (config.enabled && marketAllowed) || draftEnabled;
+
+  // Merchant preview diagnostics: `_cx_preview` present means a merchant
+  // preview cart (real buyers never carry it). Precompute the reason we
+  // would show if this block ends up rendering nothing; `undefined` when
+  // the attribute is absent keeps every diagnostic path unreachable for
+  // real checkouts (byte-identical to pre-diagnostics behavior).
+  const previewAttributePresent =
+    typeof previewAttributeValue === 'string' && previewAttributeValue.length > 0;
+  const previewDiagnosis = previewAttributePresent
+    ? protectionPreviewDiagnosis({
+        configFound: configRoot !== undefined,
+        preview,
+        attributeValue: previewAttributeValue,
+        featureVisible,
+        hasVariantId: config.variantId.length > 0,
+      })
+    : undefined;
 
   const [variant, setVariant] = useState<ProtectionVariant | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(
@@ -471,7 +503,9 @@ function Extension() {
   // variantId and market scope. Without the variant fetch the card can't
   // offer, and once the line is removed the component disappears entirely.
   // The normal offer flow keeps all gates (fail closed).
-  if (!isProtected && !offerAllowed) return null;
+  if (!isProtected && !offerAllowed) {
+    return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
+  }
 
   if (loading) {
     return (
@@ -486,8 +520,11 @@ function Extension() {
 
   const canOffer = Boolean(variant && variant.availableForSale);
   // If the variant can't be offered and there is nothing in the cart to
-  // remove, disappear silently rather than showing a broken card.
-  if (!canOffer && !isProtected) return null;
+  // remove, disappear silently rather than showing a broken card — except
+  // on merchant preview carts, where the diagnostic explains the gap.
+  if (!canOffer && !isProtected) {
+    return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
+  }
 
   let priceText: string | undefined;
   if (variant) {

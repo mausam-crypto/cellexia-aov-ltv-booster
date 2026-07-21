@@ -21,8 +21,11 @@ import {
  *    history.replaceState as soon as the hub seeds sessionStorage), and
  *    sessionStorage of the previewing browser.
  *  - The checkout-only shop metafield carries ONLY the sha256 hash of the
- *    token (`tokenHash`, computed at write time in syncSettingsToMetafields);
- *    checkout extensions compare sha256(cart attribute) === tokenHash.
+ *    token (`tokenHash`, computed at write time in syncSettingsToMetafields).
+ *    The `_cx_preview` cart attribute carries the SAME hash (tokenHashFor,
+ *    computed server-side), so checkout extensions compare
+ *    attribute === preview.tokenHash with plain string equality — no
+ *    client-side crypto in extension runtimes.
  *  - Neither the token nor its hash is EVER written to the app-data
  *    metafield (page-visible Liquid config) — that split is enforced inside
  *    syncSettingsToMetafields.
@@ -80,6 +83,18 @@ export function sanitizeMarketHandle(handle: unknown): string {
 
 function newRawToken(): string {
   return crypto.randomBytes(16).toString("hex");
+}
+
+/**
+ * sha256 hex digest of a raw preview token — the ONLY form of the token that
+ * may reach buyer-visible surfaces (the `_cx_preview` cart attribute and the
+ * shop metafield's `preview.tokenHash`). Checkout extensions compare the
+ * cart attribute against `preview.tokenHash` with plain string equality;
+ * hashing happens exclusively server-side (node:crypto) because SubtleCrypto
+ * is not reliably available in extension runtimes.
+ */
+export function tokenHashFor(rawToken: string): string {
+  return crypto.createHash("sha256").update(rawToken, "utf8").digest("hex");
 }
 
 /** Keeps only known FeatureKeys with strictly-boolean values. */

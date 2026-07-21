@@ -1,5 +1,4 @@
 api_version = "2025-07"
-uid = "0102626b-7cdd-e1e3-b4a2-c705aa54ba4cef18dd66"
 
 [[extensions]]
 name = "Cellexia Checkout Upsell"

@@ -21,7 +21,11 @@
     "switched": "Plan de Tratamiento Continuo activado",
     "nudge_title": "Que nunca te falte",
     "nudge_body": "Únete al Plan de Tratamiento Continuo: ahorra un {{ percent }}% en cada entrega, con envío gratis incluido. Cancela cuando quieras.",
-    "error": "Algo ha salido mal. Inténtalo de nuevo."
+    "error": "Algo ha salido mal. Inténtalo de nuevo.",
+    "switch_all_cta": "Cámbialo todo y ahorra un {{ percent }}%",
+    "partial": "Productos con suscripción disponible: {{ eligible }} de {{ total }}",
+    "remove": "Quitar la suscripción",
+    "removed": "Suscripción eliminada"
   },
   "badges": {
     "secure_checkout": "Pago seguro",

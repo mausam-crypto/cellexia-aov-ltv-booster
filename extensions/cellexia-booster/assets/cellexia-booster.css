@@ -31,7 +31,8 @@
 
 /* Hide subscription UI for B2B customers (belt & braces on top of JS/Liquid) */
 body.customer--b2b .cx-nudge,
-body.customer--b2b .cx-subswitch {
+body.customer--b2b .cx-subswitch,
+body.customer--b2b .cx-sub-remove {
   display: none !important;
 }
 
@@ -273,6 +274,113 @@ body.customer--b2b .cx-subswitch {
 .cx-subswitch__cta:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* Subdued "{x} of {y} products can be subscribed" line (v4.7) */
+.cx-subswitch__partial {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: #808080;
+}
+
+/* Per-line "Remove subscription" text-button (v4.7) — decorated by JS into
+   the THEME's own cart rows (drawer + cart page) next to the .delivery
+   span, so it must read as a subtle inline text control, not a widget. */
+.cx-sub-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-inline-start: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #1d1d1b;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.cx-sub-remove:hover,
+.cx-sub-remove:focus-visible {
+  color: #808080;
+}
+
+.cx-sub-remove:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cx-sub-remove__x {
+  font-size: 12px;
+  line-height: 1;
+  text-decoration: none;
+}
+
+/* -------------------------------------------- multi-product offers (v4.5) */
+
+/* Product attribution header on volume groups and subscription rows —
+   rendered by JS only when the cart holds more than one distinct product.
+   Body font (argumentum) is inherited from the theme on purpose. */
+.cx-offer__product {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d1d1b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* "+ N more offers" toggle: reveals the shared overflow container that
+   holds the collapsed volume groups and subscription rows. */
+.cx-offers-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-block-end: 14px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 2px solid #f4f4f4;
+  border-radius: 70px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1b;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.cx-offers-more:hover,
+.cx-offers-more:focus-visible {
+  border-color: #b1cded;
+}
+
+.cx-offers-more__chevron {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-inline-end: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.2s ease;
+}
+
+.cx-offers-more[aria-expanded="true"] .cx-offers-more__chevron {
+  transform: rotate(225deg) translateY(-1px);
+}
+
+.cx-offers-overflow[hidden] {
+  display: none;
 }
 
 /* ---------------------------------------------------------------- trust row */

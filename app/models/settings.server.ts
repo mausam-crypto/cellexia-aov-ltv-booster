@@ -92,10 +92,19 @@ export interface MarketScope {
   markets: string[];
 }
 
+/** A per-market free-shipping threshold. `currencyCode` tells the storefront
+ *  how to compare: equal to the cart's presentment currency → direct compare;
+ *  equal to the shop currency → convert via Shopify.currency.rate. */
+export interface MarketThreshold {
+  amount: number;
+  currencyCode: string;
+}
+
 export interface BoosterSettings {
   version: number;
   global: {
-    /** Free shipping threshold in the shop's currency. Mirrors the theme's `settings.free_ship` (150). */
+    /** Legacy/fallback free-shipping threshold in the shop's currency
+     *  (used when freeShipping.byMarket has no entry for the market). */
     freeShippingThreshold: number;
     /** Cellexia Blue — used for accents, progress bars, highlights. */
     accentColor: string;
@@ -104,10 +113,29 @@ export interface BoosterSettings {
     /** Light neutral background used by widget surfaces. */
     surfaceColor: string;
   };
+  /**
+   * Per-market free-shipping thresholds (SPEC v4.5). mode "auto" = detected
+   * from the store's delivery profiles (free rates with a minimum-price
+   * condition, shop currency); "manual" = merchant-entered per market,
+   * typically in the market's own currency. Falls back to
+   * global.freeShippingThreshold when a market has no entry.
+   */
+  freeShipping: {
+    mode: "auto" | "manual";
+    byMarket: Record<string, MarketThreshold>;
+    /** ISO timestamp of the last auto-detection ("" = never). */
+    detectedAt: string;
+  };
   cartUpsell: {
     enabled: boolean;
     /** Free-shipping progress bar inside the mini-cart drawer. */
     showFreeShippingBar: boolean;
+    /**
+     * With several qualifying cart lines, at most this many products get
+     * full offer groups (highest line value first); the rest collapse
+     * behind a "show more" toggle. Keeps the drawer scannable.
+     */
+    maxOfferGroups: number;
     /** "Upgrade to 2 / 3 units" tier switcher inside the mini-cart. */
     showVolumeUpsell: boolean;
     volumeOffers: VolumeOffer[];
@@ -241,9 +269,15 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     inkColor: "#1D1D1B",
     surfaceColor: "#FFFFFF",
   },
+  freeShipping: {
+    mode: "auto",
+    byMarket: {},
+    detectedAt: "",
+  },
   cartUpsell: {
     enabled: false,
     showFreeShippingBar: true,
+    maxOfferGroups: 2,
     showVolumeUpsell: true,
     volumeOffers: [
       { quantity: 2, discountPct: 15 },
@@ -346,6 +380,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   );
 }
 
+/**
+ * Keys whose values are Records with DYNAMIC keys (market handles etc.).
+ * The default is `{}`, so the key-driven deep merge below would silently
+ * empty them — these are replaced wholesale instead (sanitizeSettings then
+ * validates every entry).
+ */
+const DYNAMIC_RECORD_KEYS = new Set(["byMarket"]);
+
 /** Deep-merge stored/partial settings over defaults so new fields added in
  *  later app versions always have sane values. Arrays are replaced, not merged. */
 export function mergeSettings<T>(defaults: T, patch: unknown): T {
@@ -361,7 +403,9 @@ export function mergeSettings<T>(defaults: T, patch: unknown): T {
   )) {
     const patchValue = (patch as Record<string, unknown>)[key];
     if (patchValue === undefined || patchValue === null) continue;
-    if (isPlainObject(defaultValue)) {
+    if (DYNAMIC_RECORD_KEYS.has(key)) {
+      out[key] = isPlainObject(patchValue) ? patchValue : defaultValue;
+    } else if (isPlainObject(defaultValue)) {
       out[key] = mergeSettings(defaultValue, patchValue);
     } else if (Array.isArray(defaultValue)) {
       out[key] = Array.isArray(patchValue) ? patchValue : defaultValue;
@@ -528,6 +572,47 @@ export function sanitizeSettings(
   );
   next.checkoutUpsell.variantIds = (next.checkoutUpsell.variantIds ?? []).filter(
     (id) => typeof id === "string" && VARIANT_GID_PATTERN.test(id),
+  );
+
+  if (next.freeShipping.mode !== "auto" && next.freeShipping.mode !== "manual") {
+    next.freeShipping.mode = DEFAULT_SETTINGS.freeShipping.mode;
+  }
+  if (typeof next.freeShipping.detectedAt !== "string") {
+    next.freeShipping.detectedAt = "";
+  }
+  {
+    const marketHandleKey = /^[a-z0-9][a-z0-9-]{0,63}$/;
+    const currencyKey = /^[A-Z]{3}$/;
+    const cleanByMarket: Record<string, MarketThreshold> = {};
+    for (const [handle, entry] of Object.entries(
+      next.freeShipping.byMarket ?? {},
+    )) {
+      if (!marketHandleKey.test(handle)) continue;
+      if (!isPlainObject(entry)) continue;
+      const amount = entry.amount;
+      const currencyCode =
+        typeof entry.currencyCode === "string"
+          ? entry.currencyCode.toUpperCase()
+          : "";
+      if (
+        typeof amount === "number" &&
+        Number.isFinite(amount) &&
+        amount >= 0 &&
+        amount <= 100000 &&
+        currencyKey.test(currencyCode)
+      ) {
+        cleanByMarket[handle] = { amount, currencyCode };
+      }
+    }
+    next.freeShipping.byMarket = cleanByMarket;
+  }
+  next.cartUpsell.maxOfferGroups = Math.round(
+    clampNumber(
+      next.cartUpsell.maxOfferGroups,
+      1,
+      4,
+      DEFAULT_SETTINGS.cartUpsell.maxOfferGroups,
+    ),
   );
 
   next.emptyBottleGuarantee.days = Math.round(

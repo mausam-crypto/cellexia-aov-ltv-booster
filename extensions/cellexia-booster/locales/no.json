@@ -21,7 +21,11 @@
     "switched": "Kontinuerlig behandlingsplan aktivert",
     "nudge_title": "Gå aldri tom",
     "nudge_body": "Bli med i Kontinuerlig behandlingsplan: spar {{ percent }} % på hver levering, fri frakt inkludert. Avslutt når som helst.",
-    "error": "Noe gikk galt. Prøv igjen."
+    "error": "Noe gikk galt. Prøv igjen.",
+    "switch_all_cta": "Bytt alt og spar {{ percent }} %",
+    "partial": "Produkter som kan abonneres på: {{ eligible }} av {{ total }}",
+    "remove": "Fjern abonnement",
+    "removed": "Abonnement fjernet"
   },
   "badges": {
     "secure_checkout": "Sikker betaling",

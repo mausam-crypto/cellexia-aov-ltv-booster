@@ -67,6 +67,33 @@
     return parsed;
   }
 
+  // ------------------------------------------------- entity decode (v4.5)
+  //
+  // Shopify's Liquid `t` filter HTML-escapes translated strings (every key
+  // not ending in _html). v4.5 AUDIT of this file: every translated string
+  // on the PDP is server-rendered inside the <template> fragments (entities
+  // are correct in HTML context and the fragments are cloned as DOM nodes),
+  // the #cx-pdp-config JSON carries no t-filtered strings (only b2b /
+  // currency / placement / preview), the preview-bar strings are JS
+  // literals, and data-cx-market is decoded by the HTML parser before
+  // getAttribute returns it — so no t-filtered string reaches textContent
+  // in this file today. The helper mirrors cellexia-cart.js so any future
+  // JS-composed translated string is decoded at its consumption point. The
+  // detached <textarea> is an RCDATA element: parsing its content decodes
+  // character references but can never create elements or execute scripts.
+  // Decoded strings must only ever reach textContent, never innerHTML.
+  var decodeArea = null;
+  function decodeEntities(str) {
+    if (typeof str !== 'string' || str.indexOf('&') === -1) return str;
+    try {
+      if (!decodeArea) decodeArea = document.createElement('textarea');
+      decodeArea.innerHTML = str;
+      return decodeArea.value;
+    } catch (e) {
+      return str;
+    }
+  }
+
   function track(feature) {
     if (PREVIEW || BEACONS_OFF) return; // preview/indeterminate-verdict mode: suppress every beacon — no data pollution
     try {
