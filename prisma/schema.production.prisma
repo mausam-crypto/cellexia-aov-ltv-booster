@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+}
+
+// One row per shop. `data` holds the full BoosterSettings JSON blob
+// (see app/models/settings.server.ts for the canonical shape). The same
+// JSON is mirrored to metafields so the theme extension (Liquid) and the
+// checkout UI extensions can read it without an API round-trip.
+model ShopSettings {
+  id        Int      @id @default(autoincrement())
+  shop      String   @unique
+  data      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Lightweight event store for the analytics dashboard.
+// type: impression | click | add_to_cart | upgrade | subscribe | protect | conversion
+// feature: cart_upsell | checkout_upsell | protection | trust_badges | ...
+model Event {
+  id        Int      @id @default(autoincrement())
+  shop      String
+  feature   String
+  type      String
+  quantity  Int?
+  revenue   Float?
+  currency  String?
+  market    String?
+  meta      String?
+  createdAt DateTime @default(now())
+
+  @@index([shop, feature, type, createdAt])
+  @@index([shop, market, createdAt])
+}
+
+// Rolled-up order stats from the orders/paid webhook, used to report AOV
+// and feature attach rates over time without storing full order payloads.
+model OrderStat {
+  id                 Int      @id @default(autoincrement())
+  shop               String
+  orderId            String   @unique
+  totalPrice         Float
+  currency           String
+  lineCount          Int
+  unitCount          Int
+  hasSubscription    Boolean  @default(false)
+  hasProtection      Boolean  @default(false)
+  upsellAttributed   Boolean  @default(false)
+  market             String?
+  countryCode        String?
+  processedAt        DateTime
+  createdAt          DateTime @default(now())
+
+  @@index([shop, processedAt])
+  @@index([shop, market, processedAt])
+}
+
+// Preview system state (SPEC v4). The raw token lives server-side only (this
+// DB + the checkout-only shop metafield) — never in page-visible Liquid
+// config. draftFlags: JSON Record<FeatureKey, boolean>.
+model PreviewState {
+  id              Int       @id @default(autoincrement())
+  shop            String    @unique
+  token           String
+  armed           Boolean   @default(false)
+  armedAt         DateTime?
+  draftFlags      String    @default("{}")
+  simulatedMarket String?
+  productHandle   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// A sequential (never A/B) experiment: flip features for one market, then
+// compare an equal-length window against the immediately-preceding baseline.
+// See docs/SPEC-v2-markets-experiments.md.
+model Experiment {
+  id           Int       @id @default(autoincrement())
+  shop         String
+  name         String
+  market       String    // market handle, or "all"
+  flips        String    // JSON: [{ key, from, to }]
+  revertState  String    // JSON FlagsSnapshot taken at start
+  settingsHash String?   // hash of flags+scopes right after start (drift detection)
+  baselineDays Int
+  baselineFrom DateTime
+  baselineTo   DateTime
+  startedAt    DateTime
+  endsAt       DateTime
+  status       String    // running | concluding (transient claim) | completed | stopped
+  concludedAt  DateTime?
+  outcome      String?   // kept | rolled_back
+  warningJson  String?
+  reportJson   String?
+  startSyncErrors String? // JSON string[] — metafield sync errors from start, cleared on successful retry
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([shop, status])
+}
