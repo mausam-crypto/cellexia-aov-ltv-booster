@@ -6,12 +6,12 @@
 {%- assign cx_del_c = cx_de.byCountry[cx_country] -%}
 {%- assign cx_del_hidden = false -%}
 {%- if cx_del_c.hidden == true -%}
-  {%- assign cx_del_hidden = true -%}
+{%- assign cx_del_hidden = true -%}
 {%- endif -%}
 {%- assign cx_prev = cfg.preview -%}
 {%- assign cx_prev_armed = false -%}
 {%- if cx_prev.armed == true -%}
-  {%- assign cx_prev_armed = true -%}
+{%- assign cx_prev_armed = true -%}
 {%- endif -%}
 {%- assign cx_draft_volume = false -%}
 {%- assign cx_draft_shipbar = false -%}
@@ -21,483 +21,458 @@
 {%- assign cx_draft_dispatch = false -%}
 {%- assign cx_draft_delivery = false -%}
 {%- if cx_prev_armed -%}
-  {%- liquid
-    assign cx_prev_flags = cx_prev.draftFlags
-    if cx_prev_flags.cart_volume_upsell == true
-      assign cx_draft_volume = true
-    endif
-    if cx_prev_flags.free_shipping_bar == true
-      assign cx_draft_shipbar = true
-    endif
-    if cx_prev_flags.cart_subscription_upsell == true
-      assign cx_draft_subscription = true
-    endif
-    if cx_prev_flags.cart_trust_row == true
-      assign cx_draft_trustrow = true
-    endif
-    if cx_prev_flags.cart_cross_sell == true
-      assign cx_draft_crosssell = true
-    endif
-    if cx_prev_flags.dispatch_countdown == true
-      unless cfg.dispatch.showInCart == false
-        assign cx_draft_dispatch = true
-      endunless
-    endif
-    if cx_prev_flags.delivery_estimate == true
-      unless cx_de.showInCart == false
-        if cx_del_hidden == false
-          assign cx_draft_delivery = true
-        endif
-      endunless
-    endif
-    if cfg.cartUpsell.enabled == true and cfg.cartUpsell.showTrustRow != false
-      assign cx_draft_trustrow = true
-    endif
-    if cfg.cartCrossSell.enabled == true
-      assign cx_draft_crosssell = true
-    endif
-    if cfg.dispatch.enabled == true and cfg.dispatch.showInCart != false
-      assign cx_draft_dispatch = true
-    endif
-    if cx_de.enabled == true and cx_de.showInCart != false and cx_del_hidden == false
-      assign cx_draft_delivery = true
-    endif
-  -%}
+{%- liquid
+assign cx_prev_flags = cx_prev.draftFlags
+if cx_prev_flags.cart_volume_upsell == true
+assign cx_draft_volume = true
+endif
+if cx_prev_flags.free_shipping_bar == true
+assign cx_draft_shipbar = true
+endif
+if cx_prev_flags.cart_subscription_upsell == true
+assign cx_draft_subscription = true
+endif
+if cx_prev_flags.cart_trust_row == true
+assign cx_draft_trustrow = true
+endif
+if cx_prev_flags.cart_cross_sell == true
+assign cx_draft_crosssell = true
+endif
+if cx_prev_flags.dispatch_countdown == true
+unless cfg.dispatch.showInCart == false
+assign cx_draft_dispatch = true
+endunless
+endif
+if cx_prev_flags.delivery_estimate == true
+unless cx_de.showInCart == false
+if cx_del_hidden == false
+assign cx_draft_delivery = true
+endif
+endunless
+endif
+if cfg.cartUpsell.enabled == true and cfg.cartUpsell.showTrustRow != false
+assign cx_draft_trustrow = true
+endif
+if cfg.cartCrossSell.enabled == true
+assign cx_draft_crosssell = true
+endif
+if cfg.dispatch.enabled == true and cfg.dispatch.showInCart != false
+assign cx_draft_dispatch = true
+endif
+if cx_de.enabled == true and cx_de.showInCart != false and cx_del_hidden == false
+assign cx_draft_delivery = true
+endif
+-%}
 {%- endif -%}
 {%- assign cx_cart_draft_any = false -%}
 {%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow or cx_draft_crosssell or cx_draft_dispatch or cx_draft_delivery -%}
-  {%- assign cx_cart_draft_any = true -%}
+{%- assign cx_cart_draft_any = true -%}
 {%- endif -%}
 <script>
-  (function () {
-    // Once-per-session "session" beacon — the experiment tracker's
-    // conversion-rate denominator. Depends ONLY on the config metafield
-    // existing, never on a feature flag. When sessionStorage is
-    // unavailable (private mode, storage blocked) we cannot dedupe, so we
-    // send NOTHING rather than spam a beacon per page view.
-    try {
-      var KEY = 'cx_session_sent';
-      var store = window.sessionStorage;
-      if (!store || store.getItem(KEY)) return;
-      {%- if cx_prev_armed %}
-      if (store.getItem('cx_preview_ok')) return; // server-verified preview browser — never a session
-      {%- endif %}
-      store.setItem(KEY, '1');
-      if (store.getItem(KEY) !== '1') return; // write silently dropped
-      var root = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
-      var payload = JSON.stringify({ feature: 'site', type: 'session', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: {{ cart.currency.iso_code | json }} });
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
-      } else if (window.fetch) {
-        window.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
-      }
-    } catch (e) { /* never break the theme */ }
-  })();
+(function () {
+// Once-per-session "session" beacon — the experiment tracker's
+// conversion-rate denominator. Depends ONLY on the config metafield
+// existing, never on a feature flag. When sessionStorage is
+// unavailable (private mode, storage blocked) we cannot dedupe, so we
+// send NOTHING rather than spam a beacon per page view.
+try {
+var KEY = 'cx_session_sent';
+var store = window.sessionStorage;
+if (!store || store.getItem(KEY)) return;
+{%- if cx_prev_armed %}
+if (store.getItem('cx_preview_ok')) return; // server-verified preview browser — never a session
+{%- endif %}
+store.setItem(KEY, '1');
+if (store.getItem(KEY) !== '1') return; // write silently dropped
+var root = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
+var payload = JSON.stringify({ feature: 'site', type: 'session', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: {{ cart.currency.iso_code | json }} });
+if (navigator.sendBeacon) {
+navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
+} else if (window.fetch) {
+window.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
+}
+} catch (e) { /* never break the theme */ }
+})();
 </script>
 {%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_de.enabled == true or cx_cart_draft_any -%}
-  {%- liquid
-    assign threshold = cfg.global.freeShippingThreshold | default: 150
-    # SPEC v4.5: per-market free-shipping threshold ({ amount, currencyCode }).
-    # nil when this market has no entry (or the market handle is empty) —
-    # the config JSON then falls back to the global shop-currency threshold.
-    assign cx_fs = cfg.freeShipping.byMarket[cx_market]
-    assign guarantee_days = cfg.guarantee.days | default: 60
-    assign tp_rating = cfg.trustpilot.rating | default: 4.8
-    assign tp_rating_rounded = tp_rating | round: 1
-    assign tp_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
+{%- liquid
+assign threshold = cfg.global.freeShippingThreshold | default: 150
+assign cx_fs = cfg.freeShipping.byMarket[cx_market]
+assign guarantee_days = cfg.guarantee.days | default: 60
+assign tp_rating = cfg.trustpilot.rating | default: 4.8
+assign tp_rating_rounded = tp_rating | round: 1
+assign tp_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
 
-    # Per-market effective booleans: LIVE master on AND sub-flag on (missing
-    # sub-flag = true) AND market scope match. SPEC v4: this block can now
-    # also render for an armed preview draft with the master OFF — the live
-    # effective booleans must stay false then (they are what real visitors'
-    # JS obeys), so each computation is additionally guarded on the live
-    # master. When disarmed the surrounding gate already implies the master
-    # is on, so cx_live_cart is true and the results are identical to v3.
-    assign cx_live_cart = false
-    if cfg.cartUpsell.enabled == true
-      assign cx_live_cart = true
-    endif
+assign cx_live_cart = false
+if cfg.cartUpsell.enabled == true
+assign cx_live_cart = true
+endif
 
-    assign cx_eff_volume = false
-    if cx_live_cart
-      unless cfg.cartUpsell.showVolumeUpsell == false
-        assign cx_scope = cfg.marketScopes.cart_volume_upsell
-        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-          assign cx_eff_volume = true
-        endif
-      endunless
-    endif
+assign cx_eff_volume = false
+if cx_live_cart
+unless cfg.cartUpsell.showVolumeUpsell == false
+assign cx_scope = cfg.marketScopes.cart_volume_upsell
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_eff_volume = true
+endif
+endunless
+endif
 
-    assign cx_eff_shipbar = false
-    if cx_live_cart
-      unless cfg.cartUpsell.showFreeShippingBar == false
-        assign cx_scope = cfg.marketScopes.free_shipping_bar
-        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-          assign cx_eff_shipbar = true
-        endif
-      endunless
-    endif
+assign cx_eff_shipbar = false
+if cx_live_cart
+unless cfg.cartUpsell.showFreeShippingBar == false
+assign cx_scope = cfg.marketScopes.free_shipping_bar
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_eff_shipbar = true
+endif
+endunless
+endif
 
-    assign cx_eff_subscription = false
-    if cx_live_cart
-      unless cfg.cartUpsell.showSubscriptionUpsell == false
-        assign cx_scope = cfg.marketScopes.cart_subscription_upsell
-        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-          assign cx_eff_subscription = true
-        endif
-      endunless
-    endif
+assign cx_eff_subscription = false
+if cx_live_cart
+unless cfg.cartUpsell.showSubscriptionUpsell == false
+assign cx_scope = cfg.marketScopes.cart_subscription_upsell
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_eff_subscription = true
+endif
+endunless
+endif
 
-    assign cx_eff_trustrow = false
-    if cx_live_cart
-      unless cfg.cartUpsell.showTrustRow == false
-        assign cx_scope = cfg.marketScopes.cart_trust_row
-        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-          assign cx_eff_trustrow = true
-        endif
-      endunless
-    endif
+assign cx_eff_trustrow = false
+if cx_live_cart
+unless cfg.cartUpsell.showTrustRow == false
+assign cx_scope = cfg.marketScopes.cart_trust_row
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_eff_trustrow = true
+endif
+endunless
+endif
 
-    # Cart cross-sell (v4.8): STANDALONE master — not under cx_live_cart.
-    # Effective = cfg.cartCrossSell.enabled AND market scope match, exactly
-    # like the other cart features' scope rule.
-    assign cx_eff_crosssell = false
-    if cfg.cartCrossSell.enabled == true
-      assign cx_scope = cfg.marketScopes.cart_cross_sell
-      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-        assign cx_eff_crosssell = true
-      endif
-    endif
+assign cx_eff_crosssell = false
+if cfg.cartCrossSell.enabled == true
+assign cx_scope = cfg.marketScopes.cart_cross_sell
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_eff_crosssell = true
+endif
+endif
 
-    # Trustpilot strip inside the trust row: explicit master + its own scope.
-    assign cx_tp_on = false
-    if cfg.trustpilot.enabled == true
-      assign cx_scope = cfg.marketScopes.trustpilot
-      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-        assign cx_tp_on = true
-      endif
-    endif
+assign cx_tp_on = false
+if cfg.trustpilot.enabled == true
+assign cx_scope = cfg.marketScopes.trustpilot
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_tp_on = true
+endif
+endif
 
-    # Dispatch countdown (v5.0): per-country schedule resolution — the
-    # buyer country's byCountry entry (ISO2, sanitized complete) overrides
-    # the default cutoff/timezone/days wholesale. Effective = standalone
-    # master AND showInCart surface flag (missing = true) AND market scope.
-    # The JS engine enforces the credibility rules (cutoff TODAY, working
-    # day, within showWithinHours — warehouse timezone; errors = hidden).
-    assign cx_country = localization.country.iso_code | upcase
-    assign cx_dsp = cfg.dispatch.byCountry[cx_country]
-    assign cx_dsp_cutoff = cfg.dispatch.cutoff | default: '14:00'
-    assign cx_dsp_tz = cfg.dispatch.timezone | default: 'Europe/Paris'
-    assign cx_dsp_days = cfg.dispatch.days
-    assign cx_dsp_within = cfg.dispatch.showWithinHours | default: 8
-    if cx_dsp
-      assign cx_dsp_cutoff = cx_dsp.cutoff
-      assign cx_dsp_tz = cx_dsp.timezone
-      assign cx_dsp_days = cx_dsp.days
-    endif
+assign cx_country = localization.country.iso_code | upcase
+assign cx_dsp = cfg.dispatch.byCountry[cx_country]
+assign cx_dsp_cutoff = cfg.dispatch.cutoff | default: '14:00'
+assign cx_dsp_tz = cfg.dispatch.timezone | default: 'Europe/Paris'
+assign cx_dsp_days = cfg.dispatch.days
+assign cx_dsp_within = cfg.dispatch.showWithinHours | default: 8
+if cx_dsp
+assign cx_dsp_cutoff = cx_dsp.cutoff
+assign cx_dsp_tz = cx_dsp.timezone
+assign cx_dsp_days = cx_dsp.days
+endif
 
-    assign cx_eff_dispatch = false
-    if cfg.dispatch.enabled == true
-      unless cfg.dispatch.showInCart == false
-        assign cx_scope = cfg.marketScopes.dispatch_countdown
-        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-          assign cx_eff_dispatch = true
-        endif
-      endunless
-    endif
+assign cx_eff_dispatch = false
+if cfg.dispatch.enabled == true
+unless cfg.dispatch.showInCart == false
+assign cx_scope = cfg.marketScopes.dispatch_countdown
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_eff_dispatch = true
+endif
+endunless
+endif
 
-    # Delivery estimate (v6.0): the SAME delivery_estimate master as the
-    # PDP widget, gated for this surface by showInCart (missing = true),
-    # the buyer country's hidden flag (resolved at the top of this file)
-    # and the shared market scope. The twin JS engine validates and
-    # resolves everything else, fail closed.
-    assign cx_eff_delivery = false
-    if cx_de.enabled == true and cx_del_hidden == false
-      unless cx_de.showInCart == false
-        assign cx_scope = cfg.marketScopes.delivery_estimate
-        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-          assign cx_eff_delivery = true
-        endif
-      endunless
-    endif
-  -%}
-  {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
-  <script type="application/json" id="cx-cart-config">
-    {
-      "settings": {
-        "showFreeShippingBar": {{ cx_eff_shipbar }},
-        "showVolumeUpsell": {{ cx_eff_volume }},
-        "showSubscriptionUpsell": {{ cx_eff_subscription }},
-        "showTrustRow": {{ cx_eff_trustrow }},
-        "maxOfferGroups": {{ cfg.cartUpsell.maxOfferGroups | default: 2 }},
-        "crossSellMaxItems": {{ cfg.cartCrossSell.maxItems | default: 2 }},
-        "crossSellMode": {{ cfg.cartCrossSell.mode | default: 'auto' | json }},
-        "highlightQuantity": {{ cfg.cartUpsell.highlightQuantity | default: 3 }},
-        "subscriptionDiscountPct": {{ cfg.cartUpsell.subscriptionDiscountPct | default: 5 }},
-        "sellingPlanKeyword": {{ cfg.cartUpsell.sellingPlanKeyword | default: 'Continuous Treatment' | json }},
-        "volumeOffers": {% if cfg.cartUpsell.volumeOffers %}{{ cfg.cartUpsell.volumeOffers | json }}{% else %}[{"quantity":2,"discountPct":15},{"quantity":3,"discountPct":20}]{% endif %},
-        "trustpilotEnabled": {{ cx_tp_on }},
-        "cartPage": {% if block.settings.enable_cart_page %}true{% else %}false{% endif %}
-      },
-      "market": {{ cx_market | json }},
-      "effective": {
-        "dispatch": {{ cx_eff_dispatch }},
-        "delivery": {{ cx_eff_delivery }},
-        "volume": {{ cx_eff_volume }},
-        "shipbar": {{ cx_eff_shipbar }},
-        "subscription": {{ cx_eff_subscription }},
-        "crossSell": {{ cx_eff_crosssell }},
-        "trustRow": {{ cx_eff_trustrow }}
-      },
-      {%- if cx_prev_armed %}
-      "preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}},
-      {%- endif %}
-      "threshold": {"cents": {% if cx_fs %}{{ cx_fs.amount | times: 100 | round }}{% else %}{{ threshold | times: 100 }}{% endif %}, "currency": {% if cx_fs %}{{ cx_fs.currencyCode | json }}{% else %}{{ shop.currency | json }}{% endif %}},
-      "shopCurrency": {{ shop.currency | json }},
-      "thresholdCents": {{ threshold | times: 100 }},
-      "b2b": {% if customer.b2b? %}true{% else %}false{% endif %},
-      "currency": {{ cart.currency.iso_code | json }},
-      "dispatch": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}, "showWithinHours": {{ cx_dsp_within }}},
-      {%- if cx_eff_delivery or cx_draft_delivery %}
-      "delivery": {"minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}},
-      "deliveryStrings": {"delivery.line": {{ 'delivery.line' | t: date: '@@DATE@@' | json }}, "delivery.range": {{ 'delivery.range' | t: from: '@@FROM@@', to: '@@TO@@' | json }}, "delivery.range_same": {{ 'delivery.range_same' | t: date: '@@DATE@@' | json }}, "delivery.timeline_ship": {{ 'delivery.timeline_ship' | t: date: '@@DATE@@' | json }}, "delivery.timeline_delivered": {{ 'delivery.timeline_delivered' | t: date: '@@DATE@@' | json }}, "delivery.box_title": {{ 'delivery.box_title' | t: date: '@@DATE@@' | json }}, "delivery.tooltip": {{ 'delivery.tooltip' | t: date: '@@DATE@@' | json }}},
-      {%- endif %}
-      "overrides": {
-        "volumeTitle": {{ block.settings.volume_title_override | default: '' | json }},
-        "subscriptionTitle": {{ block.settings.subscription_title_override | default: '' | json }},
-        "removeLabel": {{ block.settings.subscription_remove_override | default: '' | json }},
-        "crossSellTitle": {{ block.settings.crosssell_title_override | default: '' | json }}
-      },
-      "strings": {
-        "shipbar.away_html": {{ 'shipbar.away_html' | t: amount: '@@AMOUNT@@' | json }},
-        "shipbar.unlocked": {{ 'shipbar.unlocked' | t | json }},
-        "volume.title": {{ 'volume.title' | t | json }},
-        "volume.upgrade_to": {{ 'volume.upgrade_to' | t: count: '@@COUNT@@' | json }},
-        "volume.save_pct": {{ 'volume.save_pct' | t: percent: '@@PERCENT@@' | json }},
-        "volume.per_unit": {{ 'volume.per_unit' | t: price: '@@PRICE@@' | json }},
-        "volume.best_value": {{ 'volume.best_value' | t | json }},
-        "volume.most_popular": {{ 'volume.most_popular' | t | json }},
-        "volume.current_pack": {{ 'volume.current_pack' | t | json }},
-        "volume.upgraded": {{ 'volume.upgraded' | t | json }},
-        "volume.error": {{ 'volume.error' | t | json }},
-        "subscription.switch_title": {{ 'subscription.switch_title' | t | json }},
-        "subscription.switch_cta": {{ 'subscription.switch_cta' | t: percent: '@@PERCENT@@' | json }},
-        "subscription.benefits": {{ 'subscription.benefits' | t: percent: '@@PERCENT@@' | json }},
-        "subscription.switched": {{ 'subscription.switched' | t | json }},
-        "subscription.error": {{ 'subscription.error' | t | json }},
-        "subscription.switch_all_cta": {{ 'subscription.switch_all_cta' | t: percent: '@@PERCENT@@' | json }},
-        "subscription.partial": {{ 'subscription.partial' | t: eligible: '@@ELIGIBLE@@', total: '@@TOTAL@@' | json }},
-        "subscription.remove": {{ 'subscription.remove' | t | json }},
-        "subscription.removed": {{ 'subscription.removed' | t | json }},
-        "crosssell.title": {{ 'crosssell.title' | t | json }},
-        "crosssell.add": {{ 'crosssell.add' | t | json }},
-        "crosssell.adding": {{ 'crosssell.adding' | t | json }},
-        "crosssell.added": {{ 'crosssell.added' | t | json }},
-        "dispatch.within": {{ 'dispatch.within' | t: hours: '@@HOURS@@', minutes: '@@MINUTES@@' | json }},
-        "dispatch.within_minutes": {{ 'dispatch.within_minutes' | t: minutes: '@@MINUTES@@' | json }},
-        "badges.secure_checkout": {{ 'badges.secure_checkout' | t | json }},
-        "badges.money_back": {{ 'badges.money_back' | t: days: guarantee_days | json }},
-        "a11y.loading": {{ 'a11y.loading' | t | json }},
-        "a11y.close": {{ 'a11y.close' | t | json }}
-      },
-      "products": {
-        {%- assign cx_seen = ',' -%}
-        {%- assign cx_first = true -%}
-        {%- for item in cart.items -%}
-          {%- assign cx_pid = item.product_id | append: '' -%}
-          {%- assign cx_tok = ',' | append: cx_pid | append: ',' -%}
-          {%- unless cx_seen contains cx_tok -%}
-            {%- assign cx_seen = cx_seen | append: cx_pid | append: ',' -%}
-            {%- unless cx_first -%},{%- endunless -%}
-            {%- assign cx_first = false -%}
-            {{ cx_pid | json }}: {
-              "variants": [
-                {%- for variant in item.product.variants -%}
-                  {"id": {{ variant.id | json }}, "option1": {{ variant.option1 | json }}, "price": {{ variant.price | json }}, "compare_at_price": {{ variant.compare_at_price | default: 'null' }}, "available": {{ variant.available | json }}, "position": {{ forloop.index }}, "planAllocations": [
-                    {%- for alloc in variant.selling_plan_allocations -%}
-                      {"planId": {{ alloc.selling_plan.id | json }}, "price": {{ alloc.price | json }}}{%- unless forloop.last -%},{%- endunless -%}
-                    {%- endfor -%}
-                  ]}{%- unless forloop.last -%},{%- endunless -%}
-                {%- endfor -%}
-              ],
-              "sellingPlanGroups": [
-                {%- for group in item.product.selling_plan_groups -%}
-                  {"id": {{ group.id | json }}, "name": {{ group.name | json }}, "plans": [
-                    {%- for plan in group.selling_plans -%}
-                      {"id": {{ plan.id | json }}, "name": {{ plan.name | json }}, "valueType": {{ plan.price_adjustments[0].value_type | json }}, "value": {{ plan.price_adjustments[0].value | default: 0 }}}{%- unless forloop.last -%},{%- endunless -%}
-                    {%- endfor -%}
-                  ]}{%- unless forloop.last -%},{%- endunless -%}
-                {%- endfor -%}
-              ]
-            }
-          {%- endunless -%}
-        {%- endfor -%}
-      }
-    }
-  </script>
-    {%- if cx_eff_trustrow or cx_draft_trustrow -%}
-    <template id="cx-tpl-trust-row"{% unless cx_eff_trustrow %} data-cx-draft="1"{% endunless %}>
-      <div class="cx-trust-row" data-cx-feature="trust_badges">
-        <span class="cx-trust-row__item d-flex align-center">
-          {%- render 'cx-icons', icon: 'lock', size: 16 -%}
-          <span>{{ 'badges.secure_checkout' | t }}</span>
-        </span>
-        <span class="cx-trust-row__item d-flex align-center">
-          {%- render 'cx-icons', icon: 'shield-check', size: 16 -%}
-          <span>{{ 'badges.money_back' | t: days: guarantee_days }}</span>
-        </span>
-        {%- if cx_tp_on -%}
-          {%- if cfg.trustpilot.showLink == false -%}
-          <span class="cx-trust-row__item d-flex align-center no-dec">
-            {%- render 'cx-trustpilot-stars', rating: tp_rating, uid: 'cart-trust', size: 14 -%}
-            <span>{%- assign tp_sep = 'trustpilot.decimal_separator' | t -%}{{ tp_rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
-          </span>
-          {%- else -%}
-          <a class="cx-trust-row__item cx-trust-row__item--link d-flex align-center no-dec" href="{{ tp_url | escape }}" target="_blank" rel="noopener nofollow">
-            {%- render 'cx-trustpilot-stars', rating: tp_rating, uid: 'cart-trust', size: 14 -%}
-            <span>{%- assign tp_sep = 'trustpilot.decimal_separator' | t -%}{{ tp_rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
-          </a>
-          {%- endif -%}
-        {%- endif -%}
-      </div>
-    </template>
-  {%- endif -%}
-    {%- if cx_eff_crosssell or cx_draft_crosssell -%}
-    <template id="cx-tpl-crosssell"{% unless cx_eff_crosssell %} data-cx-draft="1"{% endunless %}>
-      <div class="cx-crosssell" data-cx-feature="cart_cross_sell">
-        <p class="cx-crosssell__title heading--five">{% if block.settings.crosssell_title_override != blank %}{{ block.settings.crosssell_title_override | escape }}{% else %}{{ 'crosssell.title' | t }}{% endif %}</p>
-        <ul class="cx-crosssell__list list-reset">
-          {%- for cs_item in cfg.cartCrossSell.items limit: 8 -%}
-            {%- assign csp = all_products[cs_item.handle] -%}
-            {%- if csp.id -%}
-              {%- assign cs_vid = cs_item.variantId | split: '/' | last | append: '' -%}
-              {%- assign cs_variant = false -%}
-              {%- for cs_v in csp.variants -%}
-                {%- assign cs_v_id = cs_v.id | append: '' -%}
-                {%- if cs_v_id == cs_vid -%}
-                  {%- assign cs_variant = cs_v -%}
-                  {%- break -%}
-                {%- endif -%}
-              {%- endfor -%}
-              {%- if cs_variant and cs_variant.available -%}
-                <li class="cx-crosssell__item" data-variant-id="{{ cs_variant.id }}" data-product-id="{{ csp.id }}" data-price-cents="{{ cs_variant.price }}">
-                  {%- assign cs_img = cs_variant.image | default: csp.featured_image -%}
-                  {%- if cs_img -%}
-                    <img class="cx-crosssell__img" src="{{ cs_img | image_url: width: 56 }}" srcset="{{ cs_img | image_url: width: 112 }} 2x" width="56" height="56" alt="{{ csp.title | escape }}" loading="lazy">
-                  {%- endif -%}
-                  <span class="cx-crosssell__info">
-                    <span class="cx-crosssell__name">{{ csp.title }}{% unless cs_variant.title == 'Default Title' or csp.variants.size == 1 %} — {{ cs_variant.title }}{% endunless %}</span>
-                    <span class="cx-crosssell__prices">
-                      <span class="cx-crosssell__price">{{ cs_variant.price | money }}</span>
-                      {%- if cs_variant.compare_at_price > cs_variant.price -%}
-                        <s class="cx-crosssell__compare">{{ cs_variant.compare_at_price | money }}</s>
-                      {%- endif -%}
-                    </span>
-                  </span>
-                  <button type="button" class="cx-crosssell__add">{{ 'crosssell.add' | t }}</button>
-                </li>
-              {%- endif -%}
-            {%- endif -%}
-          {%- endfor -%}
-        </ul>
-      </div>
-    </template>
-  {%- endif -%}
-    {%- if cx_eff_dispatch or cx_draft_dispatch -%}
-    <template id="cx-tpl-dispatch-cart"{% unless cx_eff_dispatch %} data-cx-draft="1"{% endunless %}>
-      <div class="cx-dispatch cx-dispatch--cart" data-cx-feature="dispatch_countdown">
-        <span class="cx-dispatch__dot" aria-hidden="true"></span>
-        {%- render 'cx-icons', icon: 'truck', size: 16 -%}
-        <span class="cx-dispatch__text"><strong class="cx-dispatch__main"></strong></span>
-      </div>
-    </template>
-  {%- endif -%}
-    {%- if cx_eff_delivery or cx_draft_delivery -%}
-    {%- liquid
-      assign delivery_formats = 'line,range,timeline,box' | split: ','
-      assign delivery_fmt_live = cx_de.formatCart
-      unless delivery_formats contains delivery_fmt_live
-        assign delivery_fmt_live = 'line'
-      endunless
-    -%}
-    {%- capture delivery_badge -%}
-      <span class="cx-delivery__badge"><button type="button" class="cx-delivery__badge-btn" data-cx-delivery-badge aria-describedby="cx-delivery-tip-cart">{%- render 'cx-icons', icon: 'shield-check', size: 12 -%}<span>{{ 'delivery.badge' | t }}</span></button><span class="cx-delivery__tip" id="cx-delivery-tip-cart" role="tooltip" hidden data-cx-delivery-tip></span></span>
-    {%- endcapture -%}
-    {%- capture delivery_body_line -%}
-      <div class="cx-delivery cx-delivery--cart cx-delivery--line" data-cx-feature="delivery_estimate">{%- render 'cx-icons', icon: 'box', size: 15 -%}<span class="cx-delivery__line" data-cx-delivery-line></span>{{ delivery_badge }}</div>
-    {%- endcapture -%}
-    {%- capture delivery_body_range -%}
-      <div class="cx-delivery cx-delivery--cart cx-delivery--range" data-cx-feature="delivery_estimate"><span class="cx-delivery__range" data-cx-delivery-range></span>{{ delivery_badge }}</div>
-    {%- endcapture -%}
-    {%- capture delivery_body_timeline -%}
-      <div class="cx-delivery cx-delivery--cart cx-delivery--timeline" data-cx-feature="delivery_estimate"><ol class="cx-delivery__steps list-reset"><li class="cx-delivery__step">{{ 'delivery.timeline_order' | t }}</li><li class="cx-delivery__step" data-cx-delivery-ship></li><li class="cx-delivery__step" data-cx-delivery-done></li></ol>{{ delivery_badge }}</div>
-    {%- endcapture -%}
-    {%- capture delivery_body_box -%}
-      <div class="cx-delivery cx-delivery--cart cx-delivery--box" data-cx-feature="delivery_estimate">{%- render 'cx-icons', icon: 'check', size: 16 -%}<span class="cx-delivery__box-copy"><strong class="cx-delivery__box-title" data-cx-delivery-title></strong> <span class="cx-delivery__box-sub">{{ 'delivery.box_sub' | t }}</span> {{ delivery_badge }}</span></div>
-    {%- endcapture -%}
-    <template id="cx-tpl-delivery-cart"{% unless cx_eff_delivery %} data-cx-draft="1"{% endunless %}>
-      {%- case delivery_fmt_live -%}
-        {%- when 'range' -%}{{ delivery_body_range }}
-        {%- when 'timeline' -%}{{ delivery_body_timeline }}
-        {%- when 'box' -%}{{ delivery_body_box }}
-        {%- when 'line' -%}{{ delivery_body_line }}
-        {%- else -%}{{ delivery_body_line }}
-      {%- endcase -%}
-    </template>
-    {%- if cx_prev_armed -%}
-      {%- assign delivery_fmt_draft = cx_prev.draftConfig.deliveryFormatCart -%}
-      {%- if delivery_formats contains delivery_fmt_draft and delivery_fmt_draft != delivery_fmt_live -%}
-        <template id="cx-tpl-delivery-cart-alt" data-cx-draft="1">
-          {%- case delivery_fmt_draft -%}
-            {%- when 'range' -%}{{ delivery_body_range }}
-            {%- when 'timeline' -%}{{ delivery_body_timeline }}
-            {%- when 'box' -%}{{ delivery_body_box }}
-            {%- when 'line' -%}{{ delivery_body_line }}
-          {%- endcase -%}
-        </template>
-      {%- endif -%}
-    {%- endif -%}
-  {%- endif -%}
-  <script src="{{ 'cellexia-cart.js' | asset_url }}" defer></script>
+assign cx_eff_delivery = false
+if cx_de.enabled == true and cx_del_hidden == false
+unless cx_de.showInCart == false
+assign cx_scope = cfg.marketScopes.delivery_estimate
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_eff_delivery = true
+endif
+endunless
+endif
+-%}
+{{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+<script type="application/json" id="cx-cart-config">
+{
+"settings": {
+"showFreeShippingBar": {{ cx_eff_shipbar }},
+"showVolumeUpsell": {{ cx_eff_volume }},
+"showSubscriptionUpsell": {{ cx_eff_subscription }},
+"showTrustRow": {{ cx_eff_trustrow }},
+"maxOfferGroups": {{ cfg.cartUpsell.maxOfferGroups | default: 2 }},
+"crossSellMaxItems": {{ cfg.cartCrossSell.maxItems | default: 2 }},
+"crossSellMode": {{ cfg.cartCrossSell.mode | default: 'auto' | json }},
+"highlightQuantity": {{ cfg.cartUpsell.highlightQuantity | default: 3 }},
+"subscriptionDiscountPct": {{ cfg.cartUpsell.subscriptionDiscountPct | default: 5 }},
+"sellingPlanKeyword": {{ cfg.cartUpsell.sellingPlanKeyword | default: 'Continuous Treatment' | json }},
+"volumeOffers": {% if cfg.cartUpsell.volumeOffers %}{{ cfg.cartUpsell.volumeOffers | json }}{% else %}[{"quantity":2,"discountPct":15},{"quantity":3,"discountPct":20}]{% endif %},
+"trustpilotEnabled": {{ cx_tp_on }},
+"cartPage": {% if block.settings.enable_cart_page %}true{% else %}false{% endif %}
+},
+"market": {{ cx_market | json }},
+"effective": {
+"dispatch": {{ cx_eff_dispatch }},
+"delivery": {{ cx_eff_delivery }},
+"volume": {{ cx_eff_volume }},
+"shipbar": {{ cx_eff_shipbar }},
+"subscription": {{ cx_eff_subscription }},
+"crossSell": {{ cx_eff_crosssell }},
+"trustRow": {{ cx_eff_trustrow }}
+},
+{%- if cx_prev_armed %}
+"preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}},
+{%- endif %}
+"threshold": {"cents": {% if cx_fs %}{{ cx_fs.amount | times: 100 | round }}{% else %}{{ threshold | times: 100 }}{% endif %}, "currency": {% if cx_fs %}{{ cx_fs.currencyCode | json }}{% else %}{{ shop.currency | json }}{% endif %}},
+"shopCurrency": {{ shop.currency | json }},
+"thresholdCents": {{ threshold | times: 100 }},
+"b2b": {% if customer.b2b? %}true{% else %}false{% endif %},
+"currency": {{ cart.currency.iso_code | json }},
+"dispatch": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}, "showWithinHours": {{ cx_dsp_within }}},
+{%- if cx_eff_delivery or cx_draft_delivery %}
+"delivery": {"minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}},
+"deliveryStrings": {"delivery.line": {{ 'delivery.line' | t: date: '@@DATE@@' | json }}, "delivery.range": {{ 'delivery.range' | t: from: '@@FROM@@', to: '@@TO@@' | json }}, "delivery.range_same": {{ 'delivery.range_same' | t: date: '@@DATE@@' | json }}, "delivery.timeline_ship": {{ 'delivery.timeline_ship' | t: date: '@@DATE@@' | json }}, "delivery.timeline_delivered": {{ 'delivery.timeline_delivered' | t: date: '@@DATE@@' | json }}, "delivery.box_title": {{ 'delivery.box_title' | t: date: '@@DATE@@' | json }}, "delivery.tooltip": {{ 'delivery.tooltip' | t: date: '@@DATE@@' | json }}},
+{%- endif %}
+"overrides": {
+"volumeTitle": {{ block.settings.volume_title_override | default: '' | json }},
+"subscriptionTitle": {{ block.settings.subscription_title_override | default: '' | json }},
+"removeLabel": {{ block.settings.subscription_remove_override | default: '' | json }},
+"crossSellTitle": {{ block.settings.crosssell_title_override | default: '' | json }}
+},
+"strings": {
+"shipbar.away_html": {{ 'shipbar.away_html' | t: amount: '@@AMOUNT@@' | json }},
+"shipbar.unlocked": {{ 'shipbar.unlocked' | t | json }},
+"volume.title": {{ 'volume.title' | t | json }},
+"volume.upgrade_to": {{ 'volume.upgrade_to' | t: count: '@@COUNT@@' | json }},
+"volume.save_pct": {{ 'volume.save_pct' | t: percent: '@@PERCENT@@' | json }},
+"volume.per_unit": {{ 'volume.per_unit' | t: price: '@@PRICE@@' | json }},
+"volume.best_value": {{ 'volume.best_value' | t | json }},
+"volume.most_popular": {{ 'volume.most_popular' | t | json }},
+"volume.current_pack": {{ 'volume.current_pack' | t | json }},
+"volume.upgraded": {{ 'volume.upgraded' | t | json }},
+"volume.error": {{ 'volume.error' | t | json }},
+"subscription.switch_title": {{ 'subscription.switch_title' | t | json }},
+"subscription.switch_cta": {{ 'subscription.switch_cta' | t: percent: '@@PERCENT@@' | json }},
+"subscription.benefits": {{ 'subscription.benefits' | t: percent: '@@PERCENT@@' | json }},
+"subscription.switched": {{ 'subscription.switched' | t | json }},
+"subscription.error": {{ 'subscription.error' | t | json }},
+"subscription.switch_all_cta": {{ 'subscription.switch_all_cta' | t: percent: '@@PERCENT@@' | json }},
+"subscription.partial": {{ 'subscription.partial' | t: eligible: '@@ELIGIBLE@@', total: '@@TOTAL@@' | json }},
+"subscription.remove": {{ 'subscription.remove' | t | json }},
+"subscription.removed": {{ 'subscription.removed' | t | json }},
+"crosssell.title": {{ 'crosssell.title' | t | json }},
+"crosssell.add": {{ 'crosssell.add' | t | json }},
+"crosssell.adding": {{ 'crosssell.adding' | t | json }},
+"crosssell.added": {{ 'crosssell.added' | t | json }},
+"dispatch.within": {{ 'dispatch.within' | t: hours: '@@HOURS@@', minutes: '@@MINUTES@@' | json }},
+"dispatch.within_minutes": {{ 'dispatch.within_minutes' | t: minutes: '@@MINUTES@@' | json }},
+"badges.secure_checkout": {{ 'badges.secure_checkout' | t | json }},
+"badges.money_back": {{ 'badges.money_back' | t: days: guarantee_days | json }},
+"a11y.loading": {{ 'a11y.loading' | t | json }},
+"a11y.close": {{ 'a11y.close' | t | json }}
+},
+"products": {
+{%- assign cx_seen = ',' -%}
+{%- assign cx_first = true -%}
+{%- for item in cart.items -%}
+{%- assign cx_pid = item.product_id | append: '' -%}
+{%- assign cx_tok = ',' | append: cx_pid | append: ',' -%}
+{%- unless cx_seen contains cx_tok -%}
+{%- assign cx_seen = cx_seen | append: cx_pid | append: ',' -%}
+{%- unless cx_first -%},{%- endunless -%}
+{%- assign cx_first = false -%}
+{{ cx_pid | json }}: {
+"variants": [
+{%- for variant in item.product.variants -%}
+{"id": {{ variant.id | json }}, "option1": {{ variant.option1 | json }}, "price": {{ variant.price | json }}, "compare_at_price": {{ variant.compare_at_price | default: 'null' }}, "available": {{ variant.available | json }}, "position": {{ forloop.index }}, "planAllocations": [
+{%- for alloc in variant.selling_plan_allocations -%}
+{"planId": {{ alloc.selling_plan.id | json }}, "price": {{ alloc.price | json }}}{%- unless forloop.last -%},{%- endunless -%}
+{%- endfor -%}
+]}{%- unless forloop.last -%},{%- endunless -%}
+{%- endfor -%}
+],
+"sellingPlanGroups": [
+{%- for group in item.product.selling_plan_groups -%}
+{"id": {{ group.id | json }}, "name": {{ group.name | json }}, "plans": [
+{%- for plan in group.selling_plans -%}
+{"id": {{ plan.id | json }}, "name": {{ plan.name | json }}, "valueType": {{ plan.price_adjustments[0].value_type | json }}, "value": {{ plan.price_adjustments[0].value | default: 0 }}}{%- unless forloop.last -%},{%- endunless -%}
+{%- endfor -%}
+]}{%- unless forloop.last -%},{%- endunless -%}
+{%- endfor -%}
+]
+}
+{%- endunless -%}
+{%- endfor -%}
+}
+}
+</script>
+{%- if cx_eff_trustrow or cx_draft_trustrow -%}
+<template id="cx-tpl-trust-row"{% unless cx_eff_trustrow %} data-cx-draft="1"{% endunless %}>
+<div class="cx-trust-row" data-cx-feature="trust_badges">
+<span class="cx-trust-row__item d-flex align-center">
+{%- render 'cx-icons', icon: 'lock', size: 16 -%}
+<span>{{ 'badges.secure_checkout' | t }}</span>
+</span>
+<span class="cx-trust-row__item d-flex align-center">
+{%- render 'cx-icons', icon: 'shield-check', size: 16 -%}
+<span>{{ 'badges.money_back' | t: days: guarantee_days }}</span>
+</span>
+{%- if cx_tp_on -%}
+{%- if cfg.trustpilot.showLink == false -%}
+<span class="cx-trust-row__item d-flex align-center no-dec">
+{%- render 'cx-trustpilot-stars', rating: tp_rating, uid: 'cart-trust', size: 14 -%}
+<span>{%- assign tp_sep = 'trustpilot.decimal_separator' | t -%}{{ tp_rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
+</span>
+{%- else -%}
+<a class="cx-trust-row__item cx-trust-row__item--link d-flex align-center no-dec" href="{{ tp_url | escape }}" target="_blank" rel="noopener nofollow">
+{%- render 'cx-trustpilot-stars', rating: tp_rating, uid: 'cart-trust', size: 14 -%}
+<span>{%- assign tp_sep = 'trustpilot.decimal_separator' | t -%}{{ tp_rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
+</a>
+{%- endif -%}
+{%- endif -%}
+</div>
+</template>
+{%- endif -%}
+{%- if cx_eff_crosssell or cx_draft_crosssell -%}
+<template id="cx-tpl-crosssell"{% unless cx_eff_crosssell %} data-cx-draft="1"{% endunless %}>
+<div class="cx-crosssell" data-cx-feature="cart_cross_sell">
+<p class="cx-crosssell__title heading--five">{% if block.settings.crosssell_title_override != blank %}{{ block.settings.crosssell_title_override | escape }}{% else %}{{ 'crosssell.title' | t }}{% endif %}</p>
+<ul class="cx-crosssell__list list-reset">
+{%- for cs_item in cfg.cartCrossSell.items limit: 8 -%}
+{%- assign csp = all_products[cs_item.handle] -%}
+{%- if csp.id -%}
+{%- assign cs_vid = cs_item.variantId | split: '/' | last | append: '' -%}
+{%- assign cs_variant = false -%}
+{%- for cs_v in csp.variants -%}
+{%- assign cs_v_id = cs_v.id | append: '' -%}
+{%- if cs_v_id == cs_vid -%}
+{%- assign cs_variant = cs_v -%}
+{%- break -%}
+{%- endif -%}
+{%- endfor -%}
+{%- if cs_variant and cs_variant.available -%}
+<li class="cx-crosssell__item" data-variant-id="{{ cs_variant.id }}" data-product-id="{{ csp.id }}" data-price-cents="{{ cs_variant.price }}">
+{%- assign cs_img = cs_variant.image | default: csp.featured_image -%}
+{%- if cs_img -%}
+<img class="cx-crosssell__img" src="{{ cs_img | image_url: width: 56 }}" srcset="{{ cs_img | image_url: width: 112 }} 2x" width="56" height="56" alt="{{ csp.title | escape }}" loading="lazy">
+{%- endif -%}
+<span class="cx-crosssell__info">
+<span class="cx-crosssell__name">{{ csp.title }}{% unless cs_variant.title == 'Default Title' or csp.variants.size == 1 %} — {{ cs_variant.title }}{% endunless %}</span>
+<span class="cx-crosssell__prices">
+<span class="cx-crosssell__price">{{ cs_variant.price | money }}</span>
+{%- if cs_variant.compare_at_price > cs_variant.price -%}
+<s class="cx-crosssell__compare">{{ cs_variant.compare_at_price | money }}</s>
+{%- endif -%}
+</span>
+</span>
+<button type="button" class="cx-crosssell__add">{{ 'crosssell.add' | t }}</button>
+</li>
+{%- endif -%}
+{%- endif -%}
+{%- endfor -%}
+</ul>
+</div>
+</template>
+{%- endif -%}
+{%- if cx_eff_dispatch or cx_draft_dispatch -%}
+<template id="cx-tpl-dispatch-cart"{% unless cx_eff_dispatch %} data-cx-draft="1"{% endunless %}>
+<div class="cx-dispatch cx-dispatch--cart" data-cx-feature="dispatch_countdown">
+<span class="cx-dispatch__dot" aria-hidden="true"></span>
+{%- render 'cx-icons', icon: 'truck', size: 16 -%}
+<span class="cx-dispatch__text"><strong class="cx-dispatch__main"></strong></span>
+</div>
+</template>
+{%- endif -%}
+{%- if cx_eff_delivery or cx_draft_delivery -%}
+{%- liquid
+assign delivery_formats = 'line,range,timeline,box' | split: ','
+assign delivery_fmt_live = cx_de.formatCart
+unless delivery_formats contains delivery_fmt_live
+assign delivery_fmt_live = 'line'
+endunless
+-%}
+{%- capture delivery_badge -%}
+<span class="cx-delivery__badge"><button type="button" class="cx-delivery__badge-btn" data-cx-delivery-badge aria-describedby="cx-delivery-tip-cart">{%- render 'cx-icons', icon: 'shield-check', size: 12 -%}<span>{{ 'delivery.badge' | t }}</span></button><span class="cx-delivery__tip" id="cx-delivery-tip-cart" role="tooltip" hidden data-cx-delivery-tip></span></span>
+{%- endcapture -%}
+{%- capture delivery_body_line -%}
+<div class="cx-delivery cx-delivery--cart cx-delivery--line" data-cx-feature="delivery_estimate">{%- render 'cx-icons', icon: 'box', size: 15 -%}<span class="cx-delivery__line" data-cx-delivery-line></span>{{ delivery_badge }}</div>
+{%- endcapture -%}
+{%- capture delivery_body_range -%}
+<div class="cx-delivery cx-delivery--cart cx-delivery--range" data-cx-feature="delivery_estimate"><span class="cx-delivery__range" data-cx-delivery-range></span>{{ delivery_badge }}</div>
+{%- endcapture -%}
+{%- capture delivery_body_timeline -%}
+<div class="cx-delivery cx-delivery--cart cx-delivery--timeline" data-cx-feature="delivery_estimate"><ol class="cx-delivery__steps list-reset"><li class="cx-delivery__step">{{ 'delivery.timeline_order' | t }}</li><li class="cx-delivery__step" data-cx-delivery-ship></li><li class="cx-delivery__step" data-cx-delivery-done></li></ol>{{ delivery_badge }}</div>
+{%- endcapture -%}
+{%- capture delivery_body_box -%}
+<div class="cx-delivery cx-delivery--cart cx-delivery--box" data-cx-feature="delivery_estimate">{%- render 'cx-icons', icon: 'check', size: 16 -%}<span class="cx-delivery__box-copy"><strong class="cx-delivery__box-title" data-cx-delivery-title></strong> <span class="cx-delivery__box-sub">{{ 'delivery.box_sub' | t }}</span> {{ delivery_badge }}</span></div>
+{%- endcapture -%}
+<template id="cx-tpl-delivery-cart"{% unless cx_eff_delivery %} data-cx-draft="1"{% endunless %}>
+{%- case delivery_fmt_live -%}
+{%- when 'range' -%}{{ delivery_body_range }}
+{%- when 'timeline' -%}{{ delivery_body_timeline }}
+{%- when 'box' -%}{{ delivery_body_box }}
+{%- when 'line' -%}{{ delivery_body_line }}
+{%- else -%}{{ delivery_body_line }}
+{%- endcase -%}
+</template>
+{%- if cx_prev_armed -%}
+{%- assign delivery_fmt_draft = cx_prev.draftConfig.deliveryFormatCart -%}
+{%- if delivery_formats contains delivery_fmt_draft and delivery_fmt_draft != delivery_fmt_live -%}
+<template id="cx-tpl-delivery-cart-alt" data-cx-draft="1">
+{%- case delivery_fmt_draft -%}
+{%- when 'range' -%}{{ delivery_body_range }}
+{%- when 'timeline' -%}{{ delivery_body_timeline }}
+{%- when 'box' -%}{{ delivery_body_box }}
+{%- when 'line' -%}{{ delivery_body_line }}
+{%- endcase -%}
+</template>
+{%- endif -%}
+{%- endif -%}
+{%- endif -%}
+<script src="{{ 'cellexia-cart.js' | asset_url }}" defer></script>
 {%- endif -%}
 {%- endif -%}
 
 {% schema %}
 {
-  "name": "Cellexia cart booster",
-  "target": "body",
-  "settings": [
-    {
-      "type": "text",
-      "id": "volume_title_override",
-      "label": "Volume upsell title override",
-      "info": "Leave blank to use the translated default."
-    },
-    {
-      "type": "text",
-      "id": "subscription_title_override",
-      "label": "Subscription switch title override",
-      "info": "Leave blank to use the translated default."
-    },
-    {
-      "type": "text",
-      "id": "subscription_remove_override",
-      "label": "Remove-subscription button label",
-      "info": "Leave blank to use the translated default (\"Remove continuous treatment\"). Overrides typed here are translatable per language in Translate & Adapt."
-    },
-    {
-      "type": "text",
-      "id": "crosssell_title_override",
-      "label": "Cross-sell title override",
-      "info": "Leave blank to use the translated default."
-    },
-    {
-      "type": "checkbox",
-      "id": "enable_cart_page",
-      "label": "Also show on the cart page",
-      "default": true,
-      "info": "Injects the same widgets after the cart table on /cart."
-    }
-  ]
+"name": "Cellexia cart booster",
+"target": "body",
+"settings": [
+{
+"type": "text",
+"id": "volume_title_override",
+"label": "Volume upsell title override",
+"info": "Leave blank to use the translated default."
+},
+{
+"type": "text",
+"id": "subscription_title_override",
+"label": "Subscription switch title override",
+"info": "Leave blank to use the translated default."
+},
+{
+"type": "text",
+"id": "subscription_remove_override",
+"label": "Remove-subscription button label",
+"info": "Leave blank to use the translated default (\"Remove continuous treatment\"). Overrides typed here are translatable per language in Translate & Adapt."
+},
+{
+"type": "text",
+"id": "crosssell_title_override",
+"label": "Cross-sell title override",
+"info": "Leave blank to use the translated default."
+},
+{
+"type": "checkbox",
+"id": "enable_cart_page",
+"label": "Also show on the cart page",
+"default": true,
+"info": "Injects the same widgets after the cart table on /cart."
+}
+]
 }
 {% endschema %}

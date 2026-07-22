@@ -1,9 +1,9 @@
 {%- liquid
-  assign cx_icon_size = size | default: 20
-  assign cx_icon_class = 'cx-icon'
-  if class != blank
-    assign cx_icon_class = cx_icon_class | append: ' ' | append: class
-  endif
+assign cx_icon_size = size | default: 20
+assign cx_icon_class = 'cx-icon'
+if class != blank
+assign cx_icon_class = cx_icon_class | append: ' ' | append: class
+endif
 -%}
 {%- case icon -%}
 {%- when 'lock' -%}

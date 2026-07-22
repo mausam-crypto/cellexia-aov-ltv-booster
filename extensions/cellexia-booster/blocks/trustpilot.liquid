@@ -1,116 +1,113 @@
 {%- assign cfg = app.metafields.cellexia.config.value -%}
 {%- liquid
-  # Market gating: visible = flag explicitly true AND (scope nil OR
-  # scope.mode != 'selected' OR scope.markets contains the current market
-  # handle). An empty handle matches only non-selected scopes.
-  assign cx_market = localization.market.handle | default: ''
-  assign cx_on = false
-  if cfg.trustpilot.enabled == true
-    assign cx_scope = cfg.marketScopes.trustpilot
-    if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-      assign cx_on = true
-    endif
-  endif
+assign cx_market = localization.market.handle | default: ''
+assign cx_on = false
+if cfg.trustpilot.enabled == true
+assign cx_scope = cfg.marketScopes.trustpilot
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_on = true
+endif
+endif
 -%}
 {%- if cx_on -%}
-  {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
-  {%- liquid
-    assign rating = cfg.trustpilot.rating | default: 4.8
-    if block.settings.rating_override != blank
-      assign rating_num = block.settings.rating_override | times: 1.0
-      if rating_num > 0
-        assign rating = rating_num
-      endif
-    endif
-    if rating > 5
-      assign rating = 5.0
-    endif
-    assign review_count = cfg.trustpilot.reviewCount | default: 1000
-    if block.settings.count_override != blank
-      assign count_num = block.settings.count_override | plus: 0
-      if count_num > 0
-        assign review_count = count_num
-      endif
-    endif
-    assign profile_url = block.settings.url_override
-    if profile_url == blank
-      assign profile_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
-    endif
-    assign rating_rounded = rating | round: 1
-    assign tp_sep = 'trustpilot.decimal_separator' | t
-  -%}
-  <div class="cx-trustpilot cx-trustpilot--{{ block.settings.layout | default: 'row' }}" {{ block.shopify_attributes }} data-cx-feature="trustpilot">
-    <div class="cx-trustpilot__main d-flex align-center">
-      <span class="cx-trustpilot__excellent heading--five">{{ 'trustpilot.excellent' | t }}</span>
-      {% render 'cx-trustpilot-stars', rating: rating, uid: block.id, size: 22 %}
-      <span class="cx-trustpilot__rating">{{ rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
-    </div>
-    <div class="cx-trustpilot__meta d-flex align-center">
-      <span class="cx-trustpilot__count">{{ 'trustpilot.reviews_count' | t: count: review_count }}</span>
-      <span class="cx-trustpilot__brand d-flex align-center">
-        {% render 'cx-icons', icon: 'star', size: 16, class: 'cx-trustpilot__brand-star' %}
-        <span>Trustpilot</span>
-      </span>
-    </div>
-        {%- if cfg.trustpilot.showLink == false -%}
-    {%- else -%}
-    {%- if profile_url != blank -%}
-      <a class="cx-trustpilot__link no-dec" href="{{ profile_url | escape }}" target="_blank" rel="noopener nofollow">{{ 'trustpilot.view' | t }}</a>
-    {%- endif -%}
-    {%- endif -%}
-  </div>
-  <script>
-    (function () {
-      try {
-        var w = window;
-        w.__cxSeen = w.__cxSeen || {};
-        if (w.__cxSeen.trustpilot) return;
-        w.__cxSeen.trustpilot = 1;
-        var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
-        var payload = JSON.stringify({ feature: 'trustpilot', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
-        } else if (w.fetch) {
-          w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
-        }
-      } catch (e) { /* never break the theme */ }
-    })();
-  </script>
+{{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+{%- liquid
+assign rating = cfg.trustpilot.rating | default: 4.8
+if block.settings.rating_override != blank
+assign rating_num = block.settings.rating_override | times: 1.0
+if rating_num > 0
+assign rating = rating_num
+endif
+endif
+if rating > 5
+assign rating = 5.0
+endif
+assign review_count = cfg.trustpilot.reviewCount | default: 1000
+if block.settings.count_override != blank
+assign count_num = block.settings.count_override | plus: 0
+if count_num > 0
+assign review_count = count_num
+endif
+endif
+assign profile_url = block.settings.url_override
+if profile_url == blank
+assign profile_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
+endif
+assign rating_rounded = rating | round: 1
+assign tp_sep = 'trustpilot.decimal_separator' | t
+-%}
+<div class="cx-trustpilot cx-trustpilot--{{ block.settings.layout | default: 'row' }}" {{ block.shopify_attributes }} data-cx-feature="trustpilot">
+<div class="cx-trustpilot__main d-flex align-center">
+<span class="cx-trustpilot__excellent heading--five">{{ 'trustpilot.excellent' | t }}</span>
+{% render 'cx-trustpilot-stars', rating: rating, uid: block.id, size: 22 %}
+<span class="cx-trustpilot__rating">{{ rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
+</div>
+<div class="cx-trustpilot__meta d-flex align-center">
+<span class="cx-trustpilot__count">{{ 'trustpilot.reviews_count' | t: count: review_count }}</span>
+<span class="cx-trustpilot__brand d-flex align-center">
+{% render 'cx-icons', icon: 'star', size: 16, class: 'cx-trustpilot__brand-star' %}
+<span>Trustpilot</span>
+</span>
+</div>
+{%- if cfg.trustpilot.showLink == false -%}
+{%- else -%}
+{%- if profile_url != blank -%}
+<a class="cx-trustpilot__link no-dec" href="{{ profile_url | escape }}" target="_blank" rel="noopener nofollow">{{ 'trustpilot.view' | t }}</a>
+{%- endif -%}
+{%- endif -%}
+</div>
+<script>
+(function () {
+try {
+var w = window;
+w.__cxSeen = w.__cxSeen || {};
+if (w.__cxSeen.trustpilot) return;
+w.__cxSeen.trustpilot = 1;
+var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
+var payload = JSON.stringify({ feature: 'trustpilot', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
+if (navigator.sendBeacon) {
+navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
+} else if (w.fetch) {
+w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
+}
+} catch (e) { /* never break the theme */ }
+})();
+</script>
 {%- endif -%}
 
 {% schema %}
 {
-  "name": "Cellexia Trustpilot",
-  "target": "section",
-  "settings": [
-    {
-      "type": "text",
-      "id": "rating_override",
-      "label": "Rating override (0–5)",
-      "info": "Leave blank to use the rating configured in the Cellexia dashboard."
-    },
-    {
-      "type": "text",
-      "id": "count_override",
-      "label": "Review count override",
-      "info": "Leave blank to use the count configured in the Cellexia dashboard."
-    },
-    {
-      "type": "text",
-      "id": "url_override",
-      "label": "Trustpilot profile URL override",
-      "info": "Leave blank to use the URL configured in the Cellexia dashboard."
-    },
-    {
-      "type": "select",
-      "id": "layout",
-      "label": "Layout",
-      "options": [
-        { "value": "row", "label": "Single row" },
-        { "value": "stack", "label": "Stacked" }
-      ],
-      "default": "row"
-    }
-  ]
+"name": "Cellexia Trustpilot",
+"target": "section",
+"settings": [
+{
+"type": "text",
+"id": "rating_override",
+"label": "Rating override (0–5)",
+"info": "Leave blank to use the rating configured in the Cellexia dashboard."
+},
+{
+"type": "text",
+"id": "count_override",
+"label": "Review count override",
+"info": "Leave blank to use the count configured in the Cellexia dashboard."
+},
+{
+"type": "text",
+"id": "url_override",
+"label": "Trustpilot profile URL override",
+"info": "Leave blank to use the URL configured in the Cellexia dashboard."
+},
+{
+"type": "select",
+"id": "layout",
+"label": "Layout",
+"options": [
+{ "value": "row", "label": "Single row" },
+{ "value": "stack", "label": "Stacked" }
+],
+"default": "row"
+}
+]
 }
 {% endschema %}

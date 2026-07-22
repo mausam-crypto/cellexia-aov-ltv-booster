@@ -1,4 +1,5 @@
 api_version = "2025-07"
+uid = "f32f3701-7844-e198-28d1-f78b34c358c3bf1f83fb"
 
 [[extensions]]
 name = "Cellexia delivery"

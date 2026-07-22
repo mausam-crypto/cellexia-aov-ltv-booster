@@ -1,99 +1,96 @@
 {%- assign cfg = app.metafields.cellexia.config.value -%}
 {%- liquid
-  # Market gating: visible = flag explicitly true AND (scope nil OR
-  # scope.mode != 'selected' OR scope.markets contains the current market
-  # handle). An empty handle matches only non-selected scopes.
-  assign cx_market = localization.market.handle | default: ''
-  assign cx_on = false
-  if cfg.guarantee.enabled == true
-    assign cx_scope = cfg.marketScopes.guarantee
-    if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-      assign cx_on = true
-    endif
-  endif
+assign cx_market = localization.market.handle | default: ''
+assign cx_on = false
+if cfg.guarantee.enabled == true
+assign cx_scope = cfg.marketScopes.guarantee
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_on = true
+endif
+endif
 -%}
 {%- if cx_on -%}
-  {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
-  {%- liquid
-    assign days = cfg.guarantee.days | default: 60
-    if block.settings.days_override != blank
-      assign days_num = block.settings.days_override | plus: 0
-      if days_num > 0
-        assign days = days_num
-      endif
-    endif
-    assign title_text = block.settings.title_override
-    if title_text == blank
-      assign title_text = 'guarantee.title' | t: days: days
-    endif
-    assign body_text = block.settings.body_override
-    if body_text == blank
-      assign body_text = 'guarantee.body' | t: days: days
-    endif
-  -%}
-  <div class="cx-guarantee cx-guarantee--{{ block.settings.layout | default: 'full' }}" {{ block.shopify_attributes }} data-cx-feature="guarantee">
-    <div class="cx-guarantee__icon" aria-hidden="true">
-      {% render 'cx-icons', icon: 'shield-check', size: 28 %}
-    </div>
-    <div class="cx-guarantee__content">
-      <h3 class="cx-guarantee__title heading--four">{{ title_text }}</h3>
-      {%- if block.settings.layout != 'compact' -%}
-        <p class="cx-guarantee__body">{{ body_text }}</p>
-      {%- endif -%}
-    </div>
-  </div>
-  <script>
-    (function () {
-      try {
-        var w = window;
-        w.__cxSeen = w.__cxSeen || {};
-        if (w.__cxSeen.guarantee_block) return;
-        w.__cxSeen.guarantee_block = 1;
-        var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
-        var payload = JSON.stringify({ feature: 'guarantee', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
-        } else if (w.fetch) {
-          w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
-        }
-      } catch (e) { /* never break the theme */ }
-    })();
-  </script>
+{{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+{%- liquid
+assign days = cfg.guarantee.days | default: 60
+if block.settings.days_override != blank
+assign days_num = block.settings.days_override | plus: 0
+if days_num > 0
+assign days = days_num
+endif
+endif
+assign title_text = block.settings.title_override
+if title_text == blank
+assign title_text = 'guarantee.title' | t: days: days
+endif
+assign body_text = block.settings.body_override
+if body_text == blank
+assign body_text = 'guarantee.body' | t: days: days
+endif
+-%}
+<div class="cx-guarantee cx-guarantee--{{ block.settings.layout | default: 'full' }}" {{ block.shopify_attributes }} data-cx-feature="guarantee">
+<div class="cx-guarantee__icon" aria-hidden="true">
+{% render 'cx-icons', icon: 'shield-check', size: 28 %}
+</div>
+<div class="cx-guarantee__content">
+<h3 class="cx-guarantee__title heading--four">{{ title_text }}</h3>
+{%- if block.settings.layout != 'compact' -%}
+<p class="cx-guarantee__body">{{ body_text }}</p>
+{%- endif -%}
+</div>
+</div>
+<script>
+(function () {
+try {
+var w = window;
+w.__cxSeen = w.__cxSeen || {};
+if (w.__cxSeen.guarantee_block) return;
+w.__cxSeen.guarantee_block = 1;
+var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
+var payload = JSON.stringify({ feature: 'guarantee', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
+if (navigator.sendBeacon) {
+navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
+} else if (w.fetch) {
+w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
+}
+} catch (e) { /* never break the theme */ }
+})();
+</script>
 {%- endif -%}
 
 {% schema %}
 {
-  "name": "Cellexia guarantee",
-  "target": "section",
-  "settings": [
-    {
-      "type": "text",
-      "id": "days_override",
-      "label": "Days override",
-      "info": "Leave blank to use the guarantee window configured in the Cellexia dashboard."
-    },
-    {
-      "type": "text",
-      "id": "title_override",
-      "label": "Title override",
-      "info": "Leave blank to use the translated default."
-    },
-    {
-      "type": "text",
-      "id": "body_override",
-      "label": "Body override",
-      "info": "Leave blank to use the translated default."
-    },
-    {
-      "type": "select",
-      "id": "layout",
-      "label": "Layout",
-      "options": [
-        { "value": "full", "label": "Full card" },
-        { "value": "compact", "label": "Compact row" }
-      ],
-      "default": "full"
-    }
-  ]
+"name": "Cellexia guarantee",
+"target": "section",
+"settings": [
+{
+"type": "text",
+"id": "days_override",
+"label": "Days override",
+"info": "Leave blank to use the guarantee window configured in the Cellexia dashboard."
+},
+{
+"type": "text",
+"id": "title_override",
+"label": "Title override",
+"info": "Leave blank to use the translated default."
+},
+{
+"type": "text",
+"id": "body_override",
+"label": "Body override",
+"info": "Leave blank to use the translated default."
+},
+{
+"type": "select",
+"id": "layout",
+"label": "Layout",
+"options": [
+{ "value": "full", "label": "Full card" },
+{ "value": "compact", "label": "Compact row" }
+],
+"default": "full"
+}
+]
 }
 {% endschema %}
