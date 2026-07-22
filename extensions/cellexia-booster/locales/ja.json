@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "{{ hours }}時間{{ minutes }}分以内のご注文で当日発送いたします",
-    "within_minutes": "{{ minutes }}分以内のご注文で当日発送いたします",
-    "local_time": "お客様の現地時間{{ time }}まで"
+    "within_minutes": "{{ minutes }}分以内のご注文で当日発送いたします"
   },
   "badges": {
     "secure_checkout": "安全な決済",

@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "Bestel binnen {{ hours }} u {{ minutes }} min, dan verzenden we je bestelling vandaag nog",
-    "within_minutes": "Bestel binnen {{ minutes }} min, dan verzenden we je bestelling vandaag nog",
-    "local_time": "vóór {{ time }} lokale tijd"
+    "within_minutes": "Bestel binnen {{ minutes }} min, dan verzenden we je bestelling vandaag nog"
   },
   "badges": {
     "secure_checkout": "Veilig afrekenen",

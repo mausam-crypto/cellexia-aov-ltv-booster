@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "Ordina entro {{ hours }} h {{ minutes }} min per la spedizione in giornata",
-    "within_minutes": "Ordina entro {{ minutes }} min per la spedizione in giornata",
-    "local_time": "entro le {{ time }}, ora locale"
+    "within_minutes": "Ordina entro {{ minutes }} min per la spedizione in giornata"
   },
   "badges": {
     "secure_checkout": "Pagamento sicuro",

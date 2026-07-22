@@ -89,6 +89,8 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
       "free_shipping_bar",
       "cart_subscription_upsell",
       "cart_trust_row",
+      "cart_cross_sell",
+      "dispatch_countdown",
     ],
   },
   {
@@ -113,7 +115,7 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
 ];
 
 /**
- * Client-safe ordered key list (all 17). The component must not reference
+ * Client-safe ordered key list (all 19). The component must not reference
  * FEATURE_KEYS — that would pull the server-only settings model into the
  * client bundle; the loader asserts the two lists stay in sync.
  */
@@ -155,6 +157,14 @@ const NOT_READY_FIX_LINKS: Partial<
   checkout_protection: {
     url: "/app/features/checkout",
     label: "Configure on the Checkout features page",
+  },
+  cart_cross_sell: {
+    url: "/app/features/cart",
+    label: "Configure on the Cart upsells page",
+  },
+  dispatch_countdown: {
+    url: "/app/features/dispatch",
+    label: "Configure on the Dispatch countdown page",
   },
   clinical_study: {
     url: "/app/products",
@@ -705,10 +715,40 @@ export default function PreviewCenter() {
     runningExperiments,
   } = data;
 
+  // v5.4 safety net: a FeatureKey missing from the FEATURE_GROUPS literal
+  // can never disappear from the picker — anything the loader knows about
+  // but no group lists renders in an automatic trailing group. The
+  // validation harness ALSO fails when the literal drifts from
+  // FEATURE_KEYS, so in practice this group never appears; it exists so a
+  // future omission degrades to "oddly grouped" instead of "unpickable".
+  const groupedPickerKeys = new Set<string>(
+    FEATURE_GROUPS.flatMap((group) => group.keys),
+  );
+  const ungroupedPickerKeys = (Object.keys(features) as FeatureKey[]).filter(
+    (key) => !groupedPickerKeys.has(key),
+  );
+  const pickerGroups =
+    ungroupedPickerKeys.length > 0
+      ? [
+          ...FEATURE_GROUPS,
+          { title: "Other boosters", keys: ungroupedPickerKeys },
+        ]
+      : FEATURE_GROUPS;
+
+  // Canonical key list for every derived selection below. ALL_FEATURE_KEYS
+  // provides ordering only — a key that exists solely in the fallback
+  // "Other boosters" group must still flow into checkedKeys / draftKeys /
+  // arm payloads, otherwise the fallback renders a checkbox whose selection
+  // is silently dropped at submit time (worse than unpickable).
+  const orderedFeatureKeys: FeatureKey[] =
+    ungroupedPickerKeys.length > 0
+      ? [...ALL_FEATURE_KEYS, ...ungroupedPickerKeys]
+      : ALL_FEATURE_KEYS;
+
   // --- 1. Feature picker state -------------------------------------------
   const initialChecked = useMemo(() => {
     const set = new Set<FeatureKey>(
-      ALL_FEATURE_KEYS.filter(
+      orderedFeatureKeys.filter(
         (key) =>
           preview.draftFlags[key] === true &&
           !UNPREVIEWABLE_FEATURE_KEYS.has(key),
@@ -790,10 +830,10 @@ export default function PreviewCenter() {
   // --- Derived data ---------------------------------------------------------
   // Unpreviewable keys are filtered everywhere: they cannot be checked, are
   // never armed, and never appear in a go-live diff from this page.
-  const checkedKeys = ALL_FEATURE_KEYS.filter(
+  const checkedKeys = orderedFeatureKeys.filter(
     (key) => checked.has(key) && !UNPREVIEWABLE_FEATURE_KEYS.has(key),
   );
-  const draftKeys = ALL_FEATURE_KEYS.filter(
+  const draftKeys = orderedFeatureKeys.filter(
     (key) =>
       preview.draftFlags[key] === true && !UNPREVIEWABLE_FEATURE_KEYS.has(key),
   );
@@ -807,7 +847,7 @@ export default function PreviewCenter() {
   // "checkout preview looks broken" trap. Union of the armed draft flags and
   // the current selection, so the warning covers both the launch buttons
   // (armed drafts) and what "Arm/Update preview" is about to flag.
-  const notReadyPreviewKeys = ALL_FEATURE_KEYS.filter(
+  const notReadyPreviewKeys = orderedFeatureKeys.filter(
     (key) =>
       (checked.has(key) || preview.draftFlags[key] === true) &&
       !UNPREVIEWABLE_FEATURE_KEYS.has(key) &&
@@ -1047,7 +1087,7 @@ export default function PreviewCenter() {
                   still be previewed, but may render empty.
                 </Text>
               </BlockStack>
-              {FEATURE_GROUPS.map((group) => (
+              {pickerGroups.map((group) => (
                 <BlockStack key={group.title} gap="300">
                   <Divider />
                   <Text as="h3" variant="headingSm">

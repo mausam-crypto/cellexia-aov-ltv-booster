@@ -322,9 +322,10 @@
   // WAREHOUSE timezone + ISO working days 1-7) into cfg.dispatch; this
   // engine decides VISIBILITY: shown only when today is a working day in
   // the warehouse timezone AND the cutoff is still ahead today AND no
-  // more than showWithinHours remain. The clock suffix converts the
-  // cutoff into the buyer's OWN timezone/locale (Date#toLocaleTimeString
-  // on now + remaining — timezone-correct worldwide with no tz library).
+  // more than showWithinHours remain. The widget is a SINGLE line (v5.4:
+  // the buyer-local clock suffix was removed on merchant request) — all
+  // math still runs in the warehouse timezone, so it stays correct
+  // worldwide with no tz library.
   // Any invalid schedule, missing string or Intl throw (bad timezone)
   // hides the widget — fail closed, never fabricate urgency. ONE module
   // interval (guarded by dispatchTimer) re-evaluates the mounted node
@@ -362,8 +363,7 @@
     var strings = cfg.strings;
     if (!strings || typeof strings !== 'object' ||
         typeof strings['dispatch.within'] !== 'string' ||
-        typeof strings['dispatch.within_minutes'] !== 'string' ||
-        typeof strings['dispatch.local_time'] !== 'string') return null;
+        typeof strings['dispatch.within_minutes'] !== 'string') return null;
     return {
       cutoffMinutes: Number(d.cutoff.slice(0, 2)) * 60 + Number(d.cutoff.slice(3, 5)),
       timezone: d.timezone,
@@ -400,6 +400,37 @@
     }
   }
 
+  function dispatchHiddenReason(schedule) {
+    // v5.3 PREVIEW-only diagnostics: WHY dispatchRemainingMs said null,
+    // recomputed with the SAME Intl warehouse wall-clock math (including
+    // the h24 "24:xx" normalization quirk). Returns 'closed_day' |
+    // 'cutoff_passed' | 'too_early', or null when the widget is visible
+    // OR the Intl/wall-clock math itself failed — callers treat reason
+    // null WITH remaining null as invalid schedule config (fail closed).
+    // Only ever called from PREVIEW-gated code, never on visitor paths.
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: schedule.timezone,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(new Date());
+      var map = {};
+      for (var i = 0; i < parts.length; i++) map[parts[i].type] = parts[i].value;
+      var iso = DISPATCH_ISO[map.weekday];
+      if (!iso || schedule.days.indexOf(iso) === -1) return 'closed_day';
+      var nowMinutes = (Number(map.hour) % 24) * 60 + Number(map.minute);
+      if (!(nowMinutes >= 0 && nowMinutes < 1440)) return null;
+      if (nowMinutes >= schedule.cutoffMinutes) return 'cutoff_passed';
+      if (schedule.cutoffMinutes - nowMinutes > schedule.withinMinutes) return 'too_early';
+      return null; // visible right now
+    } catch (e) {
+      return null; // Intl rejected the timezone: same fail-closed verdict
+    }
+  }
+
   function dispatchSetText(node, remainingMs) {
     var totalMin = Math.floor(remainingMs / 60000);
     var text;
@@ -411,15 +442,73 @@
     }
     var main = node.querySelector('.cx-dispatch__main');
     if (main) main.textContent = text;
-    var local = node.querySelector('.cx-dispatch__local');
-    if (local) {
-      var clock = '';
-      try {
-        clock = new Date(Date.now() + remainingMs)
-          .toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-      } catch (e) { clock = ''; }
-      local.textContent = clock ? dispatchT('dispatch.local_time', { time: clock }) : '';
+  }
+
+  // ------------------------------------ dispatch preview aids (v5.3)
+  //
+  // MERCHANT-facing, English-only by design (same precedent as the
+  // preview bar strings — never locale files). Everything below is
+  // PREVIEW-gated: real visitors can never reach or render any of it,
+  // and no beacon ever fires from these paths (track() no-ops in
+  // preview). The sample countdown exists ONLY inside a verified
+  // preview session and ONLY with the explanatory note attached —
+  // real visitors keep the fail-closed v5.0 behavior byte-for-byte.
+  var DISPATCH_PREVIEW_INVALID = 'Dispatch countdown can\'t render: the schedule is invalid or its translations are missing — check Features → Dispatch countdown in the app.';
+
+  function dispatchPreviewNoteText(reason) {
+    var d = cfg.dispatch && typeof cfg.dispatch === 'object' ? cfg.dispatch : {};
+    var cutoff = typeof d.cutoff === 'string' ? d.cutoff : '?';
+    var hours = Math.round(Number(d.showWithinHours)) || 0;
+    var rule = ' Real visitors see it on dispatch days during the final ' + hours + ' h before the ' + cutoff + ' cutoff.';
+    if (reason === 'closed_day') {
+      return 'Preview sample — hidden for real visitors right now: today is not a dispatch day in the warehouse timezone.' + rule;
     }
+    if (reason === 'cutoff_passed') {
+      return 'Preview sample — hidden for real visitors right now: today\'s ' + cutoff + ' cutoff (warehouse time) has passed.' + rule;
+    }
+    if (reason === 'too_early') {
+      return 'Preview sample — hidden for real visitors right now: more than ' + hours + ' h remain before today\'s ' + cutoff + ' cutoff (warehouse time).' + rule;
+    }
+    return 'Preview: real visitors see this right now.';
+  }
+
+  function dispatchPreviewNoteAfter(node, text, warn) {
+    // Sibling note right after the widget node with a stable
+    // data-cx-note hook, so 30s ticks update the text in place and can
+    // never duplicate nodes.
+    if (!PREVIEW) return; // preview-only: never touch real-visitor DOM
+    try {
+      var parent = node.parentNode;
+      if (!parent) return;
+      var note = node.nextElementSibling;
+      if (!note || !note.getAttribute || note.getAttribute('data-cx-note') !== 'dispatch') {
+        note = document.createElement('div');
+        note.setAttribute('data-cx-note', 'dispatch');
+        if (node.nextSibling) parent.insertBefore(note, node.nextSibling);
+        else parent.appendChild(note);
+      }
+      note.className = warn ? 'cx-preview-note cx-preview-note--warn' : 'cx-preview-note';
+      note.textContent = text;
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function dispatchPreviewSync(node, schedule, remaining) {
+    // Real state -> real countdown + reassurance note; hidden state ->
+    // SAMPLE countdown (half the show window, marked data-cx-sample)
+    // + a note naming the REAL reason. Flips both ways on every tick.
+    if (!PREVIEW) return; // preview-only: real visitors keep v5.0 behavior
+    try {
+      if (remaining !== null) {
+        node.removeAttribute('data-cx-sample');
+        dispatchSetText(node, remaining);
+        dispatchPreviewNoteAfter(node, dispatchPreviewNoteText(null), false);
+      } else {
+        var reason = dispatchHiddenReason(schedule);
+        node.setAttribute('data-cx-sample', '1');
+        dispatchSetText(node, schedule.withinMinutes * 60000 / 2);
+        dispatchPreviewNoteAfter(node, reason ? dispatchPreviewNoteText(reason) : DISPATCH_PREVIEW_INVALID, true);
+      }
+    } catch (e) { /* never break the theme */ }
   }
 
   function dispatchTick() {
@@ -432,6 +521,16 @@
     }
     var schedule = dispatchSchedule();
     var remaining = schedule ? dispatchRemainingMs(schedule) : null;
+    if (PREVIEW) {
+      // v5.3: preview never hides dispatch nodes — re-sync real vs
+      // sample each tick so the merchant always sees a truthful state
+      // (a sample flips to the real countdown the moment the window
+      // opens, and back the moment it closes).
+      if (schedule) {
+        for (var p = 0; p < nodes.length; p++) dispatchPreviewSync(nodes[p], schedule, remaining);
+      }
+      return;
+    }
     for (var i = 0; i < nodes.length; i++) {
       if (remaining === null) {
         try {
@@ -459,6 +558,7 @@
     // Graceful no-op when the anchors are missing.
     try {
       if (document.querySelector('.cx-dispatch--pdp')) return; // idempotent
+      if (PREVIEW) { mountDispatchPreview(); return; } // v5.3 merchant preview
       var schedule = dispatchSchedule();
       if (!schedule) return;
       var remaining = dispatchRemainingMs(schedule);
@@ -472,6 +572,48 @@
       dispatchSetText(node, remaining);
       dispatchEnsureTimer();
       track('dispatch_countdown');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function mountDispatchPreview() {
+    // v5.3 PREVIEW-only twin of the cart's renderDispatchPreview: same
+    // anchor logic as the real mount, but the merchant always gets an
+    // answer — the real countdown (plus a reassurance note), an
+    // explained SAMPLE when the credibility engine hides it for real
+    // visitors, or an invalid-config diagnostic. cloneTemplate keeps
+    // its full draft/preview gating (never weakened).
+    if (!PREVIEW) return; // hard gate: never render for real visitors
+    try {
+      var tpl = document.getElementById('cx-tpl-dispatch');
+      if (!tpl || !tpl.content || !widgetAllowed(tpl, 'dispatch_countdown')) return; // feature off
+      var grey = document.querySelector('.pdp__grey');
+      if (!grey) return;
+      // Idempotency scoped to the PDP surface: the cart engine stamps the
+      // same data-cx-note value on its own notes inside the (possibly
+      // hidden) mini-cart drawer, and a document-wide query would let that
+      // drawer note suppress the PDP mount entirely.
+      if (grey.querySelector('[data-cx-note="dispatch"]')) return; // idempotent
+      var anchor = grey.querySelector('.stock-msg') || grey.querySelector('.pdp__actions--flex');
+      if (!anchor) return;
+      var schedule = dispatchSchedule();
+      var remaining = schedule ? dispatchRemainingMs(schedule) : null;
+      var reason = schedule && remaining === null ? dispatchHiddenReason(schedule) : null;
+      if (!schedule || (remaining === null && reason === null)) {
+        // Invalid schedule/strings, or Intl rejected the timezone: no
+        // widget — a diagnostic note only, never a fake countdown.
+        var note = document.createElement('div');
+        note.className = 'cx-preview-note cx-preview-note--warn';
+        note.setAttribute('data-cx-note', 'dispatch');
+        note.textContent = DISPATCH_PREVIEW_INVALID;
+        insertAfter(note, anchor);
+        return;
+      }
+      var node = cloneTemplate('cx-tpl-dispatch', 'dispatch_countdown');
+      if (!node) return;
+      if (!insertAfter(node, anchor)) return;
+      dispatchPreviewSync(node, schedule, remaining);
+      dispatchEnsureTimer();
+      track('dispatch_countdown'); // no-op in preview: beacons suppressed
     } catch (e) { /* never break the theme */ }
   }
 

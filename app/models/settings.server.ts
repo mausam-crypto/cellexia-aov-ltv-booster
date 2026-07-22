@@ -276,8 +276,8 @@ export interface BoosterSettings {
   /**
    * Dispatch countdown ("Order within 2h 14m for same-day dispatch").
    * The cutoff is defined in the WAREHOUSE timezone (IANA name); buyers see
-   * a live countdown plus the cutoff converted to their own local clock, so
-   * the display is timezone-correct worldwide. Shown only when the next
+   * a single-line live countdown to that cutoff (v5.4: no local-clock
+   * suffix), timezone-correct worldwide. Shown only when the next
    * cutoff is today (warehouse terms), on a working day, and within
    * showWithinHours — urgency only when it is real. byCountry overrides the
    * default schedule per buyer country (ISO2) for multi-warehouse setups.

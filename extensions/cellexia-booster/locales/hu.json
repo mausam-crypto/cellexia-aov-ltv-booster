@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "Rendelj {{ hours }} óra {{ minutes }} percen belül, és még ma feladjuk a csomagodat",
-    "within_minutes": "Rendelj {{ minutes }} percen belül, és még ma feladjuk a csomagodat",
-    "local_time": "helyi idő szerint {{ time }}-ig"
+    "within_minutes": "Rendelj {{ minutes }} percen belül, és még ma feladjuk a csomagodat"
   },
   "badges": {
     "secure_checkout": "Biztonságos fizetés",

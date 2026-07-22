@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "Bestellen Sie innerhalb von {{ hours }} Std. {{ minutes }} Min. für Versand noch heute",
-    "within_minutes": "Bestellen Sie innerhalb von {{ minutes }} Min. für Versand noch heute",
-    "local_time": "bis {{ time }} Uhr Ihrer Ortszeit"
+    "within_minutes": "Bestellen Sie innerhalb von {{ minutes }} Min. für Versand noch heute"
   },
   "badges": {
     "secure_checkout": "Sicherer Checkout",

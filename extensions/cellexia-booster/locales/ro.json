@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "Comandă în cel mult {{ hours }} h {{ minutes }} min pentru expediere în aceeași zi",
-    "within_minutes": "Comandă în cel mult {{ minutes }} min pentru expediere în aceeași zi",
-    "local_time": "până la {{ time }}, ora locală"
+    "within_minutes": "Comandă în cel mult {{ minutes }} min pentru expediere în aceeași zi"
   },
   "badges": {
     "secure_checkout": "Plată securizată",

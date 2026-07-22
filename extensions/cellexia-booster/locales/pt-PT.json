@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "Faça a sua encomenda dentro de {{ hours }} h {{ minutes }} min para envio ainda hoje",
-    "within_minutes": "Faça a sua encomenda dentro de {{ minutes }} min para envio ainda hoje",
-    "local_time": "até às {{ time }}, hora local"
+    "within_minutes": "Faça a sua encomenda dentro de {{ minutes }} min para envio ainda hoje"
   },
   "badges": {
     "secure_checkout": "Pagamento seguro",

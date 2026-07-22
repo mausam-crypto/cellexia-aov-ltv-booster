@@ -284,6 +284,28 @@ const FEATURES: FeatureDefinition[] = [
     }),
   },
   {
+    key: "cart_cross_sell",
+    title: "Cart cross-sell",
+    description:
+      "Hand-picked complementary products offered in the cart drawer below the subscription offer. Products already in the cart are hidden automatically.",
+    configureUrl: "/app/features/cart",
+    scopeKeys: ["cart_cross_sell"],
+    statusFlagKey: "cart_cross_sell",
+    isEnabled: (settings) => settings.cartCrossSell.enabled,
+    buildPatch: (enabled) => ({ cartCrossSell: { enabled } }),
+  },
+  {
+    key: "dispatch_countdown",
+    title: "Dispatch countdown",
+    description:
+      "“Order within 2h 14m for same-day dispatch” on product pages and in the cart drawer — shown only when the cutoff is genuinely today, on a dispatch day, and close enough to matter.",
+    configureUrl: "/app/features/dispatch",
+    scopeKeys: ["dispatch_countdown"],
+    statusFlagKey: "dispatch_countdown",
+    isEnabled: (settings) => settings.dispatch.enabled,
+    buildPatch: (enabled) => ({ dispatch: { enabled } }),
+  },
+  {
     key: "trust_badges",
     title: "Trust badges",
     description:

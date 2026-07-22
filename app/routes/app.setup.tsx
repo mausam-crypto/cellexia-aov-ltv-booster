@@ -35,10 +35,14 @@ function StatusBadge({ status }: { status: HealthCheck["status"] }) {
 
 function FixButton({ check }: { check: HealthCheck }) {
   if (!check.fixUrl) return null;
-  const external = check.fixUrl.startsWith("http");
+  const isAdminUrl = check.fixUrl.startsWith("http");
   return (
-    <Button url={check.fixUrl} target={external ? "_blank" : undefined} size="slim">
-      {external ? "Open in Shopify admin" : "Open fix page"}
+    <Button
+      url={check.fixUrl}
+      target={isAdminUrl ? "_blank" : undefined}
+      size="slim"
+    >
+      {isAdminUrl ? "Open in Shopify admin" : "Open fix page"}
     </Button>
   );
 }

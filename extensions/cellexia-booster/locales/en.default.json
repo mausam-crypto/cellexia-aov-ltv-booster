@@ -135,7 +135,6 @@
   },
   "dispatch": {
     "within": "Order within {{ hours }}h {{ minutes }}m for same-day dispatch",
-    "within_minutes": "Order within {{ minutes }} minutes for same-day dispatch",
-    "local_time": "by {{ time }} your local time"
+    "within_minutes": "Order within {{ minutes }} minutes for same-day dispatch"
   }
 }

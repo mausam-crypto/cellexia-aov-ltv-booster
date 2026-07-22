@@ -719,7 +719,7 @@ function zonedNowParts(
 }
 
 type PreviewStatus =
-  | { kind: "visible"; remainingMinutes: number; localCutoffText: string }
+  | { kind: "visible"; remainingMinutes: number }
   | { kind: "hidden"; reason: string };
 
 /**
@@ -776,20 +776,7 @@ function dispatchPreviewStatus(
       reason: `more than ${schedule.showWithinHours} hours remain before the ${schedule.cutoff} cutoff — the countdown appears once ${schedule.showWithinHours} hours or less remain`,
     };
   }
-  // The remaining minutes are timezone-independent, so the cutoff instant is
-  // simply now + remaining — formatted in the viewer's local clock exactly
-  // like the storefront widget does for buyers.
-  const cutoffInstant = new Date(now.getTime() + remaining * 60000);
-  let localCutoffText: string;
-  try {
-    localCutoffText = new Intl.DateTimeFormat(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(cutoffInstant);
-  } catch {
-    localCutoffText = schedule.cutoff;
-  }
-  return { kind: "visible", remainingMinutes: remaining, localCutoffText };
+  return { kind: "visible", remainingMinutes: remaining };
 }
 
 function formatRemaining(totalMinutes: number): string {
@@ -1013,7 +1000,7 @@ export default function DispatchFeaturesPage() {
                 </Text>
                 <Checkbox
                   label="Enable the dispatch countdown"
-                  helpText="“Order within 2h 14m for same-day dispatch” on product pages and in the cart drawer. The cutoff is defined in your warehouse timezone; buyers also see it converted to their own local clock."
+                  helpText="“Order within 2h 14m for same-day dispatch” on product pages and in the cart drawer. The cutoff is defined in your warehouse timezone."
                   checked={state.enabled}
                   onChange={(enabled) =>
                     setState((previous) => ({ ...previous, enabled }))
@@ -1184,8 +1171,8 @@ export default function DispatchFeaturesPage() {
                         </Text>
                         <Text as="p" tone="subdued" variant="bodySm">
                           Cutoff {state.schedule.cutoff} (
-                          {effectiveTimezone(state.schedule)}) —{" "}
-                          {previewStatus.localCutoffText} in your local time.
+                          {effectiveTimezone(state.schedule)}). Buyers see the
+                          single countdown line only.
                         </Text>
                       </BlockStack>
                     </Box>

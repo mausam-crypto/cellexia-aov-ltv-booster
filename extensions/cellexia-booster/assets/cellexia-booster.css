@@ -1436,6 +1436,32 @@ body.customer--b2b .cx-sub-remove {
   }
 }
 
+/* v5.3: merchant-facing dispatch preview note. The class is only ever
+   created by PREVIEW-gated JS, so it can never exist in (or affect)
+   real-visitor DOM. Dashed border keeps it clearly non-theme. */
+.cx-preview-note {
+  margin-block-start: 6px;
+  padding: 6px 10px;
+  border: 1px dashed #808080;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #1d1d1b;
+  background: rgba(177, 205, 237, 0.12);
+}
+
+.cx-preview-note--warn {
+  border-color: #c9972c;
+  background: rgba(255, 191, 0, 0.08);
+  color: #6b5200;
+}
+
+@media print {
+  .cx-preview-note {
+    display: none !important;
+  }
+}
+
 /* ------------------------------------- guarantee-check modal (v4.9) */
 
 .cx-guarantee-modal {
@@ -1603,11 +1629,6 @@ body.customer--b2b .cx-sub-remove {
 .cx-dispatch__main {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-
-.cx-dispatch__local {
-  color: #808080;
-  margin-inline-start: 4px;
 }
 
 /* PDP variant sits inside the grey panel, matching the .stock-msg rhythm. */

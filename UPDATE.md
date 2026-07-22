@@ -105,6 +105,16 @@ auto-detection, and booster auto-translation need them).
 
 ## 5. What's in this update (context for the diff you'll see)
 
+Dispatch countdown fully previewable (in a preview session the widget always
+shows — the real countdown when the display window is open, otherwise a
+labeled sample plus a note saying exactly why buyers don't see it right now;
+real visitors byte-identical, never fabricated urgency) · dispatch widget is
+now a SINGLE line ("Order within 1h 17m for same-day dispatch" — the
+buyer-local clock suffix is removed everywhere incl. all 18 languages) ·
+preview coverage is now enforced: every current and future feature must map
+to a verified preview surface and appear in the Preview Center / Features
+hub pickers or the validation harness fails the build; both pickers also
+gained an automatic fallback group so no feature can ever become unpickable ·
 Auto-translation of per-product booster content (DeepL key on the Languages
 page; translations registered natively via the Translations API, reviewable in
 Translate & Adapt; names/labs/licenses/INCI/batch codes/dates never machine-

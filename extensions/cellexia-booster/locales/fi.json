@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "Tilaa {{ hours }} h {{ minutes }} min kuluessa, niin lähetämme tilauksesi vielä tänään",
-    "within_minutes": "Tilaa {{ minutes }} minuutin kuluessa, niin lähetämme tilauksesi vielä tänään",
-    "local_time": "klo {{ time }} mennessä paikallista aikaa"
+    "within_minutes": "Tilaa {{ minutes }} minuutin kuluessa, niin lähetämme tilauksesi vielä tänään"
   },
   "badges": {
     "secure_checkout": "Turvallinen maksaminen",

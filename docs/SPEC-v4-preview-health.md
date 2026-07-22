@@ -234,3 +234,38 @@ against dev.sqlite (install → defaults → arm preview → apply-to-live → e
 interplay: preview apply on an experimenting market must be refused); (4) health checks
 GraphQL shapes; (5) full regression: all prior validation suites (flip tests, races,
 locales, builds).
+
+## E. Preview coverage invariant (v5.3)
+
+Every feature MUST be previewable through a real surface — a merchant must be
+able to see what they are enabling before it goes live, for every current and
+FUTURE FeatureKey.
+
+- **Coverage rule**: each key in `FEATURE_KEYS` (settings.server.ts) maps to a
+  preview surface: `storefront` (a `data-cx-feature="<key>"` marker or the
+  `cx-tpl-*` template the storefront JS clones for that key), `checkout` (the
+  `preview.draftFlags.<key> === true` gate in the matching
+  `extensions/checkout-*/src/Checkout.tsx`), or `excluded` with a written
+  reason (currently only `clinical_results`: a theme-editor app block,
+  previewed natively in the Shopify theme editor and excluded from
+  `PREVIEWABLE_FEATURE_KEYS` in preview.server.ts).
+- **Runtime visibility conditions**: a feature whose live engine can hide the
+  widget for non-flag reasons (e.g. the dispatch countdown's credibility
+  window) must, inside a VERIFIED preview session, render either the real
+  widget (when the live engine shows it) or a clearly LABELED sample
+  (`data-cx-sample="1"`) plus a merchant-facing English note naming the real
+  reason it is hidden and the real display rule. Invalid config renders a
+  diagnostic note instead of the widget. Server-side, `featureReadiness`
+  mirrors the same window math so the Preview Center states up front what the
+  preview will show right now.
+- **Enforcement**: the parity harness's PREVIEW COVERAGE section parses
+  `FEATURE_KEYS` live from settings.server.ts source and fails when any key
+  lacks a coverage entry, when an entry's evidence pattern no longer matches
+  its evidence file, or when an `excluded` entry has no written reason. A new
+  FeatureKey cannot ship until the map is extended with VERIFIED evidence for
+  it.
+- **Real visitors stay byte-identical**: every preview-only branch is gated on
+  a verified preview session (storefront `PREVIEW` non-null); the harness's
+  section-1 disarmed byte-parity oracles remain the proof and must keep
+  passing untouched. Never fabricate urgency for real visitors — samples exist
+  only in preview sessions and only with the explanatory note attached.

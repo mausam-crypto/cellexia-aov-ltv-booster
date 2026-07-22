@@ -19,6 +19,7 @@ import {
   InlineStack,
   Layout,
   Page,
+  Select,
   Spinner,
   Text,
   TextField,
@@ -43,6 +44,7 @@ import {
   deleteBatchTransparency,
   deleteClinicalStudy,
   getProductBoosters,
+  isPdpContainer,
   saveBatchTransparency,
   saveBeforeAfters,
   saveClinicalStudy,
@@ -58,6 +60,13 @@ import type {
   ClinicalStudyView,
   PdpFlagKey,
 } from "../services/pdp-content.server";
+import {
+  collectBoosterResourceGids,
+  getTargetLocales,
+  getTranslationConfig,
+  translateResources,
+  type TranslateRunSummary,
+} from "../services/translation.server";
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -88,16 +97,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     definitionErrors = ensured.errors;
   }
 
-  const [settings, boosters] = await Promise.all([
-    getSettings(session.shop),
-    getProductBoosters(admin, productGid),
-  ]);
+  const [settings, boosters, translationConfig, targetLocales] =
+    await Promise.all([
+      getSettings(session.shop),
+      getProductBoosters(admin, productGid),
+      getTranslationConfig(session.shop),
+      getTargetLocales(admin),
+    ]);
   const storePrefix = session.shop.replace(".myshopify.com", "");
 
   return {
     boosters,
+    // The DeepL key itself never leaves the server — booleans/counts only.
+    translation: {
+      configured: translationConfig.configured,
+      autoOnSave: translationConfig.autoOnSave,
+      targetCount: targetLocales.targets.length,
+    },
     definitionErrors,
     guaranteeDays: settings.emptyBottleGuarantee.days,
+    guaranteeContainer: settings.emptyBottleGuarantee.container,
     globalFlags: {
       clinical_study: resolveFeatureFlag(settings, "clinical_study"),
       verified_before_after: resolveFeatureFlag(
@@ -130,6 +149,12 @@ interface FileResultPayload {
 type ProductBoosterActionResult =
   | ({ intent: "upload_image" } & FileResultPayload)
   | ({ intent: "import_image_url" } & FileResultPayload)
+  | {
+      intent: "translate_boosters";
+      ok: boolean;
+      errors: string[];
+      summary: TranslateRunSummary | null;
+    }
   | { intent: "save_flags"; ok: boolean; errors: string[] }
   | { intent: "save_clinical"; ok: boolean; errors: string[] }
   | { intent: "delete_clinical"; ok: boolean; errors: string[] }
@@ -293,7 +318,7 @@ export const action = async ({
   request,
   params,
 }: ActionFunctionArgs): Promise<ProductBoosterActionResult> => {
-  const { admin } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const numericId = params.id ?? "";
   if (!/^\d+$/.test(numericId)) {
     return { intent: "unknown", ok: false, errors: ["Invalid product id"] };
@@ -356,9 +381,61 @@ export const action = async ({
       }
       return importImageFromUrl(admin, sourceUrl);
     }
+    case "translate_boosters": {
+      const config = await getTranslationConfig(session.shop);
+      if (!config.configured) {
+        return {
+          intent: "translate_boosters",
+          ok: false,
+          errors: [
+            "Connect a DeepL API key on the Languages page to enable auto-translation.",
+          ],
+          summary: null,
+        };
+      }
+      const boosters = await getProductBoosters(admin, productGid);
+      const gids = collectBoosterResourceGids(boosters);
+      const targets = await getTargetLocales(admin);
+      if (targets.errors.length) {
+        return {
+          intent: "translate_boosters",
+          ok: false,
+          errors: targets.errors,
+          summary: null,
+        };
+      }
+      const summary = await translateResources(
+        admin,
+        config.apiKey,
+        gids,
+        targets.targets,
+      );
+      return {
+        intent: "translate_boosters",
+        ok: summary.ok,
+        errors: summary.errors,
+        summary,
+      };
+    }
     case "save_flags": {
       const key = String(formData.get("key") ?? "");
       const value = String(formData.get("value") ?? "");
+      // Per-product container override for the empty-bottle guarantee copy:
+      // a valid container sets it, "inherit" clears it (fall back to the
+      // global emptyBottleGuarantee.container).
+      if (key === "container") {
+        if (value !== "inherit" && !isPdpContainer(value)) {
+          return {
+            intent: "save_flags",
+            ok: false,
+            errors: ["Unknown container type"],
+          };
+        }
+        const result = await savePdpFlags(admin, productGid, {
+          container: value === "inherit" ? null : value,
+        });
+        return { intent: "save_flags", ok: result.ok, errors: result.errors };
+      }
       if (!(PDP_FLAG_KEYS as readonly string[]).includes(key)) {
         return { intent: "save_flags", ok: false, errors: ["Unknown booster flag"] };
       }
@@ -454,6 +531,17 @@ const MAX_RESULTS = 6;
 const MAX_BA_ENTRIES = 20;
 const MAX_INGREDIENTS = 60;
 const MAX_CERTIFICATES = 60;
+
+/** Options for the per-product guarantee container Select — "inherit" means
+ *  no override is stored (the global emptyBottleGuarantee.container applies). */
+const CONTAINER_SELECT_OPTIONS = [
+  { label: "Inherit default", value: "inherit" },
+  { label: "Bottle", value: "bottle" },
+  { label: "Jar", value: "jar" },
+  { label: "Tube", value: "tube" },
+  { label: "Pump", value: "pump" },
+  { label: "Product", value: "product" },
+];
 
 function clinicalToState(view: ClinicalStudyView | null): ClinicalFormState {
   if (!view) {
@@ -1186,8 +1274,10 @@ function BeforeAfterEntryEditor({
 export default function ProductBoosterDetailPage() {
   const {
     boosters,
+    translation,
     definitionErrors,
     guaranteeDays,
+    guaranteeContainer,
     globalFlags,
     metaobjectsUrl,
   } = useLoaderData<typeof loader>();
@@ -1197,6 +1287,74 @@ export default function ProductBoosterDetailPage() {
   const baFetcher = useFetcher<typeof action>();
   const batchFetcher = useFetcher<typeof action>();
   const flagsFetcher = useFetcher<typeof action>();
+  const translateFetcher = useFetcher<typeof action>();
+
+  // ---------------------- auto-translation plumbing -----------------------
+  const translating = translateFetcher.state !== "idle";
+  /** A save landed while a translation run was in flight — run once more so
+   *  the final text is what gets translated. */
+  const translateQueuedRef = useRef(false);
+
+  const runTranslate = () => {
+    if (translateFetcher.state === "idle") {
+      translateFetcher.submit(
+        { intent: "translate_boosters" },
+        { method: "post" },
+      );
+    } else {
+      translateQueuedRef.current = true;
+    }
+  };
+  const runTranslateRef = useRef(runTranslate);
+  runTranslateRef.current = runTranslate;
+
+  useEffect(() => {
+    if (translateFetcher.state === "idle" && translateQueuedRef.current) {
+      translateQueuedRef.current = false;
+      translateFetcher.submit(
+        { intent: "translate_boosters" },
+        { method: "post" },
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [translateFetcher.state]);
+
+  // Auto-fire after every successful content save (never after deletes —
+  // a removed metaobject takes its translations with it). Each fetcher's
+  // last-handled result is tracked by identity so one save = one run.
+  const autoSeenRef = useRef<{
+    clinical: unknown;
+    ba: unknown;
+    batch: unknown;
+  }>({ clinical: null, ba: null, batch: null });
+  useEffect(() => {
+    const candidates = [
+      { slot: "clinical" as const, data: clinicalFetcher.data, intent: "save_clinical" },
+      { slot: "ba" as const, data: baFetcher.data, intent: "save_ba" },
+      { slot: "batch" as const, data: batchFetcher.data, intent: "save_batch" },
+    ];
+    let fire = false;
+    for (const { slot, data, intent } of candidates) {
+      if (!data || data === autoSeenRef.current[slot]) continue;
+      autoSeenRef.current[slot] = data;
+      if (data.intent === intent && data.ok) fire = true;
+    }
+    if (
+      fire &&
+      translation.configured &&
+      translation.autoOnSave &&
+      translation.targetCount > 0
+    ) {
+      runTranslateRef.current();
+    }
+  }, [
+    clinicalFetcher.data,
+    baFetcher.data,
+    batchFetcher.data,
+    translation.configured,
+    translation.autoOnSave,
+    translation.targetCount,
+  ]);
 
   const initialClinical = useMemo(
     () => clinicalToState(boosters.clinicalStudy),
@@ -1408,6 +1566,19 @@ export default function ProductBoosterDetailPage() {
     }
   }, [flagsFetcher.data, shopify]);
 
+  useEffect(() => {
+    const data = translateFetcher.data;
+    if (!data || data.intent !== "translate_boosters") return;
+    const done =
+      data.summary?.locales.filter((l) => l.status === "done").length ?? 0;
+    shopify.toast.show(
+      data.ok
+        ? `Booster content translated into ${done} ${done === 1 ? "language" : "languages"}`
+        : "Translation did not complete — see the Translations card",
+      { isError: !data.ok },
+    );
+  }, [translateFetcher.data, shopify]);
+
   // ------- flags (derived from the loader, optimistic while submitting) ----
   const pendingFlagKey =
     flagsFetcher.state !== "idle" && flagsFetcher.formData
@@ -1426,6 +1597,23 @@ export default function ProductBoosterDetailPage() {
   const toggleFlag = (key: PdpFlagKey, checked: boolean) => {
     flagsFetcher.submit(
       { intent: "save_flags", key, value: String(checked) },
+      { method: "post" },
+    );
+  };
+
+  // Container override Select (optimistic while its submission is in flight).
+  // "inherit" = no per-product override — the flags json carries no
+  // `container` key and the global default applies.
+  const pendingContainer =
+    pendingFlagKey === "container" && flagsFetcher.formData
+      ? String(flagsFetcher.formData.get("value") ?? "")
+      : null;
+  const containerValue =
+    pendingContainer ?? boosters.flags.container ?? "inherit";
+
+  const setContainer = (value: string) => {
+    flagsFetcher.submit(
+      { intent: "save_flags", key: "container", value },
       { method: "post" },
     );
   };
@@ -1461,6 +1649,18 @@ export default function ProductBoosterDetailPage() {
   }
 
   const product = boosters.product;
+
+  const translateResult =
+    translateFetcher.data?.intent === "translate_boosters"
+      ? translateFetcher.data
+      : null;
+  const translateLocaleErrors = [
+    ...new Set(
+      (translateResult?.summary?.locales ?? [])
+        .filter((entry) => entry.status === "error" && entry.error)
+        .map((entry) => `${entry.locale}: ${entry.error}`),
+    ),
+  ];
 
   const savingClinical = clinicalFetcher.state !== "idle";
   const savingBa = baFetcher.state !== "idle";
@@ -1801,22 +2001,121 @@ export default function ProductBoosterDetailPage() {
         ) : null}
 
         <Layout.Section>
-          <Banner tone="info" title="Translate this content">
-            <BlockStack gap="200">
-              <Text as="p">
-                Everything you save here (study titles, verifier statements,
-                ingredient names, footnotes) is stored as Shopify metaobjects.
-                Translate it in Translate &amp; Adapt under Content →
-                Metaobjects — exactly like theme content. Shoppers always see
-                the translated version for their language.
-              </Text>
-              <InlineStack gap="200">
-                <Button url={metaobjectsUrl} target="_blank">
-                  Open Content → Metaobjects
-                </Button>
+          <Card>
+            <BlockStack gap="300">
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="h2" variant="headingMd">
+                  Translations
+                </Text>
+                {translation.configured ? (
+                  <Badge tone="success">Auto-translation on</Badge>
+                ) : (
+                  <Badge tone="attention">Manual only</Badge>
+                )}
               </InlineStack>
+              {translation.configured ? (
+                <BlockStack gap="300">
+                  <Text as="p" tone="subdued">
+                    {translation.autoOnSave
+                      ? "Every save on this page is translated into all published shop languages automatically. You can also re-run it any time:"
+                      : "Auto-translate on save is turned off — run it manually after editing:"}
+                  </Text>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Button
+                      onClick={runTranslate}
+                      loading={translating}
+                      disabled={translation.targetCount === 0}
+                    >
+                      {`Translate into all languages (${translation.targetCount})`}
+                    </Button>
+                    <Button url="/app/localization" variant="plain">
+                      Translation settings
+                    </Button>
+                  </InlineStack>
+                  {translation.targetCount === 0 ? (
+                    <Text as="p" tone="subdued">
+                      The shop has no published extra languages yet — add them
+                      in Shopify Settings → Languages.
+                    </Text>
+                  ) : null}
+                  {translateResult ? (
+                    <BlockStack gap="200">
+                      {translateResult.errors.map((error) => (
+                        <Text as="p" tone="critical" key={error}>
+                          {error}
+                        </Text>
+                      ))}
+                      {translateResult.summary ? (
+                        <InlineStack gap="100" wrap>
+                          {translateResult.summary.locales.map((entry) => (
+                            <Badge
+                              key={entry.locale}
+                              tone={
+                                entry.status === "done"
+                                  ? "success"
+                                  : entry.status === "error"
+                                    ? "critical"
+                                    : undefined
+                              }
+                            >
+                              {entry.status === "done"
+                                ? `${entry.locale} ✓`
+                                : entry.status === "unsupported"
+                                  ? `${entry.locale} — not supported`
+                                  : entry.status === "skipped"
+                                    ? `${entry.locale} — same language`
+                                    : `${entry.locale} ✕`}
+                            </Badge>
+                          ))}
+                        </InlineStack>
+                      ) : null}
+                      {translateLocaleErrors.length > 0 ? (
+                        <BlockStack gap="100">
+                          {translateLocaleErrors.map((message) => (
+                            <Text
+                              as="p"
+                              tone="critical"
+                              variant="bodySm"
+                              key={message}
+                            >
+                              {message}
+                            </Text>
+                          ))}
+                        </BlockStack>
+                      ) : null}
+                    </BlockStack>
+                  ) : null}
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Lab and clinic names, verifier names and licenses, INCI
+                    ingredient names, batch codes, dates and URLs are never
+                    machine-translated. Review or override any translation in
+                    Translate &amp; Adapt (Content → Metaobjects) — existing
+                    translations, including your manual edits, are never
+                    overwritten; a field is only re-translated after you
+                    change its source text here.
+                  </Text>
+                </BlockStack>
+              ) : (
+                <BlockStack gap="300">
+                  <Text as="p" tone="subdued">
+                    The content you write here is stored per product, so
+                    shoppers in other languages see your primary language
+                    until it is translated. Connect a free DeepL API key once
+                    and the app translates everything you save here into all
+                    published shop languages automatically.
+                  </Text>
+                  <InlineStack gap="200">
+                    <Button url="/app/localization" variant="primary">
+                      Set up auto-translation
+                    </Button>
+                    <Button url={metaobjectsUrl} target="_blank" variant="plain">
+                      Translate manually (Content → Metaobjects)
+                    </Button>
+                  </InlineStack>
+                </BlockStack>
+              )}
             </BlockStack>
-          </Banner>
+          </Card>
         </Layout.Section>
 
         <Layout.Section>
@@ -2512,9 +2811,12 @@ export default function ProductBoosterDetailPage() {
                 </InlineStack>
                 <Text as="p" tone="subdued" variant="bodySm">
                   “Use every last drop — take {guaranteeDays} days. If you
-                  don’t love your results, return the empty bottle for a full
-                  refund.” The panel needs no per-product content; copy and the
-                  day count are global.
+                  don’t love your results, return the empty{" "}
+                  {containerValue === "inherit"
+                    ? guaranteeContainer
+                    : containerValue}{" "}
+                  for a full refund.” The panel needs no per-product content;
+                  copy and the day count are global.
                 </Text>
                 <Checkbox
                   label="Show the guarantee panel on this product"
@@ -2524,6 +2826,16 @@ export default function ProductBoosterDetailPage() {
                   }
                   disabled={flagsFetcher.state !== "idle"}
                 />
+                <Box maxWidth="280px">
+                  <Select
+                    label="Container type"
+                    options={CONTAINER_SELECT_OPTIONS}
+                    value={containerValue}
+                    onChange={setContainer}
+                    disabled={flagsFetcher.state !== "idle"}
+                    helpText={`The word used in this product’s guarantee copy. “Inherit default” uses the global setting (${guaranteeContainer}).`}
+                  />
+                </Box>
                 <InlineStack>
                   <Button variant="plain" url="/app/products">
                     Global switch &amp; day count

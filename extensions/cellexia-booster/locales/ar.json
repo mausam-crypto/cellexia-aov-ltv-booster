@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "اطلب خلال {{ hours }} س {{ minutes }} د ليتم شحن طلبك في اليوم نفسه",
-    "within_minutes": "اطلب خلال {{ minutes }} د ليتم شحن طلبك في اليوم نفسه",
-    "local_time": "بحلول الساعة {{ time }} بتوقيتك المحلي"
+    "within_minutes": "اطلب خلال {{ minutes }} د ليتم شحن طلبك في اليوم نفسه"
   },
   "badges": {
     "secure_checkout": "دفع آمن",

@@ -186,10 +186,33 @@ function FeatureRow({ feature }: { feature: FeatureCardData }) {
 export default function FeaturesHub() {
   const { features, previewArmed } = useLoaderData<typeof loader>();
 
+  // v5.4 safety net (same contract as the Preview Center picker): a
+  // FeatureKey missing from the GROUPS literal still renders, in an
+  // automatic trailing group, so no booster can ever lose its Configure /
+  // Preview buttons. The validation harness fails when the literal drifts,
+  // so this group should never actually appear.
+  const groupedHubKeys = new Set<string>(GROUPS.flatMap((g) => g.keys));
+  const ungroupedHubKeys = (
+    Object.keys(features) as (keyof typeof features)[]
+  ).filter((key) => !groupedHubKeys.has(key));
+  const hubGroups =
+    ungroupedHubKeys.length > 0
+      ? [
+          ...GROUPS,
+          {
+            title: "Other boosters",
+            description:
+              "Boosters not yet assigned to a section — fully functional, listed here automatically.",
+            keys: ungroupedHubKeys as FeatureKey[],
+          },
+        ]
+      : GROUPS;
+  const boosterCount = Object.keys(features).length;
+
   return (
     <Page
       title="Features"
-      subtitle="All 17 boosters — status, reach, configuration and preview"
+      subtitle={`All ${boosterCount} boosters — status, reach, configuration and preview`}
       backAction={{ content: "Dashboard", url: "/app" }}
     >
       <TitleBar title="Features" />
@@ -211,7 +234,7 @@ export default function FeaturesHub() {
           </Layout.Section>
         ) : null}
 
-        {GROUPS.map((group) => (
+        {hubGroups.map((group) => (
           <Layout.Section key={group.title}>
             <Card>
               <BlockStack gap="400">

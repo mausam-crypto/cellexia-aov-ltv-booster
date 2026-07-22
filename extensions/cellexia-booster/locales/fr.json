@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "Commandez d'ici {{ hours }} h {{ minutes }} min pour une expédition le jour même",
-    "within_minutes": "Commandez d'ici {{ minutes }} min pour une expédition le jour même",
-    "local_time": "avant {{ time }}, heure locale"
+    "within_minutes": "Commandez d'ici {{ minutes }} min pour une expédition le jour même"
   },
   "badges": {
     "secure_checkout": "Paiement sécurisé",

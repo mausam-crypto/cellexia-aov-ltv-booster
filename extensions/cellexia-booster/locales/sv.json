@@ -35,8 +35,7 @@
   },
   "dispatch": {
     "within": "Beställ inom {{ hours }} tim {{ minutes }} min, så skickar vi din order i dag",
-    "within_minutes": "Beställ inom {{ minutes }} min, så skickar vi din order i dag",
-    "local_time": "senast kl. {{ time }} lokal tid"
+    "within_minutes": "Beställ inom {{ minutes }} min, så skickar vi din order i dag"
   },
   "badges": {
     "secure_checkout": "Säker kassa",

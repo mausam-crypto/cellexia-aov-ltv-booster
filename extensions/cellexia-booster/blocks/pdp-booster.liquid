@@ -268,7 +268,7 @@
         "currency": {{ cart.currency.iso_code | json }},
         {%- if show_dispatch or cx_draft_dispatch %}
         "dispatch": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}, "showWithinHours": {{ cx_dsp_within }}},
-        "strings": {"dispatch.within": {{ 'dispatch.within' | t: hours: '@@HOURS@@', minutes: '@@MINUTES@@' | json }}, "dispatch.within_minutes": {{ 'dispatch.within_minutes' | t: minutes: '@@MINUTES@@' | json }}, "dispatch.local_time": {{ 'dispatch.local_time' | t: time: '@@TIME@@' | json }}},
+        "strings": {"dispatch.within": {{ 'dispatch.within' | t: hours: '@@HOURS@@', minutes: '@@MINUTES@@' | json }}, "dispatch.within_minutes": {{ 'dispatch.within_minutes' | t: minutes: '@@MINUTES@@' | json }}},
         {%- endif %}
         "placement": {{ block.settings.proof_placement | default: 'above_tabs' | json }}
         {%- if cx_prev_armed -%}
@@ -713,7 +713,7 @@
         <div class="cx-dispatch cx-dispatch--pdp" data-cx-feature="dispatch_countdown">
           <span class="cx-dispatch__dot" aria-hidden="true"></span>
           {%- render 'cx-icons', icon: 'truck', size: 16 -%}
-          <span class="cx-dispatch__text"><strong class="cx-dispatch__main"></strong> <span class="cx-dispatch__local"></span></span>
+          <span class="cx-dispatch__text"><strong class="cx-dispatch__main"></strong></span>
         </div>
       </template>
     {%- endif -%}

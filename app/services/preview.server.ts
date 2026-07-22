@@ -345,6 +345,101 @@ export interface FeatureReadinessExtras {
   };
 }
 
+/** Short weekday name (Intl 'en-US') -> ISO weekday number, matching the
+ *  DISPATCH_ISO map in the storefront engines (cellexia-cart.js /
+ *  cellexia-pdp.js). */
+const DISPATCH_ISO_DAYS: Record<string, number> = {
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 7,
+};
+
+/**
+ * Readiness for the dispatch countdown. The storefront credibility engine
+ * hides the widget outside its window (not a dispatch day / cutoff passed /
+ * too early), so the readiness note tells the merchant EXACTLY what the
+ * preview will show right now: the real countdown (window open), or a
+ * labeled sample plus an explanation (window closed). It never claims the
+ * widget is shown to real visitors when it is not.
+ *
+ * The window state is computed with the SAME warehouse-timezone
+ * minutes-of-day math the storefront uses (Intl.DateTimeFormat
+ * formatToParts); any throw degrades to ready with a generic note.
+ */
+function dispatchReadiness(
+  dispatch: BoosterSettings["dispatch"],
+): FeatureReadiness {
+  if (!dispatch.showInCart && !dispatch.showOnPdp) {
+    return {
+      ready: false,
+      reason:
+        "Both surfaces are turned off in Features → Dispatch countdown — enable “Show in cart” and/or “Show on product page” or the widget renders nowhere.",
+    };
+  }
+  const byCountryNote =
+    Object.keys(dispatch.byCountry ?? {}).length > 0
+      ? " Some countries use custom schedules — the preview follows the schedule for the simulated market's country when one applies."
+      : "";
+  const cutoff = dispatch.cutoff;
+  const windowHours = dispatch.showWithinHours;
+  try {
+    // Same math as dispatchRemainingMs in the storefront engines.
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: dispatch.timezone,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date());
+    const map: Record<string, string> = {};
+    for (const part of parts) map[part.type] = part.value;
+    const iso = DISPATCH_ISO_DAYS[map.weekday ?? ""];
+    const nowMinutes = (Number(map.hour) % 24) * 60 + Number(map.minute);
+    const cutoffMinutes =
+      Number(cutoff.slice(0, 2)) * 60 + Number(cutoff.slice(3, 5));
+    if (
+      !iso ||
+      !Number.isFinite(nowMinutes) ||
+      !Number.isFinite(cutoffMinutes)
+    ) {
+      throw new Error("dispatch schedule could not be evaluated");
+    }
+    let why: string | null = null;
+    if (!dispatch.days.includes(iso)) {
+      why = "today isn't a dispatch day in the warehouse timezone";
+    } else if (nowMinutes >= cutoffMinutes) {
+      why = `today's ${cutoff} cutoff (warehouse time) has passed`;
+    } else if (cutoffMinutes - nowMinutes > windowHours * 60) {
+      why = `more than ${windowHours} h remain before today's ${cutoff} cutoff`;
+    }
+    if (why === null) {
+      return {
+        ready: true,
+        reason:
+          "Live window is open right now — the preview shows the real countdown." +
+          byCountryNote,
+      };
+    }
+    return {
+      ready: true,
+      reason:
+        `Outside the display window right now (${why}) — the preview shows a labeled sample plus an explanation; real visitors see it on dispatch days during the final ${windowHours} h before the ${cutoff} cutoff (warehouse time).` +
+        byCountryNote,
+    };
+  } catch {
+    return {
+      ready: true,
+      reason:
+        `The warehouse timezone ("${dispatch.timezone}") could not be evaluated on this server — the preview still works: it shows the real countdown when the display window is open, otherwise a labeled sample plus an explanation.` +
+        byCountryNote,
+    };
+  }
+}
+
 function contentReadiness(
   count: number | undefined,
   contentLabel: string,
@@ -421,6 +516,7 @@ export function featureReadiness(
     reason:
       "Placed as a theme-editor block — not shown in the app's live preview. Use the theme editor preview for placement; market toggles still apply.",
   };
+  readiness.dispatch_countdown = dispatchReadiness(settings.dispatch);
   readiness.clinical_study = contentReadiness(counts?.clinical, "clinical study");
   readiness.verified_before_after = contentReadiness(
     counts?.ba,
