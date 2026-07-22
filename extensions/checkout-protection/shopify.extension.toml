@@ -1,4 +1,5 @@
 api_version = "2025-07"
+uid = "d5f76391-3ca3-09d6-0009-f3f910f978d21791d3d9"
 
 [[extensions]]
 name = "Cellexia Order Protection"

@@ -666,11 +666,13 @@
 
   function bindSurveyDisclosure(widget) {
     // Accessible disclosure: a real <button> with aria-expanded /
-    // aria-controls, click/tap toggles everywhere, hover opens (with a
-    // close delay) only on hover-capable fine pointers, Escape closes and
-    // refocuses the trigger. The panel is inline below the trigger —
-    // never floating. Bound AFTER cloning, so it works identically on the
-    // live template and the preview alt template.
+    // aria-controls. CLICK/TAP ONLY on every device (v5.8.2: the desktop
+    // hover-open was removed on merchant request — it felt janky; a
+    // deliberate tap/click reads calmer and can't flicker). One press
+    // opens, another closes; Escape closes and refocuses the trigger.
+    // The panel is inline below the trigger — never floating. Bound
+    // AFTER cloning, so it works identically on the live template and
+    // the preview alt template.
     try {
       var btn = widget.querySelector('[data-cx-survey-toggle]');
       if (!btn) return;
@@ -679,15 +681,7 @@
       if (panelId) panel = widget.querySelector('#' + panelId);
       if (!panel) panel = widget.querySelector('.cx-survey__panel');
       if (!panel) return;
-      var closeTimer = null;
-      function cancelClose() {
-        if (closeTimer) {
-          window.clearTimeout(closeTimer);
-          closeTimer = null;
-        }
-      }
       function setOpen(open) {
-        cancelClose();
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
         if (open) panel.removeAttribute('hidden');
         else panel.setAttribute('hidden', '');
@@ -698,25 +692,6 @@
       btn.addEventListener('click', function () {
         setOpen(!isOpen());
       });
-      var hoverFine = false;
-      try {
-        hoverFine = !!(window.matchMedia &&
-          window.matchMedia('(hover: hover) and (pointer: fine)').matches);
-      } catch (e) { hoverFine = false; }
-      if (hoverFine) {
-        var zone = widget.querySelector('[data-cx-survey-how]');
-        if (zone) {
-          zone.addEventListener('mouseenter', function () {
-            setOpen(true);
-          });
-          zone.addEventListener('mouseleave', function () {
-            cancelClose();
-            closeTimer = window.setTimeout(function () {
-              setOpen(false);
-            }, 350);
-          });
-        }
-      }
       widget.addEventListener('keydown', function (event) {
         if ((event.key === 'Escape' || event.key === 'Esc') && isOpen()) {
           setOpen(false);

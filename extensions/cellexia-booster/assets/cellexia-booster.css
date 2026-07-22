@@ -1058,18 +1058,60 @@ body.customer--b2b .cx-sub-remove {
   justify-content: center;
 }
 
+/* v5.8.3 — desktop is a CENTERED composition (merchant request): the
+   stacked, centered mobile layout reads best, so desktop refines it
+   (constrained measure, larger seal) instead of switching to the old
+   left-anchored side-by-side row. Long-form text (methodology panel,
+   report rows, the quoted question) stays start-aligned for readability
+   inside the centered blocks. Mobile (< 750px) is untouched. */
 @media (min-width: 750px) {
-  .cx-survey--seal {
-    text-align: start;
+  .cx-survey {
+    max-width: 680px;
+    margin-inline: auto;
+    text-align: center;
   }
 
   .cx-survey__seal-row {
-    flex-direction: row;
-    gap: 40px;
+    gap: 28px;
   }
 
-  .cx-survey--seal .cx-survey__how-row {
-    justify-content: flex-start;
+  .cx-survey__seal-wrap {
+    width: 170px;
+    height: 170px;
+  }
+
+  .cx-survey__pct {
+    font-size: 42px;
+  }
+
+  .cx-survey__headline {
+    margin-inline: auto;
+  }
+
+  .cx-survey__how-row {
+    justify-content: center;
+  }
+
+  .cx-survey__panel {
+    text-align: start;
+  }
+
+  .cx-survey--report .cx-survey__report {
+    margin-inline: auto;
+    text-align: start;
+  }
+
+  .cx-survey--question .cx-survey__quote {
+    margin-inline: auto;
+    text-align: start;
+  }
+
+  .cx-survey__tally-head {
+    justify-content: center;
+  }
+
+  .cx-survey__dots {
+    margin-inline: auto;
   }
 }
 
