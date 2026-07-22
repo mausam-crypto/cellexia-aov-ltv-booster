@@ -130,11 +130,11 @@
     "title_pct": "of board-certified dermatologists surveyed would recommend Cellexia",
     "count": "{{ yes }} of {{ total }} dermatologists surveyed",
     "how": "How the survey was conducted",
-    "methodology_p1": "In May 2026, an independent healthcare research firm surveyed {{ total }} licensed dermatologists across the United States, United Kingdom, France, Germany, Italy and Spain.",
-    "methodology_p2": "Each dermatologist reviewed a standardised overview of Cellexia, including its product range, ingredient information, intended uses and supporting product evidence. They were then asked:",
-    "methodology_p3": "“Based on the information reviewed, would you recommend Cellexia to an appropriate patient seeking skincare for visible signs of ageing?”",
+    "methodology_p1": "In May 2026, an independent cosmetic research firm surveyed {{ total }} licensed dermatologists across the United States, United Kingdom, France, Germany, Italy and Spain.",
+    "methodology_p2": "Each dermatologist received all Cellexia products, tested them with at least 5 patients for at least 8 weeks and reviewed a detailed overview of Cellexia, including its product range, ingredient information, intended uses and supporting clinical evidence. They were then asked:",
+    "methodology_p3": "“Based on the information reviewed and your patients’ experience, would you recommend Cellexia to an appropriate patient seeking skincare for visible signs of ageing?”",
     "methodology_p4": "All {{ total }} dermatologists answered the question. {{ yes }} selected “Yes,” representing {{ percent }}% of respondents.",
-    "methodology_p5": "The survey was commissioned by Cellexia and conducted independently. Respondents were recruited and responses were collected and analysed by the research firm. Cellexia did not select participants or alter individual responses.",
+    "methodology_p5": "The survey was requested by Cellexia and conducted independently. Respondents were recruited and responses were collected and analysed by the research firm. Cellexia did not select participants or alter individual responses.",
     "report_title": "Survey results",
     "report_surveyed": "Dermatologists surveyed",
     "report_yes": "Answered “Yes”",
@@ -148,5 +148,17 @@
   "dispatch": {
     "within": "Order within {{ hours }}h {{ minutes }}m for same-day dispatch",
     "within_minutes": "Order within {{ minutes }} minutes for same-day dispatch"
+  },
+  "delivery": {
+    "line": "Get it by {{ date }}",
+    "range": "Estimated delivery: {{ from }} – {{ to }}",
+    "range_same": "Estimated delivery: {{ date }}",
+    "timeline_order": "Order today",
+    "timeline_ship": "Ships {{ date }}",
+    "timeline_delivered": "Delivered by {{ date }}",
+    "box_title": "Guaranteed delivery by {{ date }}",
+    "box_sub": "…or we refund you or send a free replacement.",
+    "badge": "Delivery guarantee",
+    "tooltip": "Delivered on or before {{ date }} — or we refund you or send a free replacement."
   }
 }

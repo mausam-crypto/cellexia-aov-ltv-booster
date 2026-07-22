@@ -1,0 +1,12 @@
+{
+  "line": "Levering senest {{date}}",
+  "range": "Forventet levering: {{from}} – {{to}}",
+  "range_same": "Forventet levering: {{date}}",
+  "timeline_order": "Bestill i dag",
+  "timeline_ship": "Sendes {{date}}",
+  "timeline_delivered": "Levert senest {{date}}",
+  "box_title": "Garantert levering senest {{date}}",
+  "box_sub": "… ellers refunderer vi deg eller sender deg en gratis erstatning.",
+  "badge": "Leveringsgaranti",
+  "tooltip": "Levert senest {{date}} — ellers refunderer vi deg eller sender deg en gratis erstatning."
+}

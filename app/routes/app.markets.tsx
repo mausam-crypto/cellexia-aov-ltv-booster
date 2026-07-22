@@ -136,6 +136,10 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
       { key: "guarantee", label: "Money-back guarantee" },
       { key: "clinical_results", label: "Clinical results" },
       { key: "subscription_nudge", label: "Subscription nudge" },
+      // Standalone master flag (deliveryEstimate.enabled) — the delivery
+      // estimate + guarantee widget renders on product pages below the
+      // dispatch countdown.
+      { key: "delivery_estimate", label: "Delivery guarantee" },
     ],
   },
   {
@@ -411,6 +415,9 @@ export default function MarketsPage() {
     }
     if (state.dispatch_countdown.on !== initial.dispatch_countdown.on) {
       patch.dispatch = { enabled: state.dispatch_countdown.on };
+    }
+    if (state.delivery_estimate.on !== initial.delivery_estimate.on) {
+      patch.deliveryEstimate = { enabled: state.delivery_estimate.on };
     }
 
     const formData = new FormData();

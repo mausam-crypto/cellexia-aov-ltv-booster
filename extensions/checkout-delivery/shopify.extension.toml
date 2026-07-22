@@ -1,0 +1,28 @@
+api_version = "2025-07"
+
+[[extensions]]
+name = "Cellexia delivery"
+handle = "cellexia-checkout-delivery"
+type = "ui_extension"
+description = "Delivery estimate + delivery guarantee (v6.0) rendered under the shipping options or as a freely placeable checkout block."
+
+  # Static placement directly under the shipping-method section — the
+  # "under the shipping section" placement the merchant asked for.
+  [[extensions.targeting]]
+  module = "./src/Checkout.tsx"
+  target = "purchase.checkout.shipping-option-list.render-after"
+
+  # Alternative merchant-positioned block placement (drag anywhere in the
+  # checkout editor). Same module/UI — the merchant chooses either placement.
+  # NOTE: the module must also register this target via a second
+  # reactExtension('purchase.checkout.block.render', ...) call.
+  [[extensions.targeting]]
+  module = "./src/Checkout.tsx"
+  target = "purchase.checkout.block.render"
+
+  [extensions.capabilities]
+  api_access = true
+
+  [[extensions.metafields]]
+  namespace = "$app:cellexia"
+  key = "config"

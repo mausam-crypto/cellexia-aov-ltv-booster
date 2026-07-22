@@ -134,11 +134,11 @@
     "title_pct": "dei dermatologi certificati intervistati consiglierebbe Cellexia",
     "count": "{{ yes }} su {{ total }} dermatologi intervistati",
     "how": "Come è stato condotto il sondaggio",
-    "methodology_p1": "A maggio 2026 una società indipendente di ricerca in ambito sanitario ha intervistato {{ total }} dermatologi abilitati negli Stati Uniti, nel Regno Unito, in Francia, Germania, Italia e Spagna.",
-    "methodology_p2": "Ogni dermatologo ha esaminato una panoramica standardizzata di Cellexia, comprendente la gamma di prodotti, le informazioni sugli ingredienti, gli usi previsti e le evidenze di prodotto a supporto. È stata quindi posta la seguente domanda:",
-    "methodology_p3": "«Sulla base delle informazioni esaminate, consiglierebbe Cellexia a un paziente idoneo che cerca una cura della pelle contro i segni visibili dell'età?»",
+    "methodology_p1": "A maggio 2026 una società indipendente di ricerca in ambito cosmetico ha intervistato {{ total }} dermatologi abilitati negli Stati Uniti, nel Regno Unito, in Francia, Germania, Italia e Spagna.",
+    "methodology_p2": "Ogni dermatologo ha ricevuto tutti i prodotti Cellexia, li ha testati con almeno 5 pazienti per almeno 8 settimane e ha esaminato una panoramica dettagliata di Cellexia, comprendente la gamma di prodotti, le informazioni sugli ingredienti, gli usi previsti e le evidenze cliniche a supporto. È stata quindi posta la seguente domanda:",
+    "methodology_p3": "«Sulla base delle informazioni esaminate e dell'esperienza dei suoi pazienti, consiglierebbe Cellexia a un paziente idoneo che cerca una cura della pelle contro i segni visibili dell'età?»",
     "methodology_p4": "Tutti i {{ total }} dermatologi hanno risposto alla domanda. {{ yes }} hanno selezionato «Sì», pari al {{ percent }}% dei rispondenti.",
-    "methodology_p5": "Il sondaggio è stato commissionato da Cellexia e condotto in modo indipendente. Il reclutamento dei rispondenti, la raccolta e l'analisi delle risposte sono stati curati dalla società di ricerca. Cellexia non ha selezionato i partecipanti né modificato le singole risposte.",
+    "methodology_p5": "Il sondaggio è stato richiesto da Cellexia e condotto in modo indipendente. Il reclutamento dei rispondenti, la raccolta e l'analisi delle risposte sono stati curati dalla società di ricerca. Cellexia non ha selezionato i partecipanti né modificato le singole risposte.",
     "report_title": "Risultati del sondaggio",
     "report_surveyed": "Dermatologi intervistati",
     "report_yes": "Hanno risposto «Sì»",
@@ -148,5 +148,17 @@
     "dot_legend": "Ogni punto rappresenta un dermatologo intervistato.",
     "verified_badge": "Verificato da terzi",
     "verified_by": "Sondaggio verificato da {{ name }}"
+  },
+  "delivery": {
+    "line": "Ricevilo entro {{ date }}",
+    "range": "Consegna stimata: {{ from }} – {{ to }}",
+    "range_same": "Consegna stimata: {{ date }}",
+    "timeline_order": "Ordina oggi",
+    "timeline_ship": "Spedizione il {{ date }}",
+    "timeline_delivered": "Consegnato entro {{ date }}",
+    "box_title": "Consegna garantita entro {{ date }}",
+    "box_sub": "…oppure ti rimborsiamo o ti inviamo gratuitamente un prodotto sostitutivo.",
+    "badge": "Garanzia di consegna",
+    "tooltip": "Consegna entro e non oltre {{ date }} — altrimenti ti rimborsiamo o ti inviamo gratuitamente un prodotto sostitutivo."
   }
 }

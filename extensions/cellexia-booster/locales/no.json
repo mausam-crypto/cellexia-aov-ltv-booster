@@ -134,11 +134,11 @@
     "title_pct": "av de spurte hudlegene med spesialistgodkjenning ville anbefale Cellexia",
     "count": "{{ yes }} av {{ total }} spurte hudleger",
     "how": "Slik ble undersøkelsen gjennomført",
-    "methodology_p1": "I mai 2026 gjennomførte et uavhengig analysebyrå innen helse en undersøkelse blant {{ total }} autoriserte hudleger i USA, Storbritannia, Frankrike, Tyskland, Italia og Spania.",
-    "methodology_p2": "Hver hudlege gjennomgikk en standardisert oversikt over Cellexia, inkludert produktsortimentet, informasjon om ingredienser, tiltenkt bruk og støttende produktdokumentasjon. Deretter fikk de spørsmålet:",
-    "methodology_p3": "«Ville du, basert på informasjonen som ble gjennomgått, anbefale Cellexia til en egnet pasient som ønsker hudpleie mot synlige tegn på aldring?»",
+    "methodology_p1": "I mai 2026 gjennomførte et uavhengig analysebyrå innen kosmetikk en undersøkelse blant {{ total }} autoriserte hudleger i USA, Storbritannia, Frankrike, Tyskland, Italia og Spania.",
+    "methodology_p2": "Hver hudlege mottok alle Cellexia-produktene, testet dem med minst 5 pasienter i minst 8 uker og gjennomgikk en detaljert oversikt over Cellexia, inkludert produktsortimentet, informasjon om ingredienser, tiltenkt bruk og støttende klinisk dokumentasjon. Deretter fikk de spørsmålet:",
+    "methodology_p3": "«Ville du, basert på informasjonen som ble gjennomgått og dine pasienters erfaringer, anbefale Cellexia til en egnet pasient som ønsker hudpleie mot synlige tegn på aldring?»",
     "methodology_p4": "Alle de {{ total }} hudlegene besvarte spørsmålet. {{ yes }} svarte «Ja», noe som tilsvarer {{ percent }} % av respondentene.",
-    "methodology_p5": "Undersøkelsen ble bestilt av Cellexia og gjennomført uavhengig. Analysebyrået rekrutterte respondentene og samlet inn og analyserte svarene. Cellexia verken valgte ut deltakere eller endret enkeltsvar.",
+    "methodology_p5": "Undersøkelsen ble gjennomført på forespørsel fra Cellexia og utført uavhengig. Analysebyrået rekrutterte respondentene og samlet inn og analyserte svarene. Cellexia verken valgte ut deltakere eller endret enkeltsvar.",
     "report_title": "Resultater fra undersøkelsen",
     "report_surveyed": "Spurte hudleger",
     "report_yes": "Svarte «Ja»",
@@ -148,5 +148,17 @@
     "dot_legend": "Hver prikk representerer én spurt hudlege.",
     "verified_badge": "Verifisert av tredjepart",
     "verified_by": "Undersøkelsen er verifisert av {{ name }}"
+  },
+  "delivery": {
+    "line": "Levering senest {{ date }}",
+    "range": "Forventet levering: {{ from }} – {{ to }}",
+    "range_same": "Forventet levering: {{ date }}",
+    "timeline_order": "Bestill i dag",
+    "timeline_ship": "Sendes {{ date }}",
+    "timeline_delivered": "Levert senest {{ date }}",
+    "box_title": "Garantert levering senest {{ date }}",
+    "box_sub": "… ellers refunderer vi deg eller sender deg en gratis erstatning.",
+    "badge": "Leveringsgaranti",
+    "tooltip": "Levert senest {{ date }} — ellers refunderer vi deg eller sender deg en gratis erstatning."
   }
 }

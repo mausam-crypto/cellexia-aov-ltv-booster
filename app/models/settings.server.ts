@@ -66,7 +66,8 @@ export type FeatureKey =
   | "empty_bottle_guarantee"
   | "derm_survey"
   | "cart_cross_sell"
-  | "dispatch_countdown";
+  | "dispatch_countdown"
+  | "delivery_estimate";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "cart_volume_upsell",
@@ -88,6 +89,7 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "derm_survey",
   "cart_cross_sell",
   "dispatch_countdown",
+  "delivery_estimate",
 ];
 
 /** The five merchant-selectable derm-survey display formats (v5.8). */
@@ -99,6 +101,29 @@ export const DERM_SURVEY_FORMATS = [
   "strip",
 ] as const;
 export type DermSurveyFormat = (typeof DERM_SURVEY_FORMATS)[number];
+
+/** The four merchant-selectable delivery-estimate widget formats (v5.9). */
+export const DELIVERY_ESTIMATE_FORMATS = [
+  "line",
+  "range",
+  "timeline",
+  "box",
+] as const;
+export type DeliveryEstimateFormat = (typeof DELIVERY_ESTIMATE_FORMATS)[number];
+
+/**
+ * Per-country delivery override (v5.9). Every field is OPTIONAL — an entry
+ * overrides only what it sets and inherits the rest from the deliveryEstimate
+ * defaults. `hidden: true` means the widget is never shown to buyers in that
+ * country (e.g. carrier too unpredictable to guarantee anything).
+ */
+export interface DeliveryCountryOverride {
+  minDays?: number;
+  maxDays?: number;
+  deliveryDays?: number[];
+  holidaysEnabled?: boolean;
+  hidden?: boolean;
+}
 
 export interface MarketScope {
   /** "all" = every market; "selected" = only the listed market handles. */
@@ -280,7 +305,7 @@ export interface BoosterSettings {
     outOf: number;
     /** Survey sample size (total dermatologists surveyed), e.g. 270. */
     sampleSize: number;
-    /** Dermatologists who answered "Yes" (of `sampleSize`), e.g. 243.
+    /** Dermatologists who answered "Yes" (of `sampleSize`), e.g. 248.
      *  Percent shown in the proof seal = round(yesCount / sampleSize * 100).
      *  NOT clamped against sampleSize here — the storefront fails closed
      *  (renders nothing) on inconsistent numbers and the admin warns. */
@@ -323,6 +348,52 @@ export interface BoosterSettings {
       string,
       { cutoff: string; timezone: string; days: number[] }
     >;
+  };
+  /**
+   * PDP delivery estimator + delivery guarantee (v5.9). Renders below/next to
+   * the dispatch countdown: the dispatch DATE comes from the `dispatch`
+   * schedule above (cutoff + warehouse timezone + dispatch days, including
+   * its byCountry override — warehouse config that stays valid even while
+   * the dispatch_countdown feature is off), then minDays/maxDays BUSINESS
+   * days are counted in the destination country. A day counts only when its
+   * ISO weekday is in deliveryDays, it is not one of the global exclusions
+   * (Dec 24, Dec 25, Dec 31, Jan 1 — always excluded, not configurable) and,
+   * when holidaysEnabled, it is not a known fixed-date public holiday of the
+   * destination country (see services/delivery-holidays.server.ts — movable
+   * feasts are deliberately excluded from that table). The storefront widget
+   * fails closed (renders nothing) on ANY inconsistency: never show a date
+   * you cannot stand behind.
+   */
+  deliveryEstimate: {
+    enabled: boolean;
+    /** Business days until the earliest delivery (0 = same-day possible). */
+    minDays: number;
+    /** Business days until the guaranteed latest delivery. */
+    maxDays: number;
+    /** ISO weekdays deliveries occur (1=Mon .. 7=Sun) — this is how weekends
+     *  are excluded; a country doing Saturday delivery adds 6. */
+    deliveryDays: number[];
+    /** Skip known fixed-date public holidays when counting delivery days. */
+    holidaysEnabled: boolean;
+    /** Widget presentation on the PRODUCT PAGE: one-liner, date range,
+     *  3-step timeline, or guarantee box. All four carry the guarantee
+     *  badge. Each surface picks its own format (formatCart /
+     *  formatCheckout below). */
+    format: DeliveryEstimateFormat;
+    /** Widget presentation in the CART DRAWER (v6.0, same enum). */
+    formatCart: DeliveryEstimateFormat;
+    /** Widget presentation in CHECKOUT (v6.0, same enum). */
+    formatCheckout: DeliveryEstimateFormat;
+    /** Show on the product page (v6.0 — gated by the master `enabled`,
+     *  dispatch precedent). */
+    showOnPdp: boolean;
+    /** Show in the cart drawer (v6.0). */
+    showInCart: boolean;
+    /** Show in checkout (v6.0 — the checkout block must also be placed once
+     *  in the checkout editor). */
+    showInCheckout: boolean;
+    /** Per-country (ISO2) overrides; `hidden: true` = never show there. */
+    byCountry: Record<string, DeliveryCountryOverride>;
   };
   /**
    * Per-feature market targeting. A feature is visible in market M only when
@@ -455,7 +526,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     recommend: 9,
     outOf: 10,
     sampleSize: 270,
-    yesCount: 243,
+    yesCount: 248,
     methodology: "",
     verifierName: "",
     verificationUrl: "",
@@ -469,6 +540,20 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     showWithinHours: 8,
     showOnPdp: true,
     showInCart: true,
+    byCountry: {},
+  },
+  deliveryEstimate: {
+    enabled: false,
+    minDays: 2,
+    maxDays: 4,
+    deliveryDays: [1, 2, 3, 4, 5],
+    holidaysEnabled: true,
+    format: "line",
+    formatCart: "line",
+    formatCheckout: "line",
+    showOnPdp: true,
+    showInCart: true,
+    showInCheckout: true,
     byCountry: {},
   },
   marketScopes: defaultMarketScopes(),
@@ -827,6 +912,103 @@ export function sanitizeSettings(
     d.byCountry = cleanByCountry;
   }
 
+  {
+    const iso2 = /^[A-Z]{2}$/;
+    const de = next.deliveryEstimate;
+    /** Ints only; delivery-day counting must never see fractions. */
+    const intInRange = (
+      value: unknown,
+      min: number,
+      max: number,
+    ): number | null =>
+      typeof value === "number" &&
+      Number.isInteger(value) &&
+      value >= min &&
+      value <= max
+        ? value
+        : null;
+    const cleanDeliveryDays = (raw: unknown): number[] =>
+      Array.isArray(raw)
+        ? [
+            ...new Set(
+              raw.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7),
+            ),
+          ].sort() as number[]
+        : [];
+    de.minDays =
+      intInRange(de.minDays, 0, 30) ?? DEFAULT_SETTINGS.deliveryEstimate.minDays;
+    de.maxDays =
+      intInRange(de.maxDays, 1, 30) ?? DEFAULT_SETTINGS.deliveryEstimate.maxDays;
+    // The guarantee date must never precede the earliest estimate.
+    de.maxDays = Math.max(de.maxDays, Math.max(1, de.minDays));
+    const days = cleanDeliveryDays(de.deliveryDays);
+    de.deliveryDays =
+      days.length > 0 ? days : [...DEFAULT_SETTINGS.deliveryEstimate.deliveryDays];
+    if (typeof de.holidaysEnabled !== "boolean") {
+      de.holidaysEnabled = DEFAULT_SETTINGS.deliveryEstimate.holidaysEnabled;
+    }
+    if (
+      !DELIVERY_ESTIMATE_FORMATS.includes(de.format as DeliveryEstimateFormat)
+    ) {
+      de.format = DEFAULT_SETTINGS.deliveryEstimate.format;
+    }
+    if (
+      !DELIVERY_ESTIMATE_FORMATS.includes(
+        de.formatCart as DeliveryEstimateFormat,
+      )
+    ) {
+      de.formatCart = DEFAULT_SETTINGS.deliveryEstimate.formatCart;
+    }
+    if (
+      !DELIVERY_ESTIMATE_FORMATS.includes(
+        de.formatCheckout as DeliveryEstimateFormat,
+      )
+    ) {
+      de.formatCheckout = DEFAULT_SETTINGS.deliveryEstimate.formatCheckout;
+    }
+    if (typeof de.showOnPdp !== "boolean") {
+      de.showOnPdp = DEFAULT_SETTINGS.deliveryEstimate.showOnPdp;
+    }
+    if (typeof de.showInCart !== "boolean") {
+      de.showInCart = DEFAULT_SETTINGS.deliveryEstimate.showInCart;
+    }
+    if (typeof de.showInCheckout !== "boolean") {
+      de.showInCheckout = DEFAULT_SETTINGS.deliveryEstimate.showInCheckout;
+    }
+    // byCountry is a DYNAMIC_RECORD_KEYS record (replaced wholesale by the
+    // merge) — every entry is re-validated field by field; entries are
+    // PARTIAL by design (override only what they set). Invalid fields are
+    // dropped, entries with nothing valid left are removed.
+    const cleanByCountry: Record<string, DeliveryCountryOverride> = {};
+    for (const [country, entry] of Object.entries(de.byCountry ?? {})) {
+      const code = country.toUpperCase();
+      if (!iso2.test(code) || !isPlainObject(entry)) continue;
+      const clean: DeliveryCountryOverride = {};
+      const minDays = intInRange(entry.minDays, 0, 30);
+      if (minDays !== null) clean.minDays = minDays;
+      let maxDays = intInRange(entry.maxDays, 1, 30);
+      if (maxDays !== null) {
+        // Within-entry consistency; cross-inheritance inconsistencies (e.g.
+        // an override minDays above the inherited default maxDays) fail
+        // closed to hidden in the storefront instead of being rewritten.
+        if (clean.minDays !== undefined) {
+          maxDays = Math.max(maxDays, Math.max(1, clean.minDays));
+        }
+        clean.maxDays = maxDays;
+      }
+      const entryDays = cleanDeliveryDays(entry.deliveryDays);
+      if (Array.isArray(entry.deliveryDays) && entryDays.length > 0) {
+        clean.deliveryDays = entryDays;
+      }
+      if (typeof entry.holidaysEnabled === "boolean") {
+        clean.holidaysEnabled = entry.holidaysEnabled;
+      }
+      if (typeof entry.hidden === "boolean") clean.hidden = entry.hidden;
+      if (Object.keys(clean).length > 0) cleanByCountry[code] = clean;
+    }
+    de.byCountry = cleanByCountry;
+  }
+
   if (typeof next.trustpilot.showLink !== "boolean") {
     next.trustpilot.showLink = DEFAULT_SETTINGS.trustpilot.showLink;
   }
@@ -1110,6 +1292,14 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     },
     siblings: [],
   },
+  delivery_estimate: {
+    label: "Delivery guarantee",
+    get: (s) => s.deliveryEstimate.enabled,
+    set: (s, on) => {
+      s.deliveryEstimate.enabled = on;
+    },
+    siblings: [],
+  },
 };
 
 function scopeFor(settings: BoosterSettings, key: FeatureKey): MarketScope {
@@ -1165,6 +1355,7 @@ export const STANDALONE_SECTION_FIELDS = [
   "dermSurvey",
   "cartCrossSell",
   "dispatch",
+  "deliveryEstimate",
 ] as const;
 export type StandaloneSectionField = (typeof STANDALONE_SECTION_FIELDS)[number];
 
@@ -1197,6 +1388,7 @@ export const FEATURE_RAW_FIELD: Record<
   derm_survey: { kind: "section", field: "dermSurvey" },
   cart_cross_sell: { kind: "section", field: "cartCrossSell" },
   dispatch_countdown: { kind: "section", field: "dispatch" },
+  delivery_estimate: { kind: "section", field: "deliveryEstimate" },
 };
 
 /**

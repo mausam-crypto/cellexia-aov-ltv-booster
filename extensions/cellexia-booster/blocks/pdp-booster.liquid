@@ -143,6 +143,21 @@
       endunless
     endif
 
+    assign cx_de = cfg.deliveryEstimate
+    assign cx_del_c = cx_de.byCountry[cx_country]
+    assign cx_del_hidden = false
+    if cx_del_c.hidden == true
+      assign cx_del_hidden = true
+    endif
+
+    assign show_delivery = false
+    if cx_de.enabled == true and cx_de.showOnPdp != false and cx_del_hidden == false
+      assign cx_scope = cfg.marketScopes.delivery_estimate
+      if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+        assign show_delivery = true
+      endif
+    endif
+
     assign threshold = cfg.global.freeShippingThreshold | default: 150
     assign threshold_money = threshold | times: 100 | money
     assign cx_fs = cfg.freeShipping.byMarket[cx_market]
@@ -173,6 +188,7 @@
     assign cx_draft_batch = false
     assign cx_draft_bottle = false
     assign cx_draft_dispatch = false
+    assign cx_draft_delivery = false
     if cx_prev_armed
       assign cx_prev_flags = cx_prev.draftFlags
 
@@ -258,14 +274,20 @@
           assign cx_draft_dispatch = true
         endif
       endunless
+
+      if cx_de.showOnPdp != false and cx_del_hidden == false
+        if cx_prev_flags.delivery_estimate == true or cx_de.enabled == true
+          assign cx_draft_delivery = true
+        endif
+      endif
     endif
 
     assign cx_draft_any = false
-    if cx_draft_badges or cx_draft_guarantee or cx_draft_trustpilot or cx_draft_nudge or cx_draft_survey or cx_draft_study or cx_draft_ba or cx_draft_batch or cx_draft_bottle or cx_draft_dispatch
+    if cx_draft_badges or cx_draft_guarantee or cx_draft_trustpilot or cx_draft_nudge or cx_draft_survey or cx_draft_study or cx_draft_ba or cx_draft_batch or cx_draft_bottle or cx_draft_dispatch or cx_draft_delivery
       assign cx_draft_any = true
     endif
   -%}
-  {%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_ba or show_batch or show_bottle or show_dispatch or cx_draft_any -%}
+  {%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_ba or show_batch or show_bottle or show_dispatch or show_delivery or cx_draft_any -%}
     {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
     <script type="application/json" id="cx-pdp-config" data-cx-market="{{ cx_market | escape }}">
       {
@@ -274,6 +296,10 @@
         {%- if show_dispatch or cx_draft_dispatch %}
         "dispatch": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}, "showWithinHours": {{ cx_dsp_within }}},
         "strings": {"dispatch.within": {{ 'dispatch.within' | t: hours: '@@HOURS@@', minutes: '@@MINUTES@@' | json }}, "dispatch.within_minutes": {{ 'dispatch.within_minutes' | t: minutes: '@@MINUTES@@' | json }}},
+        {%- endif %}
+        {%- if show_delivery or cx_draft_delivery %}
+        "delivery": {"minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}},
+        "deliveryStrings": {"delivery.line": {{ 'delivery.line' | t: date: '@@DATE@@' | json }}, "delivery.range": {{ 'delivery.range' | t: from: '@@FROM@@', to: '@@TO@@' | json }}, "delivery.range_same": {{ 'delivery.range_same' | t: date: '@@DATE@@' | json }}, "delivery.timeline_ship": {{ 'delivery.timeline_ship' | t: date: '@@DATE@@' | json }}, "delivery.timeline_delivered": {{ 'delivery.timeline_delivered' | t: date: '@@DATE@@' | json }}, "delivery.box_title": {{ 'delivery.box_title' | t: date: '@@DATE@@' | json }}, "delivery.tooltip": {{ 'delivery.tooltip' | t: date: '@@DATE@@' | json }}},
         {%- endif %}
         "placement": {{ block.settings.proof_placement | default: 'above_tabs' | json }}
         {%- if cx_prev_armed -%}
@@ -834,6 +860,54 @@
           <span class="cx-dispatch__text"><strong class="cx-dispatch__main"></strong></span>
         </div>
       </template>
+    {%- endif -%}
+        {%- if show_delivery or cx_draft_delivery -%}
+      {%- liquid
+        assign delivery_formats = 'line,range,timeline,box' | split: ','
+        assign delivery_fmt_live = cx_de.format
+        unless delivery_formats contains delivery_fmt_live
+          assign delivery_fmt_live = 'line'
+        endunless
+      -%}
+      {%- capture delivery_badge -%}
+        <span class="cx-delivery__badge"><button type="button" class="cx-delivery__badge-btn" data-cx-delivery-badge aria-describedby="cx-delivery-tip">{%- render 'cx-icons', icon: 'shield-check', size: 12 -%}<span>{{ 'delivery.badge' | t }}</span></button><span class="cx-delivery__tip" id="cx-delivery-tip" role="tooltip" hidden data-cx-delivery-tip></span></span>
+      {%- endcapture -%}
+      {%- capture delivery_body_line -%}
+        <div class="cx-delivery cx-delivery--line" data-cx-feature="delivery_estimate">{%- render 'cx-icons', icon: 'box', size: 15 -%}<span class="cx-delivery__line" data-cx-delivery-line></span>{{ delivery_badge }}</div>
+      {%- endcapture -%}
+      {%- capture delivery_body_range -%}
+        <div class="cx-delivery cx-delivery--range" data-cx-feature="delivery_estimate"><span class="cx-delivery__range" data-cx-delivery-range></span>{{ delivery_badge }}</div>
+      {%- endcapture -%}
+      {%- capture delivery_body_timeline -%}
+        <div class="cx-delivery cx-delivery--timeline" data-cx-feature="delivery_estimate"><ol class="cx-delivery__steps list-reset"><li class="cx-delivery__step">{{ 'delivery.timeline_order' | t }}</li><li class="cx-delivery__step" data-cx-delivery-ship></li><li class="cx-delivery__step" data-cx-delivery-done></li></ol>{{ delivery_badge }}</div>
+      {%- endcapture -%}
+      {%- capture delivery_body_box -%}
+        <div class="cx-delivery cx-delivery--box" data-cx-feature="delivery_estimate">{%- render 'cx-icons', icon: 'check', size: 16 -%}<span class="cx-delivery__box-copy"><strong class="cx-delivery__box-title" data-cx-delivery-title></strong> <span class="cx-delivery__box-sub">{{ 'delivery.box_sub' | t }}</span> {{ delivery_badge }}</span></div>
+      {%- endcapture -%}
+      <template id="cx-tpl-delivery"{% unless show_delivery %} data-cx-draft="1"{% endunless %}>
+        {%- case delivery_fmt_live -%}
+          {%- when 'range' -%}{{ delivery_body_range }}
+          {%- when 'timeline' -%}{{ delivery_body_timeline }}
+          {%- when 'box' -%}{{ delivery_body_box }}
+          {%- when 'line' -%}{{ delivery_body_line }}
+          {%- else -%}{{ delivery_body_line }}
+        {%- endcase -%}
+      </template>
+    {%- endif -%}
+    {%- if cx_prev_armed -%}
+      {%- if show_delivery or cx_draft_delivery -%}
+        {%- assign delivery_fmt_draft = cx_prev.draftConfig.deliveryFormat -%}
+        {%- if delivery_formats contains delivery_fmt_draft and delivery_fmt_draft != delivery_fmt_live -%}
+          <template id="cx-tpl-delivery-alt" data-cx-draft="1">
+            {%- case delivery_fmt_draft -%}
+              {%- when 'range' -%}{{ delivery_body_range }}
+              {%- when 'timeline' -%}{{ delivery_body_timeline }}
+              {%- when 'box' -%}{{ delivery_body_box }}
+              {%- when 'line' -%}{{ delivery_body_line }}
+            {%- endcase -%}
+          </template>
+        {%- endif -%}
+      {%- endif -%}
     {%- endif -%}
     <script src="{{ 'cellexia-pdp.js' | asset_url }}" defer></script>
   {%- endif -%}

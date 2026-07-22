@@ -1,0 +1,12 @@
+{
+  "line": "Recíbelo como muy tarde el {{date}}",
+  "range": "Entrega estimada: {{from}} – {{to}}",
+  "range_same": "Entrega estimada: {{date}}",
+  "timeline_order": "Haz tu pedido hoy",
+  "timeline_ship": "Envío el {{date}}",
+  "timeline_delivered": "Entrega como muy tarde el {{date}}",
+  "box_title": "Entrega garantizada el {{date}} o antes",
+  "box_sub": "…o te reembolsamos el importe o te enviamos gratis un producto de sustitución.",
+  "badge": "Garantía de entrega",
+  "tooltip": "Entrega el {{date}} o antes — o te reembolsamos el importe o te enviamos gratis un producto de sustitución."
+}

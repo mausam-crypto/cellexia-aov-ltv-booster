@@ -1,13 +1,3 @@
-{%- comment -%}
-  Cellexia Booster — Trustpilot-style 5-star row with fractional fill.
-  Usage: {% render 'cx-trustpilot-stars', rating: 4.8, uid: block.id %}
-  Params:
-    rating (number 0-5, required — defaults to 0)
-    uid    (string used to namespace SVG gradient ids; default 'cx')
-    size   (star size in px, default 20)
-    color  (filled-star color, default Trustpilot green #00b67a)
-    empty  (empty-star color, default #d8d8d8)
-{%- endcomment -%}
 {%- liquid
   assign cx_rating = rating | default: 0 | times: 1.0
   if cx_rating > 5

@@ -14,7 +14,7 @@ re-apply local patches; deploy this tree as-is** (after the config merge in §1)
 |---|---|
 | Missing dotenv loading | `dotenv` is a dependency; `app/shopify.server.ts` imports `dotenv/config` first (never overrides host-set vars) |
 | Missing `RENDER_EXTERNAL_URL` fallback | `appUrl` resolves `SHOPIFY_APP_URL → RENDER_EXTERNAL_URL → ""` (also in the app-proxy health check) |
-| Missing `react-reconciler` | Declared in all three checkout extensions' `package.json` |
+| Missing `react-reconciler` | Declared in all four checkout extensions' `package.json` (incl. the new `checkout-delivery`) |
 | 27-char schema name limit | All block schema names now ≤ 25 chars (`Cellexia subscription`) |
 | `external` → `target` Button iframe issue | ALL occurrences swept (14 across 5 admin routes — more than the 6 you found; new pages had regressed it) |
 | 100 KB Liquid limit | The live/draft template pairs are deduplicated in-tree (single template with a conditional `data-cx-draft` marker) — `pdp-booster.liquid` is well under the limit again and won't regress |
@@ -67,7 +67,9 @@ npm run build             # must pass locally before you ship
 # 1) APP SERVER: deploy/restart your Render service with this code
 #    (build command unchanged; then: npx prisma db push per §2)
 # 2) EXTENSIONS:
-npm run deploy            # pushes theme extension + 3 checkout extensions + config
+npm run deploy            # pushes theme extension + 4 checkout extensions + config
+#    (v6.0 adds a FOURTH checkout extension, checkout-delivery — it deploys
+#     with the same command, no extra registration needed)
 ```
 
 Then in the store admin, **open the app once** — you'll be prompted to approve the
@@ -85,11 +87,14 @@ auto-detection, and booster auto-translation need them).
    prices per currency → **Apply to Shopify Markets**. If a market shows
    "skipped: no price list", create one under Settings → Markets → [market] →
    Products and pricing, then Apply again.
-4. **Checkout editor** (Settings → Checkout → Customize): all three Cellexia blocks
-   are now ALWAYS visible/previewable in the editor (they render representative
+4. **Checkout editor** (Settings → Checkout → Customize): all FOUR Cellexia blocks
+   are ALWAYS visible/previewable in the editor (they render representative
    previews there even when features are off). Place or re-position them — the
-   upsell and trust blocks now also offer a placement anchored at the Pay-button
-   area ("actions" slot). Save.
+   upsell and trust blocks also offer a placement anchored at the Pay-button
+   area ("actions" slot), and the NEW "Cellexia delivery" block offers a
+   placement directly under the shipping options (its natural home) plus a
+   freely-placeable variant. Place the delivery block once here or buyers
+   never see it, even with the feature enabled. Save.
 5. **Preview**: in the app, **Disarm** then **Arm** the preview once (writes the
    new-format metafields), open a FRESH preview link, and verify: cart drawer
    (cross-sell now automatic), product page (Guarantee check modal), and checkout
@@ -107,6 +112,23 @@ auto-detection, and booster auto-translation need them).
 
 ## 5. What's in this update (context for the diff you'll see)
 
+The Delivery guarantee now covers ALL THREE surfaces under the one feature:
+product page, cart drawer (renders right under the dispatch countdown) and
+checkout (new checkout-delivery extension placed under the shipping options)
+— each surface independently on/off with its OWN format choice, same
+translated wording everywhere, each previewable per surface from the
+Preview Center · survey methodology copy updated in all 18 languages
+(cosmetic research firm, 5-patients/8-weeks testing protocol, "requested by
+Cellexia"; set Answered "Yes" to 248 on the Survey page after deploying) ·
+NEW booster #20 "Delivery guarantee": per-country business-day delivery
+estimates computed off the dispatch schedule (weekends via configurable
+delivery days, Dec 24/25/31 + Jan 1 always excluded, conservative fixed-date
+national-holiday table per country — on by default, toggleable per country;
+per-country min/max overrides and per-country hide), four PDP widget formats
+(line / range / 3-step timeline / guarantee box) each carrying the
+"Delivery guarantee" badge with the refund-or-replace explainer tooltip,
+translated in all 18 languages, format-previewable from the Preview Center;
+configure under Features → Delivery guarantee (ships OFF) ·
 Dermatologist-survey booster rebuilt as FIVE selectable display formats
 (authority proof seal with a 90% ring, clinical results panel, verbatim
 survey question, one-dot-per-dermatologist tally, understated single line) —

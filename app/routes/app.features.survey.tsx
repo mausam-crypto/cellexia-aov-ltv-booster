@@ -818,7 +818,7 @@ export default function SurveyFeaturePage() {
                         setState((previous) => ({ ...previous, yesCount }))
                       }
                       error={yesCountError}
-                      helpText="Would recommend, e.g. 243"
+                      helpText="Would recommend, e.g. 248"
                       autoComplete="off"
                     />
                   </Box>

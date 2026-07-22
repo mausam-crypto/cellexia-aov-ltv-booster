@@ -1,0 +1,12 @@
+{
+  "line": "Uiterlijk {{date}} in huis",
+  "range": "Verwachte bezorging: {{from}} – {{to}}",
+  "range_same": "Verwachte bezorging: {{date}}",
+  "timeline_order": "Bestel vandaag",
+  "timeline_ship": "Verzending op {{date}}",
+  "timeline_delivered": "Bezorgd uiterlijk {{date}}",
+  "box_title": "Gegarandeerd bezorgd uiterlijk {{date}}",
+  "box_sub": "… of je krijgt je geld terug of we sturen gratis een vervangend product.",
+  "badge": "Bezorggarantie",
+  "tooltip": "Uiterlijk {{date}} bezorgd – anders krijg je je geld terug of sturen we gratis een vervangend product."
+}

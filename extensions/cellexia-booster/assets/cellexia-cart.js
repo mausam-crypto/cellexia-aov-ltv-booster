@@ -84,7 +84,8 @@
     subscription: 'cart_subscription_upsell',
     crossSell: 'cart_cross_sell',
     trustRow: 'cart_trust_row',
-    dispatch: 'dispatch_countdown'
+    dispatch: 'dispatch_countdown',
+    delivery: 'delivery_estimate'
   };
 
   function featureOn(key) {
@@ -1683,6 +1684,415 @@
     }
   }
 
+  // ---------------------------------------------- delivery estimate (v6.0)
+  //
+  // CART twin of the v5.9 PDP delivery estimator + DELIVERY GUARANTEE
+  // widget (cellexia-pdp.js, v5.9.1 DST-SAFE). The ENGINE block below —
+  // DELIVERY_GLOBAL_EXCLUSIONS through deliveryTexts, including the
+  // conservative fixed-date DELIVERY_HOLIDAYS mirror of the canonical
+  // app/services/delivery-holidays.server.ts table — is byte-matched to
+  // the PDP one the same way DISPATCH_ISO..dispatchSetText is:
+  // cart-booster.liquid emits cfg.delivery and cfg.deliveryStrings with
+  // the exact same shape the PDP block emits, so the resolver, the
+  // Intl-once UTC-midnight calendar math and the holiday table never
+  // fork (the validation harness parity-checks the mirrors).
+  //
+  // FAIL CLOSED on ANY inconsistency: invalid/missing config, hidden
+  // country, unresolvable dispatch day, scan caps, missing translation,
+  // any Intl/Date throw — hide, NEVER show a delivery date we cannot
+  // stand behind.
+  var DELIVERY_GLOBAL_EXCLUSIONS = ['12-24', '12-25', '12-31', '01-01'];
+  var DELIVERY_HOLIDAYS = {
+    US: ['06-19', '07-04', '11-11'],
+    CA: ['07-01', '12-26'],
+    GB: ['12-26'],
+    IE: ['03-17', '12-26'],
+    FR: ['05-01', '05-08', '07-14', '08-15', '11-01', '11-11'],
+    DE: ['05-01', '10-03', '12-26'],
+    AT: ['01-06', '05-01', '08-15', '10-26', '11-01', '12-08', '12-26'],
+    CH: ['08-01'],
+    IT: ['01-06', '04-25', '05-01', '06-02', '08-15', '11-01', '12-08', '12-26'],
+    ES: ['01-06', '05-01', '08-15', '10-12', '11-01', '12-06', '12-08'],
+    PT: ['04-25', '05-01', '06-10', '08-15', '10-05', '11-01', '12-01', '12-08'],
+    NL: ['04-27', '12-26'],
+    BE: ['05-01', '07-21', '08-15', '11-01', '11-11'],
+    SE: ['01-06', '05-01', '06-06', '12-26'],
+    NO: ['05-01', '05-17', '12-26'],
+    DK: ['12-26'],
+    FI: ['01-06', '05-01', '12-06', '12-26'],
+    PL: ['01-06', '05-01', '05-03', '08-15', '11-01', '11-11', '12-26'],
+    GR: ['01-06', '03-25', '05-01', '10-28', '12-26'],
+    CZ: ['05-01', '05-08', '07-05', '07-06', '09-28', '10-28', '11-17', '12-26'],
+    HU: ['03-15', '05-01', '08-20', '10-23', '11-01', '12-26'],
+    RO: ['01-24', '05-01', '06-01', '08-15', '11-30', '12-01'],
+    JP: ['02-11', '02-23', '04-29', '05-03', '05-04', '05-05', '08-11', '11-03', '11-23'],
+    AU: ['01-26', '04-25', '12-26'],
+    NZ: ['02-06', '04-25', '12-26']
+  };
+
+  function deliveryT(key, params) {
+    // Same sentinel-substitution + decodeEntities convention as dispatchT,
+    // over the deliveryStrings map; '' (never the raw key) on a miss so
+    // every caller can fail closed.
+    var map = cfg && cfg.deliveryStrings && typeof cfg.deliveryStrings === 'object' ? cfg.deliveryStrings : {};
+    var str = typeof map[key] === 'string' ? decodeEntities(map[key]) : '';
+    if (!str) return '';
+    if (params) {
+      Object.keys(params).forEach(function (p) {
+        var value = String(params[p]);
+        str = str.split('@@' + p.toUpperCase() + '@@').join(value);
+        str = str.replace(new RegExp('\\{\\{\\s*' + p + '\\s*\\}\\}', 'g'), value);
+      });
+    }
+    return str;
+  }
+
+  function deliveryConfig() {
+    // Resolve + validate cfg.delivery, fail closed. Liquid pre-picks the
+    // buyer country's byCountry row as .override (dynamic record keys are
+    // Liquid-only); this resolver applies it so ONE place owns the merge.
+    var d = cfg.delivery;
+    if (!d || typeof d !== 'object') return null;
+    var min = d.minDays;
+    var max = d.maxDays;
+    var days = d.deliveryDays;
+    var hol = d.holidaysEnabled;
+    var country = typeof d.country === 'string' ? d.country.toUpperCase() : '';
+    var o = d.override;
+    if (o && typeof o === 'object') {
+      if (o.hidden === true) return null; // country hidden: never render
+      if (typeof o.minDays === 'number') min = o.minDays;
+      if (typeof o.maxDays === 'number') max = o.maxDays;
+      if (Array.isArray(o.deliveryDays)) days = o.deliveryDays;
+      if (typeof o.holidaysEnabled === 'boolean') hol = o.holidaysEnabled;
+    }
+    if (typeof min !== 'number' || min !== Math.floor(min) || !(min >= 0 && min <= 30)) return null;
+    if (typeof max !== 'number' || max !== Math.floor(max) || !(max >= 1 && max <= 30)) return null;
+    if (max < min) return null;
+    if (!Array.isArray(days) || days.length === 0) return null;
+    for (var i = 0; i < days.length; i++) {
+      if (days[i] !== Math.floor(days[i]) || days[i] < 1 || days[i] > 7) return null;
+    }
+    if (hol !== true && hol !== false) return null;
+    var s = d.schedule;
+    if (!s || typeof s !== 'object') return null;
+    if (typeof s.cutoff !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(s.cutoff)) return null;
+    if (typeof s.timezone !== 'string' || !s.timezone) return null;
+    if (!Array.isArray(s.days) || s.days.length === 0) return null;
+    var map = cfg.deliveryStrings;
+    if (!map || typeof map !== 'object') return null;
+    var req = ['delivery.line', 'delivery.range', 'delivery.range_same', 'delivery.timeline_ship', 'delivery.timeline_delivered', 'delivery.box_title', 'delivery.tooltip'];
+    for (var k = 0; k < req.length; k++) {
+      if (typeof map[req[k]] !== 'string' || !map[req[k]]) return null;
+    }
+    return {
+      minDays: min,
+      maxDays: max,
+      deliveryDays: days,
+      holidaysEnabled: hol,
+      country: country,
+      cutoffMinutes: Number(s.cutoff.slice(0, 2)) * 60 + Number(s.cutoff.slice(3, 5)),
+      timezone: s.timezone,
+      dispatchDays: s.days
+    };
+  }
+
+  function deliveryDispatchUt(dc) {
+    // Next dispatch DATE as a UTC-midnight calendar stamp: today when now
+    // is before the cutoff on a dispatch day in the WAREHOUSE timezone,
+    // else the next dispatch day (14-day scan). Same Intl wall-clock
+    // machinery and h24 "24:xx" normalization as dispatchRemainingMs.
+    try {
+      // Intl is consulted ONCE — for today's warehouse calendar date and
+      // wall clock; subsequent days are pure calendar stamps (UTC midnight
+      // + 24h, ISO weekday via getUTCDay). DST-immune by construction: a
+      // fixed +24h probe formatted through a warehouse DST transition can
+      // re-land on (25h day) or skip (23h day) a calendar day, which
+      // could show a dispatch date after the cutoff had passed.
+      var parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: dc.timezone,
+        weekday: 'short',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).formatToParts(new Date());
+      var map = {};
+      for (var i = 0; i < parts.length; i++) map[parts[i].type] = parts[i].value;
+      if (!DISPATCH_ISO[map.weekday]) return null; // malformed weekday parse
+      var todayUt = Date.UTC(Number(map.year), Number(map.month) - 1, Number(map.day));
+      if (!isFinite(todayUt)) return null;
+      var nowMinutes = (Number(map.hour) % 24) * 60 + Number(map.minute);
+      if (!(nowMinutes >= 0 && nowMinutes < 1440)) return null;
+      for (var k = 0; k <= 14; k++) {
+        var ut = todayUt + k * 86400000;
+        var iso = ((new Date(ut).getUTCDay() + 6) % 7) + 1;
+        if (dc.dispatchDays.indexOf(iso) === -1) continue; // not a dispatch day
+        if (k === 0 && nowMinutes >= dc.cutoffMinutes) continue; // cutoff passed today
+        return ut;
+      }
+      return null; // no dispatch day within 14 days: hidden
+    } catch (e) {
+      return null; // Intl rejected the timezone: hidden, never fake a date
+    }
+  }
+
+  function deliveryQualifies(ut, dc) {
+    // Pure calendar math on the UTC stamp — no timezone involved.
+    var date = new Date(ut);
+    var iso = ((date.getUTCDay() + 6) % 7) + 1;
+    if (dc.deliveryDays.indexOf(iso) === -1) return false; // no delivery weekday
+    var m = date.getUTCMonth() + 1;
+    var dd = date.getUTCDate();
+    var mmdd = (m < 10 ? '0' + m : '' + m) + '-' + (dd < 10 ? '0' + dd : '' + dd);
+    if (DELIVERY_GLOBAL_EXCLUSIONS.indexOf(mmdd) !== -1) return false; // Dec 24/25/31 + Jan 1
+    if (dc.holidaysEnabled) {
+      var table = DELIVERY_HOLIDAYS[dc.country];
+      if (table && table.indexOf(mmdd) !== -1) return false; // public holiday
+    }
+    return true;
+  }
+
+  function deliveryAdvance(startUt, n, dc) {
+    // Advance n qualifying delivery days from the dispatch date (day 0).
+    // n === 0: the dispatch day itself when it qualifies, else the next
+    // qualifying day. Scan capped at 60 calendar days -> null (hidden).
+    var count = 0;
+    for (var i = 0; i <= 60; i++) {
+      var ut = startUt + i * 86400000;
+      if (i === 0 && n > 0) continue; // dispatch day is day zero, not transit
+      if (!deliveryQualifies(ut, dc)) continue;
+      if (n === 0) return ut;
+      count++;
+      if (count === n) return ut;
+    }
+    return null; // 60-day scan cap exceeded: hidden
+  }
+
+  function deliveryCompute(dc) {
+    var dispatchUt = deliveryDispatchUt(dc);
+    if (dispatchUt === null) return null;
+    var minUt = deliveryAdvance(dispatchUt, dc.minDays, dc);
+    var maxUt = deliveryAdvance(dispatchUt, dc.maxDays, dc);
+    if (minUt === null || maxUt === null || maxUt < minUt) return null;
+    return { dispatch: dispatchUt, min: minUt, max: maxUt };
+  }
+
+  function deliveryLabel(ut) {
+    // Buyer-locale short date label. The UTC calendar stamp is rebuilt as
+    // a LOCAL noon Date so toLocaleDateString (buyer's own timezone) can
+    // never shift the calendar day, whatever the buyer's UTC offset.
+    try {
+      var d = new Date(ut);
+      var local = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12);
+      var label = local.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+      return typeof label === 'string' && label ? label : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function deliveryTexts(result) {
+    // Every string the four formats can render — null when ANY piece is
+    // missing (fail closed; the widget never shows a half-filled promise).
+    // The range collapses to range_same when minDate === maxDate.
+    var shipL = deliveryLabel(result.dispatch);
+    var minL = deliveryLabel(result.min);
+    var maxL = deliveryLabel(result.max);
+    if (!shipL || !minL || !maxL) return null;
+    var texts = {
+      line: deliveryT('delivery.line', { date: maxL }),
+      range: result.min === result.max
+        ? deliveryT('delivery.range_same', { date: maxL })
+        : deliveryT('delivery.range', { from: minL, to: maxL }),
+      ship: deliveryT('delivery.timeline_ship', { date: shipL }),
+      delivered: deliveryT('delivery.timeline_delivered', { date: maxL }),
+      title: deliveryT('delivery.box_title', { date: maxL }),
+      tooltip: deliveryT('delivery.tooltip', { date: maxL })
+    };
+    if (!texts.line || !texts.range || !texts.ship || !texts.delivered || !texts.title || !texts.tooltip) return null;
+    return texts;
+  }
+
+  // ------------------------------------------- delivery DOM layer (v6.0)
+  //
+  // Cart-specific: template ids are surface-specific (cx-tpl-delivery-cart
+  // / -cart-alt — this embed renders on product pages too, where the PDP
+  // block owns cx-tpl-delivery), the tick queries .cx-delivery--cart only
+  // (the PDP engine owns its own nodes), and every clone gets a unique
+  // tooltip id because the widget can mount twice at once (drawer + cart
+  // page). deliverySetText and bindDeliveryTooltip are byte-copies of the
+  // PDP ones — same data-cx-tip-pos / data-cx-tip-align conventions.
+  var deliveryTimer = null;
+  var deliveryTipUid = 0;
+
+  function deliverySetText(node, texts) {
+    // Populate whichever format slots exist on this node — textContent
+    // ONLY (the strings passed through decodeEntities in deliveryT).
+    var pairs = [
+      ['[data-cx-delivery-line]', texts.line],
+      ['[data-cx-delivery-range]', texts.range],
+      ['[data-cx-delivery-ship]', texts.ship],
+      ['[data-cx-delivery-done]', texts.delivered],
+      ['[data-cx-delivery-title]', texts.title],
+      ['[data-cx-delivery-tip]', texts.tooltip]
+    ];
+    for (var i = 0; i < pairs.length; i++) {
+      var el = node.querySelector(pairs[i][0]);
+      if (el) el.textContent = pairs[i][1];
+    }
+  }
+
+  function bindDeliveryTooltip(node) {
+    // Guarantee-badge explainer: a true tooltip (role="tooltip" +
+    // aria-describedby ship in the markup). Fine pointers: opens on hover
+    // AND on keyboard focus; touch/coarse: tap toggles. Escape always
+    // closes and refocuses the badge. Positioned above the badge by CSS,
+    // flipped below via data-cx-tip-pos when the viewport has no room.
+    try {
+      var btn = node.querySelector('[data-cx-delivery-badge]');
+      var tip = node.querySelector('[data-cx-delivery-tip]');
+      if (!btn || !tip) return;
+      var hoverFine = false;
+      try {
+        hoverFine = !!(window.matchMedia &&
+          window.matchMedia('(hover: hover)').matches &&
+          window.matchMedia('(pointer: fine)').matches);
+      } catch (e) { hoverFine = false; }
+      function place() {
+        try {
+          tip.setAttribute('data-cx-tip-pos', 'above');
+          tip.removeAttribute('data-cx-tip-align');
+          var rect = tip.getBoundingClientRect();
+          if (rect.top < 4) tip.setAttribute('data-cx-tip-pos', 'below');
+          // Horizontal: if the start-anchored tip crosses either viewport
+          // edge (narrow screens, RTL), anchor it to the badge's inline
+          // end instead; revert when that is no better.
+          var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+          rect = tip.getBoundingClientRect();
+          if (vw && (rect.right > vw - 8 || rect.left < 8)) {
+            tip.setAttribute('data-cx-tip-align', 'end');
+            rect = tip.getBoundingClientRect();
+            if (rect.right > vw - 8 || rect.left < 8) {
+              tip.removeAttribute('data-cx-tip-align');
+            }
+          }
+        } catch (e) { /* noop */ }
+      }
+      function setOpen(open) {
+        if (open) {
+          tip.removeAttribute('hidden');
+          place();
+        } else {
+          tip.setAttribute('hidden', '');
+        }
+      }
+      function isOpen() {
+        return !tip.hasAttribute('hidden');
+      }
+      if (hoverFine) {
+        btn.addEventListener('mouseenter', function () { setOpen(true); });
+        btn.addEventListener('mouseleave', function () { setOpen(false); });
+        btn.addEventListener('focus', function () { setOpen(true); });
+        btn.addEventListener('blur', function () { setOpen(false); });
+      } else {
+        btn.addEventListener('click', function () { setOpen(!isOpen()); });
+      }
+      node.addEventListener('keydown', function (event) {
+        if ((event.key === 'Escape' || event.key === 'Esc') && isOpen()) {
+          setOpen(false);
+          try { btn.focus(); } catch (e) { /* noop */ }
+        }
+      });
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function deliveryTemplateId() {
+    // v6.0: inside a verified preview session prefer the alt template (the
+    // merchant's armed DRAFT cart format) — exactly the PDP convention.
+    if (PREVIEW) {
+      var alt = document.getElementById('cx-tpl-delivery-cart-alt');
+      if (alt && alt.content) return 'cx-tpl-delivery-cart-alt';
+    }
+    return 'cx-tpl-delivery-cart';
+  }
+
+  function deliveryTick() {
+    // Same guarded-interval pattern as dispatchTick above (the two widgets
+    // stack but never share a timer, so neither can starve the other):
+    // re-run the WHOLE computation each 30s tick — crossing the cutoff
+    // shifts every date — and remove the node the moment anything stops
+    // being defensible. Self-clears when no nodes remain, so drawer
+    // re-renders can never leak intervals.
+    var nodes = document.querySelectorAll('.cx-delivery--cart');
+    if (!nodes.length) {
+      if (deliveryTimer) { window.clearInterval(deliveryTimer); deliveryTimer = null; }
+      return;
+    }
+    var dc = deliveryConfig();
+    var result = dc ? deliveryCompute(dc) : null;
+    var texts = result ? deliveryTexts(result) : null;
+    for (var i = 0; i < nodes.length; i++) {
+      if (texts === null) {
+        try {
+          if (nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
+        } catch (e) { /* noop */ }
+      } else {
+        deliverySetText(nodes[i], texts);
+      }
+    }
+    if (texts === null && deliveryTimer) {
+      window.clearInterval(deliveryTimer);
+      deliveryTimer = null;
+    }
+  }
+
+  function deliveryEnsureTimer() {
+    if (deliveryTimer) return; // single guarded interval, never stacked
+    deliveryTimer = window.setInterval(deliveryTick, 30000);
+  }
+
+  function renderDelivery(container) {
+    // CART twin of the PDP mountDelivery: called by renderInto directly
+    // AFTER renderDispatch (CRO order: urgency then reassurance, both
+    // above the shipbar). Every gate fails closed: feature off, no
+    // template (live + draft gating via the Liquid emission + featureOn),
+    // invalid/hidden config, no computable dates, missing strings ->
+    // render nothing.
+    if (!featureOn('delivery')) return null;
+    var tpl = document.getElementById(deliveryTemplateId());
+    if (!tpl || !tpl.content) return null;
+    var dc = deliveryConfig();
+    if (!dc) return null; // invalid/hidden config: fail closed
+    var result = deliveryCompute(dc);
+    if (!result) return null; // no defensible dates: fail closed
+    var texts = deliveryTexts(result);
+    if (!texts) return null; // missing strings: fail closed
+    try {
+      var node = tpl.content.cloneNode(true).firstElementChild;
+      if (!node) return null;
+      // Unique tooltip id per clone — drawer and cart page can both
+      // mount, and aria-describedby must never point at a twin's tip.
+      var tip = node.querySelector('[data-cx-delivery-tip]');
+      var badge = node.querySelector('[data-cx-delivery-badge]');
+      if (tip && badge) {
+        deliveryTipUid += 1;
+        var tipId = 'cx-delivery-tip-cart-' + deliveryTipUid;
+        tip.id = tipId;
+        badge.setAttribute('aria-describedby', tipId);
+      }
+      deliverySetText(node, texts);
+      container.appendChild(node);
+      bindDeliveryTooltip(node);
+      deliveryEnsureTimer();
+      return 'delivery_estimate';
+    } catch (e) {
+      return null;
+    }
+  }
+
   function renderInto(root, context) {
     if (!root) return [];
     root.textContent = '';
@@ -1695,6 +2105,9 @@
     var f;
     // Dispatch countdown first — top of the widget root, above the shipbar.
     f = renderDispatch(root); if (f) features.push(f);
+    // Delivery estimate directly after it (v6.0) — CRO order: urgency,
+    // then reassurance, both above the shipbar.
+    f = renderDelivery(root); if (f) features.push(f);
     f = renderShipbar(root); if (f) features.push(f);
     var offerFeatures = renderOffers(root, context);
     for (var i = 0; i < offerFeatures.length; i++) features.push(offerFeatures[i]);

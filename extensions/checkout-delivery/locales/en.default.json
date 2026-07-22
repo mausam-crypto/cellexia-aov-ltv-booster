@@ -1,0 +1,12 @@
+{
+  "line": "Get it by {{date}}",
+  "range": "Estimated delivery: {{from}} – {{to}}",
+  "range_same": "Estimated delivery: {{date}}",
+  "timeline_order": "Order today",
+  "timeline_ship": "Ships {{date}}",
+  "timeline_delivered": "Delivered by {{date}}",
+  "box_title": "Guaranteed delivery by {{date}}",
+  "box_sub": "…or we refund you or send a free replacement.",
+  "badge": "Delivery guarantee",
+  "tooltip": "Delivered on or before {{date}} — or we refund you or send a free replacement."
+}

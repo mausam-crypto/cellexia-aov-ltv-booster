@@ -136,11 +136,11 @@
     "title_pct": "dintre dermatologii certificați chestionați ar recomanda Cellexia",
     "count": "{{ yes }} din cei {{ total }} de dermatologi chestionați",
     "how": "Cum a fost realizat sondajul",
-    "methodology_p1": "În mai 2026, o firmă independentă de cercetare în domeniul sănătății a chestionat {{ total }} de medici dermatologi cu drept de liberă practică din Statele Unite, Regatul Unit, Franța, Germania, Italia și Spania.",
-    "methodology_p2": "Fiecare dermatolog a analizat o prezentare standardizată a Cellexia, incluzând gama de produse, informațiile despre ingrediente, utilizările prevăzute și datele de produs disponibile. Apoi li s-a adresat întrebarea:",
-    "methodology_p3": "„Pe baza informațiilor analizate, ați recomanda Cellexia unui pacient potrivit care caută îngrijire a pielii pentru semnele vizibile de îmbătrânire?”",
+    "methodology_p1": "În mai 2026, o firmă independentă de cercetare în domeniul cosmetic a chestionat {{ total }} de medici dermatologi cu drept de liberă practică din Statele Unite, Regatul Unit, Franța, Germania, Italia și Spania.",
+    "methodology_p2": "Fiecare dermatolog a primit toate produsele Cellexia, le-a testat cu cel puțin 5 pacienți timp de cel puțin 8 săptămâni și a analizat o prezentare detaliată a Cellexia, incluzând gama de produse, informațiile despre ingrediente, utilizările prevăzute și dovezile clinice de susținere. Apoi li s-a adresat întrebarea:",
+    "methodology_p3": "„Pe baza informațiilor analizate și a experienței pacienților dumneavoastră, ați recomanda Cellexia unui pacient potrivit care caută îngrijire a pielii pentru semnele vizibile de îmbătrânire?”",
     "methodology_p4": "Toți cei {{ total }} de dermatologi au răspuns la întrebare. {{ yes }} au ales „Da”, reprezentând {{ percent }}% dintre respondenți.",
-    "methodology_p5": "Sondajul a fost comandat de Cellexia și realizat în mod independent. Recrutarea respondenților, precum și colectarea și analiza răspunsurilor au fost efectuate de firma de cercetare. Cellexia nu a selectat participanții și nu a modificat răspunsurile individuale.",
+    "methodology_p5": "Sondajul a fost solicitat de Cellexia și realizat în mod independent. Recrutarea respondenților, precum și colectarea și analiza răspunsurilor au fost efectuate de firma de cercetare. Cellexia nu a selectat participanții și nu a modificat răspunsurile individuale.",
     "report_title": "Rezultatele sondajului",
     "report_surveyed": "Dermatologi chestionați",
     "report_yes": "Au răspuns „Da”",
@@ -150,5 +150,17 @@
     "dot_legend": "Fiecare punct reprezintă un dermatolog chestionat.",
     "verified_badge": "Verificat de o terță parte",
     "verified_by": "Sondaj verificat de {{ name }}"
+  },
+  "delivery": {
+    "line": "Primești comanda până la {{ date }}",
+    "range": "Livrare estimată: {{ from }} – {{ to }}",
+    "range_same": "Livrare estimată: {{ date }}",
+    "timeline_order": "Comandă azi",
+    "timeline_ship": "Se expediază {{ date }}",
+    "timeline_delivered": "Livrat până la {{ date }}",
+    "box_title": "Livrare garantată până la {{ date }}",
+    "box_sub": "…sau îți returnăm banii ori îți trimitem gratuit un produs de înlocuire.",
+    "badge": "Garanția livrării",
+    "tooltip": "Livrat cel târziu pe {{ date }} — altfel îți returnăm banii sau îți trimitem gratuit un produs de înlocuire."
   }
 }

@@ -1,0 +1,12 @@
+{
+  "line": "{{date}}までにお届け",
+  "range": "お届け予定：{{from}}〜{{to}}",
+  "range_same": "お届け予定：{{date}}",
+  "timeline_order": "本日ご注文",
+  "timeline_ship": "{{date}}に発送",
+  "timeline_delivered": "{{date}}までにお届け",
+  "box_title": "{{date}}までのお届けを保証",
+  "box_sub": "万一遅れた場合は、返金または無料で代替品をお送りします。",
+  "badge": "お届け保証",
+  "tooltip": "{{date}}までにお届けします。万一遅れた場合は、返金または無料で代替品をお送りします。"
+}

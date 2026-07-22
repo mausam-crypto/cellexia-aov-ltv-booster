@@ -53,6 +53,7 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   derm_survey: "/app/features/survey",
   cart_cross_sell: "/app/features/cart",
   dispatch_countdown: "/app/features/dispatch",
+  delivery_estimate: "/app/features/delivery",
 };
 
 const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
@@ -84,6 +85,7 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
       "batch_transparency",
       "empty_bottle_guarantee",
       "derm_survey",
+      "delivery_estimate",
     ],
   },
   {

@@ -1,0 +1,12 @@
+{
+  "line": "Leverans senast {{date}}",
+  "range": "Beräknad leverans: {{from}} – {{to}}",
+  "range_same": "Beräknad leverans: {{date}}",
+  "timeline_order": "Beställ i dag",
+  "timeline_ship": "Skickas {{date}}",
+  "timeline_delivered": "Levererat senast {{date}}",
+  "box_title": "Garanterad leverans senast {{date}}",
+  "box_sub": "… annars återbetalar vi dig eller skickar en gratis ersättningsprodukt.",
+  "badge": "Leveransgaranti",
+  "tooltip": "Levererat senast {{date}} – annars återbetalar vi dig eller skickar en gratis ersättningsprodukt."
+}

@@ -1,0 +1,12 @@
+{
+  "line": "Zustellung bis {{date}}",
+  "range": "Voraussichtliche Zustellung: {{from}} – {{to}}",
+  "range_same": "Voraussichtliche Zustellung: {{date}}",
+  "timeline_order": "Heute bestellen",
+  "timeline_ship": "Versand am {{date}}",
+  "timeline_delivered": "Zugestellt bis {{date}}",
+  "box_title": "Garantierte Zustellung bis {{date}}",
+  "box_sub": "… oder wir erstatten Ihnen den Kaufpreis oder senden Ihnen kostenlos ein Ersatzprodukt.",
+  "badge": "Liefergarantie",
+  "tooltip": "Zustellung bis spätestens {{date}} – andernfalls erstatten wir Ihnen den Kaufpreis oder senden Ihnen kostenlos ein Ersatzprodukt."
+}

@@ -1892,6 +1892,192 @@ body.customer--b2b .cx-sub-remove {
   }
 }
 
+/* --------------------------------------------- delivery estimate (v5.9) */
+
+/* Four compact conversion-first formats sharing one root; no animation or
+   transition anywhere in the block, so it is reduced-motion safe by
+   construction. Logical properties only (RTL-safe). 320px-safe: rows wrap,
+   the tooltip is width-capped against the viewport. */
+.cx-delivery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-block-start: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #1d1d1b;
+}
+
+.cx-delivery .cx-icon {
+  flex: 0 0 auto;
+  color: #1d1d1b;
+}
+
+.cx-delivery--line .cx-delivery__line,
+.cx-delivery--range .cx-delivery__range {
+  font-weight: 600;
+}
+
+.cx-delivery__line,
+.cx-delivery__range,
+.cx-delivery__box-copy {
+  min-width: 0;
+}
+
+/* Guarantee badge — a small pill with a TRUE tooltip (role="tooltip"),
+   deliberately a plain UI chip, never styled like a certification mark. */
+.cx-delivery__badge {
+  position: relative;
+  display: inline-flex;
+}
+
+.cx-delivery__badge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid #b1cded;
+  border-radius: 999px;
+  background: rgba(177, 205, 237, 0.18);
+  color: #1d1d1b;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.cx-delivery__badge-btn:focus-visible {
+  outline: 2px solid #1d1d1b;
+  outline-offset: 1px;
+}
+
+.cx-delivery__tip {
+  position: absolute;
+  inset-block-end: calc(100% + 6px);
+  inset-inline-start: 0;
+  z-index: 30;
+  width: max-content;
+  max-width: min(240px, calc(100vw - 24px));
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #1d1d1b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: start;
+  box-shadow: 0 4px 14px rgba(29, 29, 27, 0.25);
+}
+
+.cx-delivery__tip[data-cx-tip-pos="below"] {
+  inset-block-end: auto;
+  inset-block-start: calc(100% + 6px);
+}
+
+.cx-delivery__tip[data-cx-tip-align="end"] {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+}
+
+/* Timeline format — 3 dot-connector steps, final (delivery) step emphasized. */
+.cx-delivery--timeline {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.cx-delivery__steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cx-delivery__step {
+  position: relative;
+  padding-inline-start: 18px;
+}
+
+.cx-delivery__step::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #b1cded;
+}
+
+.cx-delivery__step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 3px;
+  inset-block-start: 15px;
+  inset-block-end: -5px;
+  width: 2px;
+  background: #b1cded;
+}
+
+.cx-delivery__step:last-child {
+  font-weight: 600;
+}
+
+.cx-delivery__step:last-child::before {
+  background: #1d1d1b;
+}
+
+/* Guarantee-box format — hairline border, bold promise + refund subline. */
+.cx-delivery--box {
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid rgba(29, 29, 27, 0.18);
+  border-radius: 8px;
+}
+
+.cx-delivery--box .cx-icon {
+  margin-block-start: 2px;
+  color: #b1cded;
+}
+
+.cx-delivery__box-title {
+  font-weight: 700;
+}
+
+.cx-delivery__box-sub {
+  color: rgba(29, 29, 27, 0.75);
+}
+
+/* ---------------------------------------- delivery estimate — cart (v6.0) */
+
+/* Cart surface of the v5.9 delivery widget: the SAME .cx-delivery block,
+   compact spacing overrides only — the drawer is narrow. Scoped under
+   .cx-cart-booster so the PDP widget is untouched. Rendered directly after
+   the dispatch countdown, above the shipbar. */
+.cx-cart-booster .cx-delivery {
+  margin-block-start: 0;
+  margin-block-end: 8px;
+  gap: 5px 7px;
+  font-size: 12px;
+}
+
+.cx-cart-booster .cx-delivery--box {
+  padding: 8px 10px;
+}
+
+.cx-cart-booster .cx-delivery--timeline {
+  gap: 6px;
+}
+
+.cx-cart-booster .cx-delivery__steps {
+  gap: 2px;
+}
+
 /* --------------------------------------------- dispatch countdown (v5.0) */
 
 .cx-dispatch {

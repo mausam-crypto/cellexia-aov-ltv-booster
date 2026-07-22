@@ -134,11 +134,11 @@
     "title_pct": "a megkérdezett szakvizsgázott bőrgyógyászok ajánlanák a Cellexiát",
     "count": "{{ yes }} a {{ total }} megkérdezett bőrgyógyász közül",
     "how": "Hogyan készült a felmérés",
-    "methodology_p1": "2026 májusában egy független egészségügyi kutatócég {{ total }} szakvizsgázott bőrgyógyászt kérdezett meg az Egyesült Államokban, az Egyesült Királyságban, Franciaországban, Németországban, Olaszországban és Spanyolországban.",
-    "methodology_p2": "Minden bőrgyógyász egy egységesített áttekintést kapott a Cellexiáról, amely bemutatta a termékcsaládot, az összetevőkre vonatkozó információkat, a rendeltetésszerű felhasználást és a termékeket alátámasztó adatokat. Ezután a következő kérdést tették fel nekik:",
-    "methodology_p3": "„A megismert információk alapján ajánlaná-e a Cellexiát olyan megfelelő páciensnek, aki a bőröregedés látható jelei ellen keres bőrápolást?”",
+    "methodology_p1": "2026 májusában egy független kozmetikai kutatócég {{ total }} szakvizsgázott bőrgyógyászt kérdezett meg az Egyesült Államokban, az Egyesült Királyságban, Franciaországban, Németországban, Olaszországban és Spanyolországban.",
+    "methodology_p2": "Minden bőrgyógyász megkapta az összes Cellexia-terméket, legalább 5 pácienssel legalább 8 héten át tesztelte őket, és áttekintett egy részletes ismertetőt a Cellexiáról, amely bemutatta a termékcsaládot, az összetevőkre vonatkozó információkat, a rendeltetésszerű felhasználást és az alátámasztó klinikai bizonyítékokat. Ezután a következő kérdést tették fel nekik:",
+    "methodology_p3": "„A megismert információk és páciensei tapasztalatai alapján ajánlaná-e a Cellexiát olyan megfelelő páciensnek, aki a bőröregedés látható jelei ellen keres bőrápolást?”",
     "methodology_p4": "A kérdésre mind a {{ total }} bőrgyógyász válaszolt. {{ yes }} választotta az „Igen” választ, ami a válaszadók {{ percent }}%-a.",
-    "methodology_p5": "A felmérést a Cellexia rendelte meg, lebonyolítása azonban függetlenül történt. A válaszadók toborzását, valamint a válaszok gyűjtését és elemzését a kutatócég végezte. A Cellexia nem választotta ki a résztvevőket, és nem módosított egyetlen választ sem.",
+    "methodology_p5": "A felmérés a Cellexia kérésére készült, lebonyolítása azonban függetlenül történt. A válaszadók toborzását, valamint a válaszok gyűjtését és elemzését a kutatócég végezte. A Cellexia nem választotta ki a résztvevőket, és nem módosított egyetlen választ sem.",
     "report_title": "A felmérés eredményei",
     "report_surveyed": "Megkérdezett bőrgyógyászok",
     "report_yes": "„Igen” választ adott",
@@ -148,5 +148,17 @@
     "dot_legend": "Minden pont egy megkérdezett bőrgyógyászt jelöl.",
     "verified_badge": "Harmadik fél által ellenőrizve",
     "verified_by": "A felmérést ellenőrizte: {{ name }}"
+  },
+  "delivery": {
+    "line": "Kézhez kapod legkésőbb: {{ date }}",
+    "range": "Várható kézbesítés: {{ from }} – {{ to }}",
+    "range_same": "Várható kézbesítés: {{ date }}",
+    "timeline_order": "Rendelj még ma",
+    "timeline_ship": "Feladás: {{ date }}",
+    "timeline_delivered": "Kézbesítve legkésőbb: {{ date }}",
+    "box_title": "Garantált kézbesítés legkésőbb: {{ date }}",
+    "box_sub": "…különben visszatérítjük a pénzed, vagy ingyen küldünk egy cseretermeket.",
+    "badge": "Kézbesítési garancia",
+    "tooltip": "Kézbesítés legkésőbb: {{ date }} — különben visszatérítjük a pénzed, vagy ingyen küldünk egy cseretermeket."
   }
 }

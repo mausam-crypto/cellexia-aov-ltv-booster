@@ -1,10 +1,12 @@
 import crypto from "node:crypto";
 import prisma from "../db.server";
 import {
+  DELIVERY_ESTIMATE_FORMATS,
   DERM_SURVEY_FORMATS,
   FEATURE_KEYS,
   getSettings,
   type BoosterSettings,
+  type DeliveryEstimateFormat,
   type DermSurveyFormat,
   type FeatureKey,
 } from "../models/settings.server";
@@ -45,12 +47,19 @@ interface AdminGraphqlClient {
 /**
  * Draft, preview-session-only configuration overrides (v5.8). Unlike
  * draftFlags (which feature is visible), draftConfig carries HOW a feature
- * renders in the preview session — currently only the derm-survey display
- * format. Tokenless by construction (validated against a closed enum), so it
- * is safe to mirror into the page-visible Liquid config while armed.
+ * renders in the preview session — the derm-survey display format and (v5.9)
+ * the delivery-estimate widget format. Tokenless by construction (validated
+ * against closed enums), so it is safe to mirror into the page-visible
+ * Liquid config while armed.
  */
 export interface PreviewDraftConfig {
   dermSurveyFormat?: DermSurveyFormat;
+  /** Delivery-estimate widget format previewed on the PRODUCT PAGE. */
+  deliveryFormat?: DeliveryEstimateFormat;
+  /** Delivery-estimate widget format previewed in the CART DRAWER (v6.0). */
+  deliveryFormatCart?: DeliveryEstimateFormat;
+  /** Delivery-estimate widget format previewed in CHECKOUT (v6.0). */
+  deliveryFormatCheckout?: DeliveryEstimateFormat;
 }
 
 /** Parsed, validated snapshot of a shop's PreviewState row. */
@@ -143,6 +152,34 @@ export function sanitizeDraftConfig(raw: unknown): PreviewDraftConfig {
     (DERM_SURVEY_FORMATS as readonly string[]).includes(format)
   ) {
     out.dermSurveyFormat = format as DermSurveyFormat;
+  }
+  const deliveryFormat = (raw as Record<string, unknown>).deliveryFormat;
+  if (
+    typeof deliveryFormat === "string" &&
+    (DELIVERY_ESTIMATE_FORMATS as readonly string[]).includes(deliveryFormat)
+  ) {
+    out.deliveryFormat = deliveryFormat as DeliveryEstimateFormat;
+  }
+  const deliveryFormatCart = (raw as Record<string, unknown>)
+    .deliveryFormatCart;
+  if (
+    typeof deliveryFormatCart === "string" &&
+    (DELIVERY_ESTIMATE_FORMATS as readonly string[]).includes(
+      deliveryFormatCart,
+    )
+  ) {
+    out.deliveryFormatCart = deliveryFormatCart as DeliveryEstimateFormat;
+  }
+  const deliveryFormatCheckout = (raw as Record<string, unknown>)
+    .deliveryFormatCheckout;
+  if (
+    typeof deliveryFormatCheckout === "string" &&
+    (DELIVERY_ESTIMATE_FORMATS as readonly string[]).includes(
+      deliveryFormatCheckout,
+    )
+  ) {
+    out.deliveryFormatCheckout =
+      deliveryFormatCheckout as DeliveryEstimateFormat;
   }
   return out;
 }
@@ -486,6 +523,57 @@ function dispatchReadiness(
   }
 }
 
+/**
+ * Readiness for the delivery estimator (v5.9, three surfaces since v6.0).
+ * Not ready only when all three surfaces (product page, cart drawer,
+ * checkout) are turned off — the widget then renders nowhere, dispatch
+ * precedent. Otherwise ready: the reason lists which surfaces are on and
+ * describes the CURRENT computed state — which countries are hidden by
+ * override, and whether the dispatch schedule (the anchor of every delivery
+ * date) can be resolved at all.
+ */
+function deliveryReadiness(settings: BoosterSettings): FeatureReadiness {
+  const de = settings.deliveryEstimate;
+  const surfacesOn = [
+    de.showOnPdp ? "product page" : null,
+    de.showInCart ? "cart drawer" : null,
+    de.showInCheckout ? "checkout" : null,
+  ].filter((surface): surface is string => surface !== null);
+  if (surfacesOn.length === 0) {
+    return {
+      ready: false,
+      reason:
+        "All three surfaces are turned off in Features → Delivery guarantee — enable “Show on product pages”, “Show in the cart drawer” and/or “Show in checkout” or the widget renders nowhere.",
+    };
+  }
+  const surfaceNote = `Shows on: ${surfacesOn.join(", ")}${
+    de.showInCheckout
+      ? " (the checkout block must also be placed once in the checkout editor)"
+      : ""
+  }. `;
+  const hiddenCountries = Object.entries(
+    settings.deliveryEstimate.byCountry ?? {},
+  )
+    .filter(([, entry]) => entry?.hidden === true)
+    .map(([code]) => code)
+    .sort();
+  const hiddenNote =
+    hiddenCountries.length > 0
+      ? `Hidden by country override for ${hiddenCountries.join(", ")} — buyers there never see the widget; everyone else gets real dates.`
+      : "Estimates render for every country (any without a fixed-date holiday table just skip the global Dec 24/25/31 + Jan 1 exclusions).";
+  // The dispatch schedule anchors every delivery date; if its warehouse
+  // timezone cannot be evaluated the storefront fails closed to hidden.
+  let scheduleWarning = "";
+  try {
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: settings.dispatch.timezone,
+    }).format(new Date());
+  } catch {
+    scheduleWarning = ` Warning: the warehouse timezone ("${settings.dispatch.timezone}") on the Dispatch countdown page cannot be resolved — the delivery widget fails closed (renders nothing) until it is fixed.`;
+  }
+  return { ready: true, reason: surfaceNote + hiddenNote + scheduleWarning };
+}
+
 function contentReadiness(
   count: number | undefined,
   contentLabel: string,
@@ -563,6 +651,7 @@ export function featureReadiness(
       "Placed as a theme-editor block — not shown in the app's live preview. Use the theme editor preview for placement; market toggles still apply.",
   };
   readiness.dispatch_countdown = dispatchReadiness(settings.dispatch);
+  readiness.delivery_estimate = deliveryReadiness(settings);
   readiness.clinical_study = contentReadiness(counts?.clinical, "clinical study");
   readiness.verified_before_after = contentReadiness(
     counts?.ba,

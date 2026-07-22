@@ -34,6 +34,9 @@ const ALLOWED_FEATURES = new Set([
   "cart_cross_sell",
   // Dispatch countdown (v5.0) — impression beacons from the PDP/cart widget.
   "dispatch_countdown",
+  // Delivery estimate + guarantee (v5.9) — impression beacons from the PDP
+  // widget (all four formats share the key).
+  "delivery_estimate",
   // Site-wide session beacon (one per browser session) — powers the
   // experiment tracker's conversion-rate denominator.
   "site",

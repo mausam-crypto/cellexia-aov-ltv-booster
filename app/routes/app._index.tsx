@@ -306,6 +306,17 @@ const FEATURES: FeatureDefinition[] = [
     buildPatch: (enabled) => ({ dispatch: { enabled } }),
   },
   {
+    key: "delivery_estimate",
+    title: "Delivery guarantee",
+    description:
+      "“Get it by Thu, Aug 6” with a delivery-guarantee badge on product pages — real dates computed from your dispatch schedule, delivery days and public holidays; hidden whenever a date cannot be stood behind.",
+    configureUrl: "/app/features/delivery",
+    scopeKeys: ["delivery_estimate"],
+    statusFlagKey: "delivery_estimate",
+    isEnabled: (settings) => settings.deliveryEstimate.enabled,
+    buildPatch: (enabled) => ({ deliveryEstimate: { enabled } }),
+  },
+  {
     key: "trust_badges",
     title: "Trust badges",
     description:

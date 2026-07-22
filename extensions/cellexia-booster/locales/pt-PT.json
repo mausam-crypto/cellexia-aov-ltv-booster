@@ -134,11 +134,11 @@
     "title_pct": "dos dermatologistas certificados inquiridos recomendariam a Cellexia",
     "count": "{{ yes }} de {{ total }} dermatologistas inquiridos",
     "how": "Como foi realizado o inquérito",
-    "methodology_p1": "Em maio de 2026, uma empresa independente de estudos na área da saúde inquiriu {{ total }} dermatologistas habilitados nos Estados Unidos, no Reino Unido, em França, na Alemanha, em Itália e em Espanha.",
-    "methodology_p2": "Cada dermatologista analisou uma apresentação padronizada da Cellexia, incluindo a gama de produtos, a informação sobre ingredientes, as utilizações previstas e a evidência de produto disponível. Foi-lhes depois colocada a seguinte pergunta:",
-    "methodology_p3": "«Com base na informação analisada, recomendaria a Cellexia a um doente adequado que procure cuidados de pele para os sinais visíveis de envelhecimento?»",
+    "methodology_p1": "Em maio de 2026, uma empresa independente de estudos na área da cosmética inquiriu {{ total }} dermatologistas habilitados nos Estados Unidos, no Reino Unido, em França, na Alemanha, em Itália e em Espanha.",
+    "methodology_p2": "Cada dermatologista recebeu todos os produtos Cellexia, testou-os com pelo menos 5 doentes durante pelo menos 8 semanas e analisou uma apresentação detalhada da Cellexia, incluindo a gama de produtos, a informação sobre ingredientes, as utilizações previstas e a evidência clínica de suporte. Foi-lhes depois colocada a seguinte pergunta:",
+    "methodology_p3": "«Com base na informação analisada e na experiência dos seus doentes, recomendaria a Cellexia a um doente adequado que procure cuidados de pele para os sinais visíveis de envelhecimento?»",
     "methodology_p4": "Todos os {{ total }} dermatologistas responderam à pergunta. {{ yes }} selecionaram «Sim», o que representa {{ percent }}% dos inquiridos.",
-    "methodology_p5": "O inquérito foi encomendado pela Cellexia e realizado de forma independente. O recrutamento dos inquiridos, bem como a recolha e a análise das respostas, foram assegurados pela empresa de estudos. A Cellexia não selecionou os participantes nem alterou respostas individuais.",
+    "methodology_p5": "O inquérito foi solicitado pela Cellexia e realizado de forma independente. O recrutamento dos inquiridos, bem como a recolha e a análise das respostas, foram assegurados pela empresa de estudos. A Cellexia não selecionou os participantes nem alterou respostas individuais.",
     "report_title": "Resultados do inquérito",
     "report_surveyed": "Dermatologistas inquiridos",
     "report_yes": "Responderam «Sim»",
@@ -148,5 +148,17 @@
     "dot_legend": "Cada ponto representa um dermatologista inquirido.",
     "verified_badge": "Verificado por terceiros",
     "verified_by": "Inquérito verificado por {{ name }}"
+  },
+  "delivery": {
+    "line": "Receba a sua encomenda até {{ date }}",
+    "range": "Entrega prevista: {{ from }} – {{ to }}",
+    "range_same": "Entrega prevista: {{ date }}",
+    "timeline_order": "Encomende hoje",
+    "timeline_ship": "Envio a {{ date }}",
+    "timeline_delivered": "Entregue até {{ date }}",
+    "box_title": "Entrega garantida até {{ date }}",
+    "box_sub": "…ou reembolsamos o valor ou enviamos gratuitamente um produto de substituição.",
+    "badge": "Garantia de entrega",
+    "tooltip": "Entregue até {{ date }}, o mais tardar — caso contrário, reembolsamos o valor ou enviamos gratuitamente um produto de substituição."
   }
 }

@@ -134,11 +134,11 @@
     "title_pct": "der befragten Fachärzte für Dermatologie würden Cellexia empfehlen",
     "count": "{{ yes }} von {{ total }} befragten Dermatologen",
     "how": "So wurde die Befragung durchgeführt",
-    "methodology_p1": "Im Mai 2026 befragte ein unabhängiges Forschungsinstitut im Gesundheitswesen {{ total }} approbierte Dermatologen in den USA, dem Vereinigten Königreich, Frankreich, Deutschland, Italien und Spanien.",
-    "methodology_p2": "Jeder Dermatologe erhielt eine standardisierte Übersicht zu Cellexia, einschließlich des Produktsortiments, der Inhaltsstoffe, der vorgesehenen Anwendungsbereiche und der unterstützenden Produktdaten. Anschließend wurde folgende Frage gestellt:",
-    "methodology_p3": "„Würden Sie Cellexia auf Grundlage der geprüften Informationen einem geeigneten Patienten empfehlen, der eine Hautpflege gegen sichtbare Zeichen der Hautalterung sucht?“",
+    "methodology_p1": "Im Mai 2026 befragte ein unabhängiges kosmetisches Forschungsinstitut {{ total }} approbierte Dermatologen in den USA, dem Vereinigten Königreich, Frankreich, Deutschland, Italien und Spanien.",
+    "methodology_p2": "Jeder Dermatologe erhielt alle Cellexia-Produkte, testete sie mit mindestens 5 Patienten über mindestens 8 Wochen und prüfte eine ausführliche Übersicht zu Cellexia, einschließlich des Produktsortiments, der Inhaltsstoffe, der vorgesehenen Anwendungsbereiche und der unterstützenden klinischen Evidenz. Anschließend wurde folgende Frage gestellt:",
+    "methodology_p3": "„Würden Sie Cellexia auf Grundlage der geprüften Informationen und der Erfahrungen Ihrer Patienten einem geeigneten Patienten empfehlen, der eine Hautpflege gegen sichtbare Zeichen der Hautalterung sucht?“",
     "methodology_p4": "Alle {{ total }} Dermatologen beantworteten die Frage. {{ yes }} wählten „Ja“ – das entspricht {{ percent }} % der Befragten.",
-    "methodology_p5": "Die Befragung wurde von Cellexia in Auftrag gegeben und unabhängig durchgeführt. Die Rekrutierung der Teilnehmer sowie die Erhebung und Auswertung der Antworten erfolgten durch das Forschungsinstitut. Cellexia hat weder Teilnehmer ausgewählt noch einzelne Antworten verändert.",
+    "methodology_p5": "Die Befragung erfolgte auf Anfrage von Cellexia und wurde unabhängig durchgeführt. Die Rekrutierung der Teilnehmer sowie die Erhebung und Auswertung der Antworten erfolgten durch das Forschungsinstitut. Cellexia hat weder Teilnehmer ausgewählt noch einzelne Antworten verändert.",
     "report_title": "Ergebnisse der Befragung",
     "report_surveyed": "Befragte Dermatologen",
     "report_yes": "Mit „Ja“ geantwortet",
@@ -148,5 +148,17 @@
     "dot_legend": "Jeder Punkt steht für einen befragten Dermatologen.",
     "verified_badge": "Durch Dritte verifiziert",
     "verified_by": "Befragung verifiziert von {{ name }}"
+  },
+  "delivery": {
+    "line": "Zustellung bis {{ date }}",
+    "range": "Voraussichtliche Zustellung: {{ from }} – {{ to }}",
+    "range_same": "Voraussichtliche Zustellung: {{ date }}",
+    "timeline_order": "Heute bestellen",
+    "timeline_ship": "Versand am {{ date }}",
+    "timeline_delivered": "Zugestellt bis {{ date }}",
+    "box_title": "Garantierte Zustellung bis {{ date }}",
+    "box_sub": "… oder wir erstatten Ihnen den Kaufpreis oder senden Ihnen kostenlos ein Ersatzprodukt.",
+    "badge": "Liefergarantie",
+    "tooltip": "Zustellung bis spätestens {{ date }} – andernfalls erstatten wir Ihnen den Kaufpreis oder senden Ihnen kostenlos ein Ersatzprodukt."
   }
 }

@@ -138,11 +138,11 @@
     "title_pct": "ankietowanych dermatologów z tytułem specjalisty poleciłoby Cellexię",
     "count": "{{ yes }} z {{ total }} ankietowanych dermatologów",
     "how": "Jak przeprowadzono ankietę",
-    "methodology_p1": "W maju 2026 r. niezależna firma badawcza z sektora ochrony zdrowia przeprowadziła ankietę wśród {{ total }} dermatologów z prawem wykonywania zawodu w Stanach Zjednoczonych, Wielkiej Brytanii, Francji, Niemczech, Włoszech i Hiszpanii.",
-    "methodology_p2": "Każdy dermatolog zapoznał się z ujednoliconym omówieniem marki Cellexia, obejmującym asortyment produktów, informacje o składnikach, przeznaczenie oraz dostępne dane dotyczące produktów. Następnie zadano im pytanie:",
-    "methodology_p3": "„Czy na podstawie przedstawionych informacji polecił(a)by Pan/Pani Cellexię odpowiedniemu pacjentowi poszukującemu pielęgnacji skóry ukierunkowanej na widoczne oznaki starzenia?”",
+    "methodology_p1": "W maju 2026 r. niezależna firma badawcza z sektora kosmetycznego przeprowadziła ankietę wśród {{ total }} dermatologów z prawem wykonywania zawodu w Stanach Zjednoczonych, Wielkiej Brytanii, Francji, Niemczech, Włoszech i Hiszpanii.",
+    "methodology_p2": "Każdy dermatolog otrzymał wszystkie produkty Cellexia, przetestował je z udziałem co najmniej 5 pacjentów przez co najmniej 8 tygodni i zapoznał się ze szczegółowym omówieniem marki Cellexia, obejmującym asortyment produktów, informacje o składnikach, przeznaczenie oraz potwierdzające dane kliniczne. Następnie zadano im pytanie:",
+    "methodology_p3": "„Czy na podstawie przedstawionych informacji i doświadczeń Pana/Pani pacjentów polecił(a)by Pan/Pani Cellexię odpowiedniemu pacjentowi poszukującemu pielęgnacji skóry ukierunkowanej na widoczne oznaki starzenia?”",
     "methodology_p4": "Na pytanie odpowiedziało wszystkich {{ total }} dermatologów. Odpowiedź „Tak” wybrało {{ yes }} z nich, co stanowi {{ percent }}% respondentów.",
-    "methodology_p5": "Ankieta została zlecona przez Cellexię i przeprowadzona niezależnie. Rekrutacją respondentów oraz zbieraniem i analizą odpowiedzi zajmowała się firma badawcza. Cellexia nie wybierała uczestników ani nie zmieniała poszczególnych odpowiedzi.",
+    "methodology_p5": "Ankieta została przeprowadzona na prośbę Cellexii i zrealizowana w sposób niezależny. Rekrutacją respondentów oraz zbieraniem i analizą odpowiedzi zajmowała się firma badawcza. Cellexia nie wybierała uczestników ani nie zmieniała poszczególnych odpowiedzi.",
     "report_title": "Wyniki ankiety",
     "report_surveyed": "Ankietowani dermatolodzy",
     "report_yes": "Odpowiedzieli „Tak”",
@@ -152,5 +152,17 @@
     "dot_legend": "Każda kropka odpowiada jednemu ankietowanemu dermatologowi.",
     "verified_badge": "Zweryfikowane przez niezależny podmiot",
     "verified_by": "Ankieta zweryfikowana przez {{ name }}"
+  },
+  "delivery": {
+    "line": "U Ciebie najpóźniej {{ date }}",
+    "range": "Przewidywana dostawa: {{ from }} – {{ to }}",
+    "range_same": "Przewidywana dostawa: {{ date }}",
+    "timeline_order": "Zamów dziś",
+    "timeline_ship": "Wysyłka {{ date }}",
+    "timeline_delivered": "Dostawa najpóźniej {{ date }}",
+    "box_title": "Gwarantowana dostawa najpóźniej {{ date }}",
+    "box_sub": "…albo zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt.",
+    "badge": "Gwarancja dostawy",
+    "tooltip": "Dostawa najpóźniej {{ date }} — w przeciwnym razie zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt."
   }
 }

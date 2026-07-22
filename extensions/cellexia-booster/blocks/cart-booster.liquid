@@ -1,6 +1,13 @@
 {%- assign cfg = app.metafields.cellexia.config.value -%}
 {%- if cfg -%}
 {%- assign cx_market = localization.market.handle | default: '' -%}
+{%- assign cx_country = localization.country.iso_code | upcase -%}
+{%- assign cx_de = cfg.deliveryEstimate -%}
+{%- assign cx_del_c = cx_de.byCountry[cx_country] -%}
+{%- assign cx_del_hidden = false -%}
+{%- if cx_del_c.hidden == true -%}
+  {%- assign cx_del_hidden = true -%}
+{%- endif -%}
 {%- assign cx_prev = cfg.preview -%}
 {%- assign cx_prev_armed = false -%}
 {%- if cx_prev.armed == true -%}
@@ -12,6 +19,7 @@
 {%- assign cx_draft_trustrow = false -%}
 {%- assign cx_draft_crosssell = false -%}
 {%- assign cx_draft_dispatch = false -%}
+{%- assign cx_draft_delivery = false -%}
 {%- if cx_prev_armed -%}
   {%- liquid
     assign cx_prev_flags = cx_prev.draftFlags
@@ -35,6 +43,13 @@
         assign cx_draft_dispatch = true
       endunless
     endif
+    if cx_prev_flags.delivery_estimate == true
+      unless cx_de.showInCart == false
+        if cx_del_hidden == false
+          assign cx_draft_delivery = true
+        endif
+      endunless
+    endif
     if cfg.cartUpsell.enabled == true and cfg.cartUpsell.showTrustRow != false
       assign cx_draft_trustrow = true
     endif
@@ -44,10 +59,13 @@
     if cfg.dispatch.enabled == true and cfg.dispatch.showInCart != false
       assign cx_draft_dispatch = true
     endif
+    if cx_de.enabled == true and cx_de.showInCart != false and cx_del_hidden == false
+      assign cx_draft_delivery = true
+    endif
   -%}
 {%- endif -%}
 {%- assign cx_cart_draft_any = false -%}
-{%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow or cx_draft_crosssell or cx_draft_dispatch -%}
+{%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow or cx_draft_crosssell or cx_draft_dispatch or cx_draft_delivery -%}
   {%- assign cx_cart_draft_any = true -%}
 {%- endif -%}
 <script>
@@ -76,7 +94,7 @@
     } catch (e) { /* never break the theme */ }
   })();
 </script>
-{%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_cart_draft_any -%}
+{%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_de.enabled == true or cx_cart_draft_any -%}
   {%- liquid
     assign threshold = cfg.global.freeShippingThreshold | default: 150
     # SPEC v4.5: per-market free-shipping threshold ({ amount, currencyCode }).
@@ -187,6 +205,21 @@
         endif
       endunless
     endif
+
+    # Delivery estimate (v6.0): the SAME delivery_estimate master as the
+    # PDP widget, gated for this surface by showInCart (missing = true),
+    # the buyer country's hidden flag (resolved at the top of this file)
+    # and the shared market scope. The twin JS engine validates and
+    # resolves everything else, fail closed.
+    assign cx_eff_delivery = false
+    if cx_de.enabled == true and cx_del_hidden == false
+      unless cx_de.showInCart == false
+        assign cx_scope = cfg.marketScopes.delivery_estimate
+        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+          assign cx_eff_delivery = true
+        endif
+      endunless
+    endif
   -%}
   {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
   <script type="application/json" id="cx-cart-config">
@@ -209,6 +242,7 @@
       "market": {{ cx_market | json }},
       "effective": {
         "dispatch": {{ cx_eff_dispatch }},
+        "delivery": {{ cx_eff_delivery }},
         "volume": {{ cx_eff_volume }},
         "shipbar": {{ cx_eff_shipbar }},
         "subscription": {{ cx_eff_subscription }},
@@ -224,6 +258,10 @@
       "b2b": {% if customer.b2b? %}true{% else %}false{% endif %},
       "currency": {{ cart.currency.iso_code | json }},
       "dispatch": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}, "showWithinHours": {{ cx_dsp_within }}},
+      {%- if cx_eff_delivery or cx_draft_delivery %}
+      "delivery": {"minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}},
+      "deliveryStrings": {"delivery.line": {{ 'delivery.line' | t: date: '@@DATE@@' | json }}, "delivery.range": {{ 'delivery.range' | t: from: '@@FROM@@', to: '@@TO@@' | json }}, "delivery.range_same": {{ 'delivery.range_same' | t: date: '@@DATE@@' | json }}, "delivery.timeline_ship": {{ 'delivery.timeline_ship' | t: date: '@@DATE@@' | json }}, "delivery.timeline_delivered": {{ 'delivery.timeline_delivered' | t: date: '@@DATE@@' | json }}, "delivery.box_title": {{ 'delivery.box_title' | t: date: '@@DATE@@' | json }}, "delivery.tooltip": {{ 'delivery.tooltip' | t: date: '@@DATE@@' | json }}},
+      {%- endif %}
       "overrides": {
         "volumeTitle": {{ block.settings.volume_title_override | default: '' | json }},
         "subscriptionTitle": {{ block.settings.subscription_title_override | default: '' | json }},
@@ -373,6 +411,52 @@
         <span class="cx-dispatch__text"><strong class="cx-dispatch__main"></strong></span>
       </div>
     </template>
+  {%- endif -%}
+    {%- if cx_eff_delivery or cx_draft_delivery -%}
+    {%- liquid
+      assign delivery_formats = 'line,range,timeline,box' | split: ','
+      assign delivery_fmt_live = cx_de.formatCart
+      unless delivery_formats contains delivery_fmt_live
+        assign delivery_fmt_live = 'line'
+      endunless
+    -%}
+    {%- capture delivery_badge -%}
+      <span class="cx-delivery__badge"><button type="button" class="cx-delivery__badge-btn" data-cx-delivery-badge aria-describedby="cx-delivery-tip-cart">{%- render 'cx-icons', icon: 'shield-check', size: 12 -%}<span>{{ 'delivery.badge' | t }}</span></button><span class="cx-delivery__tip" id="cx-delivery-tip-cart" role="tooltip" hidden data-cx-delivery-tip></span></span>
+    {%- endcapture -%}
+    {%- capture delivery_body_line -%}
+      <div class="cx-delivery cx-delivery--cart cx-delivery--line" data-cx-feature="delivery_estimate">{%- render 'cx-icons', icon: 'box', size: 15 -%}<span class="cx-delivery__line" data-cx-delivery-line></span>{{ delivery_badge }}</div>
+    {%- endcapture -%}
+    {%- capture delivery_body_range -%}
+      <div class="cx-delivery cx-delivery--cart cx-delivery--range" data-cx-feature="delivery_estimate"><span class="cx-delivery__range" data-cx-delivery-range></span>{{ delivery_badge }}</div>
+    {%- endcapture -%}
+    {%- capture delivery_body_timeline -%}
+      <div class="cx-delivery cx-delivery--cart cx-delivery--timeline" data-cx-feature="delivery_estimate"><ol class="cx-delivery__steps list-reset"><li class="cx-delivery__step">{{ 'delivery.timeline_order' | t }}</li><li class="cx-delivery__step" data-cx-delivery-ship></li><li class="cx-delivery__step" data-cx-delivery-done></li></ol>{{ delivery_badge }}</div>
+    {%- endcapture -%}
+    {%- capture delivery_body_box -%}
+      <div class="cx-delivery cx-delivery--cart cx-delivery--box" data-cx-feature="delivery_estimate">{%- render 'cx-icons', icon: 'check', size: 16 -%}<span class="cx-delivery__box-copy"><strong class="cx-delivery__box-title" data-cx-delivery-title></strong> <span class="cx-delivery__box-sub">{{ 'delivery.box_sub' | t }}</span> {{ delivery_badge }}</span></div>
+    {%- endcapture -%}
+    <template id="cx-tpl-delivery-cart"{% unless cx_eff_delivery %} data-cx-draft="1"{% endunless %}>
+      {%- case delivery_fmt_live -%}
+        {%- when 'range' -%}{{ delivery_body_range }}
+        {%- when 'timeline' -%}{{ delivery_body_timeline }}
+        {%- when 'box' -%}{{ delivery_body_box }}
+        {%- when 'line' -%}{{ delivery_body_line }}
+        {%- else -%}{{ delivery_body_line }}
+      {%- endcase -%}
+    </template>
+    {%- if cx_prev_armed -%}
+      {%- assign delivery_fmt_draft = cx_prev.draftConfig.deliveryFormatCart -%}
+      {%- if delivery_formats contains delivery_fmt_draft and delivery_fmt_draft != delivery_fmt_live -%}
+        <template id="cx-tpl-delivery-cart-alt" data-cx-draft="1">
+          {%- case delivery_fmt_draft -%}
+            {%- when 'range' -%}{{ delivery_body_range }}
+            {%- when 'timeline' -%}{{ delivery_body_timeline }}
+            {%- when 'box' -%}{{ delivery_body_box }}
+            {%- when 'line' -%}{{ delivery_body_line }}
+          {%- endcase -%}
+        </template>
+      {%- endif -%}
+    {%- endif -%}
   {%- endif -%}
   <script src="{{ 'cellexia-cart.js' | asset_url }}" defer></script>
 {%- endif -%}

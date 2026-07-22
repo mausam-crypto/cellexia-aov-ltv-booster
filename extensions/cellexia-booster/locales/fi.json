@@ -134,11 +134,11 @@
     "title_pct": "kyselyyn vastanneista laillistetuista ihotautilääkäreistä suosittelisi Cellexiaa",
     "count": "{{ yes }} / {{ total }} kyselyyn osallistunutta ihotautilääkäriä",
     "how": "Näin kysely toteutettiin",
-    "methodology_p1": "Toukokuussa 2026 riippumaton terveysalan tutkimusyritys teki kyselyn {{ total }} laillistetulle ihotautilääkärille Yhdysvalloissa, Yhdistyneessä kuningaskunnassa, Ranskassa, Saksassa, Italiassa ja Espanjassa.",
-    "methodology_p2": "Jokainen ihotautilääkäri tutustui standardoituun yleiskatsaukseen Cellexiasta, mukaan lukien tuotevalikoima, ainesosatiedot, käyttötarkoitukset ja tuotteita tukeva näyttö. Tämän jälkeen heiltä kysyttiin:",
-    "methodology_p3": "”Suosittelisitko tarkastellun tiedon perusteella Cellexiaa sopivalle potilaalle, joka etsii ihonhoitoa näkyviin ikääntymisen merkkeihin?”",
+    "methodology_p1": "Toukokuussa 2026 riippumaton kosmetiikka-alan tutkimusyritys teki kyselyn {{ total }} laillistetulle ihotautilääkärille Yhdysvalloissa, Yhdistyneessä kuningaskunnassa, Ranskassa, Saksassa, Italiassa ja Espanjassa.",
+    "methodology_p2": "Jokainen ihotautilääkäri sai kaikki Cellexia-tuotteet, testasi niitä vähintään 5 potilaalla vähintään 8 viikon ajan ja tutustui yksityiskohtaiseen yleiskatsaukseen Cellexiasta, mukaan lukien tuotevalikoima, ainesosatiedot, käyttötarkoitukset ja tukeva kliininen näyttö. Tämän jälkeen heiltä kysyttiin:",
+    "methodology_p3": "”Suosittelisitko tarkastellun tiedon ja potilaidesi kokemusten perusteella Cellexiaa sopivalle potilaalle, joka etsii ihonhoitoa näkyviin ikääntymisen merkkeihin?”",
     "methodology_p4": "Kaikki {{ total }} ihotautilääkäriä vastasivat kysymykseen. Heistä {{ yes }} valitsi vaihtoehdon ”Kyllä”, mikä on {{ percent }} % vastaajista.",
-    "methodology_p5": "Kyselyn tilasi Cellexia, ja se toteutettiin riippumattomasti. Tutkimusyritys rekrytoi vastaajat sekä keräsi ja analysoi vastaukset. Cellexia ei valinnut osallistujia eikä muuttanut yksittäisiä vastauksia.",
+    "methodology_p5": "Kysely toteutettiin Cellexian pyynnöstä ja riippumattomasti. Tutkimusyritys rekrytoi vastaajat sekä keräsi ja analysoi vastaukset. Cellexia ei valinnut osallistujia eikä muuttanut yksittäisiä vastauksia.",
     "report_title": "Kyselyn tulokset",
     "report_surveyed": "Kyselyyn osallistuneet ihotautilääkärit",
     "report_yes": "Vastasivat ”Kyllä”",
@@ -148,5 +148,17 @@
     "dot_legend": "Jokainen piste vastaa yhtä kyselyyn osallistunutta ihotautilääkäriä.",
     "verified_badge": "Kolmannen osapuolen varmentama",
     "verified_by": "Kyselyn on varmentanut {{ name }}"
+  },
+  "delivery": {
+    "line": "Perillä viimeistään {{ date }}",
+    "range": "Arvioitu toimitus: {{ from }} – {{ to }}",
+    "range_same": "Arvioitu toimitus: {{ date }}",
+    "timeline_order": "Tilaa tänään",
+    "timeline_ship": "Lähetetään {{ date }}",
+    "timeline_delivered": "Toimitettu viimeistään {{ date }}",
+    "box_title": "Taattu toimitus viimeistään {{ date }}",
+    "box_sub": "… tai palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle.",
+    "badge": "Toimitustakuu",
+    "tooltip": "Perillä viimeistään {{ date }} — muussa tapauksessa palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle."
   }
 }

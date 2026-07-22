@@ -106,6 +106,7 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
       "batch_transparency",
       "empty_bottle_guarantee",
       "derm_survey",
+      "delivery_estimate",
     ],
   },
   {
@@ -161,6 +162,19 @@ const SURVEY_FORMAT_OPTIONS: { label: string; value: string }[] = [
   { label: "Single line — understated", value: "strip" },
 ];
 
+/**
+ * The four delivery-estimate widget formats with short mechanism labels
+ * (client-safe literal mirror of DELIVERY_ESTIMATE_FORMATS in the
+ * server-only settings model — same pattern as SURVEY_FORMAT_OPTIONS; the
+ * arm action validates against the canonical enum via sanitizeDraftConfig).
+ */
+const DELIVERY_FORMAT_OPTIONS: { label: string; value: string }[] = [
+  { label: "One line — “Get it by …” + badge", value: "line" },
+  { label: "Date range — “Estimated delivery: … – …”", value: "range" },
+  { label: "Timeline — Order → Ships → Delivered", value: "timeline" },
+  { label: "Guarantee box — bordered promise card", value: "box" },
+];
+
 const NOT_READY_FIX_LINKS: Partial<
   Record<FeatureKey, { url: string; label: string }>
 > = {
@@ -179,6 +193,10 @@ const NOT_READY_FIX_LINKS: Partial<
   dispatch_countdown: {
     url: "/app/features/dispatch",
     label: "Configure on the Dispatch countdown page",
+  },
+  delivery_estimate: {
+    url: "/app/features/delivery",
+    label: "Configure on the Delivery guarantee page",
   },
   clinical_study: {
     url: "/app/products",
@@ -378,6 +396,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // The format saved on the Survey feature page — the Select's default, so
     // "preview without touching anything" starts from what is really live.
     liveSurveyFormat: settings.dermSurvey.format,
+    // Same contract for the delivery-estimate widget formats — one per
+    // surface (v6.0): product page, cart drawer, checkout.
+    liveDeliveryFormat: settings.deliveryEstimate.format,
+    liveDeliveryFormatCart: settings.deliveryEstimate.formatCart,
+    liveDeliveryFormatCheckout: settings.deliveryEstimate.formatCheckout,
     defaultProductHandle,
     // The one sanctioned page-facing home of the raw token: the entry URL.
     entryUrl: state.armed
@@ -742,6 +765,9 @@ export default function PreviewCenter() {
     featureLocks,
     runningExperiments,
     liveSurveyFormat,
+    liveDeliveryFormat,
+    liveDeliveryFormatCart,
+    liveDeliveryFormatCheckout,
   } = data;
 
   // v5.4 safety net: a FeatureKey missing from the FEATURE_GROUPS literal
@@ -802,6 +828,18 @@ export default function PreviewCenter() {
   // draft (when re-arming) or the format saved on the Survey feature page.
   const [surveyFormat, setSurveyFormat] = useState<string>(
     preview.draftConfig?.dermSurveyFormat ?? liveSurveyFormat,
+  );
+  // Delivery-estimate widget formats for the preview session — one per
+  // surface (v6.0), same contract: each starts from the armed draft or the
+  // saved live format of ITS surface.
+  const [deliveryFormat, setDeliveryFormat] = useState<string>(
+    preview.draftConfig?.deliveryFormat ?? liveDeliveryFormat,
+  );
+  const [deliveryFormatCart, setDeliveryFormatCart] = useState<string>(
+    preview.draftConfig?.deliveryFormatCart ?? liveDeliveryFormatCart,
+  );
+  const [deliveryFormatCheckout, setDeliveryFormatCheckout] = useState<string>(
+    preview.draftConfig?.deliveryFormatCheckout ?? liveDeliveryFormatCheckout,
   );
 
   // Debounced product search — reloads the loader with ?q= (same pattern as
@@ -954,9 +992,14 @@ export default function PreviewCenter() {
     );
     formData.set(
       "draftConfig",
-      JSON.stringify(
-        checked.has("derm_survey") ? { dermSurveyFormat: surveyFormat } : {},
-      ),
+      JSON.stringify({
+        ...(checked.has("derm_survey")
+          ? { dermSurveyFormat: surveyFormat }
+          : {}),
+        ...(checked.has("delivery_estimate")
+          ? { deliveryFormat, deliveryFormatCart, deliveryFormatCheckout }
+          : {}),
+      }),
     );
     formData.set("simulatedMarket", simulatedMarket);
     formData.set("productHandle", productHandle);
@@ -1256,6 +1299,47 @@ export default function PreviewCenter() {
                     visitors keep seeing the saved format. To adopt a format,
                     save it on the{" "}
                     <Link url="/app/features/survey">Survey feature page</Link>.
+                  </Text>
+                </BlockStack>
+              ) : null}
+              {checked.has("delivery_estimate") ? (
+                <BlockStack gap="100">
+                  <InlineStack gap="300" wrap>
+                    <Box minWidth="220px">
+                      <Select
+                        label="Delivery format — product page"
+                        options={DELIVERY_FORMAT_OPTIONS}
+                        value={deliveryFormat}
+                        onChange={setDeliveryFormat}
+                      />
+                    </Box>
+                    <Box minWidth="220px">
+                      <Select
+                        label="Delivery format — cart drawer"
+                        options={DELIVERY_FORMAT_OPTIONS}
+                        value={deliveryFormatCart}
+                        onChange={setDeliveryFormatCart}
+                      />
+                    </Box>
+                    <Box minWidth="220px">
+                      <Select
+                        label="Delivery format — checkout"
+                        options={DELIVERY_FORMAT_OPTIONS}
+                        value={deliveryFormatCheckout}
+                        onChange={setDeliveryFormatCheckout}
+                      />
+                    </Box>
+                  </InlineStack>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    How the delivery estimate + guarantee widget presents the
+                    same dates on each surface in this preview session.
+                    Previewing a format never changes your live site — real
+                    visitors keep seeing the saved formats. To adopt a format,
+                    save it on the{" "}
+                    <Link url="/app/features/delivery">
+                      Delivery guarantee page
+                    </Link>
+                    .
                   </Text>
                 </BlockStack>
               ) : null}

@@ -1,0 +1,12 @@
+{
+  "line": "Kézhez kapod legkésőbb: {{date}}",
+  "range": "Várható kézbesítés: {{from}} – {{to}}",
+  "range_same": "Várható kézbesítés: {{date}}",
+  "timeline_order": "Rendelj még ma",
+  "timeline_ship": "Feladás: {{date}}",
+  "timeline_delivered": "Kézbesítve legkésőbb: {{date}}",
+  "box_title": "Garantált kézbesítés legkésőbb: {{date}}",
+  "box_sub": "…különben visszatérítjük a pénzed, vagy ingyen küldünk egy cseretermeket.",
+  "badge": "Kézbesítési garancia",
+  "tooltip": "Kézbesítés legkésőbb: {{date}} — különben visszatérítjük a pénzed, vagy ingyen küldünk egy cseretermeket."
+}

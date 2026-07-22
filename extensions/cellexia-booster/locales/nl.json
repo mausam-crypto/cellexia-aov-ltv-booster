@@ -134,11 +134,11 @@
     "title_pct": "van de ondervraagde geregistreerde dermatologen zou Cellexia aanbevelen",
     "count": "{{ yes }} van de {{ total }} ondervraagde dermatologen",
     "how": "Hoe de enquête is uitgevoerd",
-    "methodology_p1": "In mei 2026 ondervroeg een onafhankelijk onderzoeksbureau in de gezondheidszorg {{ total }} geregistreerde dermatologen in de Verenigde Staten, het Verenigd Koninkrijk, Frankrijk, Duitsland, Italië en Spanje.",
-    "methodology_p2": "Elke dermatoloog beoordeelde een gestandaardiseerd overzicht van Cellexia, met daarin het productassortiment, ingrediënteninformatie, beoogde toepassingen en ondersteunend productbewijs. Vervolgens kregen zij de vraag:",
-    "methodology_p3": "“Zou u Cellexia, op basis van de beoordeelde informatie, aanbevelen aan een geschikte patiënt die huidverzorging zoekt tegen zichtbare tekenen van huidveroudering?”",
+    "methodology_p1": "In mei 2026 ondervroeg een onafhankelijk cosmetisch onderzoeksbureau {{ total }} geregistreerde dermatologen in de Verenigde Staten, het Verenigd Koninkrijk, Frankrijk, Duitsland, Italië en Spanje.",
+    "methodology_p2": "Elke dermatoloog ontving alle Cellexia-producten, testte ze bij ten minste 5 patiënten gedurende ten minste 8 weken en beoordeelde een gedetailleerd overzicht van Cellexia, met daarin het productassortiment, ingrediënteninformatie, beoogde toepassingen en ondersteunend klinisch bewijs. Vervolgens kregen zij de vraag:",
+    "methodology_p3": "“Zou u Cellexia, op basis van de beoordeelde informatie en de ervaringen van uw patiënten, aanbevelen aan een geschikte patiënt die huidverzorging zoekt tegen zichtbare tekenen van huidveroudering?”",
     "methodology_p4": "Alle {{ total }} dermatologen beantwoordden de vraag. {{ yes }} kozen “Ja”, oftewel {{ percent }}% van de respondenten.",
-    "methodology_p5": "De enquête is uitgevoerd in opdracht van Cellexia en verliep onafhankelijk. Het onderzoeksbureau wierf de respondenten en verzamelde en analyseerde de antwoorden. Cellexia heeft geen deelnemers geselecteerd en geen individuele antwoorden aangepast.",
+    "methodology_p5": "De enquête is uitgevoerd op verzoek van Cellexia en verliep onafhankelijk. Het onderzoeksbureau wierf de respondenten en verzamelde en analyseerde de antwoorden. Cellexia heeft geen deelnemers geselecteerd en geen individuele antwoorden aangepast.",
     "report_title": "Resultaten van de enquête",
     "report_surveyed": "Ondervraagde dermatologen",
     "report_yes": "Antwoordden “Ja”",
@@ -148,5 +148,17 @@
     "dot_legend": "Elke stip staat voor één ondervraagde dermatoloog.",
     "verified_badge": "Extern geverifieerd",
     "verified_by": "Enquête geverifieerd door {{ name }}"
+  },
+  "delivery": {
+    "line": "Uiterlijk {{ date }} in huis",
+    "range": "Verwachte bezorging: {{ from }} – {{ to }}",
+    "range_same": "Verwachte bezorging: {{ date }}",
+    "timeline_order": "Bestel vandaag",
+    "timeline_ship": "Verzending op {{ date }}",
+    "timeline_delivered": "Bezorgd uiterlijk {{ date }}",
+    "box_title": "Gegarandeerd bezorgd uiterlijk {{ date }}",
+    "box_sub": "… of je krijgt je geld terug of we sturen gratis een vervangend product.",
+    "badge": "Bezorggarantie",
+    "tooltip": "Uiterlijk {{ date }} bezorgd – anders krijg je je geld terug of sturen we gratis een vervangend product."
   }
 }

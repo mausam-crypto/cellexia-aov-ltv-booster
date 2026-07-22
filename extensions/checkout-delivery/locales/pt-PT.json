@@ -1,0 +1,12 @@
+{
+  "line": "Receba a sua encomenda até {{date}}",
+  "range": "Entrega prevista: {{from}} – {{to}}",
+  "range_same": "Entrega prevista: {{date}}",
+  "timeline_order": "Encomende hoje",
+  "timeline_ship": "Envio a {{date}}",
+  "timeline_delivered": "Entregue até {{date}}",
+  "box_title": "Entrega garantida até {{date}}",
+  "box_sub": "…ou reembolsamos o valor ou enviamos gratuitamente um produto de substituição.",
+  "badge": "Garantia de entrega",
+  "tooltip": "Entregue até {{date}}, o mais tardar — caso contrário, reembolsamos o valor ou enviamos gratuitamente um produto de substituição."
+}

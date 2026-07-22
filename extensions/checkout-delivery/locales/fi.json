@@ -1,0 +1,12 @@
+{
+  "line": "Perillä viimeistään {{date}}",
+  "range": "Arvioitu toimitus: {{from}} – {{to}}",
+  "range_same": "Arvioitu toimitus: {{date}}",
+  "timeline_order": "Tilaa tänään",
+  "timeline_ship": "Lähetetään {{date}}",
+  "timeline_delivered": "Toimitettu viimeistään {{date}}",
+  "box_title": "Taattu toimitus viimeistään {{date}}",
+  "box_sub": "… tai palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle.",
+  "badge": "Toimitustakuu",
+  "tooltip": "Perillä viimeistään {{date}} — muussa tapauksessa palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle."
+}

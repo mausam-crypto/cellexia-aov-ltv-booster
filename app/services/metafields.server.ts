@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import prisma from "../db.server";
 import {
+  DELIVERY_ESTIMATE_FORMATS,
   DERM_SURVEY_FORMATS,
   type BoosterSettings,
 } from "../models/settings.server";
@@ -64,10 +65,12 @@ export interface PreviewSyncPayload {
   armed: boolean;
   draftFlags: Record<string, boolean>;
   /**
-   * Draft, preview-session-only config overrides (v5.8) — currently only
-   * `dermSurveyFormat` (one of the five survey display formats). Tokenless
-   * by construction (closed-enum values only), so it is safe for the
-   * page-visible app-data metafield while the preview is armed.
+   * Draft, preview-session-only config overrides (v5.8) — the derm-survey
+   * display format plus the three per-surface delivery-estimate formats
+   * (`deliveryFormat` / `deliveryFormatCart` / `deliveryFormatCheckout`,
+   * v6.0). Tokenless by construction (closed-enum values only), so it is
+   * safe for the page-visible app-data metafield AND the checkout shop
+   * metafield while the preview is armed.
    */
   draftConfig: Record<string, string>;
   /**
@@ -117,6 +120,36 @@ async function loadPreviewPayload(shop: string): Promise<PreviewSyncPayload> {
         ) {
           draftConfig.dermSurveyFormat = format;
         }
+        const deliveryFormat = (parsed as Record<string, unknown>)
+          .deliveryFormat;
+        if (
+          typeof deliveryFormat === "string" &&
+          (DELIVERY_ESTIMATE_FORMATS as readonly string[]).includes(
+            deliveryFormat,
+          )
+        ) {
+          draftConfig.deliveryFormat = deliveryFormat;
+        }
+        const deliveryFormatCart = (parsed as Record<string, unknown>)
+          .deliveryFormatCart;
+        if (
+          typeof deliveryFormatCart === "string" &&
+          (DELIVERY_ESTIMATE_FORMATS as readonly string[]).includes(
+            deliveryFormatCart,
+          )
+        ) {
+          draftConfig.deliveryFormatCart = deliveryFormatCart;
+        }
+        const deliveryFormatCheckout = (parsed as Record<string, unknown>)
+          .deliveryFormatCheckout;
+        if (
+          typeof deliveryFormatCheckout === "string" &&
+          (DELIVERY_ESTIMATE_FORMATS as readonly string[]).includes(
+            deliveryFormatCheckout,
+          )
+        ) {
+          draftConfig.deliveryFormatCheckout = deliveryFormatCheckout;
+        }
       }
     } catch {
       draftConfig = {};
@@ -163,11 +196,16 @@ export async function syncSettingsToMetafields(
     ...settings,
     preview: { armed: effectivePreview.armed, draftFlags, draftConfig },
   });
+  // draftConfig is tokenless by construction (closed-enum values only —
+  // validated in loadPreviewPayload / preview.server's sanitizeDraftConfig),
+  // so it is safe to mirror into BOTH payloads: the checkout extension needs
+  // it (v6.0) to honor a previewed delivery format, exactly like Liquid does.
   const checkoutValue = JSON.stringify({
     ...settings,
     preview: {
       armed: effectivePreview.armed,
       draftFlags,
+      draftConfig,
       tokenHash:
         effectivePreview.armed && effectivePreview.token
           ? sha256Hex(effectivePreview.token)
