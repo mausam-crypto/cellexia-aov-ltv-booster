@@ -3,6 +3,5 @@
   "guarantee_body": "Elsk dine resultater – eller få pengene tilbage, uden spørgsmål.",
   "secure": "Sikker SSL-krypteret checkout",
   "clinical": "Klinisk dokumenterede formler",
-  "trustpilot": "{{rating}}/5 · {{count}} anmeldelser på Trustpilot",
-  "subscription_hint": "Medlemmer af vores Løbende behandlingsplan sparer {{percent}} % på hver levering."
+  "trustpilot": "{{rating}}/5 · {{count}} anmeldelser på Trustpilot"
 }

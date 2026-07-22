@@ -130,11 +130,23 @@
     "footnote": "Deze garantie geldt naast je wettelijke rechten als consument."
   },
   "survey": {
-    "stat": "{{ recommend }} van de {{ outof }}",
-    "title": "ondervraagde dermatologen zouden Cellexia aanbevelen",
-    "sample": "Onafhankelijke enquête onder {{ n }} geregistreerde dermatologen",
+    "eyebrow": "Onafhankelijke enquête onder dermatologen",
+    "title_pct": "van de ondervraagde geregistreerde dermatologen zou Cellexia aanbevelen",
+    "count": "{{ yes }} van de {{ total }} ondervraagde dermatologen",
+    "how": "Hoe de enquête is uitgevoerd",
+    "methodology_p1": "In mei 2026 ondervroeg een onafhankelijk onderzoeksbureau in de gezondheidszorg {{ total }} geregistreerde dermatologen in de Verenigde Staten, het Verenigd Koninkrijk, Frankrijk, Duitsland, Italië en Spanje.",
+    "methodology_p2": "Elke dermatoloog beoordeelde een gestandaardiseerd overzicht van Cellexia, met daarin het productassortiment, ingrediënteninformatie, beoogde toepassingen en ondersteunend productbewijs. Vervolgens kregen zij de vraag:",
+    "methodology_p3": "“Zou u Cellexia, op basis van de beoordeelde informatie, aanbevelen aan een geschikte patiënt die huidverzorging zoekt tegen zichtbare tekenen van huidveroudering?”",
+    "methodology_p4": "Alle {{ total }} dermatologen beantwoordden de vraag. {{ yes }} kozen “Ja”, oftewel {{ percent }}% van de respondenten.",
+    "methodology_p5": "De enquête is uitgevoerd in opdracht van Cellexia en verliep onafhankelijk. Het onderzoeksbureau wierf de respondenten en verzamelde en analyseerde de antwoorden. Cellexia heeft geen deelnemers geselecteerd en geen individuele antwoorden aangepast.",
+    "report_title": "Resultaten van de enquête",
+    "report_surveyed": "Ondervraagde dermatologen",
+    "report_yes": "Antwoordden “Ja”",
+    "report_recommend": "Zouden Cellexia aanbevelen",
+    "question_intro": "Aan {{ total }} geregistreerde dermatologen werd gevraagd:",
+    "question_result": "{{ yes }} antwoordden “Ja” – {{ percent }}% van de respondenten.",
+    "dot_legend": "Elke stip staat voor één ondervraagde dermatoloog.",
     "verified_badge": "Extern geverifieerd",
-    "verified_by": "Enquête geverifieerd door {{ name }}",
-    "methodology": "Bekijk de methodologie van de enquête"
+    "verified_by": "Enquête geverifieerd door {{ name }}"
   }
 }

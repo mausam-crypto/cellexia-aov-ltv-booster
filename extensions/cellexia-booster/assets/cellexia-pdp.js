@@ -617,6 +617,115 @@
     } catch (e) { /* never break the theme */ }
   }
 
+  // ------------------------------------------- derm survey formats (v5.8)
+  //
+  // Five server-rendered display formats share one data set and one
+  // accessible "How the survey was conducted" disclosure. Everything is
+  // translated server-side in the templates; this file only (a) toggles
+  // the disclosure, (b) builds the tally dot matrix at clone time from the
+  // data-cx-yes/data-cx-total attributes (never 270 Liquid iterations),
+  // and (c) prefers the alt template (cx-tpl-survey-alt — the merchant's
+  // armed DRAFT format) over cx-tpl-pdp-survey INSIDE a verified preview
+  // session only. Real visitors (PREVIEW null) never touch the alt
+  // template — it is draft-marked and only emitted inside the armed
+  // Liquid gate anyway. No config text ever reaches innerHTML.
+
+  function surveyTemplateId() {
+    if (PREVIEW) {
+      var alt = document.getElementById('cx-tpl-survey-alt');
+      if (alt && alt.content) return 'cx-tpl-survey-alt';
+    }
+    return 'cx-tpl-pdp-survey';
+  }
+
+  function buildSurveyDots(widget) {
+    // Fail-safe: any invalid or oversized count renders NO dots — the
+    // visible count line already tells the story (empty grid, zero height).
+    try {
+      var grid = widget.querySelector('.cx-survey__dots');
+      if (!grid) return;
+      var yes = parseInt(grid.getAttribute('data-cx-yes'), 10);
+      var total = parseInt(grid.getAttribute('data-cx-total'), 10);
+      if (!isFinite(yes) || !isFinite(total) || yes <= 0 || total <= 0 || yes > total || total > 400) {
+        // Drop the empty grid AND the "each dot" legend — the widget
+        // degrades to percent + count line, never a broken visualization.
+        var legend = widget.querySelector('.cx-survey__legend');
+        if (grid.parentNode) grid.parentNode.removeChild(grid);
+        if (legend && legend.parentNode) legend.parentNode.removeChild(legend);
+        return;
+      }
+      var frag = document.createDocumentFragment();
+      for (var i = 0; i < total; i++) {
+        var dot = document.createElement('span');
+        dot.className = i < yes ? 'cx-survey__dot cx-survey__dot--yes' : 'cx-survey__dot';
+        frag.appendChild(dot);
+      }
+      grid.appendChild(frag);
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function bindSurveyDisclosure(widget) {
+    // Accessible disclosure: a real <button> with aria-expanded /
+    // aria-controls, click/tap toggles everywhere, hover opens (with a
+    // close delay) only on hover-capable fine pointers, Escape closes and
+    // refocuses the trigger. The panel is inline below the trigger —
+    // never floating. Bound AFTER cloning, so it works identically on the
+    // live template and the preview alt template.
+    try {
+      var btn = widget.querySelector('[data-cx-survey-toggle]');
+      if (!btn) return;
+      var panel = null;
+      var panelId = btn.getAttribute('aria-controls');
+      if (panelId) panel = widget.querySelector('#' + panelId);
+      if (!panel) panel = widget.querySelector('.cx-survey__panel');
+      if (!panel) return;
+      var closeTimer = null;
+      function cancelClose() {
+        if (closeTimer) {
+          window.clearTimeout(closeTimer);
+          closeTimer = null;
+        }
+      }
+      function setOpen(open) {
+        cancelClose();
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) panel.removeAttribute('hidden');
+        else panel.setAttribute('hidden', '');
+      }
+      function isOpen() {
+        return btn.getAttribute('aria-expanded') === 'true';
+      }
+      btn.addEventListener('click', function () {
+        setOpen(!isOpen());
+      });
+      var hoverFine = false;
+      try {
+        hoverFine = !!(window.matchMedia &&
+          window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+      } catch (e) { hoverFine = false; }
+      if (hoverFine) {
+        var zone = widget.querySelector('[data-cx-survey-how]');
+        if (zone) {
+          zone.addEventListener('mouseenter', function () {
+            setOpen(true);
+          });
+          zone.addEventListener('mouseleave', function () {
+            cancelClose();
+            closeTimer = window.setTimeout(function () {
+              setOpen(false);
+            }, 350);
+          });
+        }
+      }
+      widget.addEventListener('keydown', function (event) {
+        if ((event.key === 'Escape' || event.key === 'Esc') && isOpen()) {
+          setOpen(false);
+          try { btn.focus(); } catch (e) { /* noop */ }
+        }
+      });
+    } catch (e) { /* never break the theme */ }
+  }
+
   /**
    * SPEC v3 proof stack — template id / feature key pairs in CRO order.
    * Liquid only renders the templates that survived flag + market +
@@ -636,8 +745,18 @@
 
       var widgets = [];
       for (var i = 0; i < PROOF_ORDER.length; i++) {
-        var node = cloneTemplate(PROOF_ORDER[i][0], PROOF_ORDER[i][1]);
-        if (node) widgets.push({ node: node, feature: PROOF_ORDER[i][1] });
+        var tplId = PROOF_ORDER[i][0];
+        // v5.8: in a verified preview session the survey slot prefers the
+        // alt template (draft format) when Liquid emitted one.
+        if (tplId === 'cx-tpl-pdp-survey') tplId = surveyTemplateId();
+        var node = cloneTemplate(tplId, PROOF_ORDER[i][1]);
+        if (node) {
+          if (PROOF_ORDER[i][1] === 'derm_survey') {
+            bindSurveyDisclosure(node);
+            buildSurveyDots(node);
+          }
+          widgets.push({ node: node, feature: PROOF_ORDER[i][1] });
+        }
       }
       if (widgets.length === 0) return;
 

@@ -329,8 +329,10 @@ function cleanUrl(value: unknown, label: string, errors: string[]): string {
     errors.push(`${label} must be at most ${URL_MAX} characters`);
     return "";
   }
-  if (!/^https?:\/\/\S+$/.test(text)) {
-    errors.push(`${label} must be an http(s) URL`);
+  // No whitespace, quotes or angle brackets: these values land in href
+  // attributes in Liquid (escaped there too — defense in depth).
+  if (!/^https?:\/\/[^\s"'<>\\]+$/.test(text)) {
+    errors.push(`${label} must be an http(s) URL without quotes or spaces`);
     return "";
   }
   return text;

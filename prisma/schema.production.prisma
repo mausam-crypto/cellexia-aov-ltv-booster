@@ -101,6 +101,10 @@ model PreviewState {
   armed           Boolean   @default(false)
   armedAt         DateTime?
   draftFlags      String    @default("{}")
+  // v5.8: non-boolean draft options for preview sessions (JSON, tokenless —
+  // it is mirrored into the page-visible armed metafield payload). Currently
+  // { dermSurveyFormat?: string }.
+  draftConfig     String    @default("{}")
   simulatedMarket String?
   productHandle   String?
   createdAt       DateTime  @default(now())

@@ -130,11 +130,23 @@
     "footnote": "Diese Garantie gilt zusätzlich zu Ihren gesetzlichen Gewährleistungsrechten."
   },
   "survey": {
-    "stat": "{{ recommend }} von {{ outof }}",
-    "title": "befragten Dermatologen würden Cellexia empfehlen",
-    "sample": "Unabhängige Befragung von {{ n }} Fachärzten für Dermatologie",
+    "eyebrow": "Unabhängige Dermatologen-Befragung",
+    "title_pct": "der befragten Fachärzte für Dermatologie würden Cellexia empfehlen",
+    "count": "{{ yes }} von {{ total }} befragten Dermatologen",
+    "how": "So wurde die Befragung durchgeführt",
+    "methodology_p1": "Im Mai 2026 befragte ein unabhängiges Forschungsinstitut im Gesundheitswesen {{ total }} approbierte Dermatologen in den USA, dem Vereinigten Königreich, Frankreich, Deutschland, Italien und Spanien.",
+    "methodology_p2": "Jeder Dermatologe erhielt eine standardisierte Übersicht zu Cellexia, einschließlich des Produktsortiments, der Inhaltsstoffe, der vorgesehenen Anwendungsbereiche und der unterstützenden Produktdaten. Anschließend wurde folgende Frage gestellt:",
+    "methodology_p3": "„Würden Sie Cellexia auf Grundlage der geprüften Informationen einem geeigneten Patienten empfehlen, der eine Hautpflege gegen sichtbare Zeichen der Hautalterung sucht?“",
+    "methodology_p4": "Alle {{ total }} Dermatologen beantworteten die Frage. {{ yes }} wählten „Ja“ – das entspricht {{ percent }} % der Befragten.",
+    "methodology_p5": "Die Befragung wurde von Cellexia in Auftrag gegeben und unabhängig durchgeführt. Die Rekrutierung der Teilnehmer sowie die Erhebung und Auswertung der Antworten erfolgten durch das Forschungsinstitut. Cellexia hat weder Teilnehmer ausgewählt noch einzelne Antworten verändert.",
+    "report_title": "Ergebnisse der Befragung",
+    "report_surveyed": "Befragte Dermatologen",
+    "report_yes": "Mit „Ja“ geantwortet",
+    "report_recommend": "Würden Cellexia empfehlen",
+    "question_intro": "{{ total }} approbierte Dermatologen wurden gefragt:",
+    "question_result": "{{ yes }} antworteten mit „Ja“ – {{ percent }} % der Befragten.",
+    "dot_legend": "Jeder Punkt steht für einen befragten Dermatologen.",
     "verified_badge": "Durch Dritte verifiziert",
-    "verified_by": "Befragung verifiziert von {{ name }}",
-    "methodology": "Methodik der Befragung ansehen"
+    "verified_by": "Befragung verifiziert von {{ name }}"
   }
 }

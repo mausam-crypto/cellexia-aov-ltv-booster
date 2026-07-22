@@ -1,9 +1,3 @@
-{%- comment -%}
-  Cellexia Booster — Money-back guarantee app block (target: section).
-  Renders ONLY when guarantee.enabled is explicitly true in the config
-  metafield AND the guarantee market scope matches the current market.
-  Missing config = hidden (safe default).
-{%- endcomment -%}
 {%- assign cfg = app.metafields.cellexia.config.value -%}
 {%- liquid
   # Market gating: visible = flag explicitly true AND (scope nil OR

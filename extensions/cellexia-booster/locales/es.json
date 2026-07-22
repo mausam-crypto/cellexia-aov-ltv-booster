@@ -130,11 +130,23 @@
     "footnote": "Esta garantía se suma a tus derechos legales como consumidor."
   },
   "survey": {
-    "stat": "{{ recommend }} de cada {{ outof }}",
-    "title": "dermatólogos encuestados recomendarían Cellexia",
-    "sample": "Encuesta independiente a {{ n }} dermatólogos colegiados",
+    "eyebrow": "Encuesta independiente a dermatólogos",
+    "title_pct": "de los dermatólogos colegiados encuestados recomendarían Cellexia",
+    "count": "{{ yes }} de {{ total }} dermatólogos encuestados",
+    "how": "Cómo se realizó la encuesta",
+    "methodology_p1": "En mayo de 2026, una firma independiente de investigación sanitaria encuestó a {{ total }} dermatólogos colegiados en Estados Unidos, Reino Unido, Francia, Alemania, Italia y España.",
+    "methodology_p2": "Cada dermatólogo revisó una presentación estandarizada de Cellexia, que incluía su gama de productos, la información sobre los ingredientes, los usos previstos y la evidencia de producto disponible. A continuación se les preguntó:",
+    "methodology_p3": "«Según la información revisada, ¿recomendaría Cellexia a un paciente adecuado que busque un cuidado de la piel frente a los signos visibles de la edad?»",
+    "methodology_p4": "Los {{ total }} dermatólogos respondieron a la pregunta. {{ yes }} eligieron «Sí», lo que representa el {{ percent }} % de los encuestados.",
+    "methodology_p5": "La encuesta fue encargada por Cellexia y se realizó de forma independiente. La firma de investigación se encargó de reclutar a los encuestados y de recopilar y analizar las respuestas. Cellexia no seleccionó a los participantes ni alteró respuestas individuales.",
+    "report_title": "Resultados de la encuesta",
+    "report_surveyed": "Dermatólogos encuestados",
+    "report_yes": "Respondieron «Sí»",
+    "report_recommend": "Recomendarían Cellexia",
+    "question_intro": "Se preguntó a {{ total }} dermatólogos colegiados:",
+    "question_result": "{{ yes }} respondieron «Sí», el {{ percent }} % de los encuestados.",
+    "dot_legend": "Cada punto representa a un dermatólogo encuestado.",
     "verified_badge": "Verificado por terceros",
-    "verified_by": "Encuesta verificada por {{ name }}",
-    "methodology": "Ver la metodología de la encuesta"
+    "verified_by": "Encuesta verificada por {{ name }}"
   }
 }

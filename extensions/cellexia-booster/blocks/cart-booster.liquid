@@ -315,7 +315,7 @@
             <span>{%- assign tp_sep = 'trustpilot.decimal_separator' | t -%}{{ tp_rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
           </span>
           {%- else -%}
-          <a class="cx-trust-row__item cx-trust-row__item--link d-flex align-center no-dec" href="{{ tp_url }}" target="_blank" rel="noopener nofollow">
+          <a class="cx-trust-row__item cx-trust-row__item--link d-flex align-center no-dec" href="{{ tp_url | escape }}" target="_blank" rel="noopener nofollow">
             {%- render 'cx-trustpilot-stars', rating: tp_rating, uid: 'cart-trust', size: 14 -%}
             <span>{%- assign tp_sep = 'trustpilot.decimal_separator' | t -%}{{ tp_rating_rounded | append: '' | replace: '.', tp_sep }}/5</span>
           </a>

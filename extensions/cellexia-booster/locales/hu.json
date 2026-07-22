@@ -130,11 +130,23 @@
     "footnote": "Ez a garancia a törvényben biztosított fogyasztói jogaidon felül illet meg."
   },
   "survey": {
-    "stat": "{{ outof }}-ből {{ recommend }}",
-    "title": "megkérdezett bőrgyógyász ajánlaná a Cellexiát",
-    "sample": "Független felmérés {{ n }} szakvizsgázott bőrgyógyász körében",
+    "eyebrow": "Független bőrgyógyász-felmérés",
+    "title_pct": "a megkérdezett szakvizsgázott bőrgyógyászok ajánlanák a Cellexiát",
+    "count": "{{ yes }} a {{ total }} megkérdezett bőrgyógyász közül",
+    "how": "Hogyan készült a felmérés",
+    "methodology_p1": "2026 májusában egy független egészségügyi kutatócég {{ total }} szakvizsgázott bőrgyógyászt kérdezett meg az Egyesült Államokban, az Egyesült Királyságban, Franciaországban, Németországban, Olaszországban és Spanyolországban.",
+    "methodology_p2": "Minden bőrgyógyász egy egységesített áttekintést kapott a Cellexiáról, amely bemutatta a termékcsaládot, az összetevőkre vonatkozó információkat, a rendeltetésszerű felhasználást és a termékeket alátámasztó adatokat. Ezután a következő kérdést tették fel nekik:",
+    "methodology_p3": "„A megismert információk alapján ajánlaná-e a Cellexiát olyan megfelelő páciensnek, aki a bőröregedés látható jelei ellen keres bőrápolást?”",
+    "methodology_p4": "A kérdésre mind a {{ total }} bőrgyógyász válaszolt. {{ yes }} választotta az „Igen” választ, ami a válaszadók {{ percent }}%-a.",
+    "methodology_p5": "A felmérést a Cellexia rendelte meg, lebonyolítása azonban függetlenül történt. A válaszadók toborzását, valamint a válaszok gyűjtését és elemzését a kutatócég végezte. A Cellexia nem választotta ki a résztvevőket, és nem módosított egyetlen választ sem.",
+    "report_title": "A felmérés eredményei",
+    "report_surveyed": "Megkérdezett bőrgyógyászok",
+    "report_yes": "„Igen” választ adott",
+    "report_recommend": "Ajánlaná a Cellexiát",
+    "question_intro": "{{ total }} szakvizsgázott bőrgyógyásznak tették fel a kérdést:",
+    "question_result": "{{ yes }} válaszolt „igen”-nel – a válaszadók {{ percent }}%-a.",
+    "dot_legend": "Minden pont egy megkérdezett bőrgyógyászt jelöl.",
     "verified_badge": "Harmadik fél által ellenőrizve",
-    "verified_by": "A felmérést ellenőrizte: {{ name }}",
-    "methodology": "Nézd meg a felmérés módszertanát"
+    "verified_by": "A felmérést ellenőrizte: {{ name }}"
   }
 }

@@ -3,6 +3,5 @@
   "guarantee_body": "Überzeugende Ergebnisse oder Ihr Geld zurück – ganz ohne Rückfragen.",
   "secure": "Sicherer, SSL-verschlüsselter Checkout",
   "clinical": "Klinisch bestätigte Formeln",
-  "trustpilot": "{{rating}}/5 · {{count}} Bewertungen auf Trustpilot",
-  "subscription_hint": "Mitglieder des Kontinuierlichen Behandlungsplans sparen {{percent}} % bei jeder Lieferung."
+  "trustpilot": "{{rating}}/5 · {{count}} Bewertungen auf Trustpilot"
 }

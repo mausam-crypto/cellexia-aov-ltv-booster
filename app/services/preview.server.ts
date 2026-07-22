@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import prisma from "../db.server";
 import {
+  DERM_SURVEY_FORMATS,
   FEATURE_KEYS,
   getSettings,
   type BoosterSettings,
+  type DermSurveyFormat,
   type FeatureKey,
 } from "../models/settings.server";
 import {
@@ -40,6 +42,17 @@ interface AdminGraphqlClient {
   ) => Promise<Response>;
 }
 
+/**
+ * Draft, preview-session-only configuration overrides (v5.8). Unlike
+ * draftFlags (which feature is visible), draftConfig carries HOW a feature
+ * renders in the preview session — currently only the derm-survey display
+ * format. Tokenless by construction (validated against a closed enum), so it
+ * is safe to mirror into the page-visible Liquid config while armed.
+ */
+export interface PreviewDraftConfig {
+  dermSurveyFormat?: DermSurveyFormat;
+}
+
 /** Parsed, validated snapshot of a shop's PreviewState row. */
 export interface PreviewSnapshot {
   shop: string;
@@ -48,6 +61,7 @@ export interface PreviewSnapshot {
   armed: boolean;
   armedAt: Date | null;
   draftFlags: Partial<Record<FeatureKey, boolean>>;
+  draftConfig: PreviewDraftConfig;
   simulatedMarket: string | null;
   productHandle: string | null;
   updatedAt: Date;
@@ -56,6 +70,7 @@ export interface PreviewSnapshot {
 
 export interface ArmPreviewOptions {
   draftFlags: Record<string, unknown>;
+  draftConfig?: unknown;
   simulatedMarket?: string | null;
   productHandle?: string | null;
 }
@@ -113,12 +128,32 @@ export function sanitizeDraftFlags(
   return out;
 }
 
+/**
+ * Keeps only the known draftConfig keys with valid enum values — anything
+ * else (unknown keys, wrong types, out-of-enum strings) is dropped.
+ */
+export function sanitizeDraftConfig(raw: unknown): PreviewDraftConfig {
+  const out: PreviewDraftConfig = {};
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return out;
+  }
+  const format = (raw as Record<string, unknown>).dermSurveyFormat;
+  if (
+    typeof format === "string" &&
+    (DERM_SURVEY_FORMATS as readonly string[]).includes(format)
+  ) {
+    out.dermSurveyFormat = format as DermSurveyFormat;
+  }
+  return out;
+}
+
 type PreviewStateRow = {
   shop: string;
   token: string;
   armed: boolean;
   armedAt: Date | null;
   draftFlags: string;
+  draftConfig: string;
   simulatedMarket: string | null;
   productHandle: string | null;
   updatedAt: Date;
@@ -132,12 +167,19 @@ function toSnapshot(row: PreviewStateRow): PreviewSnapshot {
   } catch {
     draftFlags = {};
   }
+  let draftConfig: PreviewDraftConfig = {};
+  try {
+    draftConfig = sanitizeDraftConfig(JSON.parse(row.draftConfig));
+  } catch {
+    draftConfig = {};
+  }
   return {
     shop: row.shop,
     token: row.token,
     armed: row.armed,
     armedAt: row.armedAt,
     draftFlags,
+    draftConfig,
     simulatedMarket: row.simulatedMarket,
     productHandle: row.productHandle,
     updatedAt: row.updatedAt,
@@ -180,6 +222,7 @@ function previewSyncPayload(state: PreviewSnapshot): PreviewSyncPayload {
   return {
     armed: state.armed,
     draftFlags: state.armed ? { ...state.draftFlags } : {},
+    draftConfig: state.armed ? { ...state.draftConfig } : {},
     token: state.token,
   };
 }
@@ -215,6 +258,7 @@ export async function armPreview(
 ): Promise<{ state: PreviewSnapshot; sync: PreviewSyncResult }> {
   await ensurePreviewState(shop);
   const draftFlags = sanitizeDraftFlags(options.draftFlags);
+  const draftConfig = sanitizeDraftConfig(options.draftConfig);
   const simulatedMarket = sanitizeMarketHandle(options.simulatedMarket) || null;
   const productHandle = sanitizeProductHandle(options.productHandle) || null;
   const row = await prisma.previewState.update({
@@ -223,6 +267,7 @@ export async function armPreview(
       armed: true,
       armedAt: new Date(),
       draftFlags: JSON.stringify(draftFlags),
+      draftConfig: JSON.stringify(draftConfig),
       simulatedMarket,
       productHandle,
     },
@@ -233,8 +278,9 @@ export async function armPreview(
 }
 
 /**
- * Disarms the preview (clears draft flags — defense in depth) and re-syncs
- * so real visitors immediately return to the byte-identical live rendering.
+ * Disarms the preview (clears draft flags AND draft config — defense in
+ * depth) and re-syncs so real visitors immediately return to the
+ * byte-identical live rendering.
  */
 export async function disarmPreview(
   shop: string,
@@ -243,7 +289,7 @@ export async function disarmPreview(
   await ensurePreviewState(shop);
   const row = await prisma.previewState.update({
     where: { shop },
-    data: { armed: false, draftFlags: "{}" },
+    data: { armed: false, draftFlags: "{}", draftConfig: "{}" },
   });
   const state = toSnapshot(row);
   const sync = await resyncMetafields(admin, state);

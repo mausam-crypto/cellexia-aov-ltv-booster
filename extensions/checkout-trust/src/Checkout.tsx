@@ -10,30 +10,23 @@ import {
   useApi,
   useAppMetafields,
   useAttributeValues,
-  useCartLines,
   useLocalizationMarket,
-  useSubscription,
   useTranslate,
 } from '@shopify/ui-extensions-react/checkout';
-import type {PurchasingCompany} from '@shopify/ui-extensions/checkout';
 
 /**
  * Cellexia AOV & LTV Booster — Checkout Trust module.
  *
  * Pure display block: money-back guarantee, secure-checkout line, clinical
- * claim, Trustpilot rating and an optional subscription hint (hidden when the
- * cart already contains a subscription line, and for B2B buyers purchasing on
- * behalf of a company — B2B never sees subscription offers). All values come
- * from the shop metafield ($app:cellexia / config); no cart mutations, no
- * network calls.
+ * claim and Trustpilot rating (v5.5: the subscription-savings hint was
+ * removed on merchant request). All values come from the shop metafield
+ * ($app:cellexia / config); no cart mutations, no network calls.
  *
  * SAFE BY DEFAULT: a missing/unparsable config metafield, a missing
  * `checkoutTrust` section, or anything but an explicit `enabled: true`
  * renders nothing. Market targeting is enforced against the checkout's
  * localization market and FAILS CLOSED (mode "selected" + unknown market →
- * hidden): the whole module respects `marketScopes.checkout_trust`, and the
- * subscription hint ADDITIONALLY respects `marketScopes.subscription_nudge`
- * because it displays subscription_nudge content.
+ * hidden): the whole module respects `marketScopes.checkout_trust`.
  *
  * PREVIEW (v5): the cart's `_cx_preview` attribute carries the SHA-256 HEX
  * digest of the preview token, computed server-side by the app — so the
@@ -43,11 +36,9 @@ import type {PurchasingCompany} from '@shopify/ui-extensions/checkout';
  * silent unavailability in some checkout sandboxes disabled preview
  * entirely). When the metafield carries `preview.armed: true` AND the
  * attribute equals the hash, the module additionally counts as enabled when
- * `preview.draftFlags.checkout_trust === true`, and the subscription hint
- * when `preview.draftFlags.subscription_nudge === true` — each bypassing its
- * market gate for the draft grant only (the preview cart belongs to the
- * merchant). The hint's contextual suppressions (existing subscription line,
- * B2B purchasing company) still apply in preview. Outside preview mode every
+ * `preview.draftFlags.checkout_trust === true` — bypassing its market gate
+ * for the draft grant only (the preview cart belongs to the merchant).
+ * Outside preview mode every
  * gate is unchanged — all preview logic sits behind the single
  * `previewActive` boolean.
  *
@@ -76,7 +67,6 @@ const DEFAULT_CONFIG: TrustModuleConfig = {
     // so configs written before the flag existed behave byte-identically.
     showLink: true,
   },
-  subscriptionNudge: {enabled: false, discountPct: 5},
 };
 
 interface TrustModuleConfig {
@@ -95,7 +85,6 @@ interface TrustModuleConfig {
     /** false = render the rating as plain text instead of a Link. */
     showLink: boolean;
   };
-  subscriptionNudge: {enabled: boolean; discountPct: number};
 }
 
 interface PreviewConfig {
@@ -106,17 +95,6 @@ interface PreviewConfig {
 
 /** Inert preview default: disarmed, no draft flags, empty (never-matching) token hash. */
 const DEFAULT_PREVIEW: PreviewConfig = {armed: false, draftFlags: {}, tokenHash: ''};
-
-/**
- * Stand-in subscribable used when `buyerIdentity` is unavailable (the app
- * lacks protected customer data access). Reads as "no purchasing company",
- * so B2B detection fails open and regular consumers still see the hint.
- */
-const NO_PURCHASING_COMPANY = {
-  current: undefined as PurchasingCompany | undefined,
-  subscribe: () => () => {},
-  destroy: () => Promise.resolve(),
-};
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -181,7 +159,6 @@ function resolveConfig(root: Record<string, unknown> | undefined): TrustModuleCo
   const trust = root.checkoutTrust;
   const guarantee = root.guarantee;
   const trustpilot = root.trustpilot;
-  const nudge = root.subscriptionNudge;
   const defaults = DEFAULT_CONFIG;
   return {
     checkoutTrust: {
@@ -223,14 +200,6 @@ function resolveConfig(root: Record<string, unknown> | undefined): TrustModuleCo
       // Missing/malformed = true (linked): behavior is byte-identical for
       // every config written before this flag existed.
       showLink: readBoolean(trustpilot, 'showLink', defaults.trustpilot.showLink),
-    },
-    subscriptionNudge: {
-      // Same explicit-true rule as checkoutTrust.enabled.
-      enabled: isPlainObject(nudge) && nudge.enabled === true,
-      discountPct: Math.max(
-        0,
-        readNumber(nudge, 'discountPct', defaults.subscriptionNudge.discountPct),
-      ),
     },
   };
 }
@@ -354,9 +323,8 @@ export const checkoutActionsRenderBefore = reactExtension(
 
 function Extension() {
   const translate = useTranslate();
-  const {i18n, buyerIdentity, extension} = useApi();
+  const {i18n, extension} = useApi();
   const metafieldEntries = useAppMetafields();
-  const cartLines = useCartLines();
   const market = useLocalizationMarket();
 
   // CHECKOUT EDITOR detection (v4.9): `extension.editor` is `{type:
@@ -367,15 +335,6 @@ function Extension() {
   // every enabled/market/config gate is bypassed strictly behind
   // `inEditor`, so live render paths are byte-identical to before.
   const inEditor = Boolean(extension.editor);
-
-  /**
-   * The company the buyer is purchasing on behalf of during a B2B checkout.
-   * `buyerIdentity` requires protected customer data access, so it may be
-   * undefined at runtime — in that case this reads as undefined (fail open).
-   */
-  const purchasingCompany = useSubscription(
-    buyerIdentity?.purchasingCompany ?? NO_PURCHASING_COMPANY,
-  );
 
   const configRoot = useMemo(
     () => parseCellexiaConfig(metafieldEntries),
@@ -388,17 +347,6 @@ function Extension() {
     'checkout_trust',
     marketHandle,
   );
-  /**
-   * The hint renders subscription_nudge content, so it must respect that
-   * feature's market scope too — same fail-closed rule, key
-   * 'subscription_nudge'.
-   */
-  const nudgeAllowedInMarket = isAllowedInMarket(
-    configRoot,
-    'subscription_nudge',
-    marketHandle,
-  );
-
   // v5 preview: the single gate for ALL preview behavior. The `_cx_preview`
   // cart attribute (set by the merchant's preview hub) carries the SHA-256
   // hex digest of the preview token, computed server-side — so the gate is
@@ -414,30 +362,9 @@ function Extension() {
   // Draft grants: in preview mode a feature counts as enabled when its draft
   // flag is explicitly true — market gating is bypassed for the draft grant
   // only (the preview cart is the merchant's own). The live paths are
-  // untouched: live stays live. The subscription hint uses its own key,
-  // `subscription_nudge`, because it renders that feature's content.
+  // untouched: live stays live.
   const trustDraftEnabled =
     previewActive && preview.draftFlags.checkout_trust === true;
-  const nudgeDraftEnabled =
-    previewActive && preview.draftFlags.subscription_nudge === true;
-
-  /**
-   * True when any cart line is already on a selling plan. The checkout cart
-   * line merchandise exposes `sellingPlan` when present; if the field is
-   * absent (older data), detection fails open and the hint stays visible
-   * whenever the nudge is enabled.
-   */
-  const hasSubscriptionLine = useMemo(
-    () =>
-      cartLines.some((line) => {
-        const merchandise = line?.merchandise as
-          | {sellingPlan?: unknown}
-          | undefined;
-        const sellingPlan = merchandise?.sellingPlan;
-        return typeof sellingPlan === 'object' && sellingPlan !== null;
-      }),
-    [cartLines],
-  );
 
   const trustVisible =
     (config.checkoutTrust.enabled && trustAllowedInMarket) || trustDraftEnabled;
@@ -466,21 +393,12 @@ function Extension() {
 
   const {showGuarantee, showTrustpilot, showClinical, showBadges} =
     config.checkoutTrust;
-  // The hint's contextual suppressions (existing subscription line, B2B
-  // purchasing company) apply in preview too — only the enabled flag and
-  // market gate are draft-overridable.
-  const showHint =
-    ((config.subscriptionNudge.enabled && nudgeAllowedInMarket) ||
-      nudgeDraftEnabled) &&
-    !hasSubscriptionLine &&
-    !purchasingCompany;
 
   if (
     !showGuarantee &&
     !showTrustpilot &&
     !showClinical &&
     !showBadges &&
-    !showHint &&
     !inEditor
   ) {
     return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
@@ -490,9 +408,8 @@ function Extension() {
   // something to place and move; values still come from the resolved
   // config (real merchant values where present, defaults otherwise — the
   // sample "4.8/5" Trustpilot fallback surfaces ONLY here, never live).
-  // The subscription hint keeps its own logic: it renders another
-  // feature's content, so the editor doesn't force it. When `inEditor` is
-  // false each row renders exactly per its live toggle, as before.
+  // When `inEditor` is false each row renders exactly per its live
+  // toggle, as before.
   const renderBadges = showBadges || inEditor;
   const renderGuarantee = showGuarantee || inEditor;
   const renderClinical = showClinical || inEditor;
@@ -572,16 +489,6 @@ function Extension() {
           ) : (
             <Text size="small">{trustpilotLabel}</Text>
           )}
-        </InlineLayout>
-      ) : null}
-      {showHint ? (
-        <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
-          <Icon source="discount" appearance="subdued" size="small" />
-          <Text size="small" appearance="subdued">
-            {translate('subscription_hint', {
-              percent: config.subscriptionNudge.discountPct,
-            })}
-          </Text>
         </InlineLayout>
       ) : null}
       {inEditor ? <EditorPreviewCaption /> : null}

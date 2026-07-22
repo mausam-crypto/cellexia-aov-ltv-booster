@@ -3,6 +3,5 @@
   "guarantee_body": "Ama i tuoi risultati, o ti rimborsiamo — senza domande.",
   "secure": "Pagamento sicuro con crittografia SSL",
   "clinical": "Formule clinicamente provate",
-  "trustpilot": "{{rating}}/5 · {{count}} recensioni su Trustpilot",
-  "subscription_hint": "I membri del Piano di Trattamento Continuo risparmiano il {{percent}}% su ogni consegna."
+  "trustpilot": "{{rating}}/5 · {{count}} recensioni su Trustpilot"
 }

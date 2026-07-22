@@ -90,6 +90,16 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "dispatch_countdown",
 ];
 
+/** The five merchant-selectable derm-survey display formats (v5.8). */
+export const DERM_SURVEY_FORMATS = [
+  "seal",
+  "report",
+  "question",
+  "tally",
+  "strip",
+] as const;
+export type DermSurveyFormat = (typeof DERM_SURVEY_FORMATS)[number];
+
 export interface MarketScope {
   /** "all" = every market; "selected" = only the listed market handles. */
   mode: "all" | "selected";
@@ -264,14 +274,27 @@ export interface BoosterSettings {
   };
   dermSurvey: {
     enabled: boolean;
-    /** e.g. 9 (out of `outOf`) dermatologists would recommend. */
+    /** LEGACY (v5.6 and earlier): e.g. 9 (out of `outOf`). Kept for
+     *  back-compat; the v5.7 widget no longer displays this ratio. */
     recommend: number;
     outOf: number;
-    /** Survey sample size, e.g. 270. */
+    /** Survey sample size (total dermatologists surveyed), e.g. 270. */
     sampleSize: number;
+    /** Dermatologists who answered "Yes" (of `sampleSize`), e.g. 243.
+     *  Percent shown in the proof seal = round(yesCount / sampleSize * 100).
+     *  NOT clamped against sampleSize here — the storefront fails closed
+     *  (renders nothing) on inconsistent numbers and the admin warns. */
+    yesCount: number;
+    /** Merchant-written methodology text shown in the "How the survey was
+     *  conducted" disclosure. "" = the built-in translated explanation. */
+    methodology: string;
     /** Third party that verified the survey (shown on the badge). */
     verifierName: string;
     verificationUrl: string;
+    /** Merchant-selected display format (v5.8). All five formats share the
+     *  same data, disclosure and fail-closed rules — they differ only in
+     *  presentation mechanism. */
+    format: DermSurveyFormat;
   };
   /**
    * Dispatch countdown ("Order within 2h 14m for same-day dispatch").
@@ -432,8 +455,11 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     recommend: 9,
     outOf: 10,
     sampleSize: 270,
+    yesCount: 243,
+    methodology: "",
     verifierName: "",
     verificationUrl: "",
+    format: "seal",
   },
   dispatch: {
     enabled: false,
@@ -531,15 +557,22 @@ function sanitizeColor(value: string, previous: string, fallback: string): strin
   return HEX_COLOR_PATTERN.test(previous) ? previous : fallback;
 }
 
+/** https:// URL with no whitespace, quotes, angle brackets or backslashes —
+ *  these values are rendered into href attributes (escaped there too;
+ *  defense in depth). */
+const SAFE_HTTPS_URL = /^https:\/\/[^\s"'<>\\]+$/;
+
+function isSafeHttpsUrl(value: unknown): value is string {
+  return typeof value === "string" && SAFE_HTTPS_URL.test(value);
+}
+
 function sanitizeHttpsUrl(
   value: string,
   previous: string,
   fallback: string,
 ): string {
-  if (typeof value === "string" && value.startsWith("https://")) return value;
-  return typeof previous === "string" && previous.startsWith("https://")
-    ? previous
-    : fallback;
+  if (isSafeHttpsUrl(value)) return value;
+  return isSafeHttpsUrl(previous) ? previous : fallback;
 }
 
 /**
@@ -831,6 +864,24 @@ export function sanitizeSettings(
       DEFAULT_SETTINGS.dermSurvey.sampleSize,
     ),
   );
+  // Deliberately NOT clamped against sampleSize: the storefront widget fails
+  // closed (renders nothing) when yesCount > sampleSize, and the admin shows
+  // an inline warning — silently rewriting the number would hide the problem.
+  next.dermSurvey.yesCount = Math.round(
+    clampNumber(
+      next.dermSurvey.yesCount,
+      0,
+      100000,
+      DEFAULT_SETTINGS.dermSurvey.yesCount,
+    ),
+  );
+  if (typeof next.dermSurvey.methodology !== "string") {
+    next.dermSurvey.methodology = "";
+  } else {
+    next.dermSurvey.methodology = next.dermSurvey.methodology
+      .trim()
+      .slice(0, 4000);
+  }
   if (typeof next.dermSurvey.verifierName !== "string") {
     next.dermSurvey.verifierName = "";
   } else {
@@ -838,13 +889,20 @@ export function sanitizeSettings(
   }
   if (
     next.dermSurvey.verificationUrl !== "" &&
-    !next.dermSurvey.verificationUrl.startsWith("https://")
+    !isSafeHttpsUrl(next.dermSurvey.verificationUrl)
   ) {
-    next.dermSurvey.verificationUrl = previous.dermSurvey?.verificationUrl?.startsWith(
-      "https://",
+    next.dermSurvey.verificationUrl = isSafeHttpsUrl(
+      previous.dermSurvey?.verificationUrl,
     )
       ? previous.dermSurvey.verificationUrl
       : "";
+  }
+  if (
+    !DERM_SURVEY_FORMATS.includes(
+      next.dermSurvey.format as DermSurveyFormat,
+    )
+  ) {
+    next.dermSurvey.format = DEFAULT_SETTINGS.dermSurvey.format;
   }
 
   const marketHandlePattern = /^[a-z0-9][a-z0-9-]{0,63}$/;

@@ -130,11 +130,23 @@
     "footnote": "Tämä takuu myönnetään lakisääteisten oikeuksiesi lisäksi."
   },
   "survey": {
-    "stat": "{{ recommend }} / {{ outof }}",
-    "title": "kyselyyn vastanneista ihotautilääkäreistä suosittelisi Cellexiaa",
-    "sample": "Riippumaton kysely, johon osallistui {{ n }} ihotautien erikoislääkäriä",
+    "eyebrow": "Riippumaton ihotautilääkärikysely",
+    "title_pct": "kyselyyn vastanneista laillistetuista ihotautilääkäreistä suosittelisi Cellexiaa",
+    "count": "{{ yes }} / {{ total }} kyselyyn osallistunutta ihotautilääkäriä",
+    "how": "Näin kysely toteutettiin",
+    "methodology_p1": "Toukokuussa 2026 riippumaton terveysalan tutkimusyritys teki kyselyn {{ total }} laillistetulle ihotautilääkärille Yhdysvalloissa, Yhdistyneessä kuningaskunnassa, Ranskassa, Saksassa, Italiassa ja Espanjassa.",
+    "methodology_p2": "Jokainen ihotautilääkäri tutustui standardoituun yleiskatsaukseen Cellexiasta, mukaan lukien tuotevalikoima, ainesosatiedot, käyttötarkoitukset ja tuotteita tukeva näyttö. Tämän jälkeen heiltä kysyttiin:",
+    "methodology_p3": "”Suosittelisitko tarkastellun tiedon perusteella Cellexiaa sopivalle potilaalle, joka etsii ihonhoitoa näkyviin ikääntymisen merkkeihin?”",
+    "methodology_p4": "Kaikki {{ total }} ihotautilääkäriä vastasivat kysymykseen. Heistä {{ yes }} valitsi vaihtoehdon ”Kyllä”, mikä on {{ percent }} % vastaajista.",
+    "methodology_p5": "Kyselyn tilasi Cellexia, ja se toteutettiin riippumattomasti. Tutkimusyritys rekrytoi vastaajat sekä keräsi ja analysoi vastaukset. Cellexia ei valinnut osallistujia eikä muuttanut yksittäisiä vastauksia.",
+    "report_title": "Kyselyn tulokset",
+    "report_surveyed": "Kyselyyn osallistuneet ihotautilääkärit",
+    "report_yes": "Vastasivat ”Kyllä”",
+    "report_recommend": "Suosittelisi Cellexiaa",
+    "question_intro": "{{ total }} laillistetulta ihotautilääkäriltä kysyttiin:",
+    "question_result": "{{ yes }} vastasi ”Kyllä” – {{ percent }} % vastaajista.",
+    "dot_legend": "Jokainen piste vastaa yhtä kyselyyn osallistunutta ihotautilääkäriä.",
     "verified_badge": "Kolmannen osapuolen varmentama",
-    "verified_by": "Kyselyn on varmentanut {{ name }}",
-    "methodology": "Katso kyselyn menetelmäkuvaus"
+    "verified_by": "Kyselyn on varmentanut {{ name }}"
   }
 }

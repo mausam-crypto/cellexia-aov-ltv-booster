@@ -204,6 +204,21 @@ function graphqlErrorMessages(json: {
 }
 
 /**
+ * Snap a detected threshold to the round number it plainly represents.
+ *
+ * Shopify's rate-band editor stores "free shipping above 60" as a free rate
+ * whose minimum is 60.01 (the paid band ends at 60.00), so raw detection
+ * reports 60.01 — which then leaks into the shipbar as "Free shipping over
+ * 60.01". Any amount within 5 cents of a whole number is intended as that
+ * whole number; genuine non-round thresholds (e.g. 62.50) pass through
+ * untouched.
+ */
+export function snapDetectedThreshold(amount: number): number {
+  const nearest = Math.round(amount);
+  return Math.abs(amount - nearest) <= 0.05 ? nearest : amount;
+}
+
+/**
  * Lowest "free over X" threshold configured in a zone, or null when the zone
  * has none. `moneyCurrency` (out-param style via return) also surfaces the
  * condition's currency so the caller can backfill the shop currency.
@@ -223,8 +238,9 @@ function zoneThreshold(zone: ZoneNode): {
       if (!condition) continue;
       if (condition.field !== "TOTAL_PRICE") continue;
       if (condition.operator !== "GREATER_THAN_OR_EQUAL_TO") continue;
-      const amount = toFiniteNumber(condition.conditionCriteria?.amount);
-      if (amount === null || amount < 0) continue;
+      const raw = toFiniteNumber(condition.conditionCriteria?.amount);
+      if (raw === null || raw < 0) continue;
+      const amount = snapDetectedThreshold(raw);
       const currencyCode =
         typeof condition.conditionCriteria?.currencyCode === "string"
           ? condition.conditionCriteria.currencyCode

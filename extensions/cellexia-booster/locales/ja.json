@@ -128,11 +128,23 @@
     "footnote": "本保証は、お客様の法律上の権利に加えて提供されるものです。"
   },
   "survey": {
-    "stat": "{{ outof }}人中{{ recommend }}人",
-    "title": "の皮膚科医がCellexiaを推奨すると回答",
-    "sample": "皮膚科専門医{{ n }}名を対象とした独立調査",
+    "eyebrow": "皮膚科医対象の独立調査",
+    "title_pct": "の皮膚科専門医がCellexiaを推奨すると回答",
+    "count": "調査対象の皮膚科医{{ total }}名中{{ yes }}名",
+    "how": "調査の実施方法",
+    "methodology_p1": "2026年5月、独立系のヘルスケア調査会社が、米国、英国、フランス、ドイツ、イタリア、スペインの免許を持つ皮膚科医{{ total }}名を対象に調査を実施しました。",
+    "methodology_p2": "各皮膚科医は、製品ラインナップ、成分情報、想定される使用目的、製品を裏付けるエビデンスを含む、Cellexiaに関する標準化された資料を確認しました。その上で、次の質問がなされました。",
+    "methodology_p3": "「確認した情報に基づき、目に見えるエイジングサインへのスキンケアを求める適切な患者にCellexiaを推奨しますか？」",
+    "methodology_p4": "{{ total }}名全員が質問に回答し、{{ yes }}名が「はい」を選択しました（回答者の{{ percent }}%）。",
+    "methodology_p5": "本調査はCellexiaの委託により、独立した形で実施されました。回答者の募集、回答の収集および分析は調査会社が行いました。Cellexiaは参加者の選定や個々の回答の変更には一切関与していません。",
+    "report_title": "調査結果",
+    "report_surveyed": "調査対象の皮膚科医",
+    "report_yes": "「はい」と回答",
+    "report_recommend": "Cellexiaを推奨",
+    "question_intro": "免許を持つ皮膚科医{{ total }}名に、次の質問をしました。",
+    "question_result": "{{ yes }}名が「はい」と回答——回答者の{{ percent }}%にあたります。",
+    "dot_legend": "1つの点は、調査対象の皮膚科医1名を表します。",
     "verified_badge": "第三者機関による検証済み",
-    "verified_by": "調査は{{ name }}により検証済み",
-    "methodology": "調査方法を見る"
+    "verified_by": "調査は{{ name }}により検証済み"
   }
 }

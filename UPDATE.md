@@ -45,7 +45,9 @@ The `prisma/migrations` folder is **SQLite-dialect** (generated in development) 
 npx prisma db push        # against DATABASE_URL — safe here: all changes are additive
 ```
 
-Additions in this update: `PreviewState` table; `TranslationConfig` table (holds
+Additions in this update: `PreviewState` table (+ `PreviewState.draftConfig`
+column — non-boolean preview options, e.g. the survey format being previewed);
+`TranslationConfig` table (holds
 the merchant's DeepL API key server-side — deliberately NOT in the settings blob
 that mirrors to metafields); `Experiment.startSyncErrors`; `Event.market`;
 `OrderStat.market`, `OrderStat.countryCode` (+ indexes). `db push`
@@ -105,7 +107,18 @@ auto-detection, and booster auto-translation need them).
 
 ## 5. What's in this update (context for the diff you'll see)
 
-Dispatch countdown fully previewable (in a preview session the widget always
+Dermatologist-survey booster rebuilt as FIVE selectable display formats
+(authority proof seal with a 90% ring, clinical results panel, verbatim
+survey question, one-dot-per-dermatologist tally, understated single line) —
+picked on the Survey feature page, each with the accessible "How the survey
+was conducted" methodology disclosure (translated in all 18 languages,
+numbers from settings, custom override supported), and previewable per
+format from the Preview Center without touching the live site · all
+merchant-sourced URLs now HTML-escaped in href attributes + stricter URL
+sanitizers (security hardening) · free-shipping auto-detect snaps 60.01-style
+rate-band values to round numbers (re-run Detect now once) ·
+Checkout trust module: the "Continuous Treatment Plan members save 5%…"
+line is removed (extension + all 18 languages) · Dispatch countdown fully previewable (in a preview session the widget always
 shows — the real countdown when the display window is open, otherwise a
 labeled sample plus a note saying exactly why buyers don't see it right now;
 real visitors byte-identical, never fabricated urgency) · dispatch widget is

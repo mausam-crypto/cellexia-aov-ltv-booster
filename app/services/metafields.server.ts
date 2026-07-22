@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 import prisma from "../db.server";
-import type { BoosterSettings } from "../models/settings.server";
+import {
+  DERM_SURVEY_FORMATS,
+  type BoosterSettings,
+} from "../models/settings.server";
 
 /**
  * Mirrors the settings blob to the two places extensions read it from:
@@ -61,6 +64,13 @@ export interface PreviewSyncPayload {
   armed: boolean;
   draftFlags: Record<string, boolean>;
   /**
+   * Draft, preview-session-only config overrides (v5.8) — currently only
+   * `dermSurveyFormat` (one of the five survey display formats). Tokenless
+   * by construction (closed-enum values only), so it is safe for the
+   * page-visible app-data metafield while the preview is armed.
+   */
+  draftConfig: Record<string, string>;
+  /**
    * RAW preview token (input only) — hashed at write time; only its sha256
    * hex digest is ever written, and only to the shop metafield.
    */
@@ -81,7 +91,7 @@ function sha256Hex(value: string): string {
 async function loadPreviewPayload(shop: string): Promise<PreviewSyncPayload> {
   try {
     const row = await prisma.previewState.findUnique({ where: { shop } });
-    if (!row) return { armed: false, draftFlags: {}, token: "" };
+    if (!row) return { armed: false, draftFlags: {}, draftConfig: {}, token: "" };
     let draftFlags: Record<string, boolean> = {};
     try {
       const parsed = JSON.parse(row.draftFlags);
@@ -93,9 +103,27 @@ async function loadPreviewPayload(shop: string): Promise<PreviewSyncPayload> {
     } catch {
       draftFlags = {};
     }
-    return { armed: row.armed, draftFlags, token: row.token };
+    // Mirrors preview.server's sanitizeDraftConfig (not imported — that
+    // module imports this one, so the tiny validation is duplicated here to
+    // avoid a cycle): only known keys with closed-enum values survive.
+    let draftConfig: Record<string, string> = {};
+    try {
+      const parsed = JSON.parse(row.draftConfig);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const format = (parsed as Record<string, unknown>).dermSurveyFormat;
+        if (
+          typeof format === "string" &&
+          (DERM_SURVEY_FORMATS as readonly string[]).includes(format)
+        ) {
+          draftConfig.dermSurveyFormat = format;
+        }
+      }
+    } catch {
+      draftConfig = {};
+    }
+    return { armed: row.armed, draftFlags, draftConfig, token: row.token };
   } catch {
-    return { armed: false, draftFlags: {}, token: "" };
+    return { armed: false, draftFlags: {}, draftConfig: {}, token: "" };
   }
 }
 
@@ -123,13 +151,17 @@ export async function syncSettingsToMetafields(
     preview ??
     (shopDomain
       ? await loadPreviewPayload(shopDomain)
-      : { armed: false, draftFlags: {}, token: "" });
+      : { armed: false, draftFlags: {}, draftConfig: {}, token: "" });
 
-  // Defense in depth: a disarmed preview never ships draft flags anywhere.
+  // Defense in depth: a disarmed preview never ships draft flags (or draft
+  // config overrides) anywhere.
   const draftFlags = effectivePreview.armed ? effectivePreview.draftFlags : {};
+  const draftConfig = effectivePreview.armed
+    ? effectivePreview.draftConfig
+    : {};
   const liquidValue = JSON.stringify({
     ...settings,
-    preview: { armed: effectivePreview.armed, draftFlags },
+    preview: { armed: effectivePreview.armed, draftFlags, draftConfig },
   });
   const checkoutValue = JSON.stringify({
     ...settings,

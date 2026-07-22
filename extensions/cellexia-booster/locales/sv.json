@@ -130,11 +130,23 @@
     "footnote": "Denna garanti gäller utöver dina rättigheter enligt konsumentköplagen."
   },
   "survey": {
-    "stat": "{{ recommend }} av {{ outof }}",
-    "title": "tillfrågade dermatologer skulle rekommendera Cellexia",
-    "sample": "Oberoende undersökning bland {{ n }} specialistläkare i dermatologi",
+    "eyebrow": "Oberoende undersökning bland dermatologer",
+    "title_pct": "av de tillfrågade specialistläkarna i dermatologi skulle rekommendera Cellexia",
+    "count": "{{ yes }} av {{ total }} tillfrågade dermatologer",
+    "how": "Så genomfördes undersökningen",
+    "methodology_p1": "I maj 2026 genomförde ett oberoende undersökningsföretag inom hälso- och sjukvård en enkät bland {{ total }} legitimerade dermatologer i USA, Storbritannien, Frankrike, Tyskland, Italien och Spanien.",
+    "methodology_p2": "Varje dermatolog gick igenom en standardiserad översikt av Cellexia, inklusive produktsortimentet, information om ingredienser, avsedda användningsområden och stödjande produktdokumentation. Därefter fick de frågan:",
+    "methodology_p3": "”Skulle du, utifrån den granskade informationen, rekommendera Cellexia till en lämplig patient som söker hudvård mot synliga ålderstecken?”",
+    "methodology_p4": "Samtliga {{ total }} dermatologer besvarade frågan. {{ yes }} svarade ”Ja”, vilket motsvarar {{ percent }} % av de svarande.",
+    "methodology_p5": "Undersökningen beställdes av Cellexia och genomfördes oberoende. Undersökningsföretaget rekryterade respondenterna samt samlade in och analyserade svaren. Cellexia varken valde ut deltagare eller ändrade enskilda svar.",
+    "report_title": "Undersökningens resultat",
+    "report_surveyed": "Tillfrågade dermatologer",
+    "report_yes": "Svarade ”Ja”",
+    "report_recommend": "Skulle rekommendera Cellexia",
+    "question_intro": "{{ total }} legitimerade dermatologer fick frågan:",
+    "question_result": "{{ yes }} svarade ”Ja” – {{ percent }} % av de svarande.",
+    "dot_legend": "Varje punkt motsvarar en tillfrågad dermatolog.",
     "verified_badge": "Verifierad av tredje part",
-    "verified_by": "Undersökningen är verifierad av {{ name }}",
-    "methodology": "Se undersökningens metodik"
+    "verified_by": "Undersökningen är verifierad av {{ name }}"
   }
 }

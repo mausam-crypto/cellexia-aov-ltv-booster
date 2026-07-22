@@ -1,10 +1,3 @@
-{%- comment -%}
-  Cellexia Booster — Trustpilot rating app block (target: section).
-  Rating / review count / profile URL come from the config metafield and can
-  be overridden per block instance. Renders ONLY when trustpilot.enabled is
-  explicitly true AND the trustpilot market scope matches the current market.
-  Missing config = hidden (safe default).
-{%- endcomment -%}
 {%- assign cfg = app.metafields.cellexia.config.value -%}
 {%- liquid
   # Market gating: visible = flag explicitly true AND (scope nil OR
@@ -59,17 +52,10 @@
         <span>Trustpilot</span>
       </span>
     </div>
-    {%- comment -%}
-      v5.1: cfg.trustpilot.showLink — an explicit false drops the profile
-      link line (the stars/rating/count above render exactly as before,
-      just not linked). Inverted test on purpose: missing/true takes the
-      else path, which carries the existing markup VERBATIM, so the
-      default render stays byte-identical.
-    {%- endcomment -%}
-    {%- if cfg.trustpilot.showLink == false -%}
+        {%- if cfg.trustpilot.showLink == false -%}
     {%- else -%}
     {%- if profile_url != blank -%}
-      <a class="cx-trustpilot__link no-dec" href="{{ profile_url }}" target="_blank" rel="noopener nofollow">{{ 'trustpilot.view' | t }}</a>
+      <a class="cx-trustpilot__link no-dec" href="{{ profile_url | escape }}" target="_blank" rel="noopener nofollow">{{ 'trustpilot.view' | t }}</a>
     {%- endif -%}
     {%- endif -%}
   </div>

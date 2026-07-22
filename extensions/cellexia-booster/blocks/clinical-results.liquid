@@ -1,13 +1,3 @@
-{%- comment -%}
-  Cellexia Booster — Clinical results stat band app block (target: section).
-  Stats (value / suffix / labelKey) come from the config metafield; block
-  settings can override each stat label per instance. Renders ONLY when
-  clinicalResults.enabled is explicitly true AND the clinical_results market
-  scope matches the current market. Missing config = hidden (safe default).
-  The hardcoded default claims apply ONLY when the stats field is nil
-  (config predates it); an explicitly-saved EMPTY stats array hides the
-  whole block — no orphan eyebrow/title/footnote, no impression beacon.
-{%- endcomment -%}
 {%- assign cfg = app.metafields.cellexia.config.value -%}
 {%- liquid
   # Market gating: visible = flag explicitly true AND (scope nil OR
@@ -66,8 +56,7 @@
           </li>
         {%- endfor -%}
       {%- else -%}
-        {%- comment -%} Defaults matching DEFAULT_SETTINGS.clinicalResults.stats {%- endcomment -%}
-        <li class="cx-clinical__stat text-center">
+                <li class="cx-clinical__stat text-center">
           <span class="cx-clinical__value">93<span class="cx-clinical__suffix">%</span></span>
           <span class="cx-clinical__label">{%- if block.settings.label_override_1 != blank -%}{{ block.settings.label_override_1 }}{%- else -%}{{ 'clinical.stat_improvement' | t }}{%- endif -%}</span>
         </li>
@@ -85,7 +74,7 @@
       <p class="cx-clinical__footnote">{{ footnote_key | t }}</p>
     {%- endif -%}
     {%- if block.settings.cta_url != blank -%}
-      <a class="cx-clinical__cta btn btn--tert" href="{{ block.settings.cta_url }}">
+      <a class="cx-clinical__cta btn btn--tert" href="{{ block.settings.cta_url | escape }}">
         {%- if block.settings.cta_text != blank -%}{{ block.settings.cta_text }}{%- else -%}{{ 'clinical.source_label' | t }}{%- endif -%}
       </a>
     {%- endif -%}

@@ -132,11 +132,23 @@
     "footnote": "Această garanție se acordă în plus față de drepturile tale legale de consumator."
   },
   "survey": {
-    "stat": "{{ recommend }} din {{ outof }}",
-    "title": "dermatologi chestionați ar recomanda Cellexia",
-    "sample": "Sondaj independent realizat în rândul a {{ n }} de medici dermatologi certificați",
+    "eyebrow": "Sondaj independent în rândul dermatologilor",
+    "title_pct": "dintre dermatologii certificați chestionați ar recomanda Cellexia",
+    "count": "{{ yes }} din cei {{ total }} de dermatologi chestionați",
+    "how": "Cum a fost realizat sondajul",
+    "methodology_p1": "În mai 2026, o firmă independentă de cercetare în domeniul sănătății a chestionat {{ total }} de medici dermatologi cu drept de liberă practică din Statele Unite, Regatul Unit, Franța, Germania, Italia și Spania.",
+    "methodology_p2": "Fiecare dermatolog a analizat o prezentare standardizată a Cellexia, incluzând gama de produse, informațiile despre ingrediente, utilizările prevăzute și datele de produs disponibile. Apoi li s-a adresat întrebarea:",
+    "methodology_p3": "„Pe baza informațiilor analizate, ați recomanda Cellexia unui pacient potrivit care caută îngrijire a pielii pentru semnele vizibile de îmbătrânire?”",
+    "methodology_p4": "Toți cei {{ total }} de dermatologi au răspuns la întrebare. {{ yes }} au ales „Da”, reprezentând {{ percent }}% dintre respondenți.",
+    "methodology_p5": "Sondajul a fost comandat de Cellexia și realizat în mod independent. Recrutarea respondenților, precum și colectarea și analiza răspunsurilor au fost efectuate de firma de cercetare. Cellexia nu a selectat participanții și nu a modificat răspunsurile individuale.",
+    "report_title": "Rezultatele sondajului",
+    "report_surveyed": "Dermatologi chestionați",
+    "report_yes": "Au răspuns „Da”",
+    "report_recommend": "Ar recomanda Cellexia",
+    "question_intro": "{{ total }} de dermatologi cu drept de liberă practică au fost întrebați:",
+    "question_result": "{{ yes }} au răspuns „Da” — {{ percent }}% dintre respondenți.",
+    "dot_legend": "Fiecare punct reprezintă un dermatolog chestionat.",
     "verified_badge": "Verificat de o terță parte",
-    "verified_by": "Sondaj verificat de {{ name }}",
-    "methodology": "Vezi metodologia sondajului"
+    "verified_by": "Sondaj verificat de {{ name }}"
   }
 }

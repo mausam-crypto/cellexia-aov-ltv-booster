@@ -44,8 +44,18 @@
 
     assign cx_pdp_flags = product.metafields.cellexia.pdp_flags.value
 
+    assign survey_total = cfg.dermSurvey.sampleSize | default: 0
+    assign survey_yes = cfg.dermSurvey.yesCount | default: 0
+    assign survey_verifier = cfg.dermSurvey.verifierName
+    assign survey_url = cfg.dermSurvey.verificationUrl
+    assign survey_ok = false
+    if survey_yes > 0 and survey_total > 0 and survey_yes <= survey_total
+      assign survey_pct = survey_yes | times: 100.0 | divided_by: survey_total | round
+      assign survey_ok = true
+    endif
+
     assign show_survey = false
-    if cfg.dermSurvey.enabled == true and block.settings.show_derm_survey
+    if cfg.dermSurvey.enabled == true and block.settings.show_derm_survey and survey_ok
       assign cx_scope = cfg.marketScopes.derm_survey
       if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
         if cx_pdp_flags.derm_survey != false
@@ -151,11 +161,6 @@
     assign tp_count = cfg.trustpilot.reviewCount | default: 1000
     assign tp_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
     assign nudge_pct = cfg.subscriptionNudge.discountPct | default: 5
-    assign survey_recommend = cfg.dermSurvey.recommend | default: 9
-    assign survey_outof = cfg.dermSurvey.outOf | default: 10
-    assign survey_n = cfg.dermSurvey.sampleSize | default: 270
-    assign survey_verifier = cfg.dermSurvey.verifierName
-    assign survey_url = cfg.dermSurvey.verificationUrl
     assign bottle_days = cfg.emptyBottleGuarantee.days | default: 60
 
     assign cx_draft_badges = false
@@ -198,7 +203,7 @@
         assign cx_draft_nudge = false
       endif
 
-      if block.settings.show_derm_survey and cx_pdp_flags.derm_survey != false
+      if block.settings.show_derm_survey and cx_pdp_flags.derm_survey != false and survey_ok
         if cx_prev_flags.derm_survey == true or cfg.dermSurvey.enabled == true
           assign cx_draft_survey = true
         endif
@@ -365,7 +370,7 @@
           {%- if cfg.trustpilot.showLink == false -%}
           {%- else -%}
           {%- if tp_url != blank -%}
-            <a class="cx-trustpilot__link no-dec" href="{{ tp_url }}" target="_blank" rel="noopener nofollow">{{ 'trustpilot.view' | t }}</a>
+            <a class="cx-trustpilot__link no-dec" href="{{ tp_url | escape }}" target="_blank" rel="noopener nofollow">{{ 'trustpilot.view' | t }}</a>
           {%- endif -%}
           {%- endif -%}
         </div>
@@ -385,34 +390,147 @@
       </template>
     {%- endif -%}
         {%- if show_survey or cx_draft_survey -%}
-      {%- liquid
-        assign survey_title = block.settings.survey_title_override
-        if survey_title == blank
-          assign survey_title = 'survey.title' | t
-        endif
+            {%- liquid
+        assign survey_formats = 'seal,report,question,tally,strip' | split: ','
+        assign survey_fmt_live = cfg.dermSurvey.format
+        unless survey_formats contains survey_fmt_live
+          assign survey_fmt_live = 'seal'
+        endunless
+        # Ring arc length for the seal: percent of the r=45 circle's
+        # circumference (2 * pi * 45 = 282.74; 1% = 2.8274 units).
+        assign survey_arc = survey_pct | times: 2.8274 | round: 2
       -%}
-      <template id="cx-tpl-pdp-survey"{% unless show_survey %} data-cx-draft="1"{% endunless %}>
-        <section class="cx-proof cx-survey" data-cx-feature="derm_survey">
-          <p class="cx-survey__stat">
-            <span aria-hidden="true">{{ survey_recommend }}<span class="cx-survey__stat-sep">/</span>{{ survey_outof }}</span>
-            <span class="sr-only">{{ 'survey.stat' | t: recommend: survey_recommend, outof: survey_outof }}</span>
+      {%- capture survey_panel -%}
+        {%- if cfg.dermSurvey.methodology != blank -%}
+          {%- assign survey_method_lines = cfg.dermSurvey.methodology | escape | newline_to_br | split: '<br />' -%}
+          {%- for survey_line in survey_method_lines -%}
+            {%- assign survey_line_text = survey_line | strip -%}
+            {%- if survey_line_text != blank -%}<p>{{ survey_line_text }}</p>{%- endif -%}
+          {%- endfor -%}
+        {%- else -%}
+          <p>{{ 'survey.methodology_p1' | t: total: survey_total }}</p>
+          <p>{{ 'survey.methodology_p2' | t }}</p>
+          <p class="cx-survey__panel-q">{{ 'survey.methodology_p3' | t }}</p>
+          <p>{{ 'survey.methodology_p4' | t: total: survey_total, yes: survey_yes, percent: survey_pct }}</p>
+          <p>{{ 'survey.methodology_p5' | t }}</p>
+        {%- endif -%}
+        {%- if survey_verifier != blank -%}
+          <p class="cx-survey__panel-verify">
+            {%- if survey_url != blank -%}
+              <a class="cx-proof__link no-dec" href="{{ survey_url | escape }}" target="_blank" rel="noopener nofollow">{{ 'survey.verified_by' | t: name: survey_verifier }}</a>
+            {%- else -%}
+              {{ 'survey.verified_by' | t: name: survey_verifier }}
+            {%- endif -%}
           </p>
-          <h2 class="cx-survey__title heading--two">{{ survey_title }}</h2>
-          <p class="cx-survey__sample">{{ 'survey.sample' | t: n: survey_n }}</p>
-          {%- if survey_verifier != blank -%}
-            <div class="cx-survey__seal d-flex align-center justify-center">
-              <span class="cx-survey__seal-icon" aria-hidden="true">{% render 'cx-icons', icon: 'seal-check', size: 28 %}</span>
-              <span class="cx-survey__seal-text">
-                <span class="cx-survey__seal-badge">{{ 'survey.verified_badge' | t }}</span>
-                <span class="cx-survey__seal-name">{{ 'survey.verified_by' | t: name: survey_verifier }}</span>
-              </span>
+        {%- endif -%}
+      {%- endcapture -%}
+      {%- capture survey_how -%}
+        <div class="cx-survey__how" data-cx-survey-how>
+          <div class="cx-survey__how-row">
+            <button type="button" class="cx-survey__how-btn" data-cx-survey-toggle aria-expanded="false" aria-controls="cx-survey-method">
+              {%- render 'cx-icons', icon: 'question', size: 15 -%}
+              <span>{{ 'survey.how' | t }}</span>
+            </button>
+            {%- if survey_verifier != blank -%}
+              <span class="cx-survey__chip">{% render 'cx-icons', icon: 'seal-check', size: 13 %}<span>{{ 'survey.verified_badge' | t }}</span></span>
+            {%- endif -%}
+          </div>
+          <div class="cx-survey__panel" id="cx-survey-method" hidden>
+            {{ survey_panel }}
+          </div>
+        </div>
+      {%- endcapture -%}
+      {%- capture survey_count_line -%}{{ 'survey.count' | t: yes: survey_yes, total: survey_total }}{%- endcapture -%}
+      {%- capture survey_body_seal -%}
+        <section class="cx-proof cx-survey cx-survey--seal" data-cx-feature="derm_survey">
+          <p class="cx-proof__eyebrow eyebrow eyebrow--sm">{{ 'survey.eyebrow' | t }}</p>
+          <div class="cx-survey__seal-row">
+            <div class="cx-survey__seal-fig">
+              <div class="cx-survey__seal-wrap">
+                <svg class="cx-survey__ring" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+                  <circle class="cx-survey__ring-track" cx="50" cy="50" r="45"/>
+                  <circle class="cx-survey__ring-arc" cx="50" cy="50" r="45" style="--cx-arc: {{ survey_arc }}px"/>
+                </svg>
+                <span class="cx-survey__pct">{{ survey_pct }}%</span>
+              </div>
+              <p class="cx-survey__count">{{ survey_count_line }}</p>
             </div>
-          {%- endif -%}
-          {%- if survey_url != blank -%}
-            <p class="cx-survey__method"><a class="cx-proof__link no-dec" href="{{ survey_url }}" target="_blank" rel="noopener nofollow">{{ 'survey.methodology' | t }}</a></p>
-          {%- endif -%}
+            <div class="cx-survey__seal-body">
+              <h2 class="cx-survey__headline">{{ 'survey.title_pct' | t }}</h2>
+              {{ survey_how }}
+            </div>
+          </div>
         </section>
+      {%- endcapture -%}
+      {%- capture survey_body_report -%}
+        <section class="cx-proof cx-survey cx-survey--report" data-cx-feature="derm_survey">
+          <p class="cx-proof__eyebrow eyebrow eyebrow--sm">{{ 'survey.eyebrow' | t }}</p>
+          <div class="cx-survey__report">
+            <h2 class="cx-survey__report-title">{{ 'survey.report_title' | t }}</h2>
+            <dl class="cx-survey__report-rows">
+              <div class="cx-survey__report-row"><dt>{{ 'survey.report_surveyed' | t }}</dt><dd>{{ survey_total }}</dd></div>
+              <div class="cx-survey__report-row"><dt>{{ 'survey.report_yes' | t }}</dt><dd>{{ survey_yes }}</dd></div>
+              <div class="cx-survey__report-row"><dt>{{ 'survey.report_recommend' | t }}</dt><dd>{{ survey_pct }}%</dd></div>
+            </dl>
+            {{ survey_how }}
+          </div>
+        </section>
+      {%- endcapture -%}
+      {%- capture survey_body_question -%}
+        <section class="cx-proof cx-survey cx-survey--question" data-cx-feature="derm_survey">
+          <p class="cx-proof__eyebrow eyebrow eyebrow--sm">{{ 'survey.eyebrow' | t }}</p>
+          <p class="cx-survey__intro">{{ 'survey.question_intro' | t: total: survey_total }}</p>
+          <blockquote class="cx-survey__quote">{{ 'survey.methodology_p3' | t }}</blockquote>
+          <p class="cx-survey__result">{{ 'survey.question_result' | t: yes: survey_yes, percent: survey_pct }}</p>
+          {{ survey_how }}
+        </section>
+      {%- endcapture -%}
+      {%- capture survey_body_tally -%}
+        <section class="cx-proof cx-survey cx-survey--tally" data-cx-feature="derm_survey">
+          <p class="cx-proof__eyebrow eyebrow eyebrow--sm">{{ 'survey.eyebrow' | t }}</p>
+          <div class="cx-survey__tally-head">
+            <span class="cx-survey__tally-pct" aria-hidden="true">{{ survey_pct }}%</span>
+            <span class="cx-survey__count">{{ survey_count_line }}</span>
+          </div>
+          <div class="cx-survey__dots" data-cx-yes="{{ survey_yes }}" data-cx-total="{{ survey_total }}" aria-hidden="true"></div>
+          <span class="sr-only">{{ survey_pct }}%</span>
+          <p class="cx-survey__legend">{{ 'survey.dot_legend' | t }}</p>
+          {{ survey_how }}
+        </section>
+      {%- endcapture -%}
+      {%- capture survey_body_strip -%}
+        <section class="cx-proof cx-survey cx-survey--strip" data-cx-feature="derm_survey">
+          <p class="cx-proof__eyebrow eyebrow eyebrow--sm">{{ 'survey.eyebrow' | t }}</p>
+          <p class="cx-survey__strip-line"><strong class="cx-survey__strip-pct">{{ survey_pct }}%</strong> <span>{{ 'survey.title_pct' | t }}</span></p>
+          {{ survey_how }}
+        </section>
+      {%- endcapture -%}
+      <template id="cx-tpl-pdp-survey"{% unless show_survey %} data-cx-draft="1"{% endunless %}>
+        {%- case survey_fmt_live -%}
+          {%- when 'report' -%}{{ survey_body_report }}
+          {%- when 'question' -%}{{ survey_body_question }}
+          {%- when 'tally' -%}{{ survey_body_tally }}
+          {%- when 'strip' -%}{{ survey_body_strip }}
+          {%- when 'seal' -%}{{ survey_body_seal }}
+          {%- else -%}{{ survey_body_seal }}
+        {%- endcase -%}
       </template>
+    {%- endif -%}
+        {%- if cx_prev_armed -%}
+      {%- if show_survey or cx_draft_survey -%}
+        {%- assign survey_fmt_draft = cx_prev.draftConfig.dermSurveyFormat -%}
+        {%- if survey_formats contains survey_fmt_draft and survey_fmt_draft != survey_fmt_live -%}
+          <template id="cx-tpl-survey-alt" data-cx-draft="1">
+            {%- case survey_fmt_draft -%}
+              {%- when 'report' -%}{{ survey_body_report }}
+              {%- when 'question' -%}{{ survey_body_question }}
+              {%- when 'tally' -%}{{ survey_body_tally }}
+              {%- when 'strip' -%}{{ survey_body_strip }}
+              {%- when 'seal' -%}{{ survey_body_seal }}
+            {%- endcase -%}
+          </template>
+        {%- endif -%}
+      {%- endif -%}
     {%- endif -%}
     {%- if show_study or cx_draft_study -%}
       <template id="cx-tpl-pdp-study"{% unless show_study %} data-cx-draft="1"{% endunless %}>
@@ -469,7 +587,7 @@
             <p class="cx-study__method">{{ 'study.instruments' | t: methods: cx_study.instruments.value }}</p>
           {%- endif -%}
           {%- if cx_study.study_url.value != blank -%}
-            <p class="cx-study__method"><a class="cx-proof__link no-dec" href="{{ cx_study.study_url.value }}" target="_blank" rel="noopener nofollow">{{ 'study.view_study' | t }}</a></p>
+            <p class="cx-study__method"><a class="cx-proof__link no-dec" href="{{ cx_study.study_url.value | escape }}" target="_blank" rel="noopener nofollow">{{ 'study.view_study' | t }}</a></p>
           {%- endif -%}
           {%- if cx_study.footnote.value != blank -%}
             <p class="cx-study__footnote">{{ cx_study.footnote.value }}</p>
@@ -545,7 +663,7 @@
                       <blockquote class="cx-ba__statement">{{ cx_ba.statement.value }}</blockquote>
                     {%- endif -%}
                     {%- if cx_ba.verification_url.value != blank -%}
-                      <p class="cx-ba__verify-link"><a class="cx-proof__link no-dec" href="{{ cx_ba.verification_url.value }}" target="_blank" rel="noopener nofollow">{{ 'ba.view_verification' | t }}</a></p>
+                      <p class="cx-ba__verify-link"><a class="cx-proof__link no-dec" href="{{ cx_ba.verification_url.value | escape }}" target="_blank" rel="noopener nofollow">{{ 'ba.view_verification' | t }}</a></p>
                     {%- endif -%}
                   </div>
                 {%- endif -%}
@@ -619,7 +737,7 @@
                     <span class="cx-batch__coa-meta">{{ 'batch.tested_by' | t: lab: cx_coa.lab.value }}</span>
                   {%- endif -%}
                   {%- if cx_coa_url != blank -%}
-                    <a class="cx-batch__coa-link cx-proof__link no-dec" href="{{ cx_coa_url }}" target="_blank" rel="noopener nofollow">
+                    <a class="cx-batch__coa-link cx-proof__link no-dec" href="{{ cx_coa_url | escape }}" target="_blank" rel="noopener nofollow">
                       {%- render 'cx-icons', icon: 'download', size: 14 -%}
                       <span>{{ 'batch.download' | t }}</span>
                     </a>
@@ -793,12 +911,6 @@
       "id": "show_bottle",
       "label": "Show empty bottle guarantee",
       "default": true
-    },
-    {
-      "type": "text",
-      "id": "survey_title_override",
-      "label": "Survey title override",
-      "info": "Leave blank to use the translated default."
     },
     {
       "type": "text",

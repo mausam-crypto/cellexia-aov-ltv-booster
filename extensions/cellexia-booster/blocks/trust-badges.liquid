@@ -1,9 +1,3 @@
-{%- comment -%}
-  Cellexia Booster — Trust badges app block (target: section).
-  Reads app.metafields.cellexia.config.value; renders ONLY when
-  trustBadges.enabled is explicitly true AND the trust_badges market scope
-  matches the current market. Missing config = hidden (safe default).
-{%- endcomment -%}
 {%- assign cfg = app.metafields.cellexia.config.value -%}
 {%- liquid
   # Market gating: visible = flag explicitly true AND (scope nil OR
@@ -64,14 +58,7 @@
     <ul class="cx-badges__list list-reset d-flex">
       {%- for key in badge_keys -%}
         {%- assign badge_key = key | strip -%}
-        {%- comment -%}
-          `money` formats in the buyer's presentment currency without
-          converting, so the badge renders only when a threshold in that
-          exact currency exists: the market's byMarket entry, or the global
-          shop-currency threshold when presentment == shop currency
-          (cx_fs_badge_ok / cx_fs_badge_money, precomputed above).
-        {%- endcomment -%}
-        {%- if badge_key == 'free_shipping_over' and cx_fs_badge_ok == false -%}
+                {%- if badge_key == 'free_shipping_over' and cx_fs_badge_ok == false -%}
           {%- continue -%}
         {%- endif -%}
         {%- liquid

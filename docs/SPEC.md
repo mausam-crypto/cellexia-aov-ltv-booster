@@ -150,10 +150,13 @@ Translators (locale agents) translate EXACTLY these keys. Builders use EXACTLY t
   "guarantee_body": "Love your results or your money back — no questions asked.",
   "secure": "Secure SSL-encrypted checkout",
   "clinical": "Clinically proven formulas",
-  "trustpilot": "{{rating}}/5 · {{count}} reviews on Trustpilot",
-  "subscription_hint": "Continuous Treatment Plan members save {{percent}}% on every delivery."
+  "trustpilot": "{{rating}}/5 · {{count}} reviews on Trustpilot"
 }
 ```
+
+(v5.5: the `subscription_hint` line — "Continuous Treatment Plan members
+save {{percent}}% on every delivery." — was removed from the checkout trust
+module on merchant request, including its key in all 18 locale files.)
 
 ## Theme app extension spec (`extensions/cellexia-booster/`)
 

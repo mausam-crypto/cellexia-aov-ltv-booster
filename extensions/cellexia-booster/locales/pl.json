@@ -134,11 +134,23 @@
     "footnote": "Ta gwarancja obowiązuje dodatkowo, obok uprawnień przysługujących Ci z mocy prawa."
   },
   "survey": {
-    "stat": "{{ recommend }} na {{ outof }}",
-    "title": "ankietowanych dermatologów poleciłoby Cellexię",
-    "sample": "Niezależna ankieta wśród {{ n }} dermatologów z tytułem specjalisty",
+    "eyebrow": "Niezależna ankieta wśród dermatologów",
+    "title_pct": "ankietowanych dermatologów z tytułem specjalisty poleciłoby Cellexię",
+    "count": "{{ yes }} z {{ total }} ankietowanych dermatologów",
+    "how": "Jak przeprowadzono ankietę",
+    "methodology_p1": "W maju 2026 r. niezależna firma badawcza z sektora ochrony zdrowia przeprowadziła ankietę wśród {{ total }} dermatologów z prawem wykonywania zawodu w Stanach Zjednoczonych, Wielkiej Brytanii, Francji, Niemczech, Włoszech i Hiszpanii.",
+    "methodology_p2": "Każdy dermatolog zapoznał się z ujednoliconym omówieniem marki Cellexia, obejmującym asortyment produktów, informacje o składnikach, przeznaczenie oraz dostępne dane dotyczące produktów. Następnie zadano im pytanie:",
+    "methodology_p3": "„Czy na podstawie przedstawionych informacji polecił(a)by Pan/Pani Cellexię odpowiedniemu pacjentowi poszukującemu pielęgnacji skóry ukierunkowanej na widoczne oznaki starzenia?”",
+    "methodology_p4": "Na pytanie odpowiedziało wszystkich {{ total }} dermatologów. Odpowiedź „Tak” wybrało {{ yes }} z nich, co stanowi {{ percent }}% respondentów.",
+    "methodology_p5": "Ankieta została zlecona przez Cellexię i przeprowadzona niezależnie. Rekrutacją respondentów oraz zbieraniem i analizą odpowiedzi zajmowała się firma badawcza. Cellexia nie wybierała uczestników ani nie zmieniała poszczególnych odpowiedzi.",
+    "report_title": "Wyniki ankiety",
+    "report_surveyed": "Ankietowani dermatolodzy",
+    "report_yes": "Odpowiedzieli „Tak”",
+    "report_recommend": "Poleciliby Cellexię",
+    "question_intro": "{{ total }} dermatologom z prawem wykonywania zawodu zadano pytanie:",
+    "question_result": "{{ yes }} odpowiedziało „Tak” – {{ percent }}% respondentów.",
+    "dot_legend": "Każda kropka odpowiada jednemu ankietowanemu dermatologowi.",
     "verified_badge": "Zweryfikowane przez niezależny podmiot",
-    "verified_by": "Ankieta zweryfikowana przez {{ name }}",
-    "methodology": "Zobacz metodologię ankiety"
+    "verified_by": "Ankieta zweryfikowana przez {{ name }}"
   }
 }

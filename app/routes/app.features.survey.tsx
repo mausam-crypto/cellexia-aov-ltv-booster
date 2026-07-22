@@ -15,9 +15,11 @@ import {
   Card,
   Checkbox,
   ChoiceList,
+  Collapsible,
   InlineStack,
   Layout,
   Page,
+  RadioButton,
   Text,
   TextField,
 } from "@shopify/polaris";
@@ -247,13 +249,62 @@ function MarketScopeCard({
 // Page
 // ---------------------------------------------------------------------------
 
+/**
+ * The five display formats (client-safe literal mirror of the server-only
+ * DERM_SURVEY_FORMATS enum — the settings sanitizer is the authoritative
+ * whitelist). Each presents the SAME numbers through a different trust
+ * mechanism; none imitates a certification mark.
+ */
+const SURVEY_FORMATS = [
+  {
+    value: "seal",
+    label: "Authority seal",
+    description:
+      "A large circular proof seal — the ring arc fills to your exact percentage.",
+  },
+  {
+    value: "report",
+    label: "Data transparency",
+    description:
+      "A clinical results panel — the raw numbers in ruled label/value rows.",
+  },
+  {
+    value: "question",
+    label: "The exact question asked",
+    description:
+      "The verbatim survey question as a large quote, with the result as the payoff.",
+  },
+  {
+    value: "tally",
+    label: "One dot per dermatologist",
+    description:
+      "A dot matrix — every dermatologist surveyed is one dot; “Yes” answers are filled.",
+  },
+  {
+    value: "strip",
+    label: "Understated line",
+    description:
+      "One restrained line with the percentage between hairline rules. No graphics.",
+  },
+] as const;
+type SurveyFormatValue = (typeof SURVEY_FORMATS)[number]["value"];
+
+function toFormatValue(value: string): SurveyFormatValue {
+  return SURVEY_FORMATS.some((format) => format.value === value)
+    ? (value as SurveyFormatValue)
+    : "seal";
+}
+
 interface SurveyFormState {
   enabled: boolean;
-  recommend: string;
-  outOf: string;
+  /** Total dermatologists surveyed (settings.dermSurvey.sampleSize). */
   sampleSize: string;
+  /** Dermatologists who answered "Yes" (settings.dermSurvey.yesCount). */
+  yesCount: string;
   verifierName: string;
   verificationUrl: string;
+  methodology: string;
+  format: SurveyFormatValue;
   scopes: {
     derm_survey: ScopeState;
   };
@@ -263,11 +314,12 @@ function initialFormState(settings: BoosterSettings): SurveyFormState {
   const dermSurvey = settings.dermSurvey;
   return {
     enabled: dermSurvey.enabled,
-    recommend: String(dermSurvey.recommend),
-    outOf: String(dermSurvey.outOf),
     sampleSize: String(dermSurvey.sampleSize),
+    yesCount: String(dermSurvey.yesCount),
     verifierName: dermSurvey.verifierName,
     verificationUrl: dermSurvey.verificationUrl,
+    methodology: dermSurvey.methodology,
+    format: toFormatValue(dermSurvey.format),
     scopes: {
       derm_survey: toScopeState(settings.marketScopes.derm_survey),
     },
@@ -323,6 +375,248 @@ function SealCheckIcon() {
   );
 }
 
+/** Admin mirror of the storefront circular proof seal: an SVG ring whose arc
+ *  fills to the survey percentage (data-honest — dash length proportional to
+ *  the percent), with the percent large in the center. */
+function ProofSealPreview({ percent }: { percent: number }) {
+  const size = 132;
+  const strokeWidth = 9;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(100, percent));
+  const filled = (clamped / 100) * circumference;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      role="img"
+      aria-label={`${clamped}% of dermatologists surveyed`}
+    >
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="#ffffff"
+        stroke="#eef0f2"
+        strokeWidth={strokeWidth}
+      />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="#b1cded"
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeDasharray={`${filled} ${circumference - filled}`}
+        strokeDashoffset={circumference / 4}
+      />
+      <text
+        x="50%"
+        y="50%"
+        textAnchor="middle"
+        dominantBaseline="central"
+        style={{
+          fontSize: "34px",
+          fontWeight: 800,
+          fill: "#1d1d1b",
+          fontFamily: "'Arial Black', 'Helvetica Neue', Helvetica, sans-serif",
+        }}
+      >
+        {clamped}%
+      </text>
+    </svg>
+  );
+}
+
+/** Built-in (English) methodology paragraphs — mirrors the extension locale
+ *  keys survey.methodology_p1..p5 with the live numbers substituted. */
+function builtInMethodology(
+  total: string,
+  yes: string,
+  percent: number,
+): string[] {
+  return [
+    `In May 2026, an independent healthcare research firm surveyed ${total} licensed dermatologists across the United States, United Kingdom, France, Germany, Italy and Spain.`,
+    "Each dermatologist reviewed a standardised overview of Cellexia, including its product range, ingredient information, intended uses and supporting product evidence. They were then asked:",
+    "“Based on the information reviewed, would you recommend Cellexia to an appropriate patient seeking skincare for visible signs of ageing?”",
+    `All ${total} dermatologists answered the question. ${yes} selected “Yes,” representing ${percent}% of respondents.`,
+    "The survey was commissioned by Cellexia and conducted independently. Respondents were recruited and responses were collected and analysed by the research firm. Cellexia did not select participants or alter individual responses.",
+  ];
+}
+
+const TITLE_PCT_EN =
+  "of board-certified dermatologists surveyed would recommend Cellexia";
+const QUESTION_EN =
+  "“Based on the information reviewed, would you recommend Cellexia to an appropriate patient seeking skincare for visible signs of ageing?”";
+
+interface FormatPreviewProps {
+  percent: number;
+  total: number;
+  previewTotal: string;
+  previewYes: string;
+}
+
+/** "report" — raw-data transparency: ruled label/value rows, tabular numerals. */
+function ReportFormatPreview({
+  previewTotal,
+  previewYes,
+  percent,
+}: Omit<FormatPreviewProps, "total">) {
+  const rows: [string, string][] = [
+    ["Dermatologists surveyed", previewTotal],
+    ["Answered “Yes”", previewYes],
+    ["Would recommend Cellexia", `${percent}%`],
+  ];
+  return (
+    <div
+      style={{
+        maxWidth: "420px",
+        margin: "0 auto",
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "12px",
+          fontWeight: 700,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          borderBottom: "2px solid #1d1d1b",
+          paddingBottom: "8px",
+        }}
+      >
+        Survey results
+      </div>
+      {rows.map(([label, value]) => (
+        <div
+          key={label}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "16px",
+            padding: "10px 0",
+            borderBottom: "1px solid #e6e6e4",
+            fontSize: "13px",
+          }}
+        >
+          <span style={{ color: "#3d3d3b" }}>{label}</span>
+          <span style={{ fontWeight: 700 }}>{value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** "question" — verbatim disclosure: the exact survey question as the hero. */
+function QuestionFormatPreview({
+  previewTotal,
+  previewYes,
+  percent,
+}: Omit<FormatPreviewProps, "total">) {
+  return (
+    <div style={{ maxWidth: "520px", margin: "0 auto", textAlign: "center" }}>
+      <div style={{ fontSize: "13px", color: "#3d3d3b" }}>
+        {previewTotal} licensed dermatologists were asked:
+      </div>
+      <blockquote
+        style={{
+          margin: "14px 0",
+          padding: 0,
+          fontSize: "17px",
+          fontWeight: 600,
+          fontStyle: "italic",
+          lineHeight: 1.45,
+        }}
+      >
+        {QUESTION_EN}
+      </blockquote>
+      <div style={{ fontSize: "14px", fontWeight: 700 }}>
+        {previewYes} answered “Yes” — {percent}% of respondents.
+      </div>
+    </div>
+  );
+}
+
+/** "tally" — concrete sample: one dot per dermatologist (fail-safe: no dots
+ *  above 400, count line only — same rule as the storefront builder). */
+function TallyFormatPreview({
+  percent,
+  total,
+  yes,
+  previewTotal,
+  previewYes,
+}: FormatPreviewProps & { yes: number }) {
+  return (
+    <div style={{ maxWidth: "460px", margin: "0 auto", textAlign: "center" }}>
+      <div style={{ fontSize: "26px", fontWeight: 800 }}>
+        {percent}%{" "}
+        <span style={{ fontSize: "13px", fontWeight: 400, color: "#6b6b69" }}>
+          — {previewYes} of {previewTotal} dermatologists surveyed
+        </span>
+      </div>
+      {total <= 400 ? (
+        <div
+          aria-hidden="true"
+          style={{
+            marginTop: "14px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(10px, 1fr))",
+            gap: "4px",
+          }}
+        >
+          {Array.from({ length: total }, (_, index) => (
+            <span
+              key={index}
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                background: index < yes ? "#b1cded" : "transparent",
+                border: `1px solid ${index < yes ? "#b1cded" : "#c9c9c7"}`,
+                display: "inline-block",
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div style={{ marginTop: "10px", fontSize: "12px", color: "#6b6b69" }}>
+          (More than 400 surveyed — the storefront shows the count line
+          without dots.)
+        </div>
+      )}
+      <div style={{ marginTop: "10px", fontSize: "12px", color: "#6b6b69" }}>
+        Each dot represents one dermatologist surveyed.
+      </div>
+    </div>
+  );
+}
+
+/** "strip" — premium understatement: one restrained hairline-ruled line. */
+function StripFormatPreview({
+  percent,
+}: Pick<FormatPreviewProps, "percent">) {
+  return (
+    <div
+      style={{
+        borderTop: "1px solid #e2e2e0",
+        borderBottom: "1px solid #e2e2e0",
+        padding: "18px 8px",
+        display: "flex",
+        gap: "10px",
+        alignItems: "baseline",
+        justifyContent: "center",
+        flexWrap: "wrap",
+        textAlign: "center",
+      }}
+    >
+      <span style={{ fontSize: "22px", fontWeight: 800 }}>{percent}%</span>
+      <span style={{ fontSize: "13px" }}>{TITLE_PCT_EN}</span>
+    </div>
+  );
+}
+
 export default function SurveyFeaturePage() {
   const { settings, markets, headerEnabled } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -333,6 +627,7 @@ export default function SurveyFeaturePage() {
   const [state, setState] = useState<SurveyFormState>(() =>
     initialFormState(settings),
   );
+  const [methodologyOpen, setMethodologyOpen] = useState(false);
 
   useEffect(() => {
     setState(initialFormState(settings));
@@ -358,38 +653,31 @@ export default function SurveyFeaturePage() {
   const isSaving =
     navigation.state !== "idle" && navigation.formMethod === "POST";
 
-  const outOfValue = parseIntegerInRange(state.outOf, 1, 100);
-  const outOfError = outOfValue === null ? "Between 1 and 100" : undefined;
-  const recommendValue = parseIntegerInRange(
-    state.recommend,
-    0,
-    outOfValue ?? 100,
-  );
-  const recommendError =
-    recommendValue === null
-      ? `Between 0 and ${outOfValue ?? 100}`
-      : undefined;
   const sampleSizeValue = parseIntegerInRange(state.sampleSize, 1, 1000000);
   const sampleSizeError =
     sampleSizeValue === null ? "Between 1 and 1,000,000" : undefined;
+  const yesCountValue = parseIntegerInRange(state.yesCount, 0, 100000);
+  const yesCountError =
+    yesCountValue === null ? "Between 0 and 100,000" : undefined;
   const trimmedUrl = state.verificationUrl.trim();
   const urlError =
     trimmedUrl !== "" && !trimmedUrl.startsWith("https://")
       ? "Must start with https:// (or leave empty)"
       : undefined;
-  const hasErrors = Boolean(
-    outOfError || recommendError || sampleSizeError || urlError,
-  );
+  const hasErrors = Boolean(sampleSizeError || yesCountError || urlError);
 
   const handleSave = () => {
     const patch: DeepPartial<BoosterSettings> = {
+      // Legacy recommend/outOf stay untouched in the stored shape — the v5.7
+      // widget no longer displays them, so this page no longer edits them.
       dermSurvey: {
         enabled: state.enabled,
-        recommend: recommendValue ?? settings.dermSurvey.recommend,
-        outOf: outOfValue ?? settings.dermSurvey.outOf,
         sampleSize: sampleSizeValue ?? settings.dermSurvey.sampleSize,
+        yesCount: yesCountValue ?? settings.dermSurvey.yesCount,
         verifierName: state.verifierName.trim(),
         verificationUrl: trimmedUrl,
+        methodology: state.methodology.trim(),
+        format: state.format,
       },
       marketScopes: scopesToPatch(state.scopes),
     };
@@ -398,14 +686,26 @@ export default function SurveyFeaturePage() {
     submit(formData, { method: "post" });
   };
 
-  // Preview falls back to the last saved numbers while a field is invalid so
-  // the mock never renders "NaN/NaN".
-  const previewRecommend = recommendValue ?? settings.dermSurvey.recommend;
-  const previewOutOf = outOfValue ?? settings.dermSurvey.outOf;
-  const previewSample = (
-    sampleSizeValue ?? settings.dermSurvey.sampleSize
-  ).toLocaleString("en-US");
+  // Effective numbers: fall back to the last saved values while a field is
+  // invalid so the computed percent and preview never render "NaN".
+  const effectiveTotal = sampleSizeValue ?? settings.dermSurvey.sampleSize;
+  const effectiveYes = yesCountValue ?? settings.dermSurvey.yesCount;
+  // Mirrors the storefront fail-closed rule exactly: hidden when the total
+  // or the Yes count is not positive, or when Yes exceeds the total.
+  const inconsistent =
+    effectiveTotal <= 0 || effectiveYes <= 0 || effectiveYes > effectiveTotal;
+  const percent =
+    effectiveTotal > 0
+      ? Math.round((effectiveYes / effectiveTotal) * 100)
+      : 0;
+  const previewTotal = effectiveTotal.toLocaleString("en-US");
+  const previewYes = effectiveYes.toLocaleString("en-US");
   const previewVerifier = state.verifierName.trim();
+  const customMethodology = state.methodology.trim();
+  const methodologyParagraphs =
+    customMethodology !== ""
+      ? customMethodology.split(/\n+/).filter((line) => line.trim() !== "")
+      : builtInMethodology(previewTotal, previewYes, percent);
 
   return (
     <Page
@@ -472,8 +772,8 @@ export default function SurveyFeaturePage() {
                 <Text as="p" tone="subdued" variant="bodySm">
                   Shown on every product page (products can opt out
                   individually on the Product boosters page). The widget cites
-                  a real survey — only publish numbers and a verifier you can
-                  substantiate.
+                  a real survey — only publish numbers, a methodology and a
+                  verifier you can substantiate.
                 </Text>
                 <Checkbox
                   label="Enable the dermatologist survey widget"
@@ -483,40 +783,20 @@ export default function SurveyFeaturePage() {
                     setState((previous) => ({ ...previous, enabled }))
                   }
                 />
-                <InlineStack gap="300" wrap>
-                  <Box width="160px">
+                {inconsistent ? (
+                  <Banner tone="warning" title="The widget is hidden on the storefront">
+                    <Text as="p">
+                      “Answered Yes” cannot be greater than “Total surveyed”,
+                      and both must be at least 1. The widget fails closed and
+                      stays hidden until the numbers are fixed — it never
+                      shows inconsistent data.
+                    </Text>
+                  </Banner>
+                ) : null}
+                <InlineStack gap="300" wrap blockAlign="start">
+                  <Box width="180px">
                     <TextField
-                      label="Would recommend"
-                      type="number"
-                      min={0}
-                      max={outOfValue ?? 100}
-                      value={state.recommend}
-                      onChange={(recommend) =>
-                        setState((previous) => ({ ...previous, recommend }))
-                      }
-                      error={recommendError}
-                      helpText="e.g. 9"
-                      autoComplete="off"
-                    />
-                  </Box>
-                  <Box width="160px">
-                    <TextField
-                      label="Out of"
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={state.outOf}
-                      onChange={(outOf) =>
-                        setState((previous) => ({ ...previous, outOf }))
-                      }
-                      error={outOfError}
-                      helpText="e.g. 10"
-                      autoComplete="off"
-                    />
-                  </Box>
-                  <Box width="200px">
-                    <TextField
-                      label="Sample size"
+                      label="Total surveyed"
                       type="number"
                       min={1}
                       value={state.sampleSize}
@@ -524,9 +804,40 @@ export default function SurveyFeaturePage() {
                         setState((previous) => ({ ...previous, sampleSize }))
                       }
                       error={sampleSizeError}
-                      helpText="Surveyed dermatologists, e.g. 270"
+                      helpText="Dermatologists surveyed, e.g. 270"
                       autoComplete="off"
                     />
+                  </Box>
+                  <Box width="180px">
+                    <TextField
+                      label="Answered Yes"
+                      type="number"
+                      min={0}
+                      value={state.yesCount}
+                      onChange={(yesCount) =>
+                        setState((previous) => ({ ...previous, yesCount }))
+                      }
+                      error={yesCountError}
+                      helpText="Would recommend, e.g. 243"
+                      autoComplete="off"
+                    />
+                  </Box>
+                  <Box width="180px" paddingBlockStart="100">
+                    <BlockStack gap="050">
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Displayed percentage
+                      </Text>
+                      <Text
+                        as="p"
+                        variant="headingLg"
+                        tone={inconsistent ? "critical" : undefined}
+                      >
+                        {inconsistent ? "—" : `${percent}%`}
+                      </Text>
+                      <Text as="p" variant="bodySm" tone="subdued">
+                        Answered Yes ÷ Total, rounded
+                      </Text>
+                    </BlockStack>
                   </Box>
                 </InlineStack>
                 <InlineStack gap="300" wrap>
@@ -538,7 +849,7 @@ export default function SurveyFeaturePage() {
                       onChange={(verifierName) =>
                         setState((previous) => ({ ...previous, verifierName }))
                       }
-                      helpText="The real third party that verified the survey — named on the seal. Leave empty to hide the “verified by” line."
+                      helpText="The real third party that verified the survey — named in the widget. Leave empty to hide the “Third-party verified” chip."
                       autoComplete="off"
                     />
                   </Box>
@@ -554,11 +865,56 @@ export default function SurveyFeaturePage() {
                       }
                       error={urlError}
                       placeholder="https://…"
-                      helpText="Public link to the survey methodology. Leave empty to hide the link."
+                      helpText="Public link to the survey methodology, shown inside the “How the survey was conducted” panel. Leave empty to hide the link."
                       autoComplete="off"
                     />
                   </Box>
                 </InlineStack>
+                <TextField
+                  label="Survey methodology (optional)"
+                  value={state.methodology}
+                  multiline={5}
+                  maxLength={4000}
+                  showCharacterCount
+                  onChange={(methodology) =>
+                    setState((previous) => ({ ...previous, methodology }))
+                  }
+                  placeholder="Leave empty to use the built-in explanation, already translated into all 17 additional languages."
+                  helpText="Shown in the “How the survey was conducted” panel. Leave empty to use the built-in explanation (translated into all 17 additional languages). Custom text appears exactly as written in every language — it is not translated. Separate paragraphs with line breaks."
+                  autoComplete="off"
+                />
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Display format
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Five ways to present the same survey data — each builds
+                  trust through a different mechanism. Every format shares
+                  your numbers, the “How the survey was conducted” disclosure
+                  and the fail-closed rules.
+                </Text>
+                <BlockStack gap="200">
+                  {SURVEY_FORMATS.map((format) => (
+                    <RadioButton
+                      key={format.value}
+                      label={format.label}
+                      helpText={format.description}
+                      checked={state.format === format.value}
+                      id={`survey-format-${format.value}`}
+                      name="surveyFormat"
+                      onChange={() =>
+                        setState((previous) => ({
+                          ...previous,
+                          format: format.value,
+                        }))
+                      }
+                    />
+                  ))}
+                </BlockStack>
               </BlockStack>
             </Card>
 
@@ -572,91 +928,187 @@ export default function SurveyFeaturePage() {
                   Shoppers see the copy translated into their language; this
                   preview shows the English defaults.
                 </Text>
-                <div
-                  style={{
-                    background: "#ffffff",
-                    border: "2px solid #f4f4f4",
-                    padding: "36px 24px",
-                    textAlign: "center",
-                    color: "#1d1d1b",
-                  }}
-                >
+                {inconsistent ? (
                   <div
                     style={{
-                      fontSize: "11px",
-                      letterSpacing: "0.16em",
-                      textTransform: "uppercase",
-                      fontWeight: 600,
+                      border: "2px dashed #d0d0d0",
+                      padding: "36px 24px",
+                      textAlign: "center",
                       color: "#6b6b69",
+                      fontSize: "13px",
                     }}
                   >
-                    Independent survey
+                    Nothing to preview — the widget fails closed and renders
+                    nothing while the survey numbers are inconsistent.
                   </div>
+                ) : (
                   <div
                     style={{
-                      fontSize: "64px",
-                      fontWeight: 800,
-                      lineHeight: 1.05,
-                      margin: "10px 0 6px",
-                      fontFamily:
-                        "'Arial Black', 'Helvetica Neue', Helvetica, sans-serif",
+                      background: "#ffffff",
+                      border: "2px solid #f4f4f4",
+                      padding: "32px 28px",
+                      color: "#1d1d1b",
                     }}
                   >
-                    {previewRecommend}/{previewOutOf}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "15px",
-                      fontWeight: 600,
-                      maxWidth: "340px",
-                      margin: "0 auto",
-                    }}
-                  >
-                    dermatologists surveyed would recommend Cellexia
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "#6b6b69",
-                      marginTop: "6px",
-                    }}
-                  >
-                    Independent survey of {previewSample} board-certified
-                    dermatologists
-                  </div>
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      marginTop: "16px",
-                      background: "#f4f4f4",
-                      borderRadius: "999px",
-                      padding: "6px 14px",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <SealCheckIcon />
-                    <span>
-                      Third-party verified
-                      {previewVerifier
-                        ? ` · Survey verified by ${previewVerifier}`
-                        : ""}
-                    </span>
-                  </div>
-                  {trimmedUrl.startsWith("https://") ? (
                     <div
                       style={{
-                        marginTop: "10px",
-                        fontSize: "12px",
-                        textDecoration: "underline",
+                        fontSize: "11px",
+                        letterSpacing: "0.16em",
+                        textTransform: "uppercase",
+                        fontWeight: 600,
+                        color: "#6b6b69",
+                        textAlign: "center",
+                        marginBottom: "20px",
                       }}
                     >
-                      See survey methodology
+                      Independent dermatologist survey
                     </div>
-                  ) : null}
-                </div>
+                    {state.format === "seal" ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "24px",
+                        }}
+                      >
+                        <div style={{ textAlign: "center" }}>
+                          <ProofSealPreview percent={percent} />
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: "#6b6b69",
+                              marginTop: "6px",
+                            }}
+                          >
+                            {previewYes} of {previewTotal} dermatologists
+                            surveyed
+                          </div>
+                        </div>
+                        <div style={{ maxWidth: "320px" }}>
+                          <div
+                            style={{
+                              fontSize: "16px",
+                              fontWeight: 700,
+                              lineHeight: 1.35,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.02em",
+                            }}
+                          >
+                            {TITLE_PCT_EN}
+                          </div>
+                        </div>
+                      </div>
+                    ) : state.format === "report" ? (
+                      <ReportFormatPreview
+                        previewTotal={previewTotal}
+                        previewYes={previewYes}
+                        percent={percent}
+                      />
+                    ) : state.format === "question" ? (
+                      <QuestionFormatPreview
+                        previewTotal={previewTotal}
+                        previewYes={previewYes}
+                        percent={percent}
+                      />
+                    ) : state.format === "tally" ? (
+                      <TallyFormatPreview
+                        percent={percent}
+                        total={effectiveTotal}
+                        yes={effectiveYes}
+                        previewTotal={previewTotal}
+                        previewYes={previewYes}
+                      />
+                    ) : (
+                      <StripFormatPreview percent={percent} />
+                    )}
+                    {previewVerifier ? (
+                      <div style={{ textAlign: "center", marginTop: "16px" }}>
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            background: "#f4f4f4",
+                            borderRadius: "999px",
+                            padding: "6px 14px",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          <SealCheckIcon />
+                          <span>Third-party verified</span>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div style={{ marginTop: "20px", textAlign: "center" }}>
+                      <Button
+                        variant="plain"
+                        disclosure={methodologyOpen ? "up" : "down"}
+                        onClick={() =>
+                          setMethodologyOpen((previous) => !previous)
+                        }
+                        ariaExpanded={methodologyOpen}
+                        ariaControls="cx-survey-methodology-preview"
+                      >
+                        How the survey was conducted
+                      </Button>
+                    </div>
+                    <Collapsible
+                      id="cx-survey-methodology-preview"
+                      open={methodologyOpen}
+                    >
+                      <div
+                        style={{
+                          marginTop: "12px",
+                          padding: "16px 18px",
+                          background: "#fafafa",
+                          fontSize: "13px",
+                          lineHeight: 1.55,
+                          color: "#3d3d3b",
+                          textAlign: "left",
+                        }}
+                      >
+                        {methodologyParagraphs.map((paragraph, index) => (
+                          <p
+                            key={index}
+                            style={{
+                              margin: index === 0 ? 0 : "10px 0 0",
+                            }}
+                          >
+                            {paragraph}
+                          </p>
+                        ))}
+                        {previewVerifier ? (
+                          <p style={{ margin: "10px 0 0", fontWeight: 600 }}>
+                            Survey verified by {previewVerifier}
+                          </p>
+                        ) : null}
+                        {trimmedUrl.startsWith("https://") ? (
+                          <p
+                            style={{
+                              margin: "10px 0 0",
+                              textDecoration: "underline",
+                            }}
+                          >
+                            See survey methodology
+                          </p>
+                        ) : null}
+                      </div>
+                    </Collapsible>
+                  </div>
+                )}
+                <InlineStack gap="200" blockAlign="center" wrap>
+                  <Button url="/app/preview?feature=derm_survey">
+                    Preview on your store
+                  </Button>
+                  <Text as="span" tone="subdued" variant="bodySm">
+                    See any format on the real storefront via the Preview
+                    Center — visitors keep seeing the saved format until you
+                    save a change here.
+                  </Text>
+                </InlineStack>
               </BlockStack>
             </Card>
 

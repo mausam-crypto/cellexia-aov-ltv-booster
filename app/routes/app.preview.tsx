@@ -147,6 +147,20 @@ const UNPREVIEWABLE_FEATURE_KEYS: ReadonlySet<FeatureKey> = new Set<FeatureKey>(
  * Readiness reasons come from the loader (featureReadiness); this map only
  * supplies the destination link per not-ready-capable feature.
  */
+/**
+ * The five derm-survey display formats with short mechanism labels
+ * (client-safe literal mirror of DERM_SURVEY_FORMATS in the server-only
+ * settings model — same pattern as ALL_FEATURE_KEYS; the arm action
+ * validates against the canonical enum via sanitizeDraftConfig).
+ */
+const SURVEY_FORMAT_OPTIONS: { label: string; value: string }[] = [
+  { label: "Proof seal — authority", value: "seal" },
+  { label: "Results panel — data transparency", value: "report" },
+  { label: "Verbatim question — the exact question asked", value: "question" },
+  { label: "Dot matrix — one dot per dermatologist", value: "tally" },
+  { label: "Single line — understated", value: "strip" },
+];
+
 const NOT_READY_FIX_LINKS: Partial<
   Record<FeatureKey, { url: string; label: string }>
 > = {
@@ -357,9 +371,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // render the identical string — never toLocaleString() in the client.
       armedAtText: state.armedAt ? formatUtcTimestamp(state.armedAt) : null,
       draftFlags: state.draftFlags,
+      draftConfig: state.draftConfig,
       simulatedMarket: state.simulatedMarket,
       productHandle: state.productHandle,
     },
+    // The format saved on the Survey feature page — the Select's default, so
+    // "preview without touching anything" starts from what is really live.
+    liveSurveyFormat: settings.dermSurvey.format,
     defaultProductHandle,
     // The one sanctioned page-facing home of the raw token: the entry URL.
     entryUrl: state.armed
@@ -623,8 +641,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           delete draftFlags[key];
         }
       }
+      // Draft config overrides (currently just the survey format). Malformed
+      // payloads degrade to {} — armPreview's sanitizeDraftConfig is the
+      // authoritative enum validation.
+      let draftConfig: unknown = {};
+      try {
+        draftConfig = JSON.parse(String(formData.get("draftConfig") ?? "{}"));
+      } catch {
+        draftConfig = {};
+      }
       const { sync } = await armPreview(session.shop, admin, {
         draftFlags,
+        draftConfig,
         simulatedMarket: String(formData.get("simulatedMarket") ?? ""),
         productHandle: String(formData.get("productHandle") ?? ""),
       });
@@ -713,6 +741,7 @@ export default function PreviewCenter() {
     entryUrl,
     featureLocks,
     runningExperiments,
+    liveSurveyFormat,
   } = data;
 
   // v5.4 safety net: a FeatureKey missing from the FEATURE_GROUPS literal
@@ -769,6 +798,11 @@ export default function PreviewCenter() {
   );
   const [productHandle, setProductHandle] = useState(defaultProductHandle);
   const [query, setQuery] = useState(q);
+  // Survey display format for the preview session: starts from the armed
+  // draft (when re-arming) or the format saved on the Survey feature page.
+  const [surveyFormat, setSurveyFormat] = useState<string>(
+    preview.draftConfig?.dermSurveyFormat ?? liveSurveyFormat,
+  );
 
   // Debounced product search — reloads the loader with ?q= (same pattern as
   // the Product boosters page).
@@ -917,6 +951,12 @@ export default function PreviewCenter() {
     formData.set(
       "draftFlags",
       JSON.stringify(Object.fromEntries(checkedKeys.map((key) => [key, true]))),
+    );
+    formData.set(
+      "draftConfig",
+      JSON.stringify(
+        checked.has("derm_survey") ? { dermSurveyFormat: surveyFormat } : {},
+      ),
     );
     formData.set("simulatedMarket", simulatedMarket);
     formData.set("productHandle", productHandle);
@@ -1202,6 +1242,23 @@ export default function PreviewCenter() {
                 onChange={setSimulatedMarket}
                 helpText="“Current / default” previews with no market simulation: features scoped to selected markets only will not show as live."
               />
+              {checked.has("derm_survey") ? (
+                <BlockStack gap="100">
+                  <Select
+                    label="Survey format"
+                    options={SURVEY_FORMAT_OPTIONS}
+                    value={surveyFormat}
+                    onChange={setSurveyFormat}
+                    helpText="How the dermatologist-survey widget presents the same numbers in this preview session."
+                  />
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Previewing a format never changes your live site — real
+                    visitors keep seeing the saved format. To adopt a format,
+                    save it on the{" "}
+                    <Link url="/app/features/survey">Survey feature page</Link>.
+                  </Text>
+                </BlockStack>
+              ) : null}
               <BlockStack gap="200">
                 <InlineStack gap="200" blockAlign="center" wrap={false}>
                   <Box width="100%">

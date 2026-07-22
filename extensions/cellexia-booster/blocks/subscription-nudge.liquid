@@ -1,10 +1,3 @@
-{%- comment -%}
-  Cellexia Booster — Subscription nudge app block (target: section).
-  Promotes the Joy "Continuous Treatment Plan". Hidden for B2B customers;
-  renders ONLY when subscriptionNudge.enabled is explicitly true in the
-  config metafield AND the subscription_nudge market scope matches the
-  current market. Missing config = hidden (safe default).
-{%- endcomment -%}
 {%- assign cfg = app.metafields.cellexia.config.value -%}
 {%- liquid
   # Market gating: visible = flag explicitly true AND (scope nil OR
