@@ -3,5 +3,10 @@
   "description": "Protect your order against loss, theft and damage in transit.",
   "price_label": "for {{price}}",
   "added": "Your order is protected",
-  "error": "Couldn't update Order Protection. Please try again."
+  "error": "Couldn't update Order Protection. Please try again.",
+  "benefit_1": "Covers loss, theft and damage in transit",
+  "benefit_2": "Instant replacement or refund — no courier disputes",
+  "benefit_3": "One tap now, zero worries after",
+  "recommended": "Recommended",
+  "price_suffix": "one-time"
 }

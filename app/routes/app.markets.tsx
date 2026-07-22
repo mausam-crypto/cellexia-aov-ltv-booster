@@ -118,6 +118,14 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
       { key: "free_shipping_bar", label: "Free-shipping progress bar" },
       { key: "cart_subscription_upsell", label: "Cart subscription switch" },
       { key: "cart_trust_row", label: "Cart trust row" },
+      // Standalone master flag (cartCrossSell.enabled) — listed with the
+      // cart drawer widgets for the merchant, but it does NOT share the
+      // cartUpsell master switch (not part of CART_KEYS).
+      { key: "cart_cross_sell", label: "Cart cross-sell" },
+      // Standalone master flag (dispatch.enabled) — the countdown shows in
+      // the cart drawer AND on product pages, but it is grouped here for the
+      // merchant. Not part of CART_KEYS either.
+      { key: "dispatch_countdown", label: "Dispatch countdown" },
     ],
   },
   {
@@ -397,6 +405,12 @@ export default function MarketsPage() {
     }
     if (state.checkout_trust.on !== initial.checkout_trust.on) {
       patch.checkoutTrust = { enabled: state.checkout_trust.on };
+    }
+    if (state.cart_cross_sell.on !== initial.cart_cross_sell.on) {
+      patch.cartCrossSell = { enabled: state.cart_cross_sell.on };
+    }
+    if (state.dispatch_countdown.on !== initial.dispatch_countdown.on) {
+      patch.dispatch = { enabled: state.dispatch_countdown.on };
     }
 
     const formData = new FormData();

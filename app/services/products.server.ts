@@ -11,6 +11,9 @@ export interface VariantSummary {
   price: string;
   currencyCode?: string;
   productTitle: string;
+  /** Product URL handle — stored alongside the variant GID by the cart
+   *  cross-sell picker so Liquid can render live product data. */
+  productHandle: string;
   imageUrl: string | null;
   availableForSale?: boolean;
 }
@@ -217,6 +220,7 @@ const SEARCH_PRODUCTS_QUERY = `#graphql
     products(first: 10, query: $query) {
       nodes {
         title
+        handle
         featuredImage {
           url
         }
@@ -258,6 +262,7 @@ export async function searchVariants(
       products?: {
         nodes?: {
           title: string;
+          handle: string;
           featuredImage: { url: string } | null;
           variants: {
             nodes: {
@@ -278,6 +283,7 @@ export async function searchVariants(
       title: variant.title,
       price: variant.price,
       productTitle: product.title,
+      productHandle: product.handle,
       imageUrl: variant.image?.url ?? product.featuredImage?.url ?? null,
       availableForSale: variant.availableForSale,
     })),
@@ -297,6 +303,7 @@ const VARIANTS_BY_ID_QUERY = `#graphql
         }
         product {
           title
+          handle
           featuredImage {
             url
           }
@@ -322,7 +329,11 @@ export async function getVariantsByIds(
         price: string;
         availableForSale: boolean;
         image: { url: string } | null;
-        product: { title: string; featuredImage: { url: string } | null };
+        product: {
+          title: string;
+          handle: string;
+          featuredImage: { url: string } | null;
+        };
       } | null)[];
     };
   };
@@ -333,6 +344,7 @@ export async function getVariantsByIds(
       title: node.title,
       price: node.price,
       productTitle: node.product.title,
+      productHandle: node.product.handle,
       imageUrl: node.image?.url ?? node.product.featuredImage?.url ?? null,
       availableForSale: node.availableForSale,
     }));

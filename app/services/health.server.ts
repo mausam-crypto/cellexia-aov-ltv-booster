@@ -9,7 +9,7 @@ import { getPreviewState } from "./preview.server";
 /**
  * Setup & health checks (SPEC v4 §B).
  *
- * runHealthChecks(admin, session) returns the NINE ordered checks, always
+ * runHealthChecks(admin, session) returns the ELEVEN ordered checks, always
  * fresh (the Setup page uses it). getCachedHealth(admin, session) is the
  * cheap variant for high-traffic surfaces (dashboard banner): it reuses a
  * per-shop summary for up to five minutes; invalidateHealthCache(shop)
@@ -841,7 +841,9 @@ async function checkPreviewHygiene(shop: string): Promise<HealthCheck> {
 async function checkAppProxy(shop: string): Promise<HealthCheck> {
   return runCheck("app-proxy", "App proxy reachable", async () => {
     const probeUrl = `https://${shop}/apps/cellexia/track`;
-    const expectedUpstream = `${(process.env.SHOPIFY_APP_URL ?? "https://<your-app-host>").replace(/\/+$/, "")}/proxy`;
+    // Render.com injects RENDER_EXTERNAL_URL — same fallback chain as the
+    // appUrl in shopify.server.ts, so the hint matches what the app runs on.
+    const expectedUpstream = `${(process.env.SHOPIFY_APP_URL || process.env.RENDER_EXTERNAL_URL || "https://<your-app-host>").replace(/\/+$/, "")}/proxy`;
     const fixHint =
       `The App Proxy must forward /apps/cellexia to ${expectedUpstream}. ` +
       `Set [app_proxy] url = "${expectedUpstream}" (prefix "apps", subpath "cellexia") in shopify.app.toml and run npm run deploy — ` +
@@ -907,6 +909,101 @@ async function checkAppProxy(shop: string): Promise<HealthCheck> {
 }
 
 // ---------------------------------------------------------------------------
+// 11. deployed-extension (info-grade drift probe)
+// ---------------------------------------------------------------------------
+
+/**
+ * Shopify serves theme-extension assets under
+ * /extensions/<uuid>/<build>/... with the extension handle and an
+ * auto-incrementing build number in the path, e.g.
+ * ".../extensions/.../cellexia-aov-ltv-booster-42/assets/...". Detecting that
+ * path in the rendered storefront HTML tells us which extension build real
+ * visitors receive.
+ */
+const EXTENSION_BUILD_PATTERN =
+  /\/extensions\/[^"]*cellexia-aov-ltv-booster-(\d+)\//;
+
+async function fetchStorefrontText(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      headers: { Accept: "text/html,application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return null;
+    return await response.text();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Info-grade: detects the theme-extension build number the storefront
+ * actually serves. Tries the home page first, then falls back to the first
+ * product page (the app embeds render on both). NEVER fails — the storefront
+ * may be password-protected, the embeds disabled, or the network flaky, none
+ * of which is a broken setup on its own; every miss degrades to `warn`.
+ */
+async function checkDeployedExtension(shop: string): Promise<HealthCheck> {
+  return runCheck(
+    "deployed-extension",
+    "Deployed extension build",
+    async () => {
+      const fixHint =
+        "Each `npm run deploy` increments the extension build number served from /extensions/…-cellexia-aov-ltv-booster-<N>/. Preview and checkout changes ship in TWO halves: the extensions (npm run deploy) AND the app server — redeploy BOTH, or the storefront serves a build that no longer matches the server's behavior.";
+      const warnResult = {
+        status: "warn" as const,
+        detail:
+          "could not detect the deployed extension build (page fetch failed or embed disabled)",
+        fixHint,
+      };
+      try {
+        const home = await fetchStorefrontText(`https://${shop}/`);
+        let match = home?.match(EXTENSION_BUILD_PATTERN) ?? null;
+
+        if (!match) {
+          // Fallback: the first product page (embeds also render there, and
+          // some themes only load our assets on product templates).
+          const productsJson = await fetchStorefrontText(
+            `https://${shop}/products.json?limit=1`,
+          );
+          let handle: string | null = null;
+          if (productsJson) {
+            try {
+              const parsed = JSON.parse(productsJson) as {
+                products?: { handle?: unknown }[];
+              };
+              const first = parsed.products?.[0]?.handle;
+              handle = typeof first === "string" && first !== "" ? first : null;
+            } catch {
+              handle = null;
+            }
+          }
+          if (handle) {
+            const productPage = await fetchStorefrontText(
+              `https://${shop}/products/${encodeURIComponent(handle)}`,
+            );
+            match = productPage?.match(EXTENSION_BUILD_PATTERN) ?? null;
+          }
+        }
+
+        if (match) {
+          return {
+            status: "pass" as const,
+            detail: `Storefront serves extension build -${match[1]}`,
+            fixHint,
+          };
+        }
+        return warnResult;
+      } catch {
+        // Info-grade check: any unexpected crash degrades to warn, never fail.
+        return warnResult;
+      }
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Orchestrator
 // ---------------------------------------------------------------------------
 
@@ -935,6 +1032,7 @@ export async function runHealthChecks(
     return [
       crashed,
       await checkAppProxy(shop),
+      await checkDeployedExtension(shop),
       await checkThemeEmbeds(theme, themeEditorUrl),
       await checkThemeCompat(theme),
       await checkWebhooks(admin, shop),
@@ -956,6 +1054,7 @@ export async function runHealthChecks(
   const [
     configMetafields,
     appProxy,
+    deployedExtension,
     themeEmbeds,
     themeCompat,
     webhooks,
@@ -967,6 +1066,7 @@ export async function runHealthChecks(
   ] = await Promise.all([
     checkConfigMetafields(admin, shop, settings),
     checkAppProxy(shop),
+    checkDeployedExtension(shop),
     checkThemeEmbeds(theme, themeEditorUrl),
     checkThemeCompat(theme),
     checkWebhooks(admin, shop),
@@ -980,6 +1080,7 @@ export async function runHealthChecks(
   return [
     configMetafields,
     appProxy,
+    deployedExtension,
     themeEmbeds,
     themeCompat,
     webhooks,

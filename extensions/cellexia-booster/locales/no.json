@@ -24,8 +24,19 @@
     "error": "Noe gikk galt. Prøv igjen.",
     "switch_all_cta": "Bytt alt og spar {{ percent }} %",
     "partial": "Produkter som kan abonneres på: {{ eligible }} av {{ total }}",
-    "remove": "Fjern abonnement",
-    "removed": "Abonnement fjernet"
+    "remove": "Fjern kontinuerlig behandling",
+    "removed": "Kontinuerlig behandling fjernet"
+  },
+  "crosssell": {
+    "title": "Passer perfekt til rutinen din",
+    "add": "Legg til",
+    "adding": "Legger til…",
+    "added": "Lagt i handlekurven din"
+  },
+  "dispatch": {
+    "within": "Bestill innen {{ hours }} t {{ minutes }} min, så sender vi bestillingen din i dag",
+    "within_minutes": "Bestill innen {{ minutes }} min, så sender vi bestillingen din i dag",
+    "local_time": "senest kl. {{ time }} lokal tid"
   },
   "badges": {
     "secure_checkout": "Sikker betaling",
@@ -96,16 +107,28 @@
     "honesty": "Hver batch testes uavhengig, og resultatene publiseres. Vurder selv."
   },
   "bottle": {
+    "container_bottle": "flaske",
+    "container_jar": "krukke",
+    "container_tube": "tube",
+    "container_pump": "pumpeflaske",
+    "container_product": "emballasje",
     "title": "Bruk opp hver siste dråpe",
-    "body": "Ta deg {{ days }}. Hvis du ikke elsker resultatene dine, returnerer du den tomme flasken og får full refusjon.",
+    "body": "Ta deg {{ days }}. Hvis du ikke elsker resultatene dine, returnerer du din tomme {{ container }} og får full refusjon.",
     "days_count": {
       "one": "{{ count }} dag",
       "other": "{{ count }} dager"
     },
-    "point_1": "Virker, eller så er det gratis — selv med tom flaske",
+    "point_1": "Virker, eller så er det gratis — selv med tom {{ container }}",
     "point_2": "Uten spørsmål",
     "point_3": "Full refusjon til din opprinnelige betalingsmetode",
     "terms": "Se garantivilkårene"
+  },
+  "guarantee_check": {
+    "button": "Garantisjekk",
+    "title": "Garantien vår under lupen",
+    "mechanics_title": "Slik fungerer det",
+    "trust_title": "Derfor kan du stole på den",
+    "footnote": "Denne garantien gjelder i tillegg til rettighetene dine etter forbrukerkjøpsloven."
   },
   "survey": {
     "stat": "{{ recommend }} av {{ outof }}",

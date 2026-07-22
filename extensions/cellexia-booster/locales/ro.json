@@ -24,8 +24,19 @@
     "error": "A apărut o eroare. Te rugăm să încerci din nou.",
     "switch_all_cta": "Schimbă tot și economisește {{ percent }}%",
     "partial": "Produse eligibile pentru abonament: {{ eligible }} din {{ total }}",
-    "remove": "Elimină abonamentul",
-    "removed": "Abonament eliminat"
+    "remove": "Elimină tratamentul continuu",
+    "removed": "Tratament continuu eliminat"
+  },
+  "crosssell": {
+    "title": "Se potrivește perfect cu rutina ta",
+    "add": "Adaugă",
+    "adding": "Se adaugă…",
+    "added": "Adăugat în coșul tău"
+  },
+  "dispatch": {
+    "within": "Comandă în cel mult {{ hours }} h {{ minutes }} min pentru expediere în aceeași zi",
+    "within_minutes": "Comandă în cel mult {{ minutes }} min pentru expediere în aceeași zi",
+    "local_time": "până la {{ time }}, ora locală"
   },
   "badges": {
     "secure_checkout": "Plată securizată",
@@ -97,17 +108,29 @@
     "honesty": "Fiecare lot este testat independent, iar rezultatele sunt publicate. Convinge-te."
   },
   "bottle": {
+    "container_bottle": "flacon",
+    "container_jar": "borcan",
+    "container_tube": "tub",
+    "container_pump": "flacon cu pompă",
+    "container_product": "produs",
     "title": "Folosește până la ultima picătură",
-    "body": "Ai la dispoziție {{ days }}. Dacă rezultatele nu te conving, trimite înapoi flaconul gol și îți returnăm banii integral.",
+    "body": "Ai la dispoziție {{ days }}. Dacă rezultatele nu te conving, trimite înapoi ambalajul gol ({{ container }}) și îți returnăm banii integral.",
     "days_count": {
       "one": "{{ count }} zi",
       "few": "{{ count }} zile",
       "other": "{{ count }} de zile"
     },
-    "point_1": "Funcționează sau e gratuit — chiar și cu flaconul gol",
+    "point_1": "Funcționează sau e gratuit — chiar și cu un {{ container }} gol",
     "point_2": "Fără întrebări",
     "point_3": "Rambursare integrală prin metoda de plată inițială",
     "terms": "Vezi termenii garanției"
+  },
+  "guarantee_check": {
+    "button": "Verifică garanția",
+    "title": "Garanția noastră, sub lupă",
+    "mechanics_title": "Cum funcționează",
+    "trust_title": "De ce te poți baza pe ea",
+    "footnote": "Această garanție se acordă în plus față de drepturile tale legale de consumator."
   },
   "survey": {
     "stat": "{{ recommend }} din {{ outof }}",

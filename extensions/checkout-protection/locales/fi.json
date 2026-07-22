@@ -3,5 +3,10 @@
   "description": "Suojaa tilauksesi katoamiselta, varkaudelta ja kuljetusvaurioilta.",
   "price_label": "hintaan {{price}}",
   "added": "Tilauksesi on suojattu",
-  "error": "Tilausturvan päivitys ei onnistunut. Yritä uudelleen."
+  "error": "Tilausturvan päivitys ei onnistunut. Yritä uudelleen.",
+  "benefit_1": "Kattaa katoamisen, varkauden ja kuljetusvauriot",
+  "benefit_2": "Välitön vaihto tai hyvitys — ei kiistelyä kuljetusyhtiön kanssa",
+  "benefit_3": "Yksi napautus nyt, ei huolen häivää jälkeenpäin",
+  "recommended": "Suositeltu",
+  "price_suffix": "kertamaksu"
 }

@@ -26,9 +26,22 @@ import {
  * Cellexia AOV & LTV Booster — Checkout Upsell ("Complete your routine").
  *
  * Reads `checkoutUpsell` from the shop metafield ($app:cellexia / config),
- * loads the configured variants via the Storefront API, filters out variants
- * that are unavailable or already in the cart, and renders up to `maxOffers`
- * compact one-tap offer rows.
+ * loads offer variants via the Storefront API, filters out variants that are
+ * unavailable or already in the cart, and renders up to `maxOffers` compact
+ * one-tap offer rows.
+ *
+ * TWO SOURCING MODES (v4.9, `checkoutUpsell.mode`):
+ *   - "auto" (default, also when the field is absent): seeds Shopify's
+ *     `productRecommendations` Storefront field with the up-to-2
+ *     highest-value cart lines' products (intent COMPLEMENTARY, falling
+ *     back to RELATED when complementary returns nothing, and to an
+ *     intent-less query if the argument is rejected), then maps each
+ *     recommended product to its first in-stock variant. Products already
+ *     in the cart and the Order Protection variant are never offered.
+ *     Lines this app added itself (`_cellexia_upsell` /
+ *     `_cellexia_protection` attributes) never seed recommendations, which
+ *     also keeps the fetch stable after a buyer accepts an offer.
+ *   - "manual": the hand-picked `variantIds` below, unchanged from v1.
  *
  * SAFE BY DEFAULT: a missing/unparsable config metafield, a missing
  * `checkoutUpsell` section, or anything but an explicit `enabled: true`
@@ -59,11 +72,15 @@ import {
 /** Mirrors DEFAULT_SETTINGS.checkoutUpsell in app/models/settings.server.ts. */
 const DEFAULT_CONFIG: CheckoutUpsellConfig = {
   enabled: false,
+  mode: 'auto',
   variantIds: [],
   maxOffers: 2,
 };
 
 const MAX_OFFERS_CAP = 10;
+
+/** Auto mode: at most this many cart lines seed productRecommendations. */
+const MAX_SEED_PRODUCTS = 2;
 
 const VARIANTS_QUERY = /* GraphQL */ `
   query CellexiaUpsellVariants($ids: [ID!]!, $country: CountryCode)
@@ -94,8 +111,64 @@ const VARIANTS_QUERY = /* GraphQL */ `
   }
 `;
 
+/**
+ * Auto-mode recommendation queries. The selection set mirrors what the
+ * manual VARIANTS_QUERY loads per variant, so both modes feed the same
+ * OfferVariant shape. `productRecommendations(productId:, intent:)` and the
+ * `ProductRecommendationIntent` enum (RELATED | COMPLEMENTARY) are verified
+ * against the 2025-07 Storefront API schema; the intent-less variant exists
+ * purely as a runtime fallback should the argument ever be rejected (the
+ * field then defaults to RELATED).
+ */
+const RECOMMENDATION_PRODUCT_FIELDS = /* GraphQL */ `
+  id
+  title
+  featuredImage {
+    url
+  }
+  variants(first: 5) {
+    nodes {
+      id
+      title
+      availableForSale
+      price {
+        amount
+        currencyCode
+      }
+      compareAtPrice {
+        amount
+      }
+      image {
+        url
+      }
+    }
+  }
+`;
+
+const RECOMMENDATIONS_QUERY = /* GraphQL */ `
+  query CellexiaUpsellRecommendations(
+    $productId: ID!
+    $intent: ProductRecommendationIntent
+    $country: CountryCode
+  ) @inContext(country: $country) {
+    productRecommendations(productId: $productId, intent: $intent) {
+      ${RECOMMENDATION_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+const RECOMMENDATIONS_QUERY_NO_INTENT = /* GraphQL */ `
+  query CellexiaUpsellRecommendationsDefault($productId: ID!, $country: CountryCode)
+  @inContext(country: $country) {
+    productRecommendations(productId: $productId) {
+      ${RECOMMENDATION_PRODUCT_FIELDS}
+    }
+  }
+`;
+
 interface CheckoutUpsellConfig {
   enabled: boolean;
+  mode: 'auto' | 'manual';
   variantIds: string[];
   maxOffers: number;
 }
@@ -126,6 +199,26 @@ interface OfferVariant {
 
 interface VariantsQueryData {
   nodes?: Array<Partial<OfferVariant> | null> | null;
+}
+
+interface RecommendedVariantNode {
+  id?: string | null;
+  title?: string | null;
+  availableForSale?: boolean | null;
+  price?: {amount?: string | null; currencyCode?: string | null} | null;
+  compareAtPrice?: {amount?: string | null} | null;
+  image?: {url?: string | null} | null;
+}
+
+interface RecommendedProductNode {
+  id?: string | null;
+  title?: string | null;
+  featuredImage?: {url?: string | null} | null;
+  variants?: {nodes?: Array<RecommendedVariantNode | null> | null} | null;
+}
+
+interface RecommendationsQueryData {
+  productRecommendations?: Array<RecommendedProductNode | null> | null;
 }
 
 type OfferState = 'idle' | 'adding' | 'added';
@@ -172,6 +265,10 @@ function resolveConfig(root: Record<string, unknown> | undefined): CheckoutUpsel
   // Safe default: the feature is ON only when the metafield explicitly says
   // `enabled: true`. Missing, malformed or falsy values all mean OFF.
   const enabled = section.enabled === true;
+  // v4.9 contract: "auto" is the default — anything but an explicit
+  // "manual" (including an absent field on pre-4.9 configs) means auto.
+  const mode: CheckoutUpsellConfig['mode'] =
+    section.mode === 'manual' ? 'manual' : 'auto';
   const variantIds = Array.isArray(section.variantIds)
     ? section.variantIds.filter(
         (id): id is string => typeof id === 'string' && id.startsWith('gid://'),
@@ -182,7 +279,7 @@ function resolveConfig(root: Record<string, unknown> | undefined): CheckoutUpsel
       ? Math.floor(section.maxOffers)
       : DEFAULT_CONFIG.maxOffers;
   const maxOffers = Math.min(Math.max(rawMax, 1), MAX_OFFERS_CAP);
-  return {enabled, variantIds, maxOffers};
+  return {enabled, mode, variantIds, maxOffers};
 }
 
 /**
@@ -221,6 +318,7 @@ function upsellPreviewDiagnosis(input: {
   preview: PreviewConfig;
   attributeValue: string | undefined;
   featureVisible: boolean;
+  mode: CheckoutUpsellConfig['mode'];
   hasVariantIds: boolean;
 }): string {
   if (!input.configFound) {
@@ -235,6 +333,11 @@ function upsellPreviewDiagnosis(input: {
   if (!input.featureVisible) {
     return 'the checkout upsell feature is not draft-enabled for this preview';
   }
+  if (input.mode === 'auto') {
+    // Auto mode's only remaining nothing-to-show path: the recommendation
+    // engine produced no offerable products for this cart's seed lines.
+    return 'no recommendations available for the current cart';
+  }
   if (!input.hasVariantIds) {
     return 'no upsell products selected — pick them on the Checkout features page';
   }
@@ -246,6 +349,19 @@ function PreviewDiagnostic({reason}: {reason: string}) {
   return (
     <Text size="small" appearance="subdued">
       {`Cellexia preview: ${reason}`}
+    </Text>
+  );
+}
+
+/**
+ * Caption rendered ONLY inside the checkout editor (`extension.editor` set),
+ * under the editor preview of this block. Hardcoded English on purpose:
+ * the checkout editor is a merchant-facing admin surface, not buyer copy.
+ */
+function EditorPreviewCaption() {
+  return (
+    <Text size="small" appearance="subdued">
+      Preview — buyers see this only when the feature is live for their market.
     </Text>
   );
 }
@@ -288,6 +404,48 @@ function isOfferVariant(node: Partial<OfferVariant> | null | undefined): node is
   );
 }
 
+/**
+ * Auto mode: maps one recommended product to the offer-row shape by picking
+ * its first in-stock variant (of the first 5), skipping the Order
+ * Protection variant. Returns undefined when nothing is offerable.
+ */
+function toOfferVariant(
+  product: RecommendedProductNode,
+  excludedVariantId: string,
+): OfferVariant | undefined {
+  const nodes = product.variants?.nodes ?? [];
+  for (const node of nodes) {
+    if (!node || node.availableForSale !== true) continue;
+    if (typeof node.id !== 'string' || node.id.length === 0) continue;
+    if (excludedVariantId && node.id === excludedVariantId) continue;
+    const candidate: Partial<OfferVariant> = {
+      id: node.id,
+      title: typeof node.title === 'string' ? node.title : '',
+      availableForSale: true,
+      price:
+        node.price &&
+        typeof node.price.amount === 'string' &&
+        typeof node.price.currencyCode === 'string'
+          ? {amount: node.price.amount, currencyCode: node.price.currencyCode}
+          : undefined,
+      compareAtPrice:
+        node.compareAtPrice && typeof node.compareAtPrice.amount === 'string'
+          ? {amount: node.compareAtPrice.amount}
+          : null,
+      image: node.image && typeof node.image.url === 'string' ? {url: node.image.url} : null,
+      product: {
+        title: typeof product.title === 'string' ? product.title : '',
+        featuredImage:
+          product.featuredImage && typeof product.featuredImage.url === 'string'
+            ? {url: product.featuredImage.url}
+            : null,
+      },
+    };
+    if (isOfferVariant(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 function offerTitle(variant: OfferVariant): string {
   const productTitle = variant.product?.title?.trim() ?? '';
   const variantTitle = typeof variant.title === 'string' ? variant.title.trim() : '';
@@ -313,9 +471,22 @@ function savingsPercent(variant: OfferVariant): number | undefined {
 
 export default reactExtension('purchase.checkout.block.render', () => <Extension />);
 
+/**
+ * Second placement (v4.9): the SAME UI statically anchored immediately
+ * before the actions (Pay button) area — the merchant picks either
+ * placement in the checkout editor. `reactExtension` registers the target
+ * as a call-time side effect (`shopify.extend`), matching the second
+ * `[[extensions.targeting]]` entry in shopify.extension.toml; target name
+ * verified against RenderExtensionTargets in @shopify/ui-extensions.
+ */
+export const checkoutActionsRenderBefore = reactExtension(
+  'purchase.checkout.actions.render-before',
+  () => <Extension />,
+);
+
 function Extension() {
   const translate = useTranslate();
-  const {i18n, query} = useApi();
+  const {i18n, query, extension} = useApi();
   const metafieldEntries = useAppMetafields();
   const cartLines = useCartLines();
   const applyCartLinesChange = useApplyCartLinesChange();
@@ -323,6 +494,15 @@ function Extension() {
   const country = useLocalizationCountry();
   const countryCode = country?.isoCode;
   const market = useLocalizationMarket();
+
+  // CHECKOUT EDITOR detection (v4.9): `extension.editor` is `{type:
+  // 'checkout'}` only while the merchant is inside the checkout editor and
+  // undefined in every live checkout (verified against StandardApi in
+  // @shopify/ui-extensions). In the editor this block ALWAYS renders a
+  // representative preview so the merchant can see, place and move it —
+  // every enabled/market/config/preview gate is bypassed strictly behind
+  // `inEditor`, so live render paths are byte-identical to before.
+  const inEditor = Boolean(extension.editor);
 
   const configRoot = useMemo(
     () => parseCellexiaConfig(metafieldEntries),
@@ -335,6 +515,69 @@ function Extension() {
     market?.handle,
   );
   const variantIdsKey = config.variantIds.join(',');
+
+  // Order Protection variant (same config blob) — never offered as an
+  // upsell, and protection lines never seed recommendations.
+  const protectionVariantId = useMemo(() => {
+    if (!configRoot || !isPlainObject(configRoot.checkoutProtection)) return '';
+    const raw = configRoot.checkoutProtection.variantId;
+    return typeof raw === 'string' && raw.startsWith('gid://') ? raw : '';
+  }, [configRoot]);
+
+  // Auto-mode seeds: the up-to-2 highest-value cart lines' product ids.
+  // Protection lines and lines this app added itself (`_cellexia_upsell` /
+  // `_cellexia_protection` attributes) never seed — that also keeps the
+  // seed set (and therefore the fetch) stable when a buyer accepts an
+  // offer, so an "Added" row doesn't churn away mid-checkout.
+  const seedProductIds = useMemo(() => {
+    if (config.mode !== 'auto') return [] as string[];
+    const bestLineValue = new Map<string, number>();
+    for (const line of cartLines) {
+      const productId = line?.merchandise?.product?.id;
+      if (!productId) continue;
+      if (protectionVariantId && line.merchandise.id === protectionVariantId) {
+        continue;
+      }
+      if (
+        line.attributes?.some(
+          (attr) =>
+            attr?.key === '_cellexia_upsell' || attr?.key === '_cellexia_protection',
+        )
+      ) {
+        continue;
+      }
+      const amount = line.cost?.totalAmount?.amount;
+      const value =
+        typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
+      bestLineValue.set(
+        productId,
+        Math.max(bestLineValue.get(productId) ?? 0, value),
+      );
+    }
+    return [...bestLineValue.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_SEED_PRODUCTS)
+      .map(([productId]) => productId);
+  }, [config.mode, cartLines, protectionVariantId]);
+  const seedKey = seedProductIds.join(',');
+
+  // Latest cart product ids, read at FETCH time through a ref so cart
+  // mutations don't re-trigger the recommendations fetch (the render-time
+  // filter below already handles products that enter the cart later).
+  const cartProductIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const line of cartLines) {
+      const productId = line?.merchandise?.product?.id;
+      if (productId) ids.add(productId);
+    }
+    return ids;
+  }, [cartLines]);
+  const cartProductIdsRef = useRef(cartProductIds);
+  cartProductIdsRef.current = cartProductIds;
+
+  // Whether the current mode has anything to offer from at all.
+  const hasOfferSource =
+    config.mode === 'auto' ? seedProductIds.length > 0 : config.variantIds.length > 0;
 
   // v5 preview: the single gate for ALL preview behavior. The `_cx_preview`
   // cart attribute (set by the merchant's preview hub) carries the SHA-256
@@ -368,13 +611,16 @@ function Extension() {
         preview,
         attributeValue: previewAttributeValue,
         featureVisible: visible,
+        mode: config.mode,
         hasVariantIds: config.variantIds.length > 0,
       })
     : undefined;
 
   const [variants, setVariants] = useState<OfferVariant[]>([]);
+  // In the editor the fetch also runs while the feature is not yet live
+  // (`inEditor` is false in every live checkout, so live is unchanged).
   const [loading, setLoading] = useState<boolean>(
-    visible && config.variantIds.length > 0,
+    (visible || inEditor) && hasOfferSource,
   );
   const [offerStates, setOfferStates] = useState<Record<string, OfferState>>({});
   const [errorText, setErrorText] = useState<string | undefined>(undefined);
@@ -383,24 +629,122 @@ function Extension() {
   const addInFlightRef = useRef(false);
 
   useEffect(() => {
-    if (!visible || config.variantIds.length === 0) {
+    // Editor mode fetches through the normal pipeline too (so the merchant
+    // sees real offers when the pipeline yields them); live behavior is
+    // untouched because `inEditor` is always false outside the editor.
+    if ((!visible && !inEditor) || !hasOfferSource) {
       setVariants([]);
       setLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    query<VariantsQueryData>(VARIANTS_QUERY, {
+
+    /** query() wrapper that folds thrown/`errors` failures into one flag. */
+    async function runQuery<Data>(
+      graphql: string,
+      variables: Record<string, unknown>,
+    ): Promise<{data: Data | undefined; errored: boolean}> {
+      try {
+        const result = await query<Data>(graphql, {variables});
+        const errors = result?.errors;
+        return {
+          data: result?.data,
+          errored: Array.isArray(errors) && errors.length > 0,
+        };
+      } catch {
+        return {data: undefined, errored: true};
+      }
+    }
+
+    /** Manual mode: the hand-picked variantIds path, unchanged from v1. */
+    async function loadManualOffers(): Promise<OfferVariant[]> {
       // `@inContext` localizes prices to the buyer's market; omit the
       // variable entirely while the checkout country is still unknown.
-      variables: countryCode
-        ? {ids: config.variantIds, country: countryCode}
-        : {ids: config.variantIds},
-    })
-      .then((result) => {
-        if (cancelled) return;
-        const nodes = result?.data?.nodes ?? [];
-        setVariants(nodes.filter(isOfferVariant));
+      const result = await runQuery<VariantsQueryData>(VARIANTS_QUERY, {
+        ids: config.variantIds,
+        ...(countryCode ? {country: countryCode} : {}),
+      });
+      const nodes = result.data?.nodes ?? [];
+      return nodes.filter(isOfferVariant);
+    }
+
+    /** One productRecommendations call per seed product, in parallel. */
+    async function fetchRecommendationLists(
+      intent: 'COMPLEMENTARY' | 'RELATED' | undefined,
+    ): Promise<{lists: RecommendedProductNode[][]; allErrored: boolean}> {
+      const results = await Promise.all(
+        seedProductIds.map((productId) =>
+          runQuery<RecommendationsQueryData>(
+            intent ? RECOMMENDATIONS_QUERY : RECOMMENDATIONS_QUERY_NO_INTENT,
+            {
+              productId,
+              ...(intent ? {intent} : {}),
+              ...(countryCode ? {country: countryCode} : {}),
+            },
+          ),
+        ),
+      );
+      const lists = results.map((result) => {
+        const list = result.data?.productRecommendations;
+        return Array.isArray(list)
+          ? list.filter(
+              (product): product is RecommendedProductNode =>
+                typeof product === 'object' && product !== null,
+            )
+          : [];
+      });
+      const allErrored =
+        results.length > 0 &&
+        results.every(
+          (result) =>
+            result.errored &&
+            !Array.isArray(result.data?.productRecommendations),
+        );
+      return {lists, allErrored};
+    }
+
+    /**
+     * Auto mode: COMPLEMENTARY recommendations first ("goes well with"),
+     * RELATED when complementary has nothing, and an intent-less query
+     * (server default: RELATED) if the intent argument is ever rejected.
+     */
+    async function loadAutoOffers(): Promise<OfferVariant[]> {
+      let attempt = await fetchRecommendationLists('COMPLEMENTARY');
+      if (attempt.allErrored) {
+        attempt = await fetchRecommendationLists(undefined);
+      } else if (attempt.lists.every((list) => list.length === 0)) {
+        const related = await fetchRecommendationLists('RELATED');
+        if (!related.allErrored && related.lists.some((list) => list.length > 0)) {
+          attempt = related;
+        }
+      }
+      // Interleave the per-seed lists (each seed's best recommendation
+      // first), dedupe by product id, drop products already in the cart,
+      // then map each product to its first sellable variant (never the
+      // protection variant).
+      const excludedProductIds = cartProductIdsRef.current;
+      const seenProductIds = new Set<string>();
+      const offers: OfferVariant[] = [];
+      const longestList = Math.max(0, ...attempt.lists.map((list) => list.length));
+      for (let index = 0; index < longestList; index++) {
+        for (const list of attempt.lists) {
+          if (offers.length >= MAX_OFFERS_CAP) return offers;
+          const product = list[index];
+          if (!product || typeof product.id !== 'string') continue;
+          if (seenProductIds.has(product.id)) continue;
+          seenProductIds.add(product.id);
+          if (excludedProductIds.has(product.id)) continue;
+          const offer = toOfferVariant(product, protectionVariantId);
+          if (offer) offers.push(offer);
+        }
+      }
+      return offers;
+    }
+
+    (config.mode === 'auto' ? loadAutoOffers() : loadManualOffers())
+      .then((nextVariants) => {
+        if (!cancelled) setVariants(nextVariants);
       })
       .catch(() => {
         if (!cancelled) setVariants([]);
@@ -412,7 +756,17 @@ function Extension() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.enabled, marketAllowed, draftEnabled, variantIdsKey, countryCode, query]);
+  }, [
+    config.enabled,
+    marketAllowed,
+    draftEnabled,
+    inEditor,
+    config.mode,
+    variantIdsKey,
+    seedKey,
+    countryCode,
+    query,
+  ]);
 
   const inCartVariantIds = useMemo(() => {
     const ids = new Set<string>();
@@ -484,14 +838,20 @@ function Extension() {
     }
   }
 
-  if (!visible || config.variantIds.length === 0) {
+  // Editor mode never bails out here: it falls through to the loading
+  // skeleton, real offers, or the representative sample row below.
+  if ((!visible || !hasOfferSource) && !inEditor) {
     return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
   }
 
   if (loading) {
+    // Auto mode doesn't know the candidate count up front — show a full
+    // maxOffers skeleton; manual keeps the tighter selected-count bound.
     const skeletonRows = Math.max(
       1,
-      Math.min(config.maxOffers, config.variantIds.length),
+      config.mode === 'auto'
+        ? config.maxOffers
+        : Math.min(config.maxOffers, config.variantIds.length),
     );
     return (
       <BlockStack spacing="base">
@@ -516,12 +876,48 @@ function Extension() {
             <SkeletonText inlineSize="small" />
           </InlineLayout>
         ))}
+        {inEditor ? <EditorPreviewCaption /> : null}
       </BlockStack>
     );
   }
 
   if (offers.length === 0) {
-    return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
+    if (!inEditor) {
+      return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
+    }
+    // Editor with nothing offerable: one representative sample row (real
+    // header/subtitle, skeleton thumb, hardcoded sample title, no price,
+    // disabled Add) so the merchant can always see and place the block.
+    return (
+      <BlockStack spacing="base">
+        <BlockStack spacing="extraTight">
+          <Heading level={2}>{heading}</Heading>
+          <Text size="small" appearance="subdued">
+            {translate('subtitle')}
+          </Text>
+        </BlockStack>
+        <InlineLayout
+          columns={[60, 'fill', 'auto']}
+          spacing="base"
+          blockAlignment="center"
+        >
+          <SkeletonImage aspectRatio={1} />
+          <BlockStack spacing="none">
+            <Text size="small" emphasis="bold">
+              Example product — recommendations appear here
+            </Text>
+          </BlockStack>
+          <Button
+            kind="secondary"
+            disabled
+            accessibilityLabel={`${translate('add')} — example product`}
+          >
+            {translate('add')}
+          </Button>
+        </InlineLayout>
+        <EditorPreviewCaption />
+      </BlockStack>
+    );
   }
 
   return (
@@ -614,6 +1010,7 @@ function Extension() {
           </InlineLayout>
         );
       })}
+      {inEditor ? <EditorPreviewCaption /> : null}
     </BlockStack>
   );
 }

@@ -24,8 +24,19 @@
     "error": "エラーが発生しました。もう一度お試しください。",
     "switch_all_cta": "すべて切り替えて{{ percent }}%お得",
     "partial": "{{ total }}点中{{ eligible }}点の商品が定期購入の対象です",
-    "remove": "定期購入を解除",
-    "removed": "定期購入を解除しました"
+    "remove": "継続トリートメントを解除",
+    "removed": "継続トリートメントを解除しました"
+  },
+  "crosssell": {
+    "title": "毎日のお手入れにぴったり",
+    "add": "カートに追加",
+    "adding": "追加中…",
+    "added": "カートに追加しました"
+  },
+  "dispatch": {
+    "within": "{{ hours }}時間{{ minutes }}分以内のご注文で当日発送いたします",
+    "within_minutes": "{{ minutes }}分以内のご注文で当日発送いたします",
+    "local_time": "お客様の現地時間{{ time }}まで"
   },
   "badges": {
     "secure_checkout": "安全な決済",
@@ -95,15 +106,27 @@
     "honesty": "すべてのバッチは独立機関で検査され、結果が公開されています。ご自身の目でお確かめください。"
   },
   "bottle": {
+    "container_bottle": "ボトル",
+    "container_jar": "ジャー",
+    "container_tube": "チューブ",
+    "container_pump": "ポンプボトル",
+    "container_product": "容器",
     "title": "最後の一滴までお使いください",
-    "body": "{{ days }}、じっくりお試しください。結果にご満足いただけなければ、空のボトルをご返送いただくだけで全額返金いたします。",
+    "body": "{{ days }}、じっくりお試しください。結果にご満足いただけなければ、空の{{ container }}をご返送いただくだけで全額返金いたします。",
     "days_count": {
       "other": "{{ count }}日間"
     },
-    "point_1": "効果がなければ無料 — 空のボトルでも対象",
+    "point_1": "効果がなければ無料 — 空の{{ container }}でも対象",
     "point_2": "理由は一切問いません",
     "point_3": "元のお支払い方法へ全額返金",
     "terms": "保証規約を見る"
+  },
+  "guarantee_check": {
+    "button": "保証内容を確認",
+    "title": "私たちの保証を、徹底検証",
+    "mechanics_title": "保証の仕組み",
+    "trust_title": "この保証を信頼いただける理由",
+    "footnote": "本保証は、お客様の法律上の権利に加えて提供されるものです。"
   },
   "survey": {
     "stat": "{{ outof }}人中{{ recommend }}人",

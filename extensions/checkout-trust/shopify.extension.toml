@@ -6,9 +6,20 @@ handle = "cellexia-checkout-trust"
 type = "ui_extension"
 description = "Compact trust module (guarantee, secure checkout, Trustpilot, subscription hint) rendered as a checkout block."
 
+  # Merchant-positioned block placement (drag anywhere in the editor).
   [[extensions.targeting]]
   module = "./src/Checkout.tsx"
   target = "purchase.checkout.block.render"
+
+  # Alternative static placement adjacent to the Pay button (rendered
+  # immediately before the actions area). Same module/UI — the merchant
+  # chooses either placement in the checkout editor. Target verified
+  # against RenderExtensionTargets in @shopify/ui-extensions 2025.7.
+  # NOTE: the module must also register this target via a second
+  # reactExtension('purchase.checkout.actions.render-before', ...) call.
+  [[extensions.targeting]]
+  module = "./src/Checkout.tsx"
+  target = "purchase.checkout.actions.render-before"
 
   [extensions.capabilities]
   api_access = true

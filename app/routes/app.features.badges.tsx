@@ -273,6 +273,7 @@ interface BadgesFormState {
   rating: number;
   reviewCount: string;
   profileUrl: string;
+  showLink: boolean;
   guaranteeEnabled: boolean;
   days: string;
   scopes: {
@@ -291,6 +292,7 @@ function initialFormState(settings: BoosterSettings): BadgesFormState {
     rating: settings.trustpilot.rating,
     reviewCount: String(settings.trustpilot.reviewCount),
     profileUrl: settings.trustpilot.profileUrl,
+    showLink: settings.trustpilot.showLink,
     guaranteeEnabled: settings.guarantee.enabled,
     days: String(settings.guarantee.days),
     scopes: {
@@ -405,6 +407,7 @@ export default function BadgesFeaturesPage() {
         rating: Math.round(state.rating * 10) / 10,
         reviewCount: Number(state.reviewCount),
         profileUrl: state.profileUrl.trim(),
+        showLink: state.showLink,
       },
       guarantee: {
         enabled: state.guaranteeEnabled,
@@ -623,6 +626,14 @@ export default function BadgesFeaturesPage() {
                     />
                   </Box>
                 </InlineStack>
+                <Checkbox
+                  label="Link the widget to your Trustpilot profile"
+                  helpText="Turn off to show the rating without linking out — the stars and review count render as plain text."
+                  checked={state.showLink}
+                  onChange={(showLink) =>
+                    setState((previous) => ({ ...previous, showLink }))
+                  }
+                />
               </BlockStack>
             </Card>
 

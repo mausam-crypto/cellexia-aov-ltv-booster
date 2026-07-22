@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {
+  Badge,
   BlockStack,
   Checkbox,
   Icon,
@@ -30,6 +31,13 @@ import {
  * With `defaultOn`, the protection line is auto-added once per checkout —
  * tracked in extension storage so it survives page reloads — and never
  * re-added after the buyer removes it manually.
+ *
+ * CARD LAYOUT (v4.9 redesign — maximize opt-in, honestly): header row with
+ * a lock icon, bold title and a "Recommended" badge (shown unless
+ * `showRecommended` is explicitly false); three check-marked benefit lines;
+ * a prominent one-time price line ("+ {price} · one-time"); and the
+ * Checkbox as the primary visual action with a bold label (the existing
+ * `description` copy). Behavior is unchanged — only presentation moved.
  *
  * SAFE BY DEFAULT: a missing/unparsable config metafield, a missing
  * `checkoutProtection` section, or anything but an explicit `enabled: true`
@@ -71,7 +79,11 @@ const DEFAULT_CONFIG: CheckoutProtectionConfig = {
   enabled: false,
   variantId: '',
   defaultOn: false,
+  showRecommended: true,
 };
+
+/** The three check-marked benefit lines on the card, in render order. */
+const BENEFIT_KEYS = ['benefit_1', 'benefit_2', 'benefit_3'] as const;
 
 /**
  * Extension-storage key recording the defaultOn auto-add outcome for this
@@ -100,6 +112,7 @@ interface CheckoutProtectionConfig {
   enabled: boolean;
   variantId: string;
   defaultOn: boolean;
+  showRecommended: boolean;
 }
 
 interface PreviewConfig {
@@ -172,7 +185,10 @@ function resolveConfig(
   // Same explicit-true rule for the auto-add flag: never pre-select the
   // protection line unless the metafield explicitly opted in.
   const defaultOn = section.defaultOn === true;
-  return {enabled, variantId, defaultOn};
+  // v4.9 contract: the "Recommended" badge shows unless the metafield says
+  // `showRecommended: false` explicitly — absent (pre-4.9 configs) = shown.
+  const showRecommended = section.showRecommended !== false;
+  return {enabled, variantId, defaultOn, showRecommended};
 }
 
 /**
@@ -243,6 +259,19 @@ function PreviewDiagnostic({reason}: {reason: string}) {
 }
 
 /**
+ * Caption rendered ONLY inside the checkout editor (`extension.editor` set),
+ * under the editor preview of this card. Hardcoded English on purpose:
+ * the checkout editor is a merchant-facing admin surface, not buyer copy.
+ */
+function EditorPreviewCaption() {
+  return (
+    <Text size="small" appearance="subdued">
+      Preview — buyers see this only when the feature is live for their market.
+    </Text>
+  );
+}
+
+/**
  * Evaluates `cfg.marketScopes[featureKey]` against the buyer's market.
  * Mirrors `isFeatureOnForMarket` in app/models/settings.server.ts: a missing
  * or malformed scope, or mode "all", is visible everywhere (flags
@@ -286,7 +315,7 @@ export default reactExtension('purchase.checkout.block.render', () => <Extension
 
 function Extension() {
   const translate = useTranslate();
-  const {i18n, query} = useApi();
+  const {i18n, query, extension} = useApi();
   const metafieldEntries = useAppMetafields();
   const cartLines = useCartLines();
   const applyCartLinesChange = useApplyCartLinesChange();
@@ -294,6 +323,19 @@ function Extension() {
   const country = useLocalizationCountry();
   const countryCode = country?.isoCode;
   const market = useLocalizationMarket();
+
+  // CHECKOUT EDITOR detection (v4.9): `extension.editor` is `{type:
+  // 'checkout'}` only while the merchant is inside the checkout editor and
+  // undefined in every live checkout (verified against StandardApi in
+  // @shopify/ui-extensions). In the editor this card ALWAYS renders a
+  // representative preview so the merchant can see, place and move it —
+  // every enabled/market/config/preview gate is bypassed strictly behind
+  // `inEditor`, so live render paths are byte-identical to before. The
+  // editor NEVER auto-adds and its checkbox is disabled (display-only):
+  // the editor's sample cart isn't a real buyer cart, so a toggle that
+  // appeared to work there would be more surprising than one that is
+  // visibly inert.
+  const inEditor = Boolean(extension.editor);
 
   const configRoot = useMemo(
     () => parseCellexiaConfig(metafieldEntries),
@@ -345,8 +387,10 @@ function Extension() {
     : undefined;
 
   const [variant, setVariant] = useState<ProtectionVariant | undefined>(undefined);
+  // In the editor the price fetch also runs while the feature is not yet
+  // live (`inEditor` is false in every live checkout, so live is unchanged).
   const [loading, setLoading] = useState<boolean>(
-    featureVisible && config.variantId.length > 0,
+    (featureVisible || inEditor) && config.variantId.length > 0,
   );
   const [busy, setBusy] = useState(false);
   const [errorText, setErrorText] = useState<string | undefined>(undefined);
@@ -357,7 +401,10 @@ function Extension() {
   const mutationInFlightRef = useRef(false);
 
   useEffect(() => {
-    if (!featureVisible || !config.variantId) {
+    // Editor mode fetches the real configured price too (so the card
+    // preview shows it when available); live behavior is untouched because
+    // `inEditor` is always false outside the editor.
+    if ((!featureVisible && !inEditor) || !config.variantId) {
       setVariant(undefined);
       setLoading(false);
       return;
@@ -386,7 +433,15 @@ function Extension() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.enabled, marketAllowed, draftEnabled, config.variantId, countryCode, query]);
+  }, [
+    config.enabled,
+    marketAllowed,
+    draftEnabled,
+    inEditor,
+    config.variantId,
+    countryCode,
+    query,
+  ]);
 
   const protectionLine = useMemo(
     () =>
@@ -450,7 +505,11 @@ function Extension() {
   }
 
   useEffect(() => {
-    // v4 preview gate FIRST: a preview cart is NEVER auto-mutated — the
+    // CHECKOUT EDITOR gate FIRST: the editor renders a display-only
+    // preview — it must NEVER auto-add a protection line to the editor's
+    // sample cart. `inEditor` is false in every live checkout.
+    if (inEditor) return;
+    // v4 preview gate next: a preview cart is NEVER auto-mutated — the
     // defaultOn auto-add is suppressed entirely while previewing (the
     // manual toggle still works). Live carts are unaffected: previewActive
     // requires the exact preview-token attribute match.
@@ -487,6 +546,7 @@ function Extension() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    inEditor,
     previewActive,
     config.enabled,
     marketAllowed,
@@ -502,8 +562,9 @@ function Extension() {
   // removable, so `isProtected` overrides EVERY offer gate — enabled flag,
   // variantId and market scope. Without the variant fetch the card can't
   // offer, and once the line is removed the component disappears entirely.
-  // The normal offer flow keeps all gates (fail closed).
-  if (!isProtected && !offerAllowed) {
+  // The normal offer flow keeps all gates (fail closed). Editor mode never
+  // bails out here — it falls through to a representative card preview.
+  if (!isProtected && !offerAllowed && !inEditor) {
     return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
   }
 
@@ -513,6 +574,7 @@ function Extension() {
         <BlockStack spacing="extraTight">
           <SkeletonText inlineSize="small" />
           <SkeletonText inlineSize="large" />
+          {inEditor ? <EditorPreviewCaption /> : null}
         </BlockStack>
       </View>
     );
@@ -521,8 +583,11 @@ function Extension() {
   const canOffer = Boolean(variant && variant.availableForSale);
   // If the variant can't be offered and there is nothing in the cart to
   // remove, disappear silently rather than showing a broken card — except
-  // on merchant preview carts, where the diagnostic explains the gap.
-  if (!canOffer && !isProtected) {
+  // on merchant preview carts, where the diagnostic explains the gap, and
+  // in the checkout editor, where the card renders without a price line
+  // (title, benefits, badge and the translated description) so the
+  // merchant can still see and place the block.
+  if (!canOffer && !isProtected && !inEditor) {
     return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
   }
 
@@ -542,35 +607,45 @@ function Extension() {
 
   return (
     <View border="base" cornerRadius="base" padding="base">
-      <InlineLayout columns={['auto', 'fill', 'auto']} spacing="base" blockAlignment="start">
-        <Icon source="delivery" appearance="subdued" />
+      <BlockStack spacing="base">
+        <InlineStack spacing="tight" blockAlignment="center">
+          <Icon source="lock" appearance="accent" />
+          <Text emphasis="bold">{translate('title')}</Text>
+          {config.showRecommended ? (
+            <Badge size="small">{translate('recommended')}</Badge>
+          ) : null}
+        </InlineStack>
         <BlockStack spacing="extraTight">
-          <InlineStack spacing="extraTight" blockAlignment="baseline">
-            <Text emphasis="bold">{translate('title')}</Text>
-            {priceText ? (
+          {BENEFIT_KEYS.map((benefitKey) => (
+            <InlineLayout
+              key={benefitKey}
+              columns={['auto', 'fill']}
+              spacing="extraTight"
+              blockAlignment="start"
+            >
+              <Icon source="checkmark" size="small" appearance="accent" />
               <Text size="small" appearance="subdued">
-                {translate('price_label', {price: priceText})}
+                {translate(benefitKey)}
               </Text>
-            ) : null}
-          </InlineStack>
-          <Text size="small" appearance="subdued">
-            {translate('description')}
-          </Text>
-          {isProtected ? (
-            <Text size="small" appearance="success">
-              {translate('added')}
-            </Text>
-          ) : null}
-          {errorText ? (
-            <Text size="small" appearance="critical">
-              {errorText}
-            </Text>
-          ) : null}
+            </InlineLayout>
+          ))}
         </BlockStack>
+        {priceText ? (
+          <InlineStack spacing="extraTight" blockAlignment="baseline">
+            <Text emphasis="bold" appearance="accent">
+              {`+ ${priceText}`}
+            </Text>
+            <Text size="small" appearance="subdued">
+              {`· ${translate('price_suffix')}`}
+            </Text>
+          </InlineStack>
+        ) : null}
         <Checkbox
           checked={isProtected}
-          disabled={busy || (!canOffer && !isProtected)}
-          accessibilityLabel={translate('title')}
+          // Editor: disabled-uninteractive (display-only preview; a toggle
+          // that appeared to work on the editor's sample cart would be the
+          // more surprising behavior, and mutations there are meaningless).
+          disabled={inEditor || busy || (!canOffer && !isProtected)}
           onChange={(value: boolean) => {
             if (!value) {
               // Persist the removal so a page reload never auto re-adds.
@@ -578,8 +653,21 @@ function Extension() {
             }
             void changeProtection(value);
           }}
-        />
-      </InlineLayout>
+        >
+          <Text emphasis="bold">{translate('description')}</Text>
+        </Checkbox>
+        {isProtected ? (
+          <Text size="small" appearance="success">
+            {translate('added')}
+          </Text>
+        ) : null}
+        {errorText ? (
+          <Text size="small" appearance="critical">
+            {errorText}
+          </Text>
+        ) : null}
+        {inEditor ? <EditorPreviewCaption /> : null}
+      </BlockStack>
     </View>
   );
 }

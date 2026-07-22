@@ -3,5 +3,10 @@
   "description": "Proteggi il tuo ordine da smarrimento, furto e danni durante il trasporto.",
   "price_label": "per {{price}}",
   "added": "Il tuo ordine è protetto",
-  "error": "Impossibile aggiornare la Protezione dell'ordine. Riprova."
+  "error": "Impossibile aggiornare la Protezione dell'ordine. Riprova.",
+  "benefit_1": "Copre smarrimento, furto e danni durante il trasporto",
+  "benefit_2": "Sostituzione o rimborso immediati — senza dispute con il corriere",
+  "benefit_3": "Un tocco adesso, zero pensieri dopo",
+  "recommended": "Consigliato",
+  "price_suffix": "una tantum"
 }

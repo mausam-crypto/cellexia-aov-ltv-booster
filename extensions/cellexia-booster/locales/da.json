@@ -24,8 +24,19 @@
     "error": "Noget gik galt. Prøv igen.",
     "switch_all_cta": "Skift alt & spar {{ percent }} %",
     "partial": "Produkter med mulighed for abonnement: {{ eligible }} af {{ total }}",
-    "remove": "Fjern abonnement",
-    "removed": "Abonnement fjernet"
+    "remove": "Fjern løbende behandling",
+    "removed": "Løbende behandling fjernet"
+  },
+  "crosssell": {
+    "title": "Det perfekte supplement til din rutine",
+    "add": "Tilføj",
+    "adding": "Tilføjer…",
+    "added": "Tilføjet til din kurv"
+  },
+  "dispatch": {
+    "within": "Bestil inden for {{ hours }} t. {{ minutes }} min., så sender vi din ordre i dag",
+    "within_minutes": "Bestil inden for {{ minutes }} min., så sender vi din ordre i dag",
+    "local_time": "senest kl. {{ time }} lokal tid"
   },
   "badges": {
     "secure_checkout": "Sikker checkout",
@@ -96,16 +107,28 @@
     "honesty": "Hver batch testes uafhængigt og offentliggøres. Døm selv."
   },
   "bottle": {
+    "container_bottle": "flaske",
+    "container_jar": "krukke",
+    "container_tube": "tube",
+    "container_pump": "pumpeflaske",
+    "container_product": "emballage",
     "title": "Brug hver eneste dråbe",
-    "body": "Tag dig {{ days }}. Hvis du ikke elsker dine resultater, kan du returnere den tomme flaske og få det fulde beløb refunderet.",
+    "body": "Tag dig {{ days }}. Hvis du ikke elsker dine resultater, kan du returnere den tomme {{ container }} og få det fulde beløb refunderet.",
     "days_count": {
       "one": "{{ count }} dag",
       "other": "{{ count }} dage"
     },
-    "point_1": "Det virker, eller det er gratis – selv med en tom flaske",
+    "point_1": "Det virker, eller det er gratis – selv med en tom {{ container }}",
     "point_2": "Uden spørgsmål",
     "point_3": "Fuld refusion til din oprindelige betalingsmetode",
     "terms": "Se garantivilkår"
+  },
+  "guarantee_check": {
+    "button": "Garantitjek",
+    "title": "Vores garanti under lup",
+    "mechanics_title": "Sådan fungerer det",
+    "trust_title": "Derfor kan du regne med den",
+    "footnote": "Denne garanti gælder ud over dine rettigheder efter købeloven."
   },
   "survey": {
     "stat": "{{ recommend }} ud af {{ outof }}",

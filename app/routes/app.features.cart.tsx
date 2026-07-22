@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import {
   useActionData,
+  useFetcher,
   useLoaderData,
   useNavigation,
   useSubmit,
@@ -19,10 +26,13 @@ import {
   Layout,
   Page,
   Select,
+  Spinner,
+  Tag,
   Text,
   TextField,
+  Thumbnail,
 } from "@shopify/polaris";
-import { DeleteIcon, PlusIcon } from "@shopify/polaris-icons";
+import { DeleteIcon, ImageIcon, PlusIcon } from "@shopify/polaris-icons";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import {
@@ -33,8 +43,13 @@ import {
   type DeepPartial,
 } from "../models/settings.server";
 import { syncSettingsToMetafields } from "../services/metafields.server";
+import {
+  getVariantsByIds,
+  type VariantSummary,
+} from "../services/products.server";
 import { listMarkets } from "../services/markets.server";
 import { FeaturePageHeader } from "../components/FeaturePageHeader";
+import type { loader as variantsLoader } from "./app.api.variants";
 
 interface AdminGraphqlClient {
   graphql: (
@@ -84,13 +99,20 @@ async function applySettingsPatch(
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
-  const [settings, markets] = await Promise.all([
-    getSettings(session.shop),
+  const settings = await getSettings(session.shop);
+  const [markets, crossSellVariants] = await Promise.all([
     listMarkets(admin),
+    // Hydrate the saved cross-sell selections with live variant data
+    // (title, image, price) so the picker can render them as rows.
+    getVariantsByIds(
+      admin,
+      settings.cartCrossSell.items.map((item) => item.variantId),
+    ),
   ]);
   return {
     settings,
     markets,
+    crossSellVariants,
     // Representative combined flag for the shared page header (cheap —
     // settings are already loaded).
     headerEnabled: resolveFeatureFlag(settings, "cart_volume_upsell"),
@@ -262,11 +284,15 @@ interface CartFormState {
   subscriptionDiscountPct: string;
   sellingPlanKeyword: string;
   showTrustRow: boolean;
+  crossSellEnabled: boolean;
+  crossSellMode: "auto" | "manual";
+  crossSellMaxItems: string;
   scopes: {
     cart_volume_upsell: ScopeState;
     free_shipping_bar: ScopeState;
     cart_subscription_upsell: ScopeState;
     cart_trust_row: ScopeState;
+    cart_cross_sell: ScopeState;
   };
 }
 
@@ -286,6 +312,9 @@ function initialFormState(settings: BoosterSettings): CartFormState {
     subscriptionDiscountPct: String(cartUpsell.subscriptionDiscountPct),
     sellingPlanKeyword: cartUpsell.sellingPlanKeyword,
     showTrustRow: cartUpsell.showTrustRow,
+    crossSellEnabled: settings.cartCrossSell.enabled,
+    crossSellMode: settings.cartCrossSell.mode === "manual" ? "manual" : "auto",
+    crossSellMaxItems: String(settings.cartCrossSell.maxItems),
     scopes: {
       cart_volume_upsell: toScopeState(settings.marketScopes.cart_volume_upsell),
       free_shipping_bar: toScopeState(settings.marketScopes.free_shipping_bar),
@@ -293,8 +322,15 @@ function initialFormState(settings: BoosterSettings): CartFormState {
         settings.marketScopes.cart_subscription_upsell,
       ),
       cart_trust_row: toScopeState(settings.marketScopes.cart_trust_row),
+      cart_cross_sell: toScopeState(settings.marketScopes.cart_cross_sell),
     },
   };
+}
+
+function variantLabel(variant: VariantSummary): string {
+  return variant.title && variant.title !== "Default Title"
+    ? `${variant.productTitle} — ${variant.title}`
+    : variant.productTitle;
 }
 
 interface OfferRowErrors {
@@ -361,7 +397,8 @@ function validateNumberField(
 }
 
 export default function CartFeaturesPage() {
-  const { settings, markets, headerEnabled } = useLoaderData<typeof loader>();
+  const { settings, markets, crossSellVariants, headerEnabled } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -370,10 +407,14 @@ export default function CartFeaturesPage() {
   const [state, setState] = useState<CartFormState>(() =>
     initialFormState(settings),
   );
+  const [crossSellSelected, setCrossSellSelected] =
+    useState<VariantSummary[]>(crossSellVariants);
+  const [crossSellQuery, setCrossSellQuery] = useState("");
 
   useEffect(() => {
     setState(initialFormState(settings));
-  }, [settings]);
+    setCrossSellSelected(crossSellVariants);
+  }, [settings, crossSellVariants]);
 
   useEffect(() => {
     if (!actionData) return;
@@ -399,9 +440,50 @@ export default function CartFeaturesPage() {
       scopes: { ...previous.scopes, [key]: scope },
     }));
   };
+
+  // Variant search via the /app/api/variants resource route (same picker as
+  // the Checkout features page).
+  const variantSearch = useFetcher<typeof variantsLoader>();
+  const loadVariants = variantSearch.load;
+  const lastQueryRef = useRef("");
+  useEffect(() => {
+    const trimmed = crossSellQuery.trim();
+    if (trimmed === "" || trimmed === lastQueryRef.current) return;
+    const handle = setTimeout(() => {
+      lastQueryRef.current = trimmed;
+      loadVariants(`/app/api/variants?q=${encodeURIComponent(trimmed)}`);
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [crossSellQuery, loadVariants]);
+
+  const searchResults = variantSearch.data?.variants ?? [];
+
+  const addCrossSellVariant = (variant: VariantSummary) => {
+    setCrossSellSelected((previous) =>
+      previous.some((existing) => existing.id === variant.id)
+        ? previous
+        : [...previous, variant],
+    );
+  };
+
+  const removeCrossSellVariant = (variantId: string) => {
+    setCrossSellSelected((previous) =>
+      previous.filter((variant) => variant.id !== variantId),
+    );
+  };
+
+  const initialCrossSellIds = useMemo(
+    () => crossSellVariants.map((variant) => variant.id).join(","),
+    [crossSellVariants],
+  );
+  const crossSellSelectedIds = crossSellSelected
+    .map((variant) => variant.id)
+    .join(",");
+
   const dirty =
     JSON.stringify({ ...state, scopes: scopesToPatch(state.scopes) }) !==
-    JSON.stringify({ ...initial, scopes: scopesToPatch(initial.scopes) });
+      JSON.stringify({ ...initial, scopes: scopesToPatch(initial.scopes) }) ||
+    crossSellSelectedIds !== initialCrossSellIds;
   const isSaving =
     navigation.state !== "idle" && navigation.formMethod === "POST";
 
@@ -489,6 +571,15 @@ export default function CartFeaturesPage() {
         sellingPlanKeyword: state.sellingPlanKeyword.trim(),
         showTrustRow: state.showTrustRow,
       },
+      cartCrossSell: {
+        enabled: state.crossSellEnabled,
+        mode: state.crossSellMode,
+        items: crossSellSelected.map((variant) => ({
+          variantId: variant.id,
+          handle: variant.productHandle,
+        })),
+        maxItems: Number(state.crossSellMaxItems) || 2,
+      },
       marketScopes: scopesToPatch(state.scopes),
     };
     const formData = new FormData();
@@ -498,6 +589,7 @@ export default function CartFeaturesPage() {
 
   const handleDiscard = () => {
     setState(initial);
+    setCrossSellSelected(crossSellVariants);
   };
 
   // ---- Preview helpers (sample data, brand-styled) -------------------------
@@ -790,6 +882,168 @@ export default function CartFeaturesPage() {
               </BlockStack>
             </Card>
 
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Cross-sell products
+                </Text>
+                <Checkbox
+                  label="Offer complementary products in the cart"
+                  helpText="Shown in the cart drawer below the subscription offer; products already in the buyer's cart are hidden automatically."
+                  checked={state.crossSellEnabled}
+                  onChange={(crossSellEnabled) =>
+                    setState((previous) => ({ ...previous, crossSellEnabled }))
+                  }
+                />
+                <Divider />
+                <ChoiceList
+                  title="Product selection"
+                  choices={[
+                    {
+                      label: "Automatic (recommended)",
+                      value: "auto",
+                      helpText:
+                        "Complementary products picked from the buyer's cart, powered by Shopify's recommendation engine. Curate complementary products in the Search & Discovery app to influence the results.",
+                    },
+                    {
+                      label: "Hand-picked",
+                      value: "manual",
+                      helpText: "Offer exactly the variants you pick below.",
+                    },
+                  ]}
+                  selected={[state.crossSellMode]}
+                  onChange={(selection) =>
+                    setState((previous) => ({
+                      ...previous,
+                      crossSellMode:
+                        selection[0] === "manual" ? "manual" : "auto",
+                    }))
+                  }
+                />
+                {state.crossSellMode === "manual" ? (
+                  <>
+                    <TextField
+                      label="Search products to offer"
+                      placeholder="Search by product title"
+                      value={crossSellQuery}
+                      onChange={setCrossSellQuery}
+                      autoComplete="off"
+                      helpText="Pick the variants offered in the cart drawer. The widget shows the first ones not already in the cart, up to the maximum below."
+                    />
+                    {variantSearch.state !== "idle" ? (
+                      <InlineStack align="center">
+                        <Spinner
+                          size="small"
+                          accessibilityLabel="Searching products"
+                        />
+                      </InlineStack>
+                    ) : null}
+                    {crossSellQuery.trim() !== "" &&
+                    variantSearch.state === "idle" ? (
+                      <BlockStack gap="200">
+                        {searchResults.length === 0 && variantSearch.data ? (
+                          <Text as="p" tone="subdued" variant="bodySm">
+                            No variants matched “{crossSellQuery.trim()}”.
+                          </Text>
+                        ) : null}
+                        {searchResults.map((variant) => {
+                          const alreadySelected = crossSellSelected.some(
+                            (existing) => existing.id === variant.id,
+                          );
+                          return (
+                            <InlineStack
+                              key={variant.id}
+                              gap="300"
+                              align="space-between"
+                              blockAlign="center"
+                              wrap={false}
+                            >
+                              <InlineStack
+                                gap="300"
+                                blockAlign="center"
+                                wrap={false}
+                              >
+                                <Thumbnail
+                                  source={variant.imageUrl ?? ImageIcon}
+                                  alt={variantLabel(variant)}
+                                  size="small"
+                                />
+                                <BlockStack gap="050">
+                                  <Text as="span" variant="bodyMd">
+                                    {variantLabel(variant)}
+                                  </Text>
+                                  <Text
+                                    as="span"
+                                    tone="subdued"
+                                    variant="bodySm"
+                                  >
+                                    {variant.price}
+                                    {variant.availableForSale === false
+                                      ? " · Out of stock"
+                                      : ""}
+                                  </Text>
+                                </BlockStack>
+                              </InlineStack>
+                              <Button
+                                size="slim"
+                                onClick={() => addCrossSellVariant(variant)}
+                                disabled={alreadySelected}
+                              >
+                                {alreadySelected ? "Added" : "Add"}
+                              </Button>
+                            </InlineStack>
+                          );
+                        })}
+                      </BlockStack>
+                    ) : null}
+                    {crossSellSelected.length > 0 ? (
+                      <BlockStack gap="200">
+                        <Text as="h3" variant="headingSm">
+                          Selected variants
+                        </Text>
+                        <InlineStack gap="200" wrap>
+                          {crossSellSelected.map((variant) => (
+                            <Tag
+                              key={variant.id}
+                              onRemove={() =>
+                                removeCrossSellVariant(variant.id)
+                              }
+                            >
+                              {variantLabel(variant)}
+                            </Tag>
+                          ))}
+                        </InlineStack>
+                      </BlockStack>
+                    ) : (
+                      <Text as="p" tone="subdued" variant="bodySm">
+                        No variants selected yet — the cross-sell stays hidden
+                        until you pick at least one (or switch to automatic
+                        recommendations).
+                      </Text>
+                    )}
+                    <Box maxWidth="200px">
+                      <Select
+                        label="Maximum products shown"
+                        options={[
+                          { label: "1 product", value: "1" },
+                          { label: "2 products", value: "2" },
+                          { label: "3 products", value: "3" },
+                          { label: "4 products", value: "4" },
+                        ]}
+                        value={state.crossSellMaxItems}
+                        onChange={(crossSellMaxItems) =>
+                          setState((previous) => ({
+                            ...previous,
+                            crossSellMaxItems,
+                          }))
+                        }
+                      />
+                    </Box>
+                  </>
+                ) : null}
+              </BlockStack>
+            </Card>
+
             <MarketScopeCard
               title="Markets — Volume upsell"
               markets={markets}
@@ -813,6 +1067,12 @@ export default function CartFeaturesPage() {
               markets={markets}
               scope={state.scopes.cart_trust_row}
               onChange={(scope) => setScope("cart_trust_row", scope)}
+            />
+            <MarketScopeCard
+              title="Markets — Cross-sell products"
+              markets={markets}
+              scope={state.scopes.cart_cross_sell}
+              onChange={(scope) => setScope("cart_cross_sell", scope)}
             />
           </BlockStack>
         </Layout.Section>

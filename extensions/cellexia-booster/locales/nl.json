@@ -24,8 +24,19 @@
     "error": "Er is iets misgegaan. Probeer het opnieuw.",
     "switch_all_cta": "Zet alles om & bespaar {{ percent }}%",
     "partial": "Producten geschikt voor een abonnement: {{ eligible }} van {{ total }}",
-    "remove": "Abonnement verwijderen",
-    "removed": "Abonnement verwijderd"
+    "remove": "Doorlopende behandeling verwijderen",
+    "removed": "Doorlopende behandeling verwijderd"
+  },
+  "crosssell": {
+    "title": "De perfecte aanvulling op je routine",
+    "add": "Toevoegen",
+    "adding": "Wordt toegevoegd…",
+    "added": "Toegevoegd aan je winkelwagen"
+  },
+  "dispatch": {
+    "within": "Bestel binnen {{ hours }} u {{ minutes }} min, dan verzenden we je bestelling vandaag nog",
+    "within_minutes": "Bestel binnen {{ minutes }} min, dan verzenden we je bestelling vandaag nog",
+    "local_time": "vóór {{ time }} lokale tijd"
   },
   "badges": {
     "secure_checkout": "Veilig afrekenen",
@@ -96,16 +107,28 @@
     "honesty": "Elke batch wordt onafhankelijk getest en gepubliceerd. Oordeel zelf."
   },
   "bottle": {
+    "container_bottle": "fles",
+    "container_jar": "pot",
+    "container_tube": "tube",
+    "container_pump": "pompflacon",
+    "container_product": "product",
     "title": "Gebruik de fles tot de laatste druppel",
-    "body": "Neem {{ days }} de tijd. Niet blij met je resultaten? Stuur de lege fles terug en ontvang het volledige aankoopbedrag terug.",
+    "body": "Neem {{ days }} de tijd. Niet blij met je resultaten? Stuur je lege {{ container }} terug en ontvang het volledige aankoopbedrag terug.",
     "days_count": {
       "one": "{{ count }} dag",
       "other": "{{ count }} dagen"
     },
-    "point_1": "Het werkt of het is gratis – ook met een lege fles",
+    "point_1": "Het werkt of het is gratis – ook als je {{ container }} leeg is",
     "point_2": "Zonder vragen",
     "point_3": "Volledige terugbetaling via je oorspronkelijke betaalmethode",
     "terms": "Bekijk de garantievoorwaarden"
+  },
+  "guarantee_check": {
+    "button": "Garantiecheck",
+    "title": "Onze garantie, doorgelicht",
+    "mechanics_title": "Zo werkt het",
+    "trust_title": "Waarom je erop kunt rekenen",
+    "footnote": "Deze garantie geldt naast je wettelijke rechten als consument."
   },
   "survey": {
     "stat": "{{ recommend }} van de {{ outof }}",

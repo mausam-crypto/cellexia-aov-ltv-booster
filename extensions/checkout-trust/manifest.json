@@ -1,3 +1,4 @@
 {
-  "purchase.checkout.block.render": {}
+  "purchase.checkout.block.render": {},
+  "purchase.checkout.actions.render-before": {}
 }

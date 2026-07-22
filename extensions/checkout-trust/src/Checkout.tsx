@@ -72,6 +72,9 @@ const DEFAULT_CONFIG: TrustModuleConfig = {
     rating: 4.8,
     reviewCount: 1000,
     profileUrl: 'https://www.trustpilot.com/review/cellexia.com',
+    // Default/missing = linked — matches DEFAULT_SETTINGS.trustpilot.showLink,
+    // so configs written before the flag existed behave byte-identically.
+    showLink: true,
   },
   subscriptionNudge: {enabled: false, discountPct: 5},
 };
@@ -85,7 +88,13 @@ interface TrustModuleConfig {
     showBadges: boolean;
   };
   guarantee: {days: number};
-  trustpilot: {rating: number; reviewCount: number; profileUrl: string};
+  trustpilot: {
+    rating: number;
+    reviewCount: number;
+    profileUrl: string;
+    /** false = render the rating as plain text instead of a Link. */
+    showLink: boolean;
+  };
   subscriptionNudge: {enabled: boolean; discountPct: number};
 }
 
@@ -211,6 +220,9 @@ function resolveConfig(root: Record<string, unknown> | undefined): TrustModuleCo
         ),
       ),
       profileUrl: readString(trustpilot, 'profileUrl', defaults.trustpilot.profileUrl),
+      // Missing/malformed = true (linked): behavior is byte-identical for
+      // every config written before this flag existed.
+      showLink: readBoolean(trustpilot, 'showLink', defaults.trustpilot.showLink),
     },
     subscriptionNudge: {
       // Same explicit-true rule as checkoutTrust.enabled.
@@ -285,6 +297,19 @@ function PreviewDiagnostic({reason}: {reason: string}) {
 }
 
 /**
+ * Caption rendered ONLY inside the checkout editor (`extension.editor` set),
+ * under the editor preview of this module. Hardcoded English on purpose:
+ * the checkout editor is a merchant-facing admin surface, not buyer copy.
+ */
+function EditorPreviewCaption() {
+  return (
+    <Text size="small" appearance="subdued">
+      Preview — buyers see this only when the feature is live for their market.
+    </Text>
+  );
+}
+
+/**
  * Evaluates `cfg.marketScopes[featureKey]` against the buyer's market.
  * Mirrors `isFeatureOnForMarket` in app/models/settings.server.ts: a missing
  * or malformed scope, or mode "all", is visible everywhere (flags
@@ -312,12 +337,36 @@ function isAllowedInMarket(
 
 export default reactExtension('purchase.checkout.block.render', () => <Extension />);
 
+/**
+ * Second placement: the SAME UI statically anchored immediately before the
+ * actions (Pay button) area — the merchant picks either placement in the
+ * checkout editor. `reactExtension` registers the target as a call-time
+ * side effect (`shopify.extend`), matching the second
+ * `[[extensions.targeting]]` entry in shopify.extension.toml (which
+ * declares the target but renders nothing without this module-level
+ * registration); target name verified against RenderExtensionTargets in
+ * @shopify/ui-extensions. Mirrors checkout-upsell's pattern.
+ */
+export const checkoutActionsRenderBefore = reactExtension(
+  'purchase.checkout.actions.render-before',
+  () => <Extension />,
+);
+
 function Extension() {
   const translate = useTranslate();
-  const {i18n, buyerIdentity} = useApi();
+  const {i18n, buyerIdentity, extension} = useApi();
   const metafieldEntries = useAppMetafields();
   const cartLines = useCartLines();
   const market = useLocalizationMarket();
+
+  // CHECKOUT EDITOR detection (v4.9): `extension.editor` is `{type:
+  // 'checkout'}` only while the merchant is inside the checkout editor and
+  // undefined in every live checkout (verified against StandardApi in
+  // @shopify/ui-extensions). In the editor this module ALWAYS renders a
+  // representative preview so the merchant can see, place and move it —
+  // every enabled/market/config gate is bypassed strictly behind
+  // `inEditor`, so live render paths are byte-identical to before.
+  const inEditor = Boolean(extension.editor);
 
   /**
    * The company the buyer is purchasing on behalf of during a B2B checkout.
@@ -409,7 +458,9 @@ function Extension() {
       })
     : undefined;
 
-  if (!trustVisible) {
+  // Editor mode never bails out: it falls through to the full-module
+  // preview below (all display rows forced on).
+  if (!trustVisible && !inEditor) {
     return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
   }
 
@@ -424,9 +475,28 @@ function Extension() {
     !hasSubscriptionLine &&
     !purchasingCompany;
 
-  if (!showGuarantee && !showTrustpilot && !showClinical && !showBadges && !showHint) {
+  if (
+    !showGuarantee &&
+    !showTrustpilot &&
+    !showClinical &&
+    !showBadges &&
+    !showHint &&
+    !inEditor
+  ) {
     return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
   }
+
+  // CHECKOUT EDITOR: force every display row on so the merchant always has
+  // something to place and move; values still come from the resolved
+  // config (real merchant values where present, defaults otherwise — the
+  // sample "4.8/5" Trustpilot fallback surfaces ONLY here, never live).
+  // The subscription hint keeps its own logic: it renders another
+  // feature's content, so the editor doesn't force it. When `inEditor` is
+  // false each row renders exactly per its live toggle, as before.
+  const renderBadges = showBadges || inEditor;
+  const renderGuarantee = showGuarantee || inEditor;
+  const renderClinical = showClinical || inEditor;
+  const renderTrustpilot = showTrustpilot || inEditor;
 
   function formatNumberSafe(value: number, options?: Intl.NumberFormatOptions): string {
     try {
@@ -445,21 +515,24 @@ function Extension() {
     rating: ratingText,
     count: countText,
   });
-  const profileUrl = /^https:\/\//i.test(config.trustpilot.profileUrl)
-    ? config.trustpilot.profileUrl
-    : undefined;
+  // `showLink: false` renders the rating as plain text (undefined URL takes
+  // the existing plain-Text branch below). Default/missing = linked.
+  const profileUrl =
+    config.trustpilot.showLink && /^https:\/\//i.test(config.trustpilot.profileUrl)
+      ? config.trustpilot.profileUrl
+      : undefined;
 
   const filledStars = Math.min(5, Math.max(0, Math.round(config.trustpilot.rating)));
 
   return (
     <BlockStack spacing="tight">
-      {showBadges ? (
+      {renderBadges ? (
         <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
           <Icon source="lock" appearance="subdued" size="small" />
           <Text size="small">{translate('secure')}</Text>
         </InlineLayout>
       ) : null}
-      {showGuarantee ? (
+      {renderGuarantee ? (
         <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="start">
           <Icon source="success" appearance="subdued" size="small" />
           <BlockStack spacing="none">
@@ -472,13 +545,13 @@ function Extension() {
           </BlockStack>
         </InlineLayout>
       ) : null}
-      {showClinical ? (
+      {renderClinical ? (
         <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
           <Icon source="checkmark" appearance="subdued" size="small" />
           <Text size="small">{translate('clinical')}</Text>
         </InlineLayout>
       ) : null}
-      {showTrustpilot ? (
+      {renderTrustpilot ? (
         <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
           {/* Decorative: unlabeled Icons are not announced, so screen
               readers only hear the rating text next to the stars. */}
@@ -511,6 +584,7 @@ function Extension() {
           </Text>
         </InlineLayout>
       ) : null}
+      {inEditor ? <EditorPreviewCaption /> : null}
     </BlockStack>
   );
 }

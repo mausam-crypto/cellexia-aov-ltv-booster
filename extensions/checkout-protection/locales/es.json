@@ -3,5 +3,10 @@
   "description": "Protege tu pedido contra pérdida, robo y daños durante el transporte.",
   "price_label": "por {{price}}",
   "added": "Tu pedido está protegido",
-  "error": "No se ha podido actualizar la Protección del pedido. Inténtalo de nuevo."
+  "error": "No se ha podido actualizar la Protección del pedido. Inténtalo de nuevo.",
+  "benefit_1": "Cubre pérdida, robo y daños durante el transporte",
+  "benefit_2": "Reposición o reembolso al instante — sin discusiones con el transportista",
+  "benefit_3": "Un toque ahora, cero preocupaciones después",
+  "recommended": "Recomendado",
+  "price_suffix": "pago único"
 }

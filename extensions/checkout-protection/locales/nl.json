@@ -3,5 +3,10 @@
   "description": "Bescherm je bestelling tegen verlies, diefstal en transportschade.",
   "price_label": "voor {{price}}",
   "added": "Je bestelling is beschermd",
-  "error": "Bestelbescherming kon niet worden bijgewerkt. Probeer het opnieuw."
+  "error": "Bestelbescherming kon niet worden bijgewerkt. Probeer het opnieuw.",
+  "benefit_1": "Dekt verlies, diefstal en transportschade",
+  "benefit_2": "Direct vervanging of terugbetaling – geen gedoe met de bezorger",
+  "benefit_3": "Eén tik nu, nul zorgen daarna",
+  "recommended": "Aanbevolen",
+  "price_suffix": "eenmalig"
 }

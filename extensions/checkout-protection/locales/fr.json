@@ -3,5 +3,10 @@
   "description": "Protégez votre commande contre la perte, le vol et les dommages pendant le transport.",
   "price_label": "pour {{price}}",
   "added": "Votre commande est protégée",
-  "error": "Impossible de mettre à jour la Protection de commande. Veuillez réessayer."
+  "error": "Impossible de mettre à jour la Protection de commande. Veuillez réessayer.",
+  "benefit_1": "Couvre la perte, le vol et les dommages pendant le transport",
+  "benefit_2": "Remplacement ou remboursement immédiat — sans litige avec le transporteur",
+  "benefit_3": "Un geste maintenant, zéro souci ensuite",
+  "recommended": "Recommandé",
+  "price_suffix": "paiement unique"
 }

@@ -82,7 +82,9 @@
     volume: 'cart_volume_upsell',
     shipbar: 'free_shipping_bar',
     subscription: 'cart_subscription_upsell',
-    trustRow: 'cart_trust_row'
+    crossSell: 'cart_cross_sell',
+    trustRow: 'cart_trust_row',
+    dispatch: 'dispatch_countdown'
   };
 
   function featureOn(key) {
@@ -234,7 +236,13 @@
     refreshTimer: null,
     // Latest cart from a quiet refresh whose lines the theme's
     // .mini-cart__list does not reflect yet; consumed on next drawer open.
-    themeStale: null
+    themeStale: null,
+    // Variant id of the cross-sell item currently being added (its button
+    // shows the "adding" label while state.busy).
+    crossSellAdding: null,
+    // Pending re-queued decoration pass (a decorate request arrived while
+    // state.busy — never swallow it, retry until busy clears).
+    decorateTimer: null
   };
 
   function shopRate() {
@@ -394,6 +402,15 @@
     return Number(offer.discountPct) || 0;
   }
 
+  function variantAllocatesPlan(variant, planId) {
+    var allocations = variant && Array.isArray(variant.planAllocations) ? variant.planAllocations : [];
+    for (var i = 0; i < allocations.length; i++) {
+      var alloc = allocations[i];
+      if (alloc && alloc.planId != null && String(alloc.planId) === String(planId)) return true;
+    }
+    return false;
+  }
+
   function upgradeCandidates(item) {
     if (!featureOn('volume')) return [];
     if (Number(item.quantity) !== 1) return [];
@@ -402,12 +419,21 @@
     var current = currentVariant(product, item.variant_id);
     if (!current) return [];
     var currentPos = Number(current.position) || 0;
+    // v5.1 LIVE BUG FIX — Joy allocates selling plans PER VARIANT (only the
+    // 1-unit variants on this store carry allocations): swapping a
+    // subscribed line onto a tier variant that lacks the line's plan makes
+    // /cart/add.js 422 ("Cannot apply selling plan to variant"). A tier is
+    // a candidate for a subscribed line ONLY when the target variant
+    // allocates the line's CURRENT plan — an upgrade must never silently
+    // drop a subscription.
+    var linePlanId = itemHasPlan(item) ? item.selling_plan_allocation.selling_plan.id : null;
     var out = [];
     volumeOffers().forEach(function (offer) {
       var qty = Number(offer.quantity);
       if (qty <= currentPos) return;
       var tierVariant = variantByPosition(product, qty);
       if (!tierVariant || tierVariant.available === false) return;
+      if (linePlanId != null && !variantAllocatesPlan(tierVariant, linePlanId)) return;
       out.push({
         offer: offer,
         variant: tierVariant,
@@ -529,6 +555,11 @@
     try {
       if (typeof window.refreshMiniCart === 'function') {
         window.refreshMiniCart(cart);
+        // refreshMiniCart rebuilds .mini-cart__list SYNCHRONOUSLY — the
+        // fresh rows carry no remove-subscription buttons, so decorate
+        // right here (the list observer runs another pass on its own tick
+        // as a safety net; the pass is idempotent).
+        decorateSubscriptionRows();
         return;
       }
     } catch (e) { /* fall through to our own refresh */ }
@@ -604,6 +635,11 @@
     if (item.properties && typeof item.properties === 'object' && Object.keys(item.properties).length) {
       addPayload.properties = item.properties;
     }
+    // v5.1: set when the upgrade add failed AND the restore add failed too
+    // — the original line is then REALLY gone from the cart, so the error
+    // path must resync the THEME's own display as well, never leave a
+    // phantom line / phantom-empty drawer behind.
+    var restoreFailed = false;
     cartRequest('cart/change.js', { id: item.key, quantity: 0 })
       .then(function () {
         return cartRequest('cart/add.js', addPayload).catch(function (err) {
@@ -611,7 +647,10 @@
           var restore = { id: item.variant_id, quantity: item.quantity };
           if (sellingPlanId) restore.selling_plan = sellingPlanId;
           if (addPayload.properties) restore.properties = addPayload.properties;
-          return cartRequest('cart/add.js', restore).then(function () { throw err; }, function () { throw err; });
+          return cartRequest('cart/add.js', restore).then(
+            function () { throw err; },
+            function () { restoreFailed = true; throw err; }
+          );
         });
       })
       .then(function () { return fetchCart(); })
@@ -629,6 +668,7 @@
           return;
         }
         safeThemeRefresh(cart, wasDrawerOpen);
+        decorateSubscriptionRows();
         return ensureProductData(cart).then(function () {
           setNotice('success', t('volume.upgraded'));
         });
@@ -636,6 +676,18 @@
       .catch(function () {
         state.busy = false;
         refresh().then(function () {
+          if (restoreFailed) {
+            // v5.1: the cart truly changed (line removed, nothing restored)
+            // — refresh() refetched the real cart above; now sync the
+            // theme's display too (reload on the cart page, mirroring the
+            // success path) so no phantom line lingers.
+            if (onCartPage) {
+              window.location.reload();
+              return;
+            }
+            safeThemeRefresh(state.cart, wasDrawerOpen);
+            decorateSubscriptionRows();
+          }
           setNotice('error', t('volume.error'));
         });
       });
@@ -675,6 +727,7 @@
           return;
         }
         safeThemeRefresh(cart && cart.items ? cart : state.cart, wasDrawerOpen);
+        decorateSubscriptionRows();
         if (okCount > 0 && failCount === 0) {
           setNotice('success', t('subscription.switched'));
         } else {
@@ -713,12 +766,54 @@
           return;
         }
         safeThemeRefresh(cart && cart.items ? cart : state.cart, wasDrawerOpen);
+        decorateSubscriptionRows();
         setNotice('success', t('subscription.removed'));
       })
       .catch(function () {
         state.busy = false;
         refresh().then(function () {
           setNotice('error', t('subscription.error'));
+        });
+      });
+  }
+
+  function performCrossSellAdd(variantId, priceCents, sourceNode) {
+    // Cart cross-sell add (v4.8): one-click /cart/add.js with the
+    // "_cellexia_upsell": "cart" attribution property — the orders webhook
+    // already counts it. Follows the performUpgrade flow: busy-guard,
+    // context captured BEFORE renderAll detaches sourceNode, theme refresh
+    // through safeThemeRefresh, cart-page reload.
+    if (state.busy) return;
+    var onCartPage = isCartPageContext(sourceNode);
+    var wasDrawerOpen = drawerIsOpen();
+    state.busy = true;
+    state.crossSellAdding = String(variantId);
+    renderAll();
+    cartRequest('cart/add.js', { id: Number(variantId), quantity: 1, properties: { _cellexia_upsell: 'cart' } })
+      .then(function () { return fetchCart(); })
+      .then(function (cart) {
+        state.cart = cart;
+        state.busy = false;
+        state.crossSellAdding = null;
+        track('cart_cross_sell', 'add_to_cart', {
+          revenue: Math.round(Number(priceCents) || 0) / 100,
+          quantity: 1
+        });
+        if (onCartPage) {
+          window.location.reload();
+          return;
+        }
+        safeThemeRefresh(cart, wasDrawerOpen);
+        decorateSubscriptionRows();
+        return ensureProductData(cart).then(function () {
+          setNotice('success', t('crosssell.added'));
+        });
+      })
+      .catch(function () {
+        state.busy = false;
+        state.crossSellAdding = null;
+        refresh().then(function () {
+          setNotice('error', t('volume.error'));
         });
       });
   }
@@ -942,6 +1037,372 @@
     return features;
   }
 
+  // -------------------------------------------------- cart cross-sell (v4.8)
+  //
+  // Two modes (settings.crossSellMode, v4.9 — "auto" is the contract
+  // default). MANUAL: Liquid renders the hand-picked items (max 8) into
+  // #cx-tpl-crosssell with live presentment prices; the renderer clones it.
+  // AUTO: rows are JS-built from Shopify product recommendations (see the
+  // auto section below). BOTH modes share pruneCrossSellRows: drop every
+  // item whose PRODUCT is already in the cart (product-level exclusion —
+  // variant-level is implied), cap the visible rows at
+  // settings.crossSellMaxItems and render nothing when zero remain. CRO
+  // placement: below the subscription card, above the trust row (proof
+  // last). B2B customers DO see it — no subscription involved.
+
+  function crossSellMaxItems() {
+    var n = Math.floor(Number(SETTINGS.crossSellMaxItems));
+    return n >= 1 ? n : 2;
+  }
+
+  function crossSellMode() {
+    // v4.9: "auto" is the contract default — anything but an explicit
+    // "manual" runs the recommendations pipeline.
+    return SETTINGS.crossSellMode === 'manual' ? 'manual' : 'auto';
+  }
+
+  function wireCrossSellRow(row) {
+    var btn = row.querySelector('.cx-crosssell__add');
+    if (!btn) return;
+    var vid = row.getAttribute('data-variant-id');
+    var priceCents = Number(row.getAttribute('data-price-cents')) || 0;
+    btn.disabled = state.busy;
+    if (state.busy && state.crossSellAdding === String(vid)) {
+      btn.textContent = t('crosssell.adding');
+    }
+    btn.addEventListener('click', function () {
+      performCrossSellAdd(vid, priceCents, btn);
+    });
+  }
+
+  function crossSellExclusions() {
+    var inCartProducts = {};
+    var inCartVariants = {};
+    if (state.cart && Array.isArray(state.cart.items)) {
+      state.cart.items.forEach(function (item) {
+        inCartProducts[String(item.product_id)] = true;
+        inCartVariants[String(item.variant_id)] = true;
+      });
+    }
+    return { products: inCartProducts, variants: inCartVariants };
+  }
+
+  function pruneCrossSellRows(items) {
+    // Shared by BOTH modes: removes rows whose product/variant is already
+    // in the cart, enforces the display cap, wires the add buttons on the
+    // survivors. Returns the visible count.
+    var ex = crossSellExclusions();
+    var inCartProducts = ex.products;
+    var inCartVariants = ex.variants;
+    var cap = crossSellMaxItems();
+    var visible = 0;
+    for (var i = 0; i < items.length; i++) {
+      var row = items[i];
+      var pid = row.getAttribute('data-product-id');
+      var vid = row.getAttribute('data-variant-id');
+      var hide = !vid ||
+        inCartProducts[String(pid)] === true ||
+        inCartVariants[String(vid)] === true ||
+        visible >= cap;
+      if (hide) {
+        if (row.parentNode) row.parentNode.removeChild(row);
+        continue;
+      }
+      visible++;
+      wireCrossSellRow(row);
+    }
+    return visible;
+  }
+
+  function renderCrossSellManual(container) {
+    var tpl = document.getElementById('cx-tpl-crosssell');
+    if (!tpl || !tpl.content) return null;
+    try {
+      var frag = tpl.content.cloneNode(true);
+      var items = frag.querySelectorAll('.cx-crosssell__item');
+      if (!items.length) return null;
+      var visible = pruneCrossSellRows(items);
+      if (!visible) return null;
+      container.appendChild(frag);
+      return 'cart_cross_sell';
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ---------------------------------------------- auto cross-sell (v4.9)
+  //
+  // mode "auto" (the contract default): no hand-picking — recommend
+  // complements of what is already in the cart. Pipeline (every failure
+  // silent — render nothing, never break the theme):
+  //   1. anchor = the highest-value cart line's product; the second
+  //      distinct product is kept as a fallback source; the protection
+  //      product never anchors;
+  //   2. theme endpoint /recommendations/products.json?product_id=…&limit=8
+  //      with intent=complementary, then intent=related on zero results —
+  //      complementary/related per source, anchor before fallback, first
+  //      non-empty answer wins;
+  //   3. recommended handles minus in-cart products minus the protection
+  //      product, deduped, up to 6 kept;
+  //   4. presentment-correct price/availability enrichment via OUR app
+  //      proxy (apps/cellexia/cart-data?handles=… -> productsByHandle,
+  //      the exact products-map variant shape); the first available
+  //      variant wins. Image + title come from the recommendations
+  //      payload — the proxy emits neither;
+  //   5. rows are el()-built with the same cx-crosssell classes and go
+  //      through the shared prune/wire path, so cap, in-cart hiding, busy
+  //      handling, add flow, notices and beacons are identical to manual.
+  // The result is cached per cart token + line signature: reopening the
+  // drawer never refetches, and any cart mutation changes the signature
+  // (invalidating the cache). Fetches only start when the drawer is open
+  // or on the cart page, debounced 200 ms, at most one scheduled/in
+  // flight per signature. Stale rows keep rendering (re-pruned against
+  // the live cart) while the refetch for a new signature is in flight.
+
+  var PROTECTION_HANDLE = 'cellexia-order-protection';
+
+  var autoCrossSell = {
+    signature: null, // signature the cached rows were fetched for
+    rows: null,      // cached row descriptors ([] = fetched, nothing usable)
+    pending: null,   // signature currently scheduled or in flight
+    timer: null
+  };
+
+  function cartSignature() {
+    if (!state.cart || !Array.isArray(state.cart.items)) return '';
+    var parts = [];
+    state.cart.items.forEach(function (item) {
+      parts.push(String(item.variant_id) + 'x' + String(item.quantity));
+    });
+    parts.sort();
+    return String(state.cart.token || '') + '|' + parts.join(',');
+  }
+
+  function autoCrossSellAnchors() {
+    var lines = state.cart && Array.isArray(state.cart.items) ? state.cart.items.slice() : [];
+    lines.sort(function (a, b) { return lineValue(b) - lineValue(a); });
+    var anchors = [];
+    var seen = {};
+    for (var i = 0; i < lines.length && anchors.length < 2; i++) {
+      var item = lines[i];
+      if (!item || item.product_id == null) continue;
+      var pid = String(item.product_id);
+      if (seen[pid]) continue;
+      seen[pid] = true;
+      if (String(item.handle || '') === PROTECTION_HANDLE) continue;
+      anchors.push(item);
+    }
+    return anchors;
+  }
+
+  function fetchRecommendations(productId, intent) {
+    var url = routeRoot() + 'recommendations/products.json?product_id=' +
+      encodeURIComponent(String(productId)) + '&limit=8&intent=' + intent;
+    return fetchJSON(url, { headers: { Accept: 'application/json' } })
+      .then(function (data) {
+        return data && Array.isArray(data.products) ? data.products : [];
+      })
+      .catch(function () { return []; }); // 404/failure tolerated silently
+  }
+
+  function fetchRecommendedProducts(anchors) {
+    var attempts = [];
+    anchors.forEach(function (item) {
+      attempts.push({ id: item.product_id, intent: 'complementary' });
+      attempts.push({ id: item.product_id, intent: 'related' });
+    });
+    var chain = Promise.resolve([]);
+    attempts.forEach(function (attempt) {
+      chain = chain.then(function (products) {
+        if (products.length) return products;
+        return fetchRecommendations(attempt.id, attempt.intent);
+      });
+    });
+    return chain;
+  }
+
+  function recommendationImage(product) {
+    // featured_image is a URL string on the recommendations payload, but
+    // tolerate object shapes ({src}/{url}) and fall back to images[0].
+    var img = product.featured_image;
+    if (img && typeof img === 'object') img = img.src || img.url || null;
+    if (!img && Array.isArray(product.images) && product.images.length) {
+      img = product.images[0];
+      if (img && typeof img === 'object') img = img.src || img.url || null;
+    }
+    return typeof img === 'string' && img ? img : null;
+  }
+
+  function sizedImageUrl(url, width) {
+    // Shopify CDN images accept a width query param; anything unexpected
+    // is returned untouched (the CSS still sizes the box).
+    try {
+      if (!/^(https?:)?\/\//.test(url)) return url;
+      return url + (url.indexOf('?') === -1 ? '?' : '&') + 'width=' + width;
+    } catch (e) { return url; }
+  }
+
+  function firstAvailableVariant(entry) {
+    if (!entry || !Array.isArray(entry.variants)) return null;
+    for (var i = 0; i < entry.variants.length; i++) {
+      var v = entry.variants[i];
+      if (v && v.id != null && v.available !== false) return v;
+    }
+    return null;
+  }
+
+  function fetchHandleData(handles) {
+    return fetchJSON(routeRoot() + 'apps/cellexia/cart-data?handles=' + encodeURIComponent(handles.join(',')), { headers: { Accept: 'application/json' } })
+      .then(function (data) {
+        // The proxy always includes the cart products map too — merge it
+        // opportunistically (same shape ensureProductData consumes).
+        var normalized = normalizeProductsPayload(data);
+        if (normalized) {
+          Object.keys(normalized).forEach(function (key) {
+            state.products[key] = normalized[key];
+          });
+        }
+        return data && data.productsByHandle && typeof data.productsByHandle === 'object' ? data.productsByHandle : {};
+      });
+  }
+
+  function buildAutoCrossSellRows() {
+    var anchors = autoCrossSellAnchors();
+    if (!anchors.length) return Promise.resolve([]);
+    var ex = crossSellExclusions();
+    return fetchRecommendedProducts(anchors).then(function (products) {
+      var picks = [];
+      var seen = {};
+      for (var i = 0; i < products.length && picks.length < 6; i++) {
+        var p = products[i];
+        if (!p || typeof p.handle !== 'string' || !p.handle) continue;
+        if (p.handle === PROTECTION_HANDLE) continue;
+        if (p.id != null && ex.products[String(p.id)] === true) continue;
+        if (seen[p.handle]) continue;
+        seen[p.handle] = true;
+        picks.push({
+          handle: p.handle,
+          productId: p.id,
+          title: typeof p.title === 'string' ? p.title : '',
+          image: recommendationImage(p)
+        });
+      }
+      if (!picks.length) return [];
+      return fetchHandleData(picks.map(function (pick) { return pick.handle; })).then(function (byHandle) {
+        var rows = [];
+        picks.forEach(function (pick) {
+          var variant = firstAvailableVariant(byHandle[pick.handle]);
+          if (!variant) return; // unknown handle / every variant sold out
+          rows.push({
+            handle: pick.handle,
+            productId: pick.productId,
+            title: pick.title,
+            image: pick.image,
+            variantId: variant.id,
+            priceCents: Number(variant.price) || 0,
+            compareAtCents: variant.compare_at_price != null ? Number(variant.compare_at_price) || 0 : 0
+          });
+        });
+        return rows;
+      });
+    });
+  }
+
+  function fetchAutoCrossSell(sig) {
+    buildAutoCrossSellRows()
+      .then(function (rows) {
+        if (autoCrossSell.pending === sig) autoCrossSell.pending = null;
+        if (cartSignature() === sig) { // commit only for the cart we fetched for
+          autoCrossSell.signature = sig;
+          autoCrossSell.rows = rows;
+          renderAll();
+        }
+      })
+      .catch(function () {
+        if (autoCrossSell.pending === sig) autoCrossSell.pending = null;
+        if (cartSignature() === sig) {
+          // Silent failure: cache the empty result so nothing renders and
+          // nothing re-hammers the endpoints until the cart changes.
+          autoCrossSell.signature = sig;
+          autoCrossSell.rows = [];
+        }
+      });
+  }
+
+  function scheduleAutoCrossSell(sig) {
+    if (autoCrossSell.pending === sig) return; // scheduled or in flight
+    autoCrossSell.pending = sig;
+    if (autoCrossSell.timer) window.clearTimeout(autoCrossSell.timer);
+    autoCrossSell.timer = window.setTimeout(function () {
+      autoCrossSell.timer = null;
+      fetchAutoCrossSell(sig);
+    }, 200);
+  }
+
+  function buildAutoCrossSellRow(row) {
+    var li = el('li', 'cx-crosssell__item');
+    li.setAttribute('data-variant-id', String(row.variantId));
+    if (row.productId != null) li.setAttribute('data-product-id', String(row.productId));
+    li.setAttribute('data-price-cents', String(row.priceCents));
+    if (row.image) {
+      var img = el('img', 'cx-crosssell__img');
+      img.src = sizedImageUrl(row.image, 112);
+      img.width = 56;
+      img.height = 56;
+      img.alt = row.title || '';
+      img.loading = 'lazy';
+      li.appendChild(img);
+    }
+    var info = el('span', 'cx-crosssell__info');
+    info.appendChild(el('span', 'cx-crosssell__name', row.title || ''));
+    var prices = el('span', 'cx-crosssell__prices');
+    prices.appendChild(el('span', 'cx-crosssell__price', money(row.priceCents)));
+    if (Number(row.compareAtCents) > Number(row.priceCents)) {
+      prices.appendChild(el('s', 'cx-crosssell__compare', money(row.compareAtCents)));
+    }
+    info.appendChild(prices);
+    li.appendChild(info);
+    var btn = el('button', 'cx-crosssell__add', t('crosssell.add'));
+    btn.type = 'button';
+    li.appendChild(btn);
+    return li;
+  }
+
+  function renderCrossSellAuto(container) {
+    var sig = cartSignature();
+    if (!sig) return null;
+    if (autoCrossSell.signature !== sig && (drawerIsOpen() || isCartPageContext(container))) {
+      scheduleAutoCrossSell(sig);
+    }
+    var cached = Array.isArray(autoCrossSell.rows) ? autoCrossSell.rows : null;
+    if (!cached || !cached.length) return null;
+    try {
+      var box = el('div', 'cx-crosssell');
+      box.setAttribute('data-cx-feature', 'cart_cross_sell');
+      box.appendChild(el('p', 'cx-crosssell__title heading--five', cfg.overrides.crossSellTitle || t('crosssell.title')));
+      var list = el('ul', 'cx-crosssell__list list-reset');
+      var items = [];
+      for (var i = 0; i < cached.length; i++) {
+        var node = buildAutoCrossSellRow(cached[i]);
+        list.appendChild(node);
+        items.push(node);
+      }
+      var visible = pruneCrossSellRows(items);
+      if (!visible) return null;
+      box.appendChild(list);
+      container.appendChild(box);
+      return 'cart_cross_sell';
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function renderCrossSell(container) {
+    if (!featureOn('crossSell') || !state.cart) return null;
+    if (crossSellMode() === 'auto') return renderCrossSellAuto(container);
+    return renderCrossSellManual(container);
+  }
+
   function renderTrustRow(container) {
     if (!featureOn('trustRow')) return null;
     var tpl = document.getElementById('cx-tpl-trust-row');
@@ -949,6 +1410,144 @@
     try {
       container.appendChild(tpl.content.cloneNode(true));
       return 'trust_badges';
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ------------------------------------------- dispatch countdown (v5.0)
+  //
+  // "Order within Xh Ym for same-day dispatch" — REAL urgency only.
+  // Liquid resolves the buyer country's schedule (cutoff "HH:MM" + IANA
+  // WAREHOUSE timezone + ISO working days 1-7) into cfg.dispatch; this
+  // engine decides VISIBILITY: shown only when today is a working day in
+  // the warehouse timezone AND the cutoff is still ahead today AND no
+  // more than showWithinHours remain. The clock suffix converts the
+  // cutoff into the buyer's OWN timezone/locale (Date#toLocaleTimeString
+  // on now + remaining — timezone-correct worldwide with no tz library).
+  // Any invalid schedule, missing string or Intl throw (bad timezone)
+  // hides the widget — fail closed, never fabricate urgency. ONE module
+  // interval (guarded by dispatchTimer) re-evaluates every mounted node
+  // each 30s tick — the widget hides itself the moment the cutoff passes
+  // or the window is exceeded — and self-clears when none remain, so
+  // drawer re-renders can never leak intervals.
+  var DISPATCH_ISO = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  var dispatchTimer = null;
+
+  function dispatchSchedule() {
+    var d = cfg.dispatch;
+    if (!d || typeof d !== 'object') return null;
+    if (typeof d.cutoff !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(d.cutoff)) return null;
+    if (typeof d.timezone !== 'string' || !d.timezone) return null;
+    if (!Array.isArray(d.days) || d.days.length === 0) return null;
+    var within = Math.round(Number(d.showWithinHours));
+    if (!(within >= 1 && within <= 24)) return null;
+    if (typeof STRINGS['dispatch.within'] !== 'string' ||
+        typeof STRINGS['dispatch.within_minutes'] !== 'string' ||
+        typeof STRINGS['dispatch.local_time'] !== 'string') return null;
+    return {
+      cutoffMinutes: Number(d.cutoff.slice(0, 2)) * 60 + Number(d.cutoff.slice(3, 5)),
+      timezone: d.timezone,
+      days: d.days,
+      withinMinutes: within * 60
+    };
+  }
+
+  function dispatchRemainingMs(schedule) {
+    // Milliseconds until today's cutoff in the WAREHOUSE timezone, or null
+    // (= hidden) when outside the credibility window. ANY throw -> null.
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: schedule.timezone,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(new Date());
+      var map = {};
+      for (var i = 0; i < parts.length; i++) map[parts[i].type] = parts[i].value;
+      var iso = DISPATCH_ISO[map.weekday];
+      if (!iso || schedule.days.indexOf(iso) === -1) return null; // not a working day
+      var nowMinutes = (Number(map.hour) % 24) * 60 + Number(map.minute);
+      if (!(nowMinutes >= 0 && nowMinutes < 1440)) return null;
+      if (nowMinutes >= schedule.cutoffMinutes) return null; // cutoff passed
+      if (schedule.cutoffMinutes - nowMinutes > schedule.withinMinutes) return null; // too early
+      var seconds = Number(map.second);
+      if (!(seconds >= 0 && seconds < 60)) seconds = 0;
+      return (schedule.cutoffMinutes - nowMinutes) * 60000 - seconds * 1000;
+    } catch (e) {
+      return null; // invalid/unsupported timezone: hidden, never fake urgency
+    }
+  }
+
+  function dispatchSetText(node, remainingMs) {
+    var totalMin = Math.floor(remainingMs / 60000);
+    var text;
+    if (totalMin >= 60) {
+      text = t('dispatch.within', { hours: Math.floor(totalMin / 60), minutes: totalMin % 60 });
+    } else {
+      // Sub-hour reads more urgent; ceil so "0 minutes" can never render.
+      text = t('dispatch.within_minutes', { minutes: Math.max(1, Math.ceil(remainingMs / 60000)) });
+    }
+    var main = node.querySelector('.cx-dispatch__main');
+    if (main) main.textContent = text;
+    var local = node.querySelector('.cx-dispatch__local');
+    if (local) {
+      var clock = '';
+      try {
+        clock = new Date(Date.now() + remainingMs)
+          .toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      } catch (e) { clock = ''; }
+      local.textContent = clock ? t('dispatch.local_time', { time: clock }) : '';
+    }
+  }
+
+  function dispatchTick() {
+    // Re-run the WHOLE visibility computation for every mounted node —
+    // no cached node or schedule state survives between ticks.
+    var nodes = document.querySelectorAll('.cx-dispatch--cart');
+    if (!nodes.length) {
+      if (dispatchTimer) { window.clearInterval(dispatchTimer); dispatchTimer = null; }
+      return;
+    }
+    var schedule = dispatchSchedule();
+    var remaining = schedule ? dispatchRemainingMs(schedule) : null;
+    for (var i = 0; i < nodes.length; i++) {
+      if (remaining === null) {
+        try {
+          if (nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
+        } catch (e) { /* noop */ }
+      } else {
+        dispatchSetText(nodes[i], remaining);
+      }
+    }
+    if (remaining === null && dispatchTimer) {
+      window.clearInterval(dispatchTimer);
+      dispatchTimer = null;
+    }
+  }
+
+  function dispatchEnsureTimer() {
+    if (dispatchTimer) return; // single guarded interval, never stacked
+    dispatchTimer = window.setInterval(dispatchTick, 30000);
+  }
+
+  function renderDispatch(container) {
+    if (!featureOn('dispatch')) return null;
+    var tpl = document.getElementById('cx-tpl-dispatch-cart');
+    if (!tpl || !tpl.content) return null;
+    var schedule = dispatchSchedule();
+    if (!schedule) return null;
+    var remaining = dispatchRemainingMs(schedule);
+    if (remaining === null) return null;
+    try {
+      var node = tpl.content.cloneNode(true).firstElementChild;
+      if (!node) return null;
+      dispatchSetText(node, remaining);
+      container.appendChild(node);
+      dispatchEnsureTimer();
+      return 'dispatch_countdown';
     } catch (e) {
       return null;
     }
@@ -964,9 +1563,13 @@
     var features = [];
     renderNotice(root);
     var f;
+    // Dispatch countdown first — top of the widget root, above the shipbar.
+    f = renderDispatch(root); if (f) features.push(f);
     f = renderShipbar(root); if (f) features.push(f);
     var offerFeatures = renderOffers(root, context);
     for (var i = 0; i < offerFeatures.length; i++) features.push(offerFeatures[i]);
+    // CRO order: offers, then cross-sell, then social proof last.
+    f = renderCrossSell(root); if (f) features.push(f);
     f = renderTrustRow(root); if (f) features.push(f);
     root.setAttribute('data-cx-context', context);
     return features;
@@ -1039,22 +1642,37 @@
   }
 
   function decorateSubscriptionRows() {
-    // v4.7 per-line remove: after every theme re-render (refreshMiniCart
-    // rebuilds the .product--cart rows from scratch, dropping anything we
-    // added), inject a small "Remove subscription" text-button next to each
-    // subscribed row's .delivery span — drawer rows and the cart page table
-    // rows alike (wherever .delivery exists). Idempotent via the
-    // data-cx-decorated marker; row -> cart line matching by data-varid +
-    // selling-plan presence (first unused match); everything null-guarded.
+    // v4.7 per-line remove, hardened in v4.8: after every theme re-render
+    // (refreshMiniCart rebuilds the drawer's .product--cart rows from
+    // scratch, dropping anything we added), inject a "Remove subscription"
+    // control under each subscribed row's .delivery span — drawer rows AND
+    // the cart page's tr.cart-row (col__product context) alike. The button
+    // sits inside its OWN block row (div.cx-sub-remove-row) inserted as a
+    // sibling right after .delivery, so the theme's stacked .title column
+    // (h3 / .var / .delivery / .unit-price) keeps flowing naturally.
+    // Idempotent via the data-cx-decorated marker; row -> cart line
+    // matching re-reads the CURRENT state.cart on every pass (no node or
+    // line references are cached anywhere — rebuilt rows arrive without
+    // markers because the marker lives on the row element itself);
+    // everything null-guarded.
     try {
       if (!featureOn('subscription')) return;
       // Never decorate mid-mutation: a button minted disabled would stay
-      // disabled forever behind the idempotency marker. The completion
-      // renderAll (setNotice / quietRefresh) runs this pass again with
-      // busy=false immediately after.
-      if (state.busy) return;
+      // disabled forever behind the idempotency marker. v4.8: RE-QUEUE the
+      // pass instead of swallowing it — a decorate request during a
+      // mutation retries until busy clears, so no path can permanently
+      // skip decoration.
+      if (state.busy) {
+        if (!state.decorateTimer) {
+          state.decorateTimer = window.setTimeout(function () {
+            state.decorateTimer = null;
+            decorateSubscriptionRows();
+          }, 150);
+        }
+        return;
+      }
       if (!state.cart || !Array.isArray(state.cart.items)) return;
-      var rows = document.querySelectorAll('.product--cart');
+      var rows = document.querySelectorAll('.product--cart, .cart-row');
       if (!rows.length) return;
       var used = {};
       for (var i = 0; i < rows.length; i++) {
@@ -1081,14 +1699,19 @@
         var glyph = el('span', 'cx-sub-remove__x', '×');
         glyph.setAttribute('aria-hidden', 'true');
         btn.appendChild(glyph);
-        btn.appendChild(document.createTextNode(' ' + t('subscription.remove')));
+        btn.appendChild(document.createTextNode(' ' + (cfg.overrides.removeLabel || t('subscription.remove'))));
         (function (lineKey, node) {
           node.addEventListener('click', function () {
             performUnsubscribe(lineKey, node);
           });
         })(line.key, btn);
-        if (delivery.nextSibling) delivery.parentNode.insertBefore(btn, delivery.nextSibling);
-        else delivery.parentNode.appendChild(btn);
+        // v4.8 display fix: the button used to wedge inline between the
+        // plan name and the price — wrap it in a block row so it renders
+        // on its own line between .delivery and .unit-price.
+        var wrap = el('div', 'cx-sub-remove-row');
+        wrap.appendChild(btn);
+        if (delivery.nextSibling) delivery.parentNode.insertBefore(wrap, delivery.nextSibling);
+        else delivery.parentNode.appendChild(wrap);
       }
     } catch (e) { /* never break the theme */ }
   }
@@ -1128,6 +1751,9 @@
             try {
               if (typeof window.refreshMiniCart === 'function') {
                 window.refreshMiniCart(staleCart);
+                // The rebuilt rows need their remove-subscription buttons
+                // back immediately (idempotent; observer re-runs it too).
+                decorateSubscriptionRows();
               }
             } catch (e) { /* noop */ }
           }

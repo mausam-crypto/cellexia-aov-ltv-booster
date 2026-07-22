@@ -20,6 +20,7 @@ import {
   InlineStack,
   Layout,
   Page,
+  Select,
   Spinner,
   Text,
   TextField,
@@ -212,6 +213,18 @@ const PDP_FEATURES: PdpFeatureDefinition[] = [
   },
 ];
 
+/** Container words the empty-bottle guarantee copy can use — mirrors the
+ *  emptyBottleGuarantee.container enum in app/models/settings.server.ts. */
+type GuaranteeContainer = BoosterSettings["emptyBottleGuarantee"]["container"];
+
+const CONTAINER_OPTIONS: { label: string; value: GuaranteeContainer }[] = [
+  { label: "Bottle", value: "bottle" },
+  { label: "Jar", value: "jar" },
+  { label: "Tube", value: "tube" },
+  { label: "Pump", value: "pump" },
+  { label: "Product", value: "product" },
+];
+
 function marketReachCaption(scope: MarketScope | undefined): string {
   if (!scope || scope.mode === "all") return "All markets";
   if (scope.markets.length === 0) return "No markets selected";
@@ -348,13 +361,21 @@ function ProductBoostersIndexPage() {
   const [guaranteeDays, setGuaranteeDays] = useState(
     String(settings?.emptyBottleGuarantee.days ?? 60),
   );
+  const [guaranteeContainer, setGuaranteeContainer] =
+    useState<GuaranteeContainer>(
+      settings?.emptyBottleGuarantee.container ?? "jar",
+    );
 
-  // Reset the days field only when the persisted value actually changed (a
+  // Reset the fields only when the persisted value actually changed (a
   // save landed) — unrelated revalidations must not wipe an in-progress edit.
   const persistedDays = settings?.emptyBottleGuarantee.days ?? 60;
   useEffect(() => {
     setGuaranteeDays(String(persistedDays));
   }, [persistedDays]);
+  const persistedContainer = settings?.emptyBottleGuarantee.container ?? "jar";
+  useEffect(() => {
+    setGuaranteeContainer(persistedContainer);
+  }, [persistedContainer]);
 
   useEffect(() => {
     if (!actionData) return;
@@ -405,14 +426,18 @@ function ProductBoostersIndexPage() {
     Math.round(daysValue) >= 1 &&
     Math.round(daysValue) <= 365;
   const daysDirty = guaranteeDays.trim() !== String(persistedDays);
+  const containerDirty = guaranteeContainer !== persistedContainer;
 
-  const saveGuaranteeDays = () => {
+  const saveGuaranteeSettings = () => {
     const formData = new FormData();
     formData.set("feature", "empty_bottle_guarantee_days");
     formData.set(
       "patch",
       JSON.stringify({
-        emptyBottleGuarantee: { days: Math.round(daysValue) },
+        emptyBottleGuarantee: {
+          days: Math.round(daysValue),
+          container: guaranteeContainer,
+        },
       }),
     );
     submit(formData, { method: "post" });
@@ -552,7 +577,7 @@ function ProductBoostersIndexPage() {
                       </InlineStack>
                     </InlineStack>
                     {feature.key === "empty_bottle_guarantee" ? (
-                      <InlineStack gap="200" blockAlign="end" wrap>
+                      <InlineStack gap="200" blockAlign="start" wrap>
                         <Box width="180px">
                           <TextField
                             label="Guarantee window"
@@ -569,16 +594,33 @@ function ProductBoostersIndexPage() {
                             autoComplete="off"
                           />
                         </Box>
-                        <Button
-                          size="slim"
-                          onClick={saveGuaranteeDays}
-                          disabled={!daysDirty || !daysValid}
-                          loading={
-                            pendingFeature === "empty_bottle_guarantee_days"
-                          }
-                        >
-                          Save days
-                        </Button>
+                        <Box width="200px">
+                          <Select
+                            label="Default container"
+                            options={CONTAINER_OPTIONS}
+                            value={guaranteeContainer}
+                            onChange={(value) =>
+                              setGuaranteeContainer(
+                                value as GuaranteeContainer,
+                              )
+                            }
+                            helpText="Used in the guarantee copy — “return the empty jar/tube/…”. Per-product override in each product’s editor."
+                          />
+                        </Box>
+                        <Box paddingBlockStart="600">
+                          <Button
+                            size="slim"
+                            onClick={saveGuaranteeSettings}
+                            disabled={
+                              (!daysDirty && !containerDirty) || !daysValid
+                            }
+                            loading={
+                              pendingFeature === "empty_bottle_guarantee_days"
+                            }
+                          >
+                            Save
+                          </Button>
+                        </Box>
                       </InlineStack>
                     ) : null}
                   </BlockStack>

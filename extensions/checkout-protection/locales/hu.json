@@ -3,5 +3,10 @@
   "description": "Védd meg a rendelésed az elvesztéstől, a lopástól és a szállítás közbeni sérüléstől.",
   "price_label": "ára: {{price}}",
   "added": "A rendelésed védve van",
-  "error": "A rendelésvédelem frissítése nem sikerült. Kérjük, próbáld újra."
+  "error": "A rendelésvédelem frissítése nem sikerült. Kérjük, próbáld újra.",
+  "benefit_1": "Fedezi az elvesztést, a lopást és a szállítási sérüléseket",
+  "benefit_2": "Azonnali csere vagy visszatérítés — semmi vita a futárszolgálattal",
+  "benefit_3": "Egy koppintás most, semmi gond utána",
+  "recommended": "Ajánlott",
+  "price_suffix": "egyszeri díj"
 }

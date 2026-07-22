@@ -24,8 +24,19 @@
     "error": "Jokin meni vikaan. Yritä uudelleen.",
     "switch_all_cta": "Vaihda kaikki ja säästä {{ percent }} %",
     "partial": "Kestotilaukseen soveltuvat tuotteet: {{ eligible }} / {{ total }}",
-    "remove": "Poista kestotilaus",
-    "removed": "Kestotilaus poistettu"
+    "remove": "Poista jatkuva hoito",
+    "removed": "Jatkuva hoito poistettu"
+  },
+  "crosssell": {
+    "title": "Täydellinen lisä rutiiniisi",
+    "add": "Lisää",
+    "adding": "Lisätään…",
+    "added": "Lisätty ostoskoriisi"
+  },
+  "dispatch": {
+    "within": "Tilaa {{ hours }} h {{ minutes }} min kuluessa, niin lähetämme tilauksesi vielä tänään",
+    "within_minutes": "Tilaa {{ minutes }} minuutin kuluessa, niin lähetämme tilauksesi vielä tänään",
+    "local_time": "klo {{ time }} mennessä paikallista aikaa"
   },
   "badges": {
     "secure_checkout": "Turvallinen maksaminen",
@@ -96,16 +107,28 @@
     "honesty": "Jokainen erä testataan riippumattomasti, ja tulokset julkaistaan. Arvioi itse."
   },
   "bottle": {
+    "container_bottle": "pullo",
+    "container_jar": "purkki",
+    "container_tube": "tuubi",
+    "container_pump": "pumppupullo",
+    "container_product": "tuote",
     "title": "Käytä viimeistä pisaraa myöten",
-    "body": "Ota {{ days }} aikaa. Jos et rakastu tuloksiin, palauta tyhjä pullo ja saat täyden hyvityksen.",
+    "body": "Ota {{ days }} aikaa. Jos et rakastu tuloksiin, palauta tyhjä {{ container }} ja saat täyden hyvityksen.",
     "days_count": {
       "one": "{{ count }} päivä",
       "other": "{{ count }} päivää"
     },
-    "point_1": "Toimii tai se on ilmainen — vaikka pullo olisi tyhjä",
+    "point_1": "Toimii tai se on ilmainen — vaikka {{ container }} olisi tyhjä",
     "point_2": "Kyselemättä",
     "point_3": "Täysi hyvitys alkuperäiselle maksutavallesi",
     "terms": "Katso takuuehdot"
+  },
+  "guarantee_check": {
+    "button": "Takuutarkistus",
+    "title": "Takuumme suurennuslasin alla",
+    "mechanics_title": "Näin se toimii",
+    "trust_title": "Miksi voit luottaa siihen",
+    "footnote": "Tämä takuu myönnetään lakisääteisten oikeuksiesi lisäksi."
   },
   "survey": {
     "stat": "{{ recommend }} / {{ outof }}",

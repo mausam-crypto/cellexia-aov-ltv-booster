@@ -64,7 +64,9 @@ export type FeatureKey =
   | "verified_before_after"
   | "batch_transparency"
   | "empty_bottle_guarantee"
-  | "derm_survey";
+  | "derm_survey"
+  | "cart_cross_sell"
+  | "dispatch_countdown";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "cart_volume_upsell",
@@ -84,6 +86,8 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "batch_transparency",
   "empty_bottle_guarantee",
   "derm_survey",
+  "cart_cross_sell",
+  "dispatch_countdown",
 ];
 
 export interface MarketScope {
@@ -153,6 +157,19 @@ export interface BoosterSettings {
     /** Compact trust row (guarantee, secure checkout, Trustpilot) in the drawer footer. */
     showTrustRow: boolean;
   };
+  /**
+   * Cross-sell other products inside the cart drawer (v4.8). Items are
+   * hand-picked in the admin; `handle` lets Liquid render live product data
+   * (price in the buyer's currency, availability) via all_products.
+   */
+  cartCrossSell: {
+    enabled: boolean;
+    /** "auto" = Shopify product recommendations (complementary, then related)
+     *  based on the cart contents; "manual" = the hand-picked items below. */
+    mode: "auto" | "manual";
+    items: { variantId: string; handle: string }[];
+    maxItems: number;
+  };
   trustBadges: {
     enabled: boolean;
     style: "light" | "dark";
@@ -171,6 +188,8 @@ export interface BoosterSettings {
     reviewCount: number;
     /** Public Trustpilot profile URL the widget links to. */
     profileUrl: string;
+    /** Link the widget to the Trustpilot profile (false = plain text/stars). */
+    showLink: boolean;
   };
   guarantee: {
     enabled: boolean;
@@ -190,6 +209,9 @@ export interface BoosterSettings {
   };
   checkoutUpsell: {
     enabled: boolean;
+    /** "auto" = Storefront productRecommendations from the checkout lines;
+     *  "manual" = the hand-picked variantIds below. */
+    mode: "auto" | "manual";
     /** Product variant GIDs offered in checkout (first in-stock ones are shown). */
     variantIds: string[];
     maxOffers: number;
@@ -200,6 +222,14 @@ export interface BoosterSettings {
     variantId: string;
     /** Pre-select the protection toggle for the buyer. */
     defaultOn: boolean;
+    /** Show the "Recommended" chip on the checkout card. */
+    showRecommended: boolean;
+    /**
+     * Desired per-market protection prices (round numbers per currency).
+     * Applied to Shopify Markets price lists as FIXED prices for the
+     * protection variant, so the charged amount equals the displayed one.
+     */
+    prices: { byMarket: Record<string, MarketThreshold> };
   };
   checkoutTrust: {
     enabled: boolean;
@@ -224,8 +254,13 @@ export interface BoosterSettings {
   };
   emptyBottleGuarantee: {
     enabled: boolean;
-    /** Guarantee window in days (return the empty bottle for a full refund). */
+    /** Guarantee window in days (return the empty container for a full refund). */
     days: number;
+    /**
+     * Default container word used in the guarantee copy ("return the empty
+     * {{ container }}"). Per-product override via pdp_flags.container.
+     */
+    container: "bottle" | "jar" | "tube" | "pump" | "product";
   };
   dermSurvey: {
     enabled: boolean;
@@ -237,6 +272,34 @@ export interface BoosterSettings {
     /** Third party that verified the survey (shown on the badge). */
     verifierName: string;
     verificationUrl: string;
+  };
+  /**
+   * Dispatch countdown ("Order within 2h 14m for same-day dispatch").
+   * The cutoff is defined in the WAREHOUSE timezone (IANA name); buyers see
+   * a live countdown plus the cutoff converted to their own local clock, so
+   * the display is timezone-correct worldwide. Shown only when the next
+   * cutoff is today (warehouse terms), on a working day, and within
+   * showWithinHours — urgency only when it is real. byCountry overrides the
+   * default schedule per buyer country (ISO2) for multi-warehouse setups.
+   */
+  dispatch: {
+    enabled: boolean;
+    /** "HH:MM" 24h, in `timezone`. */
+    cutoff: string;
+    /** IANA timezone of the dispatching warehouse, e.g. "Europe/Paris". */
+    timezone: string;
+    /** ISO weekday numbers with same-day dispatch (1=Mon .. 7=Sun). */
+    days: number[];
+    /** Only show the countdown when ≤ this many hours remain (1-24). */
+    showWithinHours: number;
+    /** Show on the product page (next to the stock message). */
+    showOnPdp: boolean;
+    /** Show in the cart drawer (above the checkout actions). */
+    showInCart: boolean;
+    byCountry: Record<
+      string,
+      { cutoff: string; timezone: string; days: number[] }
+    >;
   };
   /**
    * Per-feature market targeting. A feature is visible in market M only when
@@ -289,6 +352,12 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     sellingPlanKeyword: "Continuous Treatment",
     showTrustRow: true,
   },
+  cartCrossSell: {
+    enabled: false,
+    mode: "auto",
+    items: [],
+    maxItems: 2,
+  },
   trustBadges: {
     enabled: false,
     style: "light",
@@ -304,6 +373,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     rating: 4.8,
     reviewCount: 1000,
     profileUrl: "https://www.trustpilot.com/review/cellexia.com",
+    showLink: true,
   },
   guarantee: {
     enabled: false,
@@ -325,6 +395,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   },
   checkoutUpsell: {
     enabled: false,
+    mode: "auto",
     variantIds: [],
     maxOffers: 2,
   },
@@ -332,6 +403,8 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     enabled: false,
     variantId: "",
     defaultOn: false,
+    showRecommended: true,
+    prices: { byMarket: {} },
   },
   checkoutTrust: {
     enabled: false,
@@ -352,6 +425,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   emptyBottleGuarantee: {
     enabled: false,
     days: 60,
+    container: "jar",
   },
   dermSurvey: {
     enabled: false,
@@ -360,6 +434,16 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     sampleSize: 270,
     verifierName: "",
     verificationUrl: "",
+  },
+  dispatch: {
+    enabled: false,
+    cutoff: "14:00",
+    timezone: "Europe/Paris",
+    days: [1, 2, 3, 4, 5],
+    showWithinHours: 8,
+    showOnPdp: true,
+    showInCart: true,
+    byCountry: {},
   },
   marketScopes: defaultMarketScopes(),
 };
@@ -386,7 +470,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * empty them — these are replaced wholesale instead (sanitizeSettings then
  * validates every entry).
  */
-const DYNAMIC_RECORD_KEYS = new Set(["byMarket"]);
+const DYNAMIC_RECORD_KEYS = new Set(["byMarket", "byCountry"]);
 
 /** Deep-merge stored/partial settings over defaults so new fields added in
  *  later app versions always have sane values. Arrays are replaced, not merged. */
@@ -615,6 +699,111 @@ export function sanitizeSettings(
     ),
   );
 
+  {
+    const gid = /^gid:\/\/shopify\/ProductVariant\/\d+$/;
+    const handleOk = /^[a-z0-9][a-z0-9-_]{0,254}$/;
+    next.cartCrossSell.items = (next.cartCrossSell.items ?? [])
+      .filter(
+        (item) =>
+          isPlainObject(item) &&
+          typeof item.variantId === "string" &&
+          gid.test(item.variantId) &&
+          typeof item.handle === "string" &&
+          handleOk.test(item.handle),
+      )
+      .slice(0, 8)
+      .map((item) => ({ variantId: item.variantId, handle: item.handle }));
+  }
+  next.cartCrossSell.maxItems = Math.round(
+    clampNumber(
+      next.cartCrossSell.maxItems,
+      1,
+      4,
+      DEFAULT_SETTINGS.cartCrossSell.maxItems,
+    ),
+  );
+
+  if (next.cartCrossSell.mode !== "auto" && next.cartCrossSell.mode !== "manual") {
+    next.cartCrossSell.mode = DEFAULT_SETTINGS.cartCrossSell.mode;
+  }
+  if (next.checkoutUpsell.mode !== "auto" && next.checkoutUpsell.mode !== "manual") {
+    next.checkoutUpsell.mode = DEFAULT_SETTINGS.checkoutUpsell.mode;
+  }
+  {
+    const marketHandleKey = /^[a-z0-9][a-z0-9-]{0,63}$/;
+    const currencyKey = /^[A-Z]{3}$/;
+    const clean: Record<string, MarketThreshold> = {};
+    for (const [handle, entry] of Object.entries(
+      next.checkoutProtection.prices?.byMarket ?? {},
+    )) {
+      if (!marketHandleKey.test(handle) || !isPlainObject(entry)) continue;
+      const amount = entry.amount;
+      const currencyCode =
+        typeof entry.currencyCode === "string"
+          ? entry.currencyCode.toUpperCase()
+          : "";
+      if (
+        typeof amount === "number" &&
+        Number.isFinite(amount) &&
+        amount >= 0 &&
+        amount <= 1000 &&
+        currencyKey.test(currencyCode)
+      ) {
+        clean[handle] = { amount, currencyCode };
+      }
+    }
+    next.checkoutProtection.prices = { byMarket: clean };
+  }
+
+  {
+    const cutoffOk = /^([01]\d|2[0-3]):[0-5]\d$/;
+    const tzOk = /^[A-Za-z_]+\/[A-Za-z0-9_+\-\/]+$|^UTC$/;
+    const iso2 = /^[A-Z]{2}$/;
+    const cleanDays = (raw: unknown): number[] => {
+      const days = Array.isArray(raw)
+        ? [...new Set(raw.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7))]
+        : [];
+      return days.length > 0 ? (days as number[]).sort() : [];
+    };
+    const d = next.dispatch;
+    if (!cutoffOk.test(d.cutoff)) d.cutoff = DEFAULT_SETTINGS.dispatch.cutoff;
+    if (typeof d.timezone !== "string" || !tzOk.test(d.timezone)) {
+      d.timezone = DEFAULT_SETTINGS.dispatch.timezone;
+    }
+    const days = cleanDays(d.days);
+    d.days = days.length > 0 ? days : [...DEFAULT_SETTINGS.dispatch.days];
+    d.showWithinHours = Math.round(
+      clampNumber(d.showWithinHours, 1, 24, DEFAULT_SETTINGS.dispatch.showWithinHours),
+    );
+    const cleanByCountry: typeof d.byCountry = {};
+    for (const [country, entry] of Object.entries(d.byCountry ?? {})) {
+      const code = country.toUpperCase();
+      if (!iso2.test(code) || !isPlainObject(entry)) continue;
+      const cutoff = typeof entry.cutoff === "string" && cutoffOk.test(entry.cutoff)
+        ? entry.cutoff
+        : null;
+      const timezone =
+        typeof entry.timezone === "string" && tzOk.test(entry.timezone)
+          ? entry.timezone
+          : null;
+      const entryDays = cleanDays(entry.days);
+      if (cutoff && timezone && entryDays.length > 0) {
+        cleanByCountry[code] = { cutoff, timezone, days: entryDays };
+      }
+    }
+    d.byCountry = cleanByCountry;
+  }
+
+  if (typeof next.trustpilot.showLink !== "boolean") {
+    next.trustpilot.showLink = DEFAULT_SETTINGS.trustpilot.showLink;
+  }
+  {
+    const containers = ["bottle", "jar", "tube", "pump", "product"];
+    if (!containers.includes(next.emptyBottleGuarantee.container)) {
+      next.emptyBottleGuarantee.container =
+        DEFAULT_SETTINGS.emptyBottleGuarantee.container;
+    }
+  }
   next.emptyBottleGuarantee.days = Math.round(
     clampNumber(
       next.emptyBottleGuarantee.days,
@@ -847,6 +1036,22 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     },
     siblings: [],
   },
+  cart_cross_sell: {
+    label: "Cart cross-sell",
+    get: (s) => s.cartCrossSell.enabled,
+    set: (s, on) => {
+      s.cartCrossSell.enabled = on;
+    },
+    siblings: [],
+  },
+  dispatch_countdown: {
+    label: "Dispatch countdown",
+    get: (s) => s.dispatch.enabled,
+    set: (s, on) => {
+      s.dispatch.enabled = on;
+    },
+    siblings: [],
+  },
 };
 
 function scopeFor(settings: BoosterSettings, key: FeatureKey): MarketScope {
@@ -900,6 +1105,8 @@ export const STANDALONE_SECTION_FIELDS = [
   "batchTransparency",
   "emptyBottleGuarantee",
   "dermSurvey",
+  "cartCrossSell",
+  "dispatch",
 ] as const;
 export type StandaloneSectionField = (typeof STANDALONE_SECTION_FIELDS)[number];
 
@@ -930,6 +1137,8 @@ export const FEATURE_RAW_FIELD: Record<
   batch_transparency: { kind: "section", field: "batchTransparency" },
   empty_bottle_guarantee: { kind: "section", field: "emptyBottleGuarantee" },
   derm_survey: { kind: "section", field: "dermSurvey" },
+  cart_cross_sell: { kind: "section", field: "cartCrossSell" },
+  dispatch_countdown: { kind: "section", field: "dispatch" },
 };
 
 /**

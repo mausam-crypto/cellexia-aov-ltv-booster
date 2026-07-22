@@ -3,5 +3,10 @@
   "description": "Chroń swoje zamówienie przed zgubieniem, kradzieżą i uszkodzeniem w transporcie.",
   "price_label": "za {{price}}",
   "added": "Twoje zamówienie jest chronione",
-  "error": "Nie udało się zaktualizować ochrony zamówienia. Spróbuj ponownie."
+  "error": "Nie udało się zaktualizować ochrony zamówienia. Spróbuj ponownie.",
+  "benefit_1": "Obejmuje zgubienie, kradzież i uszkodzenie w transporcie",
+  "benefit_2": "Natychmiastowa wymiana lub zwrot pieniędzy — bez sporów z kurierem",
+  "benefit_3": "Jedno dotknięcie teraz, zero zmartwień później",
+  "recommended": "Polecane",
+  "price_suffix": "jednorazowo"
 }

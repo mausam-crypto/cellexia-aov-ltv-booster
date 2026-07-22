@@ -1,44 +1,7 @@
-{%- comment -%}
-  Cellexia Booster — PDP booster app embed (target: body).
-  Only active on product templates. Renders hidden, fully translated
-  <template> fragments; assets/cellexia-pdp.js clones them into the PDP
-  (.pdp__grey after .stock-msg, and after the sm-rc-widget container for the
-  subscription nudge). Graceful no-op when the selectors are missing.
-  Every widget requires its feature flag to be explicitly true — a missing
-  config metafield renders NOTHING (no config JSON, no templates, no CSS/JS
-  tags): missing config = hidden (safe default).
-  Market gating: a widget is visible only when its flag is on, its block
-  setting is on, AND its cfg.marketScopes entry matches the current market
-  (nil scope or mode "all" match everywhere; mode "selected" requires this
-  market's handle; an empty handle matches only non-selected scopes). The
-  market handle is exposed to cellexia-pdp.js via data-cx-market on the
-  config script tag for beacon attribution.
-
-  SPEC v3 — five PDP trust boosters (proof stack). Each is additionally
-  gated per product via the cellexia.pdp_flags JSON metafield (missing key
-  = true, only an explicit false hides) and, for the content widgets, on
-  the referenced metaobject content actually existing:
-    derm_survey            settings-driven (cfg.dermSurvey numbers/verifier)
-    clinical_study         cellexia.clinical_study metaobject reference
-    verified_before_after  cellexia.before_afters list (non-empty)
-    batch_transparency     cellexia.batch_transparency metaobject reference
-    empty_bottle_guarantee settings-driven (cfg.emptyBottleGuarantee.days)
-  All merchant metaobject text renders TRANSLATED automatically per
-  storefront language (Translate & Adapt). cellexia-pdp.js clones the
-  templates in CRO order into a .cx-proof-stack container inserted before
-  .pdp__tabs (or after it when the placement setting says below_tabs).
-{%- endcomment -%}
 {%- if request.page_type == 'product' -%}
   {%- assign cfg = app.metafields.cellexia.config.value -%}
   {%- assign cx_market = localization.market.handle | default: '' -%}
-  {%- comment -%}
-    SPEC v4 preview. cfg.preview comes from the app-data metafield and is
-    TOKENLESS ({ armed, draftFlags }). Every cx_draft_* boolean can only
-    become true when preview is armed, so all elsif-draft branches below
-    are provably dead when disarmed and the rendered page stays byte-
-    identical to v3.
-  {%- endcomment -%}
-  {%- assign cx_prev = cfg.preview -%}
+    {%- assign cx_prev = cfg.preview -%}
   {%- assign cx_prev_armed = false -%}
   {%- if cx_prev.armed == true -%}
     {%- assign cx_prev_armed = true -%}
@@ -79,13 +42,6 @@
       assign show_nudge = false
     endif
 
-    comment
-      SPEC v3 proof-stack widgets. Per-product opt-out: pdp_flags JSON
-      metafield — a missing metafield/key means TRUE (opted in); only an
-      explicit false hides. Content widgets additionally require their
-      metaobject content to exist (empty content = nothing to prove =
-      hidden, no orphan headings, no beacon).
-    endcomment
     assign cx_pdp_flags = product.metafields.cellexia.pdp_flags.value
 
     assign show_survey = false
@@ -155,16 +111,30 @@
       endif
     endif
 
+    assign cx_country = localization.country.iso_code | upcase
+    assign cx_dsp = cfg.dispatch.byCountry[cx_country]
+    assign cx_dsp_cutoff = cfg.dispatch.cutoff | default: '14:00'
+    assign cx_dsp_tz = cfg.dispatch.timezone | default: 'Europe/Paris'
+    assign cx_dsp_days = cfg.dispatch.days
+    assign cx_dsp_within = cfg.dispatch.showWithinHours | default: 8
+    if cx_dsp
+      assign cx_dsp_cutoff = cx_dsp.cutoff
+      assign cx_dsp_tz = cx_dsp.timezone
+      assign cx_dsp_days = cx_dsp.days
+    endif
+
+    assign show_dispatch = false
+    if cfg.dispatch.enabled == true
+      unless cfg.dispatch.showOnPdp == false
+        assign cx_scope = cfg.marketScopes.dispatch_countdown
+        if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+          assign show_dispatch = true
+        endif
+      endunless
+    endif
+
     assign threshold = cfg.global.freeShippingThreshold | default: 150
     assign threshold_money = threshold | times: 100 | money
-    comment
-      SPEC v4.5: per-market free-shipping threshold. When the current market
-      has a byMarket entry whose currencyCode equals the cart's presentment
-      currency, `money` formats its amount correctly — render it. Otherwise
-      fall back to the global shop-currency threshold, which is only safe to
-      render when the presentment currency IS the shop currency (the
-      pre-v4.5 skip-when-mismatch semantics).
-    endcomment
     assign cx_fs = cfg.freeShipping.byMarket[cx_market]
     assign cx_fs_badge_ok = false
     assign cx_fs_badge_money = threshold_money
@@ -188,17 +158,6 @@
     assign survey_url = cfg.dermSurvey.verificationUrl
     assign bottle_days = cfg.emptyBottleGuarantee.days | default: 60
 
-    comment
-      SPEC v4 preview drafts. A widget is draft-rendered (inert hidden
-      template carrying data-cx-draft="1") when preview is armed AND its
-      embed show_* setting is on AND (its draftFlags entry is exactly
-      true OR its live flag is on ignoring market scope — market
-      simulation needs a template for widgets live only in the simulated
-      market). Per-product pdp_flags and content-present checks still
-      apply — a draft flag cannot conjure missing content, and a draft
-      can never show a widget the embed settings hide. All cx_draft_*
-      stay false when disarmed.
-    endcomment
     assign cx_draft_badges = false
     assign cx_draft_guarantee = false
     assign cx_draft_trustpilot = false
@@ -208,6 +167,7 @@
     assign cx_draft_ba = false
     assign cx_draft_batch = false
     assign cx_draft_bottle = false
+    assign cx_draft_dispatch = false
     if cx_prev_armed
       assign cx_prev_flags = cx_prev.draftFlags
 
@@ -287,32 +247,37 @@
           assign cx_draft_bottle = true
         endif
       endif
+
+      unless cfg.dispatch.showOnPdp == false
+        if cx_prev_flags.dispatch_countdown == true or cfg.dispatch.enabled == true
+          assign cx_draft_dispatch = true
+        endif
+      endunless
     endif
 
     assign cx_draft_any = false
-    if cx_draft_badges or cx_draft_guarantee or cx_draft_trustpilot or cx_draft_nudge or cx_draft_survey or cx_draft_study or cx_draft_ba or cx_draft_batch or cx_draft_bottle
+    if cx_draft_badges or cx_draft_guarantee or cx_draft_trustpilot or cx_draft_nudge or cx_draft_survey or cx_draft_study or cx_draft_ba or cx_draft_batch or cx_draft_bottle or cx_draft_dispatch
       assign cx_draft_any = true
     endif
   -%}
-  {%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_ba or show_batch or show_bottle or cx_draft_any -%}
+  {%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_ba or show_batch or show_bottle or show_dispatch or cx_draft_any -%}
     {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
     <script type="application/json" id="cx-pdp-config" data-cx-market="{{ cx_market | escape }}">
       {
         "b2b": {% if customer.b2b? %}true{% else %}false{% endif %},
         "currency": {{ cart.currency.iso_code | json }},
+        {%- if show_dispatch or cx_draft_dispatch %}
+        "dispatch": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}, "showWithinHours": {{ cx_dsp_within }}},
+        "strings": {"dispatch.within": {{ 'dispatch.within' | t: hours: '@@HOURS@@', minutes: '@@MINUTES@@' | json }}, "dispatch.within_minutes": {{ 'dispatch.within_minutes' | t: minutes: '@@MINUTES@@' | json }}, "dispatch.local_time": {{ 'dispatch.local_time' | t: time: '@@TIME@@' | json }}},
+        {%- endif %}
         "placement": {{ block.settings.proof_placement | default: 'above_tabs' | json }}
         {%- if cx_prev_armed -%}
         , "preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}}
         {%- endif %}
       }
     </script>
-    {%- if show_badges or cx_draft_badges -%}
-      {%- comment -%}
-        Fall back to the default badge list only when no list was ever saved
-        (trustBadges.items absent). An explicitly-saved empty array means the
-        merchant deselected every badge, so no template is rendered at all.
-      {%- endcomment -%}
-      {%- liquid
+        {%- if show_badges or cx_draft_badges -%}
+            {%- liquid
         if cfg.trustBadges.items
           assign badge_keys = cfg.trustBadges.items
         else
@@ -326,14 +291,7 @@
             {%- assign catalog = 'secure_checkout,free_shipping_over,money_back,dermatologist_tested,cruelty_free,clinically_proven,ssl_encrypted,easy_returns' | split: ',' -%}
             {%- for key in badge_keys -%}
               {%- assign badge_key = key | strip -%}
-              {%- comment -%}
-                `money` formats in the buyer's presentment currency without
-                converting, so the badge renders only when a threshold in that
-                exact currency exists: the market's byMarket entry, or the
-                global shop-currency threshold when presentment == shop
-                currency (cx_fs_badge_ok / cx_fs_badge_money, precomputed).
-              {%- endcomment -%}
-              {%- if badge_key == 'free_shipping_over' and cx_fs_badge_ok == false -%}
+                            {%- if badge_key == 'free_shipping_over' and cx_fs_badge_ok == false -%}
                 {%- continue -%}
               {%- endif -%}
               {%- liquid
@@ -404,8 +362,11 @@
               <span>Trustpilot</span>
             </span>
           </div>
+          {%- if cfg.trustpilot.showLink == false -%}
+          {%- else -%}
           {%- if tp_url != blank -%}
             <a class="cx-trustpilot__link no-dec" href="{{ tp_url }}" target="_blank" rel="noopener nofollow">{{ 'trustpilot.view' | t }}</a>
+          {%- endif -%}
           {%- endif -%}
         </div>
       </template>
@@ -423,16 +384,7 @@
         </div>
       </template>
     {%- endif -%}
-    {%- comment -%}
-      ------------------------------------------------------------------
-      SPEC v3 proof stack templates. Rendered fully translated server-
-      side (real t: params — no sentinel re-substitution needed, nothing
-      is rewritten by JS). cellexia-pdp.js clones them in CRO order:
-      derm_survey → clinical_study → verified_before_after →
-      batch_transparency → empty_bottle_guarantee.
-      ------------------------------------------------------------------
-    {%- endcomment -%}
-    {%- if show_survey or cx_draft_survey -%}
+        {%- if show_survey or cx_draft_survey -%}
       {%- liquid
         assign survey_title = block.settings.survey_title_override
         if survey_title == blank
@@ -510,12 +462,7 @@
             assign cx_study_lab = cx_study.lab_name.value
           -%}
           {%- if cx_study_n != blank and cx_study_weeks != blank and cx_study_lab != blank -%}
-            {%- comment -%}
-              The week fragment is pre-composed via the pluralized
-              study.weeks_count key so every locale inflects the counted
-              noun correctly, then interpolated as {{ weeks }}.
-            {%- endcomment -%}
-            {%- assign cx_weeks_label = 'study.weeks_count' | t: count: cx_study_weeks -%}
+                        {%- assign cx_weeks_label = 'study.weeks_count' | t: count: cx_study_weeks -%}
             <p class="cx-study__method">{{ 'study.methodology' | t: n: cx_study_n, weeks: cx_weeks_label, lab: cx_study_lab }}</p>
           {%- endif -%}
           {%- if cx_study.instruments.value != blank -%}
@@ -544,23 +491,21 @@
                 <div class="cx-ba__grid">
                   <div class="cx-ba__panel">
                     {%- if cx_ba.before_image.value -%}
-                      {%- assign cx_ba_before_h = cx_ba.before_image.value.height | times: 900 | divided_by: cx_ba.before_image.value.width -%}
                       <img class="cx-ba__img"
                         src="{{ cx_ba.before_image.value | image_url: width: 900 }}"
                         srcset="{{ cx_ba.before_image.value | image_url: width: 900 }} 1x, {{ cx_ba.before_image.value | image_url: width: 1800 }} 2x"
                         alt="{{ 'ba.before' | t }} — {{ product.title | escape }}"
-                        loading="lazy" width="900" height="{{ cx_ba_before_h }}">
+                        loading="lazy" width="450" height="450">
                     {%- endif -%}
                     <span class="cx-ba__tag cx-ba__tag--before">{{ 'ba.before' | t }}</span>
                   </div>
                   <div class="cx-ba__panel">
                     {%- if cx_ba.after_image.value -%}
-                      {%- assign cx_ba_after_h = cx_ba.after_image.value.height | times: 900 | divided_by: cx_ba.after_image.value.width -%}
                       <img class="cx-ba__img"
                         src="{{ cx_ba.after_image.value | image_url: width: 900 }}"
                         srcset="{{ cx_ba.after_image.value | image_url: width: 900 }} 1x, {{ cx_ba.after_image.value | image_url: width: 1800 }} 2x"
                         alt="{{ 'ba.after' | t }} — {{ product.title | escape }}"
-                        loading="lazy" width="900" height="{{ cx_ba_after_h }}">
+                        loading="lazy" width="450" height="450">
                     {%- endif -%}
                     <span class="cx-ba__tag cx-ba__tag--after">{{ 'ba.after' | t }}</span>
                   </div>
@@ -693,29 +638,83 @@
         if bottle_title == blank
           assign bottle_title = 'bottle.title' | t
         endif
+        assign cx_container_key = 'jar'
+        case cfg.emptyBottleGuarantee.container
+          when 'bottle', 'jar', 'tube', 'pump', 'product'
+            assign cx_container_key = cfg.emptyBottleGuarantee.container
+        endcase
+        case cx_pdp_flags.container
+          when 'bottle', 'jar', 'tube', 'pump', 'product'
+            assign cx_container_key = cx_pdp_flags.container
+        endcase
+        assign cx_container_tkey = 'bottle.container_' | append: cx_container_key
+        assign cx_container_word = cx_container_tkey | t
       -%}
       <template id="cx-tpl-pdp-bottle"{% unless show_bottle %} data-cx-draft="1"{% endunless %}>
         <section class="cx-proof cx-bottle" data-cx-feature="empty_bottle_guarantee">
           <div class="cx-bottle__icon" aria-hidden="true">{% render 'cx-icons', icon: 'bottle', size: 26 %}</div>
           <div class="cx-bottle__content">
             <h2 class="cx-bottle__title">{{ bottle_title }}</h2>
-            {%- comment -%}
-              The day fragment is pre-composed via the pluralized
-              bottle.days_count key so every locale inflects the counted
-              noun correctly, then interpolated as {{ days }}.
-            {%- endcomment -%}
-            {%- assign cx_days_label = 'bottle.days_count' | t: count: bottle_days -%}
-            <p class="cx-bottle__body">{{ 'bottle.body' | t: days: cx_days_label }}</p>
+                        {%- assign cx_days_label = 'bottle.days_count' | t: count: bottle_days -%}
+            <p class="cx-bottle__body">{{ 'bottle.body' | t: days: cx_days_label, container: cx_container_word }}</p>
             <ul class="cx-bottle__points list-reset">
-              <li class="cx-bottle__point">{% render 'cx-icons', icon: 'check', size: 16 %}<span>{{ 'bottle.point_1' | t }}</span></li>
+              <li class="cx-bottle__point">{% render 'cx-icons', icon: 'check', size: 16 %}<span>{{ 'bottle.point_1' | t: container: cx_container_word }}</span></li>
               <li class="cx-bottle__point">{% render 'cx-icons', icon: 'check', size: 16 %}<span>{{ 'bottle.point_2' | t }}</span></li>
               <li class="cx-bottle__point">{% render 'cx-icons', icon: 'check', size: 16 %}<span>{{ 'bottle.point_3' | t }}</span></li>
             </ul>
-            {%- if shop.refund_policy.url != blank -%}
-              <a class="cx-bottle__terms" href="{{ shop.refund_policy.url }}">{{ 'bottle.terms' | t }}</a>
-            {%- endif -%}
+            <button type="button" class="cx-bottle__check" data-cx-guarantee-check>{{ 'guarantee_check.button' | t }}</button>
           </div>
         </section>
+      </template>
+    {%- endif -%}
+        {%- if show_bottle or cx_draft_bottle -%}
+      {%- liquid
+        assign cx_gcheck_days_label = 'bottle.days_count' | t: count: bottle_days
+        assign cx_gfact_1 = block.settings.guarantee_fact_1
+        assign cx_gfact_2 = block.settings.guarantee_fact_2
+        assign cx_gfact_3 = block.settings.guarantee_fact_3
+        assign cx_gfact_4 = block.settings.guarantee_fact_4
+        assign cx_gfacts_any = false
+        if cx_gfact_1 != blank or cx_gfact_2 != blank or cx_gfact_3 != blank or cx_gfact_4 != blank
+          assign cx_gfacts_any = true
+        endif
+      -%}
+      <template id="cx-tpl-guarantee-check">
+        <div class="cx-guarantee-modal">
+          <div class="cx-guarantee-modal__backdrop" data-cx-gcheck-close></div>
+          <div class="cx-guarantee-modal__card" role="dialog" aria-modal="true" aria-labelledby="cx-gcheck-title" tabindex="-1">
+            <button type="button" class="cx-guarantee-modal__close" data-cx-gcheck-close aria-label="{{ 'a11y.close' | t }}">
+              <span aria-hidden="true">&times;</span>
+            </button>
+            <h2 class="cx-guarantee-modal__title" id="cx-gcheck-title">{{ 'guarantee_check.title' | t }}</h2>
+            <h3 class="cx-guarantee-modal__section">{{ 'guarantee_check.mechanics_title' | t }}</h3>
+            <p class="cx-guarantee-modal__days">{{ 'bottle.body' | t: days: cx_gcheck_days_label, container: cx_container_word }}</p>
+            <ul class="cx-guarantee-modal__points list-reset">
+              <li class="cx-guarantee-modal__point">{% render 'cx-icons', icon: 'check', size: 16 %}<span>{{ 'bottle.point_1' | t: container: cx_container_word }}</span></li>
+              <li class="cx-guarantee-modal__point">{% render 'cx-icons', icon: 'check', size: 16 %}<span>{{ 'bottle.point_2' | t }}</span></li>
+              <li class="cx-guarantee-modal__point">{% render 'cx-icons', icon: 'check', size: 16 %}<span>{{ 'bottle.point_3' | t }}</span></li>
+            </ul>
+            {%- if cx_gfacts_any -%}
+              <h3 class="cx-guarantee-modal__section">{{ 'guarantee_check.trust_title' | t }}</h3>
+              <ul class="cx-guarantee-modal__facts list-reset">
+                {%- if cx_gfact_1 != blank -%}<li class="cx-guarantee-modal__fact">{{ cx_gfact_1 | escape }}</li>{%- endif -%}
+                {%- if cx_gfact_2 != blank -%}<li class="cx-guarantee-modal__fact">{{ cx_gfact_2 | escape }}</li>{%- endif -%}
+                {%- if cx_gfact_3 != blank -%}<li class="cx-guarantee-modal__fact">{{ cx_gfact_3 | escape }}</li>{%- endif -%}
+                {%- if cx_gfact_4 != blank -%}<li class="cx-guarantee-modal__fact">{{ cx_gfact_4 | escape }}</li>{%- endif -%}
+              </ul>
+            {%- endif -%}
+            <p class="cx-guarantee-modal__footnote">{{ 'guarantee_check.footnote' | t }}</p>
+          </div>
+        </div>
+      </template>
+    {%- endif -%}
+        {%- if show_dispatch or cx_draft_dispatch -%}
+      <template id="cx-tpl-dispatch"{% unless show_dispatch %} data-cx-draft="1"{% endunless %}>
+        <div class="cx-dispatch cx-dispatch--pdp" data-cx-feature="dispatch_countdown">
+          <span class="cx-dispatch__dot" aria-hidden="true"></span>
+          {%- render 'cx-icons', icon: 'truck', size: 16 -%}
+          <span class="cx-dispatch__text"><strong class="cx-dispatch__main"></strong> <span class="cx-dispatch__local"></span></span>
+        </div>
       </template>
     {%- endif -%}
     <script src="{{ 'cellexia-pdp.js' | asset_url }}" defer></script>
@@ -806,6 +805,34 @@
       "id": "bottle_title_override",
       "label": "Guarantee title override",
       "info": "Leave blank to use the translated default."
+    },
+    {
+      "type": "header",
+      "content": "Guarantee check window"
+    },
+    {
+      "type": "paragraph",
+      "content": "Company facts shown in the guarantee-check window under \"Why you can count on it\". Enter only your own verifiable company facts — for example your company registration number, years in operation, or published refund-policy statistics. Blank facts are hidden; when all four are blank the whole section is hidden. Translatable via Translate & Adapt."
+    },
+    {
+      "type": "text",
+      "id": "guarantee_fact_1",
+      "label": "Company fact 1"
+    },
+    {
+      "type": "text",
+      "id": "guarantee_fact_2",
+      "label": "Company fact 2"
+    },
+    {
+      "type": "text",
+      "id": "guarantee_fact_3",
+      "label": "Company fact 3"
+    },
+    {
+      "type": "text",
+      "id": "guarantee_fact_4",
+      "label": "Company fact 4"
     }
   ]
 }

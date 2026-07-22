@@ -59,8 +59,18 @@
         <span>Trustpilot</span>
       </span>
     </div>
+    {%- comment -%}
+      v5.1: cfg.trustpilot.showLink — an explicit false drops the profile
+      link line (the stars/rating/count above render exactly as before,
+      just not linked). Inverted test on purpose: missing/true takes the
+      else path, which carries the existing markup VERBATIM, so the
+      default render stays byte-identical.
+    {%- endcomment -%}
+    {%- if cfg.trustpilot.showLink == false -%}
+    {%- else -%}
     {%- if profile_url != blank -%}
       <a class="cx-trustpilot__link no-dec" href="{{ profile_url }}" target="_blank" rel="noopener nofollow">{{ 'trustpilot.view' | t }}</a>
+    {%- endif -%}
     {%- endif -%}
   </div>
   <script>

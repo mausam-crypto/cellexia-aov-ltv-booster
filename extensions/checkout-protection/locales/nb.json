@@ -3,5 +3,10 @@
   "description": "Beskytt bestillingen din mot tap, tyveri og skade under transport.",
   "price_label": "for {{price}}",
   "added": "Bestillingen din er beskyttet",
-  "error": "Kunne ikke oppdatere ordrebeskyttelsen. Prøv igjen."
+  "error": "Kunne ikke oppdatere ordrebeskyttelsen. Prøv igjen.",
+  "benefit_1": "Dekker tap, tyveri og skade under transport",
+  "benefit_2": "Umiddelbar erstatning eller refusjon — ingen diskusjoner med transportøren",
+  "benefit_3": "Ett trykk nå, null bekymringer etterpå",
+  "recommended": "Anbefalt",
+  "price_suffix": "engangsbeløp"
 }

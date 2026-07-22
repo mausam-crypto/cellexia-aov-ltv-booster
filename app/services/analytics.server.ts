@@ -30,6 +30,10 @@ const ALLOWED_FEATURES = new Set([
   "batch_transparency",
   "empty_bottle_guarantee",
   "derm_survey",
+  // Cart drawer cross-sell (v4.8) — impression/click/add_to_cart beacons.
+  "cart_cross_sell",
+  // Dispatch countdown (v5.0) — impression beacons from the PDP/cart widget.
+  "dispatch_countdown",
   // Site-wide session beacon (one per browser session) — powers the
   // experiment tracker's conversion-rate denominator.
   "site",

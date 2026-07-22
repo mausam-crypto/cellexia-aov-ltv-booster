@@ -24,8 +24,19 @@
     "error": "Si è verificato un errore. Riprova.",
     "switch_all_cta": "Passa tutto al piano e risparmia il {{ percent }}%",
     "partial": "Prodotti idonei all'abbonamento: {{ eligible }} su {{ total }}",
-    "remove": "Rimuovi l'abbonamento",
-    "removed": "Abbonamento rimosso"
+    "remove": "Rimuovi il trattamento continuo",
+    "removed": "Trattamento continuo rimosso"
+  },
+  "crosssell": {
+    "title": "Il complemento perfetto per la tua routine",
+    "add": "Aggiungi",
+    "adding": "Aggiunta in corso…",
+    "added": "Aggiunto al tuo carrello"
+  },
+  "dispatch": {
+    "within": "Ordina entro {{ hours }} h {{ minutes }} min per la spedizione in giornata",
+    "within_minutes": "Ordina entro {{ minutes }} min per la spedizione in giornata",
+    "local_time": "entro le {{ time }}, ora locale"
   },
   "badges": {
     "secure_checkout": "Pagamento sicuro",
@@ -96,16 +107,28 @@
     "honesty": "Ogni lotto è analizzato in modo indipendente e pubblicato. Giudica tu."
   },
   "bottle": {
+    "container_bottle": "flacone",
+    "container_jar": "vasetto",
+    "container_tube": "tubetto",
+    "container_pump": "flacone con dosatore",
+    "container_product": "prodotto",
     "title": "Usalo fino all'ultima goccia",
-    "body": "Prenditi {{ days }}. Se non ami i tuoi risultati, restituisci il flacone vuoto per un rimborso completo.",
+    "body": "Prenditi {{ days }}. Se non ami i tuoi risultati, restituisci il {{ container }} vuoto per un rimborso completo.",
     "days_count": {
       "one": "{{ count }} giorno",
       "other": "{{ count }} giorni"
     },
-    "point_1": "Funziona o è gratis — anche a flacone vuoto",
+    "point_1": "Funziona o è gratis — anche a {{ container }} vuoto",
     "point_2": "Senza domande",
     "point_3": "Rimborso completo sul tuo metodo di pagamento originale",
     "terms": "Consulta le condizioni della garanzia"
+  },
+  "guarantee_check": {
+    "button": "Verifica la garanzia",
+    "title": "La nostra garanzia sotto la lente",
+    "mechanics_title": "Come funziona",
+    "trust_title": "Perché puoi contarci",
+    "footnote": "Questa garanzia si aggiunge ai diritti che la legge ti riconosce come consumatore."
   },
   "survey": {
     "stat": "{{ recommend }} su {{ outof }}",

@@ -24,8 +24,19 @@
     "error": "Hiba történt. Kérjük, próbáld újra.",
     "switch_all_cta": "Válts át mindent és takaríts meg {{ percent }}%-ot",
     "partial": "A {{ total }} termékből {{ eligible }} rendelhető előfizetéssel",
-    "remove": "Előfizetés eltávolítása",
-    "removed": "Előfizetés eltávolítva"
+    "remove": "Folyamatos kezelés eltávolítása",
+    "removed": "Folyamatos kezelés eltávolítva"
+  },
+  "crosssell": {
+    "title": "A rutinod tökéletes kiegészítője",
+    "add": "Hozzáadás",
+    "adding": "Hozzáadás folyamatban…",
+    "added": "Hozzáadva a kosaradhoz"
+  },
+  "dispatch": {
+    "within": "Rendelj {{ hours }} óra {{ minutes }} percen belül, és még ma feladjuk a csomagodat",
+    "within_minutes": "Rendelj {{ minutes }} percen belül, és még ma feladjuk a csomagodat",
+    "local_time": "helyi idő szerint {{ time }}-ig"
   },
   "badges": {
     "secure_checkout": "Biztonságos fizetés",
@@ -96,16 +107,28 @@
     "honesty": "Minden gyártási tételt függetlenül bevizsgáltatunk, és az eredményeket közzétesszük. Ítéld meg magad."
   },
   "bottle": {
+    "container_bottle": "flakon",
+    "container_jar": "tégely",
+    "container_tube": "tubus",
+    "container_pump": "pumpás flakon",
+    "container_product": "termék",
     "title": "Használd el az utolsó cseppig",
-    "body": "Adj magadnak {{ days }}. Ha nem szereted az eredményeket, küldd vissza az üres flakont, és a teljes árat visszatérítjük.",
+    "body": "Adj magadnak {{ days }}. Ha nem szereted az eredményeket, elég, ha az üres {{ container }} visszaér hozzánk, és a teljes árat visszatérítjük.",
     "days_count": {
       "one": "{{ count }} napot",
       "other": "{{ count }} napot"
     },
-    "point_1": "Működik, vagy ingyen van — akár üres flakonnal is",
+    "point_1": "Működik, vagy ingyen van — akkor is, ha a {{ container }} már üres",
     "point_2": "Kérdések nélkül",
     "point_3": "Teljes visszatérítés az eredeti fizetési módra",
     "terms": "Nézd meg a garancia feltételeit"
+  },
+  "guarantee_check": {
+    "button": "Garanciaellenőrzés",
+    "title": "Garanciánk górcső alatt",
+    "mechanics_title": "Így működik",
+    "trust_title": "Miért számíthatsz rá",
+    "footnote": "Ez a garancia a törvényben biztosított fogyasztói jogaidon felül illet meg."
   },
   "survey": {
     "stat": "{{ outof }}-ből {{ recommend }}",

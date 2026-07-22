@@ -6,9 +6,18 @@ handle = "cellexia-checkout-upsell"
 type = "ui_extension"
 description = "Post-cart, pre-payment product offers (\"Complete your routine\") rendered as a checkout block."
 
+  # Merchant-positioned block placement (drag anywhere in the editor).
   [[extensions.targeting]]
   module = "./src/Checkout.tsx"
   target = "purchase.checkout.block.render"
+
+  # Alternative static placement adjacent to the Pay button (rendered
+  # immediately before the actions area). Same module/UI — the merchant
+  # chooses either placement in the checkout editor. Target verified
+  # against RenderExtensionTargets in @shopify/ui-extensions 2025.7.
+  [[extensions.targeting]]
+  module = "./src/Checkout.tsx"
+  target = "purchase.checkout.actions.render-before"
 
   [extensions.capabilities]
   api_access = true

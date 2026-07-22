@@ -24,8 +24,19 @@
     "error": "Coś poszło nie tak. Spróbuj ponownie.",
     "switch_all_cta": "Zamień wszystko i oszczędzaj {{ percent }}%",
     "partial": "Produkty z możliwością subskrypcji: {{ eligible }} z {{ total }}",
-    "remove": "Usuń subskrypcję",
-    "removed": "Subskrypcja usunięta"
+    "remove": "Usuń ciągłą kurację",
+    "removed": "Ciągła kuracja usunięta"
+  },
+  "crosssell": {
+    "title": "Idealne dopełnienie Twojej pielęgnacji",
+    "add": "Dodaj",
+    "adding": "Dodawanie…",
+    "added": "Dodano do koszyka"
+  },
+  "dispatch": {
+    "within": "Zamów w ciągu {{ hours }} godz. {{ minutes }} min, a wyślemy Twoje zamówienie jeszcze dziś",
+    "within_minutes": "Zamów w ciągu {{ minutes }} min, a wyślemy Twoje zamówienie jeszcze dziś",
+    "local_time": "do {{ time }} czasu lokalnego"
   },
   "badges": {
     "secure_checkout": "Bezpieczna płatność",
@@ -98,18 +109,30 @@
     "honesty": "Każda partia jest niezależnie badana, a wyniki są publikowane. Oceń samodzielnie."
   },
   "bottle": {
+    "container_bottle": "butelka",
+    "container_jar": "słoiczek",
+    "container_tube": "tubka",
+    "container_pump": "butelka z pompką",
+    "container_product": "produkt",
     "title": "Wykorzystaj do ostatniej kropli",
-    "body": "Daj sobie {{ days }}. Jeśli nie pokochasz efektów, odeślij pustą butelkę, a otrzymasz pełny zwrot pieniędzy.",
+    "body": "Daj sobie {{ days }}. Jeśli nie pokochasz efektów, odeślij puste opakowanie ({{ container }}), a otrzymasz pełny zwrot pieniędzy.",
     "days_count": {
       "one": "{{ count }} dzień",
       "few": "{{ count }} dni",
       "many": "{{ count }} dni",
       "other": "{{ count }} dnia"
     },
-    "point_1": "Działa albo zwracamy pieniądze — nawet za pustą butelkę",
+    "point_1": "Działa albo zwracamy pieniądze — nawet gdy {{ container }} nic już nie zawiera",
     "point_2": "Bez zbędnych pytań",
     "point_3": "Pełny zwrot pieniędzy na pierwotną metodę płatności",
     "terms": "Zobacz warunki gwarancji"
+  },
+  "guarantee_check": {
+    "button": "Sprawdź gwarancję",
+    "title": "Nasza gwarancja pod lupą",
+    "mechanics_title": "Jak to działa",
+    "trust_title": "Dlaczego możesz na niej polegać",
+    "footnote": "Ta gwarancja obowiązuje dodatkowo, obok uprawnień przysługujących Ci z mocy prawa."
   },
   "survey": {
     "stat": "{{ recommend }} na {{ outof }}",

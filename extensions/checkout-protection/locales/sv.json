@@ -3,5 +3,10 @@
   "description": "Skydda din beställning mot förlust, stöld och skador under transporten.",
   "price_label": "för {{price}}",
   "added": "Din beställning är skyddad",
-  "error": "Orderskyddet kunde inte uppdateras. Försök igen."
+  "error": "Orderskyddet kunde inte uppdateras. Försök igen.",
+  "benefit_1": "Täcker förlust, stöld och skador under transporten",
+  "benefit_2": "Omedelbar ersättning eller återbetalning – inga tvister med transportbolaget",
+  "benefit_3": "Ett tryck nu, noll bekymmer efteråt",
+  "recommended": "Rekommenderas",
+  "price_suffix": "engångsbelopp"
 }

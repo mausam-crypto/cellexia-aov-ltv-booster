@@ -21,11 +21,17 @@
     "partial": "{{ eligible }} of {{ total }} products can be subscribed",
     "benefits": "Save {{ percent }}% on every delivery. Skip, pause or cancel anytime.",
     "switched": "Continuous Treatment Plan activated",
-    "remove": "Remove subscription",
-    "removed": "Subscription removed",
+    "remove": "Remove continuous treatment",
+    "removed": "Continuous treatment removed",
     "nudge_title": "Never run out",
     "nudge_body": "Join the Continuous Treatment Plan: save {{ percent }}% on every delivery, free shipping included. Cancel anytime.",
     "error": "Something went wrong. Please try again."
+  },
+  "crosssell": {
+    "title": "Pairs perfectly with your routine",
+    "add": "Add",
+    "adding": "Adding…",
+    "added": "Added to your cart"
   },
   "badges": {
     "secure_checkout": "Secure checkout",
@@ -97,15 +103,27 @@
   },
   "bottle": {
     "title": "Use every last drop",
-    "body": "Take {{ days }}. If you don't love your results, return the empty bottle for a full refund.",
+    "body": "Take {{ days }}. If you don't love your results, return the empty {{ container }} for a full refund.",
     "days_count": {
       "one": "{{ count }} day",
       "other": "{{ count }} days"
     },
-    "point_1": "Works or it's free — even with an empty bottle",
+    "container_bottle": "bottle",
+    "container_jar": "jar",
+    "container_tube": "tube",
+    "container_pump": "pump bottle",
+    "container_product": "product",
+    "point_1": "Works or it's free — even with an empty {{ container }}",
     "point_2": "No questions asked",
     "point_3": "Full refund to your original payment method",
     "terms": "See guarantee terms"
+  },
+  "guarantee_check": {
+    "button": "Guarantee check",
+    "title": "Our guarantee, checked",
+    "mechanics_title": "How it works",
+    "trust_title": "Why you can count on it",
+    "footnote": "This guarantee is in addition to your statutory rights."
   },
   "survey": {
     "stat": "{{ recommend }} out of {{ outof }}",
@@ -114,5 +132,10 @@
     "verified_badge": "Third-party verified",
     "verified_by": "Survey verified by {{ name }}",
     "methodology": "See survey methodology"
+  },
+  "dispatch": {
+    "within": "Order within {{ hours }}h {{ minutes }}m for same-day dispatch",
+    "within_minutes": "Order within {{ minutes }} minutes for same-day dispatch",
+    "local_time": "by {{ time }} your local time"
   }
 }

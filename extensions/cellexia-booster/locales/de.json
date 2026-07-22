@@ -24,8 +24,19 @@
     "error": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
     "switch_all_cta": "Alle wechseln & {{ percent }} % sparen",
     "partial": "Abonnierbare Produkte: {{ eligible }} von {{ total }}",
-    "remove": "Abonnement entfernen",
-    "removed": "Abonnement entfernt"
+    "remove": "Kontinuierliche Behandlung entfernen",
+    "removed": "Kontinuierliche Behandlung entfernt"
+  },
+  "crosssell": {
+    "title": "Die perfekte Ergänzung zu Ihrer Pflegeroutine",
+    "add": "Hinzufügen",
+    "adding": "Wird hinzugefügt…",
+    "added": "Zu Ihrem Warenkorb hinzugefügt"
+  },
+  "dispatch": {
+    "within": "Bestellen Sie innerhalb von {{ hours }} Std. {{ minutes }} Min. für Versand noch heute",
+    "within_minutes": "Bestellen Sie innerhalb von {{ minutes }} Min. für Versand noch heute",
+    "local_time": "bis {{ time }} Uhr Ihrer Ortszeit"
   },
   "badges": {
     "secure_checkout": "Sicherer Checkout",
@@ -96,16 +107,28 @@
     "honesty": "Jede Charge wird unabhängig geprüft und veröffentlicht. Urteilen Sie selbst."
   },
   "bottle": {
+    "container_bottle": "Flasche",
+    "container_jar": "Dose",
+    "container_tube": "Tube",
+    "container_pump": "Pumpflasche",
+    "container_product": "Packung",
     "title": "Bis auf den letzten Tropfen",
-    "body": "Nehmen Sie sich {{ days }} Zeit. Wenn Sie von Ihren Ergebnissen nicht begeistert sind, senden Sie die leere Flasche zurück und erhalten den vollen Kaufpreis erstattet.",
+    "body": "Nehmen Sie sich {{ days }} Zeit. Wenn Sie von Ihren Ergebnissen nicht begeistert sind, senden Sie die leere {{ container }} zurück und erhalten den vollen Kaufpreis erstattet.",
     "days_count": {
       "one": "{{ count }} Tag",
       "other": "{{ count }} Tage"
     },
-    "point_1": "Wirkung oder Geld zurück – auch bei leerer Flasche",
+    "point_1": "Wirkung oder Geld zurück – auch bei leerer {{ container }}",
     "point_2": "Ganz ohne Rückfragen",
     "point_3": "Volle Rückerstattung auf Ihre ursprüngliche Zahlungsmethode",
     "terms": "Garantiebedingungen ansehen"
+  },
+  "guarantee_check": {
+    "button": "Garantie-Check",
+    "title": "Unsere Garantie auf dem Prüfstand",
+    "mechanics_title": "So funktioniert es",
+    "trust_title": "Warum Sie sich darauf verlassen können",
+    "footnote": "Diese Garantie gilt zusätzlich zu Ihren gesetzlichen Gewährleistungsrechten."
   },
   "survey": {
     "stat": "{{ recommend }} von {{ outof }}",

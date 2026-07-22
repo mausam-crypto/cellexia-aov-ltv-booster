@@ -381,11 +381,32 @@ export function featureReadiness(
     FEATURE_KEYS.map((key) => [key, { ready: true } as FeatureReadiness]),
   ) as Record<FeatureKey, FeatureReadiness>;
 
-  if (settings.checkoutUpsell.variantIds.length === 0) {
+  // Auto mode is always demonstrable — Shopify's recommendation engine picks
+  // the offers from the cart/checkout contents, no hand-picked items needed.
+  if (settings.checkoutUpsell.mode === "auto") {
+    readiness.checkout_upsell = {
+      ready: true,
+      reason:
+        "Automatic recommendations — offers are picked from the checkout contents by Shopify's recommendation engine.",
+    };
+  } else if (settings.checkoutUpsell.variantIds.length === 0) {
     readiness.checkout_upsell = {
       ready: false,
       reason:
-        "No upsell variants selected — pick at least one product on the Checkout features page.",
+        "Hand-picked mode with no upsell variants selected — pick at least one product on the Checkout features page, or switch to automatic recommendations.",
+    };
+  }
+  if (settings.cartCrossSell.mode === "auto") {
+    readiness.cart_cross_sell = {
+      ready: true,
+      reason:
+        "Automatic recommendations — products are picked from the cart contents by Shopify's recommendation engine.",
+    };
+  } else if (settings.cartCrossSell.items.length === 0) {
+    readiness.cart_cross_sell = {
+      ready: false,
+      reason:
+        "Hand-picked mode with no cross-sell products selected — pick at least one on the Cart features page, or switch to automatic recommendations.",
     };
   }
   if (!settings.checkoutProtection.variantId) {

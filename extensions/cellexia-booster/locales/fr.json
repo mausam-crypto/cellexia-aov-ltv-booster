@@ -24,8 +24,19 @@
     "error": "Une erreur s'est produite. Veuillez réessayer.",
     "switch_all_cta": "Tout changer et économiser {{ percent }} %",
     "partial": "Produits éligibles à l'abonnement : {{ eligible }} sur {{ total }}",
-    "remove": "Retirer l'abonnement",
-    "removed": "Abonnement retiré"
+    "remove": "Retirer le traitement continu",
+    "removed": "Traitement continu retiré"
+  },
+  "crosssell": {
+    "title": "Le complément idéal de votre routine",
+    "add": "Ajouter",
+    "adding": "Ajout en cours…",
+    "added": "Ajouté à votre panier"
+  },
+  "dispatch": {
+    "within": "Commandez d'ici {{ hours }} h {{ minutes }} min pour une expédition le jour même",
+    "within_minutes": "Commandez d'ici {{ minutes }} min pour une expédition le jour même",
+    "local_time": "avant {{ time }}, heure locale"
   },
   "badges": {
     "secure_checkout": "Paiement sécurisé",
@@ -96,16 +107,28 @@
     "honesty": "Chaque lot est testé de façon indépendante et publié. Jugez par vous-même."
   },
   "bottle": {
+    "container_bottle": "flacon",
+    "container_jar": "pot",
+    "container_tube": "tube",
+    "container_pump": "flacon-pompe",
+    "container_product": "produit",
     "title": "Utilisez jusqu'à la dernière goutte",
-    "body": "Prenez {{ days }}. Si vous n'aimez pas vos résultats, renvoyez le flacon vide pour un remboursement intégral.",
+    "body": "Prenez {{ days }}. Si vous n'aimez pas vos résultats, renvoyez le {{ container }} vide pour un remboursement intégral.",
     "days_count": {
       "one": "{{ count }} jour",
       "other": "{{ count }} jours"
     },
-    "point_1": "Efficace ou remboursé — même avec un flacon vide",
+    "point_1": "Efficace ou remboursé — même avec un {{ container }} vide",
     "point_2": "Sans aucune justification",
     "point_3": "Remboursement intégral sur votre moyen de paiement d'origine",
     "terms": "Voir les conditions de la garantie"
+  },
+  "guarantee_check": {
+    "button": "Vérifier la garantie",
+    "title": "Notre garantie, passée au crible",
+    "mechanics_title": "Comment ça fonctionne",
+    "trust_title": "Pourquoi vous pouvez vous y fier",
+    "footnote": "Cette garantie s'applique en complément de vos garanties légales."
   },
   "survey": {
     "stat": "{{ recommend }} sur {{ outof }}",

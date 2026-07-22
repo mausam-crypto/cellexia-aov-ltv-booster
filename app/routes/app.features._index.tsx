@@ -24,7 +24,7 @@ import {
 import { getPreviewState } from "../services/preview.server";
 
 /**
- * Features hub (SPEC v4 §C): all 17 features as cards grouped by surface,
+ * Features hub (SPEC v4 §C): all 19 features as cards grouped by surface,
  * each with live status, market reach, a preview-draft chip, its Configure
  * page and a Preview Center deep link.
  *
@@ -51,6 +51,8 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   batch_transparency: "/app/products",
   empty_bottle_guarantee: "/app/products",
   derm_survey: "/app/features/survey",
+  cart_cross_sell: "/app/features/cart",
+  dispatch_countdown: "/app/features/dispatch",
 };
 
 const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
@@ -63,6 +65,8 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
       "free_shipping_bar",
       "cart_subscription_upsell",
       "cart_trust_row",
+      "cart_cross_sell",
+      "dispatch_countdown",
     ],
   },
   {

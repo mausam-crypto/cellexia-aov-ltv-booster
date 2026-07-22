@@ -32,6 +32,7 @@
 /* Hide subscription UI for B2B customers (belt & braces on top of JS/Liquid) */
 body.customer--b2b .cx-nudge,
 body.customer--b2b .cx-subswitch,
+body.customer--b2b .cx-sub-remove-row,
 body.customer--b2b .cx-sub-remove {
   display: none !important;
 }
@@ -283,22 +284,29 @@ body.customer--b2b .cx-sub-remove {
   color: #808080;
 }
 
-/* Per-line "Remove subscription" text-button (v4.7) — decorated by JS into
-   the THEME's own cart rows (drawer + cart page) next to the .delivery
-   span, so it must read as a subtle inline text control, not a widget. */
+/* Per-line "Remove subscription" control (v4.7, display fixed in v4.8) —
+   decorated by JS into the THEME's own cart rows (drawer + cart page).
+   The button lives in its OWN block row inserted between the .delivery
+   span and the .unit-price span, so it never wedges inline between the
+   plan name and the price. Quiet by default (muted, no underline);
+   hover/focus turn it ink + underlined. */
+.cx-sub-remove-row {
+  display: block;
+  margin: 4px 0 2px;
+}
+
 .cx-sub-remove {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  margin-inline-start: 8px;
   padding: 0;
   border: 0;
   background: transparent;
   font: inherit;
   font-size: 11px;
   line-height: 1.4;
-  color: #1d1d1b;
-  text-decoration: underline;
+  color: #808080;
+  text-decoration: none;
   text-underline-offset: 2px;
   cursor: pointer;
   -webkit-appearance: none;
@@ -307,7 +315,8 @@ body.customer--b2b .cx-sub-remove {
 
 .cx-sub-remove:hover,
 .cx-sub-remove:focus-visible {
-  color: #808080;
+  color: #1d1d1b;
+  text-decoration: underline;
 }
 
 .cx-sub-remove:disabled {
@@ -316,7 +325,7 @@ body.customer--b2b .cx-sub-remove {
 }
 
 .cx-sub-remove__x {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1;
   text-decoration: none;
 }
@@ -381,6 +390,118 @@ body.customer--b2b .cx-sub-remove {
 
 .cx-offers-overflow[hidden] {
   display: none;
+}
+
+/* ------------------------------------------------------- cart cross-sell */
+
+/* Compact "pairs well with" rows (v4.8): 56px rounded image, single-line
+   title, bold price, small ink pill Add button that inverts on hover.
+   Flex + logical properties only — RTL-safe. */
+.cx-crosssell {
+  margin-block-end: 14px;
+}
+
+.cx-crosssell__title {
+  font-family: "Gobold", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 0 0 8px;
+}
+
+.cx-crosssell__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cx-crosssell__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 2px solid #f4f4f4;
+  border-radius: 12px;
+}
+
+.cx-crosssell__img {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.cx-crosssell__info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cx-crosssell__name {
+  display: block;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #1d1d1b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-crosssell__prices {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.cx-crosssell__price {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1d1d1b;
+}
+
+.cx-crosssell__compare {
+  font-size: 11px;
+  color: #808080;
+  text-decoration: line-through;
+}
+
+.cx-crosssell__add {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 5px 16px;
+  border: 2px solid #1d1d1b;
+  border-radius: 70px;
+  background: #1d1d1b;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.cx-crosssell__add:hover,
+.cx-crosssell__add:focus-visible {
+  background: #fff;
+  color: #1d1d1b;
+}
+
+.cx-crosssell__add:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* ---------------------------------------------------------------- trust row */
@@ -1202,6 +1323,26 @@ body.customer--b2b .cx-sub-remove {
   text-underline-offset: 2px;
 }
 
+/* "Guarantee check" modal trigger (v4.9) — replaces the old terms link */
+.cx-bottle__check {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: #b1cded;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.cx-bottle__check:hover,
+.cx-bottle__check:focus-visible {
+  color: #fff;
+}
+
 @media (max-width: 640px) {
   .cx-ba__grid {
     grid-template-columns: 1fr;
@@ -1292,5 +1433,199 @@ body.customer--b2b .cx-sub-remove {
 @media print {
   .cx-preview-bar {
     display: none !important;
+  }
+}
+
+/* ------------------------------------- guarantee-check modal (v4.9) */
+
+.cx-guarantee-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483200; /* above the theme drawer and the preview bar */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.cx-guarantee-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(29, 29, 27, 0.5);
+}
+
+.cx-guarantee-modal__card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  max-height: min(85vh, 640px);
+  overflow-y: auto;
+  padding: 25px;
+  background: #fff;
+  color: #1d1d1b;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+}
+
+.cx-guarantee-modal__card:focus {
+  outline: none;
+}
+
+.cx-guarantee-modal__close {
+  position: absolute;
+  inset-block-start: 12px;
+  inset-inline-end: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: #f4f4f4;
+  color: #1d1d1b;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.cx-guarantee-modal__close:hover,
+.cx-guarantee-modal__close:focus-visible {
+  background: #b1cded;
+}
+
+.cx-guarantee-modal__title {
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 20px;
+  line-height: 1.2;
+  margin: 0 0 15px;
+  padding-inline-end: 44px;
+  color: #1d1d1b;
+}
+
+.cx-guarantee-modal__section {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 18px 0 8px;
+  color: #1d1d1b;
+}
+
+.cx-guarantee-modal__days {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+
+.cx-guarantee-modal__points,
+.cx-guarantee-modal__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.cx-guarantee-modal__point {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cx-guarantee-modal__point .cx-icon {
+  color: #b1cded;
+  margin-block-start: 2px;
+  flex: 0 0 auto;
+}
+
+.cx-guarantee-modal__fact {
+  font-size: 13px;
+  line-height: 1.4;
+  padding-inline-start: 12px;
+  border-inline-start: 3px solid #b1cded;
+}
+
+.cx-guarantee-modal__footnote {
+  font-size: 11px;
+  color: #808080;
+  margin: 18px 0 0;
+}
+
+@media (max-width: 640px) {
+  .cx-guarantee-modal {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .cx-guarantee-modal__card {
+    max-width: none;
+    max-height: 85vh;
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+/* --------------------------------------------- dispatch countdown (v5.0) */
+
+.cx-dispatch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #1d1d1b;
+}
+
+.cx-dispatch .cx-icon {
+  flex: 0 0 auto;
+  color: #1d1d1b;
+}
+
+.cx-dispatch__dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b1cded;
+  animation: cx-dispatch-pulse 2s ease infinite;
+}
+
+.cx-dispatch__text {
+  min-width: 0;
+}
+
+.cx-dispatch__main {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-dispatch__local {
+  color: #808080;
+  margin-inline-start: 4px;
+}
+
+/* PDP variant sits inside the grey panel, matching the .stock-msg rhythm. */
+.cx-dispatch--pdp {
+  margin-block-start: 10px;
+}
+
+.cx-dispatch--cart {
+  margin-block-end: 8px;
+}
+
+@keyframes cx-dispatch-pulse {
+  0%, 100% { background: #b1cded; transform: scale(1); }
+  50% { background: #6f9fd8; transform: scale(1.3); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cx-dispatch__dot {
+    animation: none;
   }
 }

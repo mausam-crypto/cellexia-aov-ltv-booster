@@ -3,5 +3,10 @@
   "description": "Beskyt din ordre mod bortkomst, tyveri og skader under transport.",
   "price_label": "for {{price}}",
   "added": "Din ordre er beskyttet",
-  "error": "Ordrebeskyttelse kunne ikke opdateres. Prøv igen."
+  "error": "Ordrebeskyttelse kunne ikke opdateres. Prøv igen.",
+  "benefit_1": "Dækker bortkomst, tyveri og skader under transport",
+  "benefit_2": "Øjeblikkelig ombytning eller refusion – uden tvister med fragtfirmaet",
+  "benefit_3": "Ét tryk nu, nul bekymringer bagefter",
+  "recommended": "Anbefalet",
+  "price_suffix": "engangsbeløb"
 }

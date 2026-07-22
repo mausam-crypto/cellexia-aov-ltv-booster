@@ -3,5 +3,10 @@
   "description": "Proteja a sua encomenda contra perda, roubo e danos durante o transporte.",
   "price_label": "por {{price}}",
   "added": "A sua encomenda está protegida",
-  "error": "Não foi possível atualizar a Proteção da Encomenda. Por favor, tente novamente."
+  "error": "Não foi possível atualizar a Proteção da Encomenda. Por favor, tente novamente.",
+  "benefit_1": "Cobre perda, roubo e danos durante o transporte",
+  "benefit_2": "Substituição ou reembolso imediatos — sem disputas com a transportadora",
+  "benefit_3": "Um toque agora, zero preocupações depois",
+  "recommended": "Recomendado",
+  "price_suffix": "pagamento único"
 }

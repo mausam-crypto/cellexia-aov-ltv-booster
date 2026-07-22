@@ -10,6 +10,7 @@
  *   - batch_transparency  metaobject_reference       -> cellexia_batch_transparency
  *                         (nested cellexia_ingredient + cellexia_coa lists)
  *   - pdp_flags           json                       -> per-product opt-in/out
+ *                         (+ optional "container" override for the guarantee)
  *
  * Saves are diff-based upserts: nested metaobjects with a known id are
  * updated, new ones are created, and metaobjects dropped from the incoming
@@ -51,7 +52,36 @@ export const PDP_FLAG_KEYS = [
   "derm_survey",
 ] as const;
 export type PdpFlagKey = (typeof PDP_FLAG_KEYS)[number];
-export type PdpFlags = Record<PdpFlagKey, boolean>;
+
+/**
+ * Container words the empty-bottle guarantee copy can use ("return the empty
+ * {{ container }}"). Mirrors emptyBottleGuarantee.container in
+ * app/models/settings.server.ts — keep the two lists identical.
+ */
+export const PDP_CONTAINER_VALUES = [
+  "bottle",
+  "jar",
+  "tube",
+  "pump",
+  "product",
+] as const;
+export type PdpContainer = (typeof PDP_CONTAINER_VALUES)[number];
+
+export function isPdpContainer(value: unknown): value is PdpContainer {
+  return (
+    typeof value === "string" &&
+    (PDP_CONTAINER_VALUES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * The five boolean opt-in/out flags plus the optional per-product container
+ * override for the empty-bottle guarantee. `container` absent = inherit the
+ * global emptyBottleGuarantee.container.
+ */
+export type PdpFlags = Record<PdpFlagKey, boolean> & {
+  container?: PdpContainer;
+};
 
 export interface ProductSummary {
   id: string;
@@ -220,10 +250,19 @@ export interface SaveBeforeAftersResult {
   metaobjectIds: string[];
 }
 
+/**
+ * Patch shape accepted by savePdpFlags: any subset of the five boolean flags,
+ * plus `container` — a valid enum value sets the per-product override, `null`
+ * clears it (inherit the global default), anything else is ignored.
+ */
+export type PdpFlagsPatch = Partial<Record<PdpFlagKey, boolean>> & {
+  container?: PdpContainer | null;
+};
+
 export interface SavePdpFlagsResult {
   ok: boolean;
   errors: string[];
-  /** The full five-key flag object that was written. */
+  /** The full flag object that was written (five booleans + optional container). */
   flags: PdpFlags;
 }
 
@@ -419,9 +458,15 @@ function parseFlags(value: string | null | undefined): PdpFlags {
     typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : {};
-  return Object.fromEntries(
+  const flags: PdpFlags = Object.fromEntries(
     PDP_FLAG_KEYS.map((key) => [key, source[key] !== false]),
-  ) as PdpFlags;
+  ) as Record<PdpFlagKey, boolean>;
+  // Optional container override — anything but a valid enum value is treated
+  // as absent (inherit the global default).
+  if (isPdpContainer(source.container)) {
+    flags.container = source.container;
+  }
+  return flags;
 }
 
 function defaultFlags(): PdpFlags {
@@ -1593,13 +1638,15 @@ const PDP_FLAGS_STATE_QUERY = `#graphql
 
 /**
  * Merges the given flags over the product's current pdp_flags and writes the
- * full five-key JSON object. Only the five known keys are accepted; anything
- * that is not a boolean is ignored.
+ * full JSON object (five boolean keys, plus `container` only when a
+ * per-product override is set). Only the known keys are accepted; a flag
+ * value that is not a boolean is ignored. `container: null` clears the
+ * override (inherit the global default); an invalid container is ignored.
  */
 export async function savePdpFlags(
   admin: AdminGraphqlClient,
   productGid: string,
-  flags: Partial<Record<PdpFlagKey, boolean>>,
+  flags: PdpFlagsPatch,
 ): Promise<SavePdpFlagsResult> {
   if (!PRODUCT_GID_PATTERN.test(productGid)) {
     return { ok: false, errors: ["Invalid product id"], flags: defaultFlags() };
@@ -1622,6 +1669,14 @@ export async function savePdpFlags(
   for (const key of PDP_FLAG_KEYS) {
     const value = flags?.[key];
     if (typeof value === "boolean") next[key] = value;
+  }
+  if (flags && "container" in flags) {
+    if (isPdpContainer(flags.container)) {
+      next.container = flags.container;
+    } else if (flags.container === null) {
+      delete next.container;
+    }
+    // Any other value: ignored, current override (if any) is kept.
   }
 
   const errors = await setProductMetafield(

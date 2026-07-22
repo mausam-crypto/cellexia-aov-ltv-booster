@@ -24,8 +24,19 @@
     "error": "Något gick fel. Försök igen.",
     "switch_all_cta": "Byt allt & spara {{ percent }} %",
     "partial": "Produkter som kan prenumereras på: {{ eligible }} av {{ total }}",
-    "remove": "Ta bort prenumeration",
-    "removed": "Prenumeration borttagen"
+    "remove": "Ta bort kontinuerlig behandling",
+    "removed": "Kontinuerlig behandling borttagen"
+  },
+  "crosssell": {
+    "title": "Det perfekta komplementet till din rutin",
+    "add": "Lägg till",
+    "adding": "Lägger till…",
+    "added": "Tillagd i din varukorg"
+  },
+  "dispatch": {
+    "within": "Beställ inom {{ hours }} tim {{ minutes }} min, så skickar vi din order i dag",
+    "within_minutes": "Beställ inom {{ minutes }} min, så skickar vi din order i dag",
+    "local_time": "senast kl. {{ time }} lokal tid"
   },
   "badges": {
     "secure_checkout": "Säker kassa",
@@ -96,16 +107,28 @@
     "honesty": "Varje batch testas oberoende och publiceras. Bedöm själv."
   },
   "bottle": {
+    "container_bottle": "flaska",
+    "container_jar": "burk",
+    "container_tube": "tub",
+    "container_pump": "pumpflaska",
+    "container_product": "produkt",
     "title": "Använd varenda droppe",
-    "body": "Ta {{ days }} på dig. Om du inte älskar dina resultat kan du returnera den tomma flaskan och få hela beloppet återbetalat.",
+    "body": "Ta {{ days }} på dig. Om du inte älskar dina resultat kan du returnera din tomma {{ container }} och få hela beloppet återbetalat.",
     "days_count": {
       "one": "{{ count }} dag",
       "other": "{{ count }} dagar"
     },
-    "point_1": "Det fungerar, eller så är det gratis – även med en tom flaska",
+    "point_1": "Det fungerar, eller så är det gratis – även med en tom {{ container }}",
     "point_2": "Utan frågor",
     "point_3": "Full återbetalning till ditt ursprungliga betalningssätt",
     "terms": "Se garantivillkor"
+  },
+  "guarantee_check": {
+    "button": "Garantikoll",
+    "title": "Vår garanti under luppen",
+    "mechanics_title": "Så fungerar det",
+    "trust_title": "Därför kan du lita på den",
+    "footnote": "Denna garanti gäller utöver dina rättigheter enligt konsumentköplagen."
   },
   "survey": {
     "stat": "{{ recommend }} av {{ outof }}",

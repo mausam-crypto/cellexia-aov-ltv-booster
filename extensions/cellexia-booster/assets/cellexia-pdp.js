@@ -94,10 +94,10 @@
     }
   }
 
-  function track(feature) {
+  function track(feature, type) {
     if (PREVIEW || BEACONS_OFF) return; // preview/indeterminate-verdict mode: suppress every beacon — no data pollution
     try {
-      var payload = { feature: feature, type: 'impression' };
+      var payload = { feature: feature, type: type || 'impression' };
       if (cfg && typeof cfg.market === 'string' && cfg.market) {
         payload.market = cfg.market;
       }
@@ -119,6 +119,131 @@
         }).catch(function () { /* fire and forget */ });
       }
     } catch (e) { /* never block UI */ }
+  }
+
+  // ------------------------------------------ guarantee-check modal (v4.9)
+  //
+  // The empty-bottle-guarantee widget's "Guarantee check" button opens an
+  // in-page modal cloned from the hidden, server-translated
+  // #cx-tpl-guarantee-check template (no navigation, no external URL).
+  // Lightweight accessible dialog: role="dialog"/aria-modal/aria-labelledby
+  // live in the template markup; JS adds focus handling (move to the card
+  // on open, back to the trigger on close), a minimal Tab loop over the
+  // card's focusable elements, ESC + backdrop + close-button dismissal and
+  // a body scroll lock. Singleton — guarded by the #cx-gcheck id.
+  var gcheckState = null; // { root, trigger, prevOverflow, onKeydown } while open
+
+  function gcheckFocusables(card) {
+    var out = [];
+    try {
+      var nodes = card.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]'
+      );
+      for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i].getAttribute('tabindex') === '-1') continue;
+        out.push(nodes[i]);
+      }
+    } catch (e) { /* noop */ }
+    return out;
+  }
+
+  function gcheckClose() {
+    var state = gcheckState;
+    if (!state) return;
+    gcheckState = null;
+    try { document.removeEventListener('keydown', state.onKeydown, true); } catch (e) { /* noop */ }
+    try {
+      if (state.root && state.root.parentNode) state.root.parentNode.removeChild(state.root);
+    } catch (e) { /* noop */ }
+    try { document.body.style.overflow = state.prevOverflow; } catch (e) { /* noop */ }
+    try {
+      if (state.trigger && state.trigger.focus) state.trigger.focus();
+    } catch (e) { /* noop */ }
+  }
+
+  function gcheckOpen(trigger) {
+    try {
+      if (gcheckState || document.getElementById('cx-gcheck')) return; // singleton
+      var tpl = document.getElementById('cx-tpl-guarantee-check');
+      if (!tpl || !tpl.content) return;
+      var root = tpl.content.cloneNode(true).firstElementChild;
+      if (!root) return;
+      root.id = 'cx-gcheck';
+      var card = root.querySelector('.cx-guarantee-modal__card') || root;
+
+      var onKeydown = function (event) {
+        if (event.key === 'Escape' || event.key === 'Esc') {
+          event.preventDefault();
+          gcheckClose();
+          return;
+        }
+        if (event.key !== 'Tab') return;
+        var items = gcheckFocusables(card);
+        if (items.length === 0) {
+          event.preventDefault();
+          try { card.focus(); } catch (e) { /* noop */ }
+          return;
+        }
+        var active = document.activeElement;
+        if (event.shiftKey) {
+          if (active === items[0] || !root.contains(active)) {
+            event.preventDefault();
+            try { items[items.length - 1].focus(); } catch (e) { /* noop */ }
+          }
+        } else if (active === items[items.length - 1] || !root.contains(active)) {
+          event.preventDefault();
+          try { items[0].focus(); } catch (e) { /* noop */ }
+        }
+      };
+
+      root.addEventListener('click', function (event) {
+        var el = event.target;
+        while (el && el !== root && el.nodeType === 1) {
+          if (el.hasAttribute && el.hasAttribute('data-cx-gcheck-close')) {
+            gcheckClose();
+            return;
+          }
+          el = el.parentNode;
+        }
+      });
+
+      var prevOverflow = '';
+      try { prevOverflow = document.body.style.overflow || ''; } catch (e) { /* noop */ }
+      document.body.appendChild(root);
+      try { document.body.style.overflow = 'hidden'; } catch (e) { /* noop */ }
+      document.addEventListener('keydown', onKeydown, true);
+      gcheckState = {
+        root: root,
+        trigger: trigger && trigger.focus ? trigger : null,
+        prevOverflow: prevOverflow,
+        onKeydown: onKeydown
+      };
+      try { card.focus(); } catch (e) { /* noop */ }
+      // Click beacon — track() already suppresses it in preview /
+      // indeterminate-verdict mode, so preview sessions stay silent.
+      track('empty_bottle_guarantee', 'click');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  var gcheckBound = false;
+  function bindGuaranteeCheck() {
+    if (gcheckBound) return;
+    gcheckBound = true;
+    try {
+      // Document-level delegation: the trigger button is cloned into the
+      // proof stack after this script runs, so bind once on the document.
+      document.addEventListener('click', function (event) {
+        var el = event.target;
+        while (el && el.nodeType === 1) {
+          if (el.hasAttribute && el.hasAttribute('data-cx-guarantee-check')) {
+            event.preventDefault();
+            gcheckOpen(el);
+            return;
+          }
+          el = el.parentNode;
+        }
+      });
+    } catch (e) { /* noop */ }
   }
 
   function widgetAllowed(tpl, featureKey) {
@@ -188,6 +313,166 @@
       return selector.parentElement;
     }
     return null;
+  }
+
+  // ------------------------------------------- dispatch countdown (v5.0)
+  //
+  // "Order within Xh Ym for same-day dispatch" — REAL urgency only.
+  // Liquid resolves the buyer country's schedule (cutoff "HH:MM" + IANA
+  // WAREHOUSE timezone + ISO working days 1-7) into cfg.dispatch; this
+  // engine decides VISIBILITY: shown only when today is a working day in
+  // the warehouse timezone AND the cutoff is still ahead today AND no
+  // more than showWithinHours remain. The clock suffix converts the
+  // cutoff into the buyer's OWN timezone/locale (Date#toLocaleTimeString
+  // on now + remaining — timezone-correct worldwide with no tz library).
+  // Any invalid schedule, missing string or Intl throw (bad timezone)
+  // hides the widget — fail closed, never fabricate urgency. ONE module
+  // interval (guarded by dispatchTimer) re-evaluates the mounted node
+  // each 30s tick — the widget hides itself the moment the cutoff passes
+  // or the window is exceeded — and self-clears when none remain.
+  var DISPATCH_ISO = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  var dispatchTimer = null;
+
+  function dispatchT(key, params) {
+    // Sentinel-param substitution over the #cx-pdp-config strings map
+    // (mirrors cellexia-cart.js t(); '' — never the raw key — on a miss so
+    // the caller can fail closed). Decode BEFORE substitution: the
+    // @@TOKENS@@ are plain ASCII and params are JS-supplied numbers/times.
+    var map = cfg && cfg.strings && typeof cfg.strings === 'object' ? cfg.strings : {};
+    var str = typeof map[key] === 'string' ? decodeEntities(map[key]) : '';
+    if (!str) return '';
+    if (params) {
+      Object.keys(params).forEach(function (p) {
+        var value = String(params[p]);
+        str = str.split('@@' + p.toUpperCase() + '@@').join(value);
+        str = str.replace(new RegExp('\\{\\{\\s*' + p + '\\s*\\}\\}', 'g'), value);
+      });
+    }
+    return str;
+  }
+
+  function dispatchSchedule() {
+    var d = cfg.dispatch;
+    if (!d || typeof d !== 'object') return null;
+    if (typeof d.cutoff !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(d.cutoff)) return null;
+    if (typeof d.timezone !== 'string' || !d.timezone) return null;
+    if (!Array.isArray(d.days) || d.days.length === 0) return null;
+    var within = Math.round(Number(d.showWithinHours));
+    if (!(within >= 1 && within <= 24)) return null;
+    var strings = cfg.strings;
+    if (!strings || typeof strings !== 'object' ||
+        typeof strings['dispatch.within'] !== 'string' ||
+        typeof strings['dispatch.within_minutes'] !== 'string' ||
+        typeof strings['dispatch.local_time'] !== 'string') return null;
+    return {
+      cutoffMinutes: Number(d.cutoff.slice(0, 2)) * 60 + Number(d.cutoff.slice(3, 5)),
+      timezone: d.timezone,
+      days: d.days,
+      withinMinutes: within * 60
+    };
+  }
+
+  function dispatchRemainingMs(schedule) {
+    // Milliseconds until today's cutoff in the WAREHOUSE timezone, or null
+    // (= hidden) when outside the credibility window. ANY throw -> null.
+    try {
+      var parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: schedule.timezone,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(new Date());
+      var map = {};
+      for (var i = 0; i < parts.length; i++) map[parts[i].type] = parts[i].value;
+      var iso = DISPATCH_ISO[map.weekday];
+      if (!iso || schedule.days.indexOf(iso) === -1) return null; // not a working day
+      var nowMinutes = (Number(map.hour) % 24) * 60 + Number(map.minute);
+      if (!(nowMinutes >= 0 && nowMinutes < 1440)) return null;
+      if (nowMinutes >= schedule.cutoffMinutes) return null; // cutoff passed
+      if (schedule.cutoffMinutes - nowMinutes > schedule.withinMinutes) return null; // too early
+      var seconds = Number(map.second);
+      if (!(seconds >= 0 && seconds < 60)) seconds = 0;
+      return (schedule.cutoffMinutes - nowMinutes) * 60000 - seconds * 1000;
+    } catch (e) {
+      return null; // invalid/unsupported timezone: hidden, never fake urgency
+    }
+  }
+
+  function dispatchSetText(node, remainingMs) {
+    var totalMin = Math.floor(remainingMs / 60000);
+    var text;
+    if (totalMin >= 60) {
+      text = dispatchT('dispatch.within', { hours: Math.floor(totalMin / 60), minutes: totalMin % 60 });
+    } else {
+      // Sub-hour reads more urgent; ceil so "0 minutes" can never render.
+      text = dispatchT('dispatch.within_minutes', { minutes: Math.max(1, Math.ceil(remainingMs / 60000)) });
+    }
+    var main = node.querySelector('.cx-dispatch__main');
+    if (main) main.textContent = text;
+    var local = node.querySelector('.cx-dispatch__local');
+    if (local) {
+      var clock = '';
+      try {
+        clock = new Date(Date.now() + remainingMs)
+          .toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      } catch (e) { clock = ''; }
+      local.textContent = clock ? dispatchT('dispatch.local_time', { time: clock }) : '';
+    }
+  }
+
+  function dispatchTick() {
+    // Re-run the WHOLE visibility computation for every mounted node —
+    // no cached node or schedule state survives between ticks.
+    var nodes = document.querySelectorAll('.cx-dispatch--pdp');
+    if (!nodes.length) {
+      if (dispatchTimer) { window.clearInterval(dispatchTimer); dispatchTimer = null; }
+      return;
+    }
+    var schedule = dispatchSchedule();
+    var remaining = schedule ? dispatchRemainingMs(schedule) : null;
+    for (var i = 0; i < nodes.length; i++) {
+      if (remaining === null) {
+        try {
+          if (nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
+        } catch (e) { /* noop */ }
+      } else {
+        dispatchSetText(nodes[i], remaining);
+      }
+    }
+    if (remaining === null && dispatchTimer) {
+      window.clearInterval(dispatchTimer);
+      dispatchTimer = null;
+    }
+  }
+
+  function dispatchEnsureTimer() {
+    if (dispatchTimer) return; // single guarded interval, never stacked
+    dispatchTimer = window.setInterval(dispatchTick, 30000);
+  }
+
+  function mountDispatch() {
+    // Injected directly after the .stock-msg row inside .pdp__grey
+    // (fallback: after .pdp__actions--flex) — BEFORE the badge chain's
+    // insertions, so it reads as part of the stock-message rhythm.
+    // Graceful no-op when the anchors are missing.
+    try {
+      if (document.querySelector('.cx-dispatch--pdp')) return; // idempotent
+      var schedule = dispatchSchedule();
+      if (!schedule) return;
+      var remaining = dispatchRemainingMs(schedule);
+      if (remaining === null) return;
+      var node = cloneTemplate('cx-tpl-dispatch', 'dispatch_countdown');
+      if (!node) return;
+      var grey = document.querySelector('.pdp__grey');
+      if (!grey) return;
+      var anchor = grey.querySelector('.stock-msg') || grey.querySelector('.pdp__actions--flex');
+      if (!anchor || !insertAfter(node, anchor)) return;
+      dispatchSetText(node, remaining);
+      dispatchEnsureTimer();
+      track('dispatch_countdown');
+    } catch (e) { /* never break the theme */ }
   }
 
   /**
@@ -288,8 +573,14 @@
         }
       }
 
+      // --- dispatch countdown (v5.0), directly after .stock-msg ---
+      mountDispatch();
+
       // --- SPEC v3 proof stack (has its own anchors + fallbacks) ---
       buildProofStack();
+
+      // --- guarantee-check modal trigger (v4.9) ---
+      bindGuaranteeCheck();
     } catch (e) { /* never break the theme */ }
 
     window.CellexiaBooster = window.CellexiaBooster || {};

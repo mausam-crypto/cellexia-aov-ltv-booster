@@ -147,9 +147,10 @@ npm run config:link   # connect to (or create) the app in your Partner dashboard
 npm run dev           # tunnels, hot-reloads app + all extensions, offers install to dev store
 ```
 
-`shopify.app.toml` ships with `client_id` empty — `npm run config:link` fills it. Scopes used:
-`read_products, write_products, read_publications, write_publications, read_orders, read_locales, read_translations`
-(publications scopes let the app publish the Order Protection product to the Online Store channel).
+`shopify.app.toml` ships with `client_id` empty — `npm run config:link` fills it. The
+authoritative scope list lives in `shopify.app.toml` (products, publications, orders,
+locales, translations incl. `write_translations` for booster auto-translation, markets,
+metaobjects, files, themes, shipping, price lists).
 
 ### Deploy
 

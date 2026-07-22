@@ -78,6 +78,19 @@ model OrderStat {
   @@index([shop, market, processedAt])
 }
 
+// Machine-translation config (v5.2). The API key is SERVER-ONLY: it lives in
+// this table and must never enter BoosterSettings (that blob is mirrored to
+// storefront-readable metafields).
+model TranslationConfig {
+  id         Int      @id @default(autoincrement())
+  shop       String   @unique
+  provider   String   @default("deepl")
+  apiKey     String   @default("")
+  autoOnSave Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 // Preview system state (SPEC v4). The raw token lives server-side only (this
 // DB + the checkout-only shop metafield) — never in page-visible Liquid
 // config. draftFlags: JSON Record<FeatureKey, boolean>.

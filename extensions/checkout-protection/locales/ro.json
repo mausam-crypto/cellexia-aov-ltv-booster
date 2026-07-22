@@ -3,5 +3,10 @@
   "description": "Protejează-ți comanda împotriva pierderii, furtului și deteriorării în timpul transportului.",
   "price_label": "pentru {{price}}",
   "added": "Comanda ta este protejată",
-  "error": "Protecția comenzii nu a putut fi actualizată. Te rugăm să încerci din nou."
+  "error": "Protecția comenzii nu a putut fi actualizată. Te rugăm să încerci din nou.",
+  "benefit_1": "Acoperă pierderea, furtul și deteriorarea în timpul transportului",
+  "benefit_2": "Înlocuire sau rambursare imediată — fără discuții cu curierul",
+  "benefit_3": "O atingere acum, zero griji după aceea",
+  "recommended": "Recomandat",
+  "price_suffix": "plată unică"
 }

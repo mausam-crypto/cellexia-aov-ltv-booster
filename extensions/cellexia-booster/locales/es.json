@@ -24,8 +24,19 @@
     "error": "Algo ha salido mal. Inténtalo de nuevo.",
     "switch_all_cta": "Cámbialo todo y ahorra un {{ percent }}%",
     "partial": "Productos con suscripción disponible: {{ eligible }} de {{ total }}",
-    "remove": "Quitar la suscripción",
-    "removed": "Suscripción eliminada"
+    "remove": "Quitar el tratamiento continuo",
+    "removed": "Tratamiento continuo eliminado"
+  },
+  "crosssell": {
+    "title": "El complemento perfecto para tu rutina",
+    "add": "Añadir",
+    "adding": "Añadiendo…",
+    "added": "Añadido a tu cesta"
+  },
+  "dispatch": {
+    "within": "Haz tu pedido en menos de {{ hours }} h {{ minutes }} min y lo enviamos hoy mismo",
+    "within_minutes": "Haz tu pedido en menos de {{ minutes }} min y lo enviamos hoy mismo",
+    "local_time": "antes de las {{ time }}, hora local"
   },
   "badges": {
     "secure_checkout": "Pago seguro",
@@ -96,16 +107,28 @@
     "honesty": "Cada lote se analiza de forma independiente y se publica. Saca tus propias conclusiones."
   },
   "bottle": {
+    "container_bottle": "frasco",
+    "container_jar": "tarro",
+    "container_tube": "tubo",
+    "container_pump": "frasco con dispensador",
+    "container_product": "producto",
     "title": "Aprovecha hasta la última gota",
-    "body": "Tómate {{ days }}. Si tus resultados no te encantan, devuelve el frasco vacío y te reembolsamos el importe completo.",
+    "body": "Tómate {{ days }}. Si tus resultados no te encantan, devuelve el {{ container }} vacío y te reembolsamos el importe completo.",
     "days_count": {
       "one": "{{ count }} día",
       "other": "{{ count }} días"
     },
-    "point_1": "Funciona o es gratis — incluso con el frasco vacío",
+    "point_1": "Funciona o es gratis — incluso con el {{ container }} vacío",
     "point_2": "Sin preguntas",
     "point_3": "Reembolso completo en tu método de pago original",
     "terms": "Ver las condiciones de la garantía"
+  },
+  "guarantee_check": {
+    "button": "Comprueba la garantía",
+    "title": "Nuestra garantía, a examen",
+    "mechanics_title": "Cómo funciona",
+    "trust_title": "Por qué puedes confiar en ella",
+    "footnote": "Esta garantía se suma a tus derechos legales como consumidor."
   },
   "survey": {
     "stat": "{{ recommend }} de cada {{ outof }}",
