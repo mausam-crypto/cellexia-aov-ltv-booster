@@ -157,8 +157,8 @@
     "timeline_ship": "Feladás: {{ date }}",
     "timeline_delivered": "Kézbesítve legkésőbb: {{ date }}",
     "box_title": "Garantált kézbesítés legkésőbb: {{ date }}",
-    "box_sub": "…különben visszatérítjük a pénzed, vagy ingyen küldünk egy cseretermeket.",
+    "box_sub": "…különben visszatérítjük a pénzed, vagy ingyen küldünk egy csereterméket.",
     "badge": "Kézbesítési garancia",
-    "tooltip": "Kézbesítés legkésőbb: {{ date }} — különben visszatérítjük a pénzed, vagy ingyen küldünk egy cseretermeket."
+    "tooltip": "Kézbesítés legkésőbb: {{ date }} – különben visszatérítjük a pénzed, vagy ingyen küldünk egy csereterméket."
   }
 }

@@ -154,15 +154,15 @@
     "verified_by": "Ankieta zweryfikowana przez {{ name }}"
   },
   "delivery": {
-    "line": "U Ciebie najpóźniej {{ date }}",
+    "line": "U Ciebie najpóźniej: {{ date }}",
     "range": "Przewidywana dostawa: {{ from }} – {{ to }}",
     "range_same": "Przewidywana dostawa: {{ date }}",
     "timeline_order": "Zamów dziś",
-    "timeline_ship": "Wysyłka {{ date }}",
-    "timeline_delivered": "Dostawa najpóźniej {{ date }}",
-    "box_title": "Gwarantowana dostawa najpóźniej {{ date }}",
+    "timeline_ship": "Wysyłka: {{ date }}",
+    "timeline_delivered": "Dostawa najpóźniej: {{ date }}",
+    "box_title": "Gwarantowana dostawa najpóźniej: {{ date }}",
     "box_sub": "…albo zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt.",
     "badge": "Gwarancja dostawy",
-    "tooltip": "Dostawa najpóźniej {{ date }} — w przeciwnym razie zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt."
+    "tooltip": "Dostawa najpóźniej: {{ date }}. W przeciwnym razie zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt."
   }
 }

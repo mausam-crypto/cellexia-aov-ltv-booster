@@ -150,15 +150,15 @@
     "verified_by": "Kyselyn on varmentanut {{ name }}"
   },
   "delivery": {
-    "line": "Perillä viimeistään {{ date }}",
+    "line": "Perillä viimeistään: {{ date }}",
     "range": "Arvioitu toimitus: {{ from }} – {{ to }}",
     "range_same": "Arvioitu toimitus: {{ date }}",
     "timeline_order": "Tilaa tänään",
-    "timeline_ship": "Lähetetään {{ date }}",
-    "timeline_delivered": "Toimitettu viimeistään {{ date }}",
-    "box_title": "Taattu toimitus viimeistään {{ date }}",
+    "timeline_ship": "Lähetyspäivä: {{ date }}",
+    "timeline_delivered": "Toimitettu viimeistään: {{ date }}",
+    "box_title": "Taattu toimitus viimeistään: {{ date }}",
     "box_sub": "… tai palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle.",
     "badge": "Toimitustakuu",
-    "tooltip": "Perillä viimeistään {{ date }} — muussa tapauksessa palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle."
+    "tooltip": "Perillä viimeistään: {{ date }}. Muussa tapauksessa palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle."
   }
 }

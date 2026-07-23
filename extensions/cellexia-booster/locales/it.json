@@ -154,7 +154,7 @@
     "range": "Consegna stimata: {{ from }} – {{ to }}",
     "range_same": "Consegna stimata: {{ date }}",
     "timeline_order": "Ordina oggi",
-    "timeline_ship": "Spedizione il {{ date }}",
+    "timeline_ship": "Spedizione {{ date }}",
     "timeline_delivered": "Consegnato entro {{ date }}",
     "box_title": "Consegna garantita entro {{ date }}",
     "box_sub": "…oppure ti rimborsiamo o ti inviamo gratuitamente un prodotto sostitutivo.",

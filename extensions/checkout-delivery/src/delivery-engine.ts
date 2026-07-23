@@ -346,3 +346,60 @@ export function computeDelivery(
   if (minUt === null || maxUt === null || maxUt < minUt) return null;
   return { dispatch: dispatchUt, min: minUt, max: maxUt };
 }
+
+/**
+ * v6.0.1 DATE_STYLE — full native date in the CHECKOUT's page language,
+ * never the browser locale. Pure twin of deliveryFormatDate in
+ * cellexia-pdp.js / cellexia-cart.js (the v601-date-fixtures.json contract):
+ *
+ *  - base language "ja": { month: 'long', day: 'numeric', weekday: 'short' }
+ *    → 7月25日(土) (Japanese e-commerce convention);
+ *  - EVERY other base language (known or unknown):
+ *    { weekday: 'long', day: 'numeric', month: 'long' } — the locale string
+ *    is passed to Intl VERBATIM ("pt-PT" stays "pt-PT") so Intl owns each
+ *    language's native order, punctuation, casing, script and digits (ar
+ *    keeps its own digits — never forced to Latin).
+ *
+ * Fallback chain: page-locale long form -> pre-v6.0.1 short browser form
+ * (missing locale or Intl rejecting the tag) -> '' ONLY when formatting
+ * itself throws (fail closed: hide, never mislabel a date). The UTC
+ * calendar stamp is rebuilt as a LOCAL noon Date so formatting can never
+ * shift the calendar day, whatever the buyer's UTC offset (unchanged house
+ * convention). Kept here (pure module) instead of Checkout.tsx so the sim
+ * can assert its output equals the fixtures file with real Intl.
+ */
+export function deliveryFormatDate(ut: number, locale: string): string {
+  const d = new Date(ut);
+  const local = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12);
+  const base =
+    typeof locale === 'string' && locale
+      ? locale.split('-')[0].toLowerCase()
+      : '';
+  if (base) {
+    try {
+      const options: Intl.DateTimeFormatOptions =
+        base === 'ja'
+          ? {month: 'long', day: 'numeric', weekday: 'short'}
+          : {weekday: 'long', day: 'numeric', month: 'long'};
+      let label = local.toLocaleDateString(locale, options);
+      // v6.0.2: careful French writes the first of a month as an ordinal
+      // ("vendredi 1er mai") — CLDR emits the cardinal "1".
+      if (base === 'fr' && d.getUTCDate() === 1 && typeof label === 'string') {
+        label = label.replace(/\b1\b/, '1er');
+      }
+      if (typeof label === 'string' && label) return label;
+    } catch {
+      // Intl rejected the locale tag: fall through to the short form
+    }
+  }
+  try {
+    const fallback = local.toLocaleDateString(undefined, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
+    return typeof fallback === 'string' && fallback ? fallback : '';
+  } catch {
+    return ''; // formatting itself threw: hidden, never a wrong date
+  }
+}

@@ -150,13 +150,13 @@
     "verified_by": "Enquête vérifiée par {{ name }}"
   },
   "delivery": {
-    "line": "Recevez-le d'ici le {{ date }}",
-    "range": "Livraison estimée : {{ from }} – {{ to }}",
-    "range_same": "Livraison estimée : {{ date }}",
+    "line": "Recevez-le d'ici au {{ date }}",
+    "range": "Livraison estimée du {{ from }} au {{ to }}",
+    "range_same": "Livraison estimée le {{ date }}",
     "timeline_order": "Commandez aujourd'hui",
     "timeline_ship": "Expédition le {{ date }}",
-    "timeline_delivered": "Livré d'ici le {{ date }}",
-    "box_title": "Livraison garantie d'ici le {{ date }}",
+    "timeline_delivered": "Livré d'ici au {{ date }}",
+    "box_title": "Livraison garantie d'ici au {{ date }}",
     "box_sub": "… ou nous vous remboursons, ou nous vous envoyons gratuitement un produit de remplacement.",
     "badge": "Garantie de livraison",
     "tooltip": "Livré le {{ date }} au plus tard — sinon nous vous remboursons ou nous vous envoyons gratuitement un produit de remplacement."

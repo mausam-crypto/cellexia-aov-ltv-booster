@@ -1,12 +1,12 @@
 {
-  "line": "Primești comanda până la {{date}}",
+  "line": "Primești comanda cel târziu {{date}}",
   "range": "Livrare estimată: {{from}} – {{to}}",
   "range_same": "Livrare estimată: {{date}}",
   "timeline_order": "Comandă azi",
   "timeline_ship": "Se expediază {{date}}",
-  "timeline_delivered": "Livrat până la {{date}}",
-  "box_title": "Livrare garantată până la {{date}}",
+  "timeline_delivered": "Livrat cel târziu {{date}}",
+  "box_title": "Livrare garantată cel târziu {{date}}",
   "box_sub": "…sau îți returnăm banii ori îți trimitem gratuit un produs de înlocuire.",
   "badge": "Garanția livrării",
-  "tooltip": "Livrat cel târziu pe {{date}} — altfel îți returnăm banii sau îți trimitem gratuit un produs de înlocuire."
+  "tooltip": "Livrat cel târziu {{date}} — altfel îți returnăm banii sau îți trimitem gratuit un produs de înlocuire."
 }

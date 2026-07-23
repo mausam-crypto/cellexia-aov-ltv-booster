@@ -8,5 +8,5 @@
   "box_title": "Garantert levering senest {{date}}",
   "box_sub": "… ellers refunderer vi deg eller sender deg en gratis erstatning.",
   "badge": "Leveringsgaranti",
-  "tooltip": "Levert senest {{date}} — ellers refunderer vi deg eller sender deg en gratis erstatning."
+  "tooltip": "Levert senest {{date}} – ellers refunderer vi deg eller sender deg en gratis erstatning."
 }

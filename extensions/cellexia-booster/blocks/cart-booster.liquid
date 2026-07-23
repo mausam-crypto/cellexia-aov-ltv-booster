@@ -234,7 +234,7 @@ endif
 "currency": {{ cart.currency.iso_code | json }},
 "dispatch": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}, "showWithinHours": {{ cx_dsp_within }}},
 {%- if cx_eff_delivery or cx_draft_delivery %}
-"delivery": {"minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}},
+"delivery": {"pageLocale": {{ request.locale.iso_code | json }}, "minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}},
 "deliveryStrings": {"delivery.line": {{ 'delivery.line' | t: date: '@@DATE@@' | json }}, "delivery.range": {{ 'delivery.range' | t: from: '@@FROM@@', to: '@@TO@@' | json }}, "delivery.range_same": {{ 'delivery.range_same' | t: date: '@@DATE@@' | json }}, "delivery.timeline_ship": {{ 'delivery.timeline_ship' | t: date: '@@DATE@@' | json }}, "delivery.timeline_delivered": {{ 'delivery.timeline_delivered' | t: date: '@@DATE@@' | json }}, "delivery.box_title": {{ 'delivery.box_title' | t: date: '@@DATE@@' | json }}, "delivery.tooltip": {{ 'delivery.tooltip' | t: date: '@@DATE@@' | json }}},
 {%- endif %}
 "overrides": {

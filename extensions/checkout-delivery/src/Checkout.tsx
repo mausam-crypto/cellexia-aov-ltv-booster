@@ -10,12 +10,14 @@ import {
   useApi,
   useAppMetafields,
   useAttributeValues,
+  useLanguage,
   useLocalizationMarket,
   useShippingAddress,
   useTranslate,
 } from '@shopify/ui-extensions-react/checkout';
 import {
   computeDelivery,
+  deliveryFormatDate,
   resolveDeliveryConfig,
   type DeliveryResult,
 } from './delivery-engine';
@@ -313,10 +315,18 @@ function GuaranteeMarker({
 
 function Extension() {
   const translate = useTranslate();
-  const {i18n, extension} = useApi();
+  const {extension} = useApi();
   const metafieldEntries = useAppMetafields();
   const market = useLocalizationMarket();
   const shippingAddress = useShippingAddress();
+  // v6.0.1: the CHECKOUT's own localization language (localization.language
+  // via useLanguage — reactive isoCode like "fr" / "pt-PT" / "fr-CA"), the
+  // checkout twin of the storefront's request.locale.iso_code pageLocale.
+  // NOT the checkout i18n date formatter: the DATE_STYLE spec needs per-base-language
+  // STRUCTURE control (the ja special case + verbatim-locale rule) and
+  // byte-equality with v601-date-fixtures.json, so the pure engine
+  // formatter calls Intl directly with this locale.
+  const language = useLanguage();
 
   // CHECKOUT EDITOR detection (v4.9 lesson): extensions rendering null when
   // disabled are UNPLACEABLE in the checkout editor — inside the editor
@@ -420,34 +430,12 @@ function Extension() {
       5 * 86400000,
   };
 
-  // Buyer-locale date labels, matching the storefront convention exactly:
-  // weekday short, day numeric, month short. The UTC calendar stamp is
-  // rebuilt as a LOCAL noon Date so formatting can never shift the day.
+  // v6.0.1 page-language date labels, matching the storefront convention
+  // exactly: the shared DATE_STYLE spec (ja special case, verbatim-locale
+  // rule, long-form default, short-form fallback chain, local-noon rebuild)
+  // lives in the PURE engine module so the sim asserts fixture conformance.
   function dateLabel(ut: number): string {
-    try {
-      const d = new Date(ut);
-      const localNoon = new Date(
-        d.getUTCFullYear(),
-        d.getUTCMonth(),
-        d.getUTCDate(),
-        12,
-      );
-      const options: Intl.DateTimeFormatOptions = {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-      };
-      try {
-        const label = i18n.formatDate(localNoon, options);
-        if (typeof label === 'string' && label) return label;
-      } catch {
-        // fall through to toLocaleDateString
-      }
-      const fallback = localNoon.toLocaleDateString(undefined, options);
-      return typeof fallback === 'string' ? fallback : '';
-    } catch {
-      return '';
-    }
+    return deliveryFormatDate(ut, language.isoCode);
   }
 
   const shipLabel = dateLabel(effective.dispatch);

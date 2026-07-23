@@ -731,6 +731,7 @@
       deliveryDays: days,
       holidaysEnabled: hol,
       country: country,
+      pageLocale: typeof d.pageLocale === 'string' ? d.pageLocale : '',
       cutoffMinutes: Number(s.cutoff.slice(0, 2)) * 60 + Number(s.cutoff.slice(3, 5)),
       timezone: s.timezone,
       dispatchDays: s.days
@@ -820,27 +821,53 @@
     return { dispatch: dispatchUt, min: minUt, max: maxUt };
   }
 
-  function deliveryLabel(ut) {
-    // Buyer-locale short date label. The UTC calendar stamp is rebuilt as
-    // a LOCAL noon Date so toLocaleDateString (buyer's own timezone) can
-    // never shift the calendar day, whatever the buyer's UTC offset.
+  function deliveryFormatDate(ut, locale) {
+    // v6.0.1 DATE_STYLE — full native date in the PAGE language, never the
+    // browser locale. Base language ja keeps the Japanese e-commerce
+    // convention 7月25日(土) (month long + day + weekday short); EVERY
+    // other base language (known or unknown) renders weekday long + day +
+    // month long. The page locale string is passed to Intl VERBATIM
+    // ("pt-PT" stays "pt-PT") so Intl owns each language's native order,
+    // punctuation, casing, script and digits (ar keeps its own digits —
+    // never forced to Latin). Fallback chain: page-locale long form ->
+    // pre-v6.0.1 short browser form (missing pageLocale or Intl rejecting
+    // the tag) -> '' ONLY when formatting itself throws (fail closed:
+    // hide, never mislabel a date). The UTC calendar stamp is rebuilt as
+    // a LOCAL noon Date so formatting can never shift the calendar day,
+    // whatever the buyer's UTC offset (unchanged house convention).
+    var d = new Date(ut);
+    var local = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12);
+    var base = typeof locale === 'string' && locale ? locale.split('-')[0].toLowerCase() : '';
+    if (base) {
+      try {
+        var label = local.toLocaleDateString(locale, base === 'ja'
+          ? { month: 'long', day: 'numeric', weekday: 'short' }
+          : { weekday: 'long', day: 'numeric', month: 'long' });
+        // v6.0.2: careful French writes the FIRST of a month as an ordinal
+        // ("vendredi 1er mai") — CLDR emits the cardinal "1", so the single
+        // digit day token is upgraded for base language fr only.
+        if (base === 'fr' && d.getUTCDate() === 1 && typeof label === 'string') {
+          label = label.replace(/\b1\b/, '1er');
+        }
+        if (typeof label === 'string' && label) return label;
+      } catch (e) { /* Intl rejected the locale tag: fall through */ }
+    }
     try {
-      var d = new Date(ut);
-      var local = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12);
-      var label = local.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-      return typeof label === 'string' && label ? label : '';
-    } catch (e) {
-      return '';
+      var label2 = local.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+      return typeof label2 === 'string' && label2 ? label2 : '';
+    } catch (e2) {
+      return ''; // formatting itself threw: hidden, never a wrong date
     }
   }
 
-  function deliveryTexts(result) {
+  function deliveryTexts(result, dc) {
     // Every string the four formats can render — null when ANY piece is
     // missing (fail closed; the widget never shows a half-filled promise).
-    // The range collapses to range_same when minDate === maxDate.
-    var shipL = deliveryLabel(result.dispatch);
-    var minL = deliveryLabel(result.min);
-    var maxL = deliveryLabel(result.max);
+    // The range collapses to range_same when minDate === maxDate. Dates
+    // are v6.0.1 full native forms in the PAGE language (dc.pageLocale).
+    var shipL = deliveryFormatDate(result.dispatch, dc.pageLocale);
+    var minL = deliveryFormatDate(result.min, dc.pageLocale);
+    var maxL = deliveryFormatDate(result.max, dc.pageLocale);
     if (!shipL || !minL || !maxL) return null;
     var texts = {
       line: deliveryT('delivery.line', { date: maxL }),
@@ -963,7 +990,7 @@
     }
     var dc = deliveryConfig();
     var result = dc ? deliveryCompute(dc) : null;
-    var texts = result ? deliveryTexts(result) : null;
+    var texts = result ? deliveryTexts(result, dc) : null;
     for (var i = 0; i < nodes.length; i++) {
       if (texts === null) {
         try {
@@ -997,7 +1024,7 @@
       if (!dc) return; // invalid/hidden config: fail closed
       var result = deliveryCompute(dc);
       if (!result) return; // no defensible dates: fail closed
-      var texts = deliveryTexts(result);
+      var texts = deliveryTexts(result, dc);
       if (!texts) return; // missing strings: fail closed
       var node = cloneTemplate(deliveryTemplateId(), 'delivery_estimate');
       if (!node) return;
