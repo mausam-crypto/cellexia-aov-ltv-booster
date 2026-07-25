@@ -160,5 +160,31 @@
     "box_sub": "…o te reembolsamos el importe o te enviamos gratis un producto de sustitución.",
     "badge": "Garantía de entrega",
     "tooltip": "Entrega el {{ date }} o antes — o te reembolsamos el importe o te enviamos gratis un producto de sustitución."
+  },
+  "amazon": {
+    "in_stock": "En stock",
+    "free_delivery": "Entrega GRATIS",
+    "over_threshold": "en pedidos superiores a {{ amount }}",
+    "add_more": "Añade {{ amount }} más para conseguir el envío GRATIS.",
+    "qualifies": "Tu pedido cumple los requisitos para el envío GRATIS.",
+    "order_within": "Haz tu pedido en menos de {{ hours }} h {{ minutes }} min",
+    "ships_from": "Enviado desde: {{ country }}",
+    "secure": "Transacción segura",
+    "free_returns": "Devoluciones GRATIS",
+    "bought_count": "{{ n }}+ comprados el mes pasado",
+    "bestseller": "N.º {{ rank }} más vendido",
+    "fbt_title": "Comprados juntos habitualmente",
+    "fbt_this_item": "Este producto:",
+    "fbt_total": "Precio total:",
+    "fbt_add": {
+      "one": "Añadir a la cesta",
+      "other": "Añadir los {{ count }} a la cesta"
+    },
+    "fbt_add_both": "Añadir los dos a la cesta",
+    "similar_title": "Productos similares",
+    "cta_count": {
+      "one": "Tramitar el pedido ({{ count }} producto)",
+      "other": "Tramitar el pedido ({{ count }} productos)"
+    }
   }
 }

@@ -1,0 +1,21 @@
+{%- assign cx_bkey = key | default: feature -%}
+<script>
+(function () {
+try {
+var w = window;
+{%- if b2b %}
+if (w.isB2BCustomer === true) return;
+{%- endif %}
+w.__cxSeen = w.__cxSeen || {};
+if (w.__cxSeen.{{ cx_bkey }}) return;
+w.__cxSeen.{{ cx_bkey }} = 1;
+var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
+var payload = JSON.stringify({ feature: {{ feature | json }}, type: 'impression', {% if market != blank %}market: {{ market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
+if (navigator.sendBeacon) {
+navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
+} else if (w.fetch) {
+w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
+}
+} catch (e) {}
+})();
+</script>

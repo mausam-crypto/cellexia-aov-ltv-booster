@@ -39,58 +39,8 @@ endif
 {%- endif -%}
 </div>
 </div>
-<script>
-(function () {
-try {
-var w = window;
-w.__cxSeen = w.__cxSeen || {};
-if (w.__cxSeen.guarantee_block) return;
-w.__cxSeen.guarantee_block = 1;
-var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
-var payload = JSON.stringify({ feature: 'guarantee', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
-if (navigator.sendBeacon) {
-navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
-} else if (w.fetch) {
-w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
-}
-} catch (e) { /* never break the theme */ }
-})();
-</script>
+{% render 'cx-impression', feature: 'guarantee', key: 'guarantee_block', market: cx_market %}
 {%- endif -%}
-
 {% schema %}
-{
-"name": "Cellexia guarantee",
-"target": "section",
-"settings": [
-{
-"type": "text",
-"id": "days_override",
-"label": "Days override",
-"info": "Leave blank to use the guarantee window configured in the Cellexia dashboard."
-},
-{
-"type": "text",
-"id": "title_override",
-"label": "Title override",
-"info": "Leave blank to use the translated default."
-},
-{
-"type": "text",
-"id": "body_override",
-"label": "Body override",
-"info": "Leave blank to use the translated default."
-},
-{
-"type": "select",
-"id": "layout",
-"label": "Layout",
-"options": [
-{ "value": "full", "label": "Full card" },
-{ "value": "compact", "label": "Compact row" }
-],
-"default": "full"
-}
-]
-}
+{"name":"Cellexia guarantee","target":"section","settings":[{"type":"text","id":"days_override","label":"Days override","info":"Leave blank to use the guarantee window configured in the Cellexia dashboard."},{"type":"text","id":"title_override","label":"Title override","info":"Leave blank to use the translated default."},{"type":"text","id":"body_override","label":"Body override","info":"Leave blank to use the translated default."},{"type":"select","id":"layout","label":"Layout","options":[{"value":"full","label":"Full card"},{"value":"compact","label":"Compact row"}],"default":"full"}]}
 {% endschema %}

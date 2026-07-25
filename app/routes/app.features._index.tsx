@@ -54,6 +54,16 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   cart_cross_sell: "/app/features/cart",
   dispatch_countdown: "/app/features/dispatch",
   delivery_estimate: "/app/features/delivery",
+  az_buy_box: "/app/features/amazon",
+  az_microcopy: "/app/features/amazon",
+  az_delivery_line: "/app/features/amazon",
+  az_stock_line: "/app/features/amazon",
+  az_bought_count: "/app/features/amazon",
+  az_bestseller_badge: "/app/features/amazon",
+  az_fbt: "/app/features/amazon",
+  az_similar_items: "/app/features/amazon",
+  az_cart_free_line: "/app/features/amazon",
+  az_cta_count: "/app/features/amazon",
 };
 
 const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
@@ -93,6 +103,23 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
     description:
       "Checkout UI extensions (Shopify Plus): last-step upsells, order protection and the reassurance module.",
     keys: ["checkout_upsell", "checkout_protection", "checkout_trust"],
+  },
+  {
+    title: "Amazon patterns",
+    description:
+      "Familiar marketplace patterns — layout, ordering and color conventions shoppers know — adapted to Cellexia branding. Patterns only, never their brand.",
+    keys: [
+      "az_buy_box",
+      "az_microcopy",
+      "az_delivery_line",
+      "az_stock_line",
+      "az_bought_count",
+      "az_bestseller_badge",
+      "az_fbt",
+      "az_similar_items",
+      "az_cart_free_line",
+      "az_cta_count",
+    ],
   },
 ];
 

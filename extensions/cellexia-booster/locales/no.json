@@ -160,5 +160,31 @@
     "box_sub": "… ellers refunderer vi deg eller sender deg en gratis erstatning.",
     "badge": "Leveringsgaranti",
     "tooltip": "Levert senest {{ date }} – ellers refunderer vi deg eller sender deg en gratis erstatning."
+  },
+  "amazon": {
+    "in_stock": "På lager",
+    "free_delivery": "GRATIS levering",
+    "over_threshold": "ved bestillinger over {{ amount }}",
+    "add_more": "Legg til {{ amount }} til for å få GRATIS frakt.",
+    "qualifies": "Bestillingen din kvalifiserer til GRATIS frakt.",
+    "order_within": "Bestill innen {{ hours }} t {{ minutes }} min",
+    "ships_from": "Sendes fra {{ country }}",
+    "secure": "Sikker transaksjon",
+    "free_returns": "GRATIS retur",
+    "bought_count": "{{ n }}+ kjøpt siste måned",
+    "bestseller": "Bestselger nr. {{ rank }}",
+    "fbt_title": "Kjøpes ofte sammen",
+    "fbt_this_item": "Denne varen:",
+    "fbt_total": "Totalpris:",
+    "fbt_add": {
+      "one": "Legg i handlekurven",
+      "other": "Legg alle {{ count }} i handlekurven"
+    },
+    "fbt_add_both": "Legg begge i handlekurven",
+    "similar_title": "Lignende varer",
+    "cta_count": {
+      "one": "Gå til kassen ({{ count }} vare)",
+      "other": "Gå til kassen ({{ count }} varer)"
+    }
   }
 }

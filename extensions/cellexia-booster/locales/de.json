@@ -160,5 +160,31 @@
     "box_sub": "… oder wir erstatten Ihnen den Kaufpreis oder senden Ihnen kostenlos ein Ersatzprodukt.",
     "badge": "Liefergarantie",
     "tooltip": "Zustellung bis spätestens {{ date }} – andernfalls erstatten wir Ihnen den Kaufpreis oder senden Ihnen kostenlos ein Ersatzprodukt."
+  },
+  "amazon": {
+    "in_stock": "Auf Lager",
+    "free_delivery": "GRATIS Lieferung",
+    "over_threshold": "bei Bestellungen ab {{ amount }}",
+    "add_more": "Fügen Sie noch {{ amount }} hinzu, um GRATIS Versand zu erhalten.",
+    "qualifies": "Ihre Bestellung qualifiziert sich für den GRATIS Versand.",
+    "order_within": "Bestellen Sie innerhalb von {{ hours }} Std. {{ minutes }} Min.",
+    "ships_from": "Versand aus: {{ country }}",
+    "secure": "Sichere Transaktion",
+    "free_returns": "KOSTENLOSE Retouren",
+    "bought_count": "{{ n }}+ Mal im letzten Monat gekauft",
+    "bestseller": "Bestseller Nr. {{ rank }}",
+    "fbt_title": "Wird oft zusammen gekauft",
+    "fbt_this_item": "Dieser Artikel:",
+    "fbt_total": "Gesamtpreis:",
+    "fbt_add": {
+      "one": "In den Warenkorb",
+      "other": "Alle {{ count }} in den Warenkorb"
+    },
+    "fbt_add_both": "Beide in den Warenkorb",
+    "similar_title": "Ähnliche Artikel",
+    "cta_count": {
+      "one": "Zur Kasse gehen ({{ count }} Artikel)",
+      "other": "Zur Kasse gehen ({{ count }} Artikel)"
+    }
   }
 }

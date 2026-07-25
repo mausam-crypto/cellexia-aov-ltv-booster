@@ -113,6 +113,21 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
     title: "Checkout",
     keys: ["checkout_upsell", "checkout_protection", "checkout_trust"],
   },
+  {
+    title: "Amazon patterns",
+    keys: [
+      "az_buy_box",
+      "az_microcopy",
+      "az_delivery_line",
+      "az_stock_line",
+      "az_bought_count",
+      "az_bestseller_badge",
+      "az_fbt",
+      "az_similar_items",
+      "az_cart_free_line",
+      "az_cta_count",
+    ],
+  },
 ];
 
 /**

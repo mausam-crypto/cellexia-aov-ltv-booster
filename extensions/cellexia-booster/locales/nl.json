@@ -160,5 +160,31 @@
     "box_sub": "… of je krijgt je geld terug of we sturen gratis een vervangend product.",
     "badge": "Bezorggarantie",
     "tooltip": "Uiterlijk {{ date }} bezorgd – anders krijg je je geld terug of sturen we gratis een vervangend product."
+  },
+  "amazon": {
+    "in_stock": "Op voorraad",
+    "free_delivery": "GRATIS bezorging",
+    "over_threshold": "bij bestellingen vanaf {{ amount }}",
+    "add_more": "Voeg nog {{ amount }} toe om in aanmerking te komen voor GRATIS verzending.",
+    "qualifies": "Je bestelling komt in aanmerking voor GRATIS verzending.",
+    "order_within": "Bestel binnen {{ hours }} u {{ minutes }} min",
+    "ships_from": "Verzonden vanuit: {{ country }}",
+    "secure": "Veilige transactie",
+    "free_returns": "GRATIS retourneren",
+    "bought_count": "{{ n }}+ keer gekocht in de afgelopen maand",
+    "bestseller": "Nr. {{ rank }} bestseller",
+    "fbt_title": "Vaak samen gekocht",
+    "fbt_this_item": "Dit artikel:",
+    "fbt_total": "Totale prijs:",
+    "fbt_add": {
+      "one": "Toevoegen aan winkelwagen",
+      "other": "Voeg alle {{ count }} toe aan winkelwagen"
+    },
+    "fbt_add_both": "Voeg beide toe aan winkelwagen",
+    "similar_title": "Vergelijkbare artikelen",
+    "cta_count": {
+      "one": "Doorgaan naar afrekenen ({{ count }} artikel)",
+      "other": "Doorgaan naar afrekenen ({{ count }} artikelen)"
+    }
   }
 }

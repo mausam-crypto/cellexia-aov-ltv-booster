@@ -20,6 +20,8 @@
 {%- assign cx_draft_crosssell = false -%}
 {%- assign cx_draft_dispatch = false -%}
 {%- assign cx_draft_delivery = false -%}
+{%- assign cx_draft_azfree = false -%}
+{%- assign cx_draft_azcta = false -%}
 {%- if cx_prev_armed -%}
 {%- liquid
 assign cx_prev_flags = cx_prev.draftFlags
@@ -50,6 +52,12 @@ assign cx_draft_delivery = true
 endif
 endunless
 endif
+if cx_prev_flags.az_cart_free_line == true
+assign cx_draft_azfree = true
+endif
+if cx_prev_flags.az_cta_count == true
+assign cx_draft_azcta = true
+endif
 if cfg.cartUpsell.enabled == true and cfg.cartUpsell.showTrustRow != false
 assign cx_draft_trustrow = true
 endif
@@ -62,28 +70,29 @@ endif
 if cx_de.enabled == true and cx_de.showInCart != false and cx_del_hidden == false
 assign cx_draft_delivery = true
 endif
+if cfg.amazon.cartFreeLine == true
+assign cx_draft_azfree = true
+endif
+if cfg.amazon.ctaCount == true
+assign cx_draft_azcta = true
+endif
 -%}
 {%- endif -%}
 {%- assign cx_cart_draft_any = false -%}
-{%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow or cx_draft_crosssell or cx_draft_dispatch or cx_draft_delivery -%}
+{%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow or cx_draft_crosssell or cx_draft_dispatch or cx_draft_delivery or cx_draft_azfree or cx_draft_azcta -%}
 {%- assign cx_cart_draft_any = true -%}
 {%- endif -%}
 <script>
 (function () {
-// Once-per-session "session" beacon — the experiment tracker's
-// conversion-rate denominator. Depends ONLY on the config metafield
-// existing, never on a feature flag. When sessionStorage is
-// unavailable (private mode, storage blocked) we cannot dedupe, so we
-// send NOTHING rather than spam a beacon per page view.
 try {
 var KEY = 'cx_session_sent';
 var store = window.sessionStorage;
 if (!store || store.getItem(KEY)) return;
 {%- if cx_prev_armed %}
-if (store.getItem('cx_preview_ok')) return; // server-verified preview browser — never a session
+if (store.getItem('cx_preview_ok')) return;
 {%- endif %}
 store.setItem(KEY, '1');
-if (store.getItem(KEY) !== '1') return; // write silently dropped
+if (store.getItem(KEY) !== '1') return;
 var root = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
 var payload = JSON.stringify({ feature: 'site', type: 'session', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: {{ cart.currency.iso_code | json }} });
 if (navigator.sendBeacon) {
@@ -91,10 +100,10 @@ navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: '
 } else if (window.fetch) {
 window.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
 }
-} catch (e) { /* never break the theme */ }
+} catch (e) {}
 })();
 </script>
-{%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_de.enabled == true or cx_cart_draft_any -%}
+{%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_de.enabled == true or cfg.amazon.cartFreeLine == true or cfg.amazon.ctaCount == true or cx_cart_draft_any -%}
 {%- liquid
 assign threshold = cfg.global.freeShippingThreshold | default: 150
 assign cx_fs = cfg.freeShipping.byMarket[cx_market]
@@ -102,12 +111,10 @@ assign guarantee_days = cfg.guarantee.days | default: 60
 assign tp_rating = cfg.trustpilot.rating | default: 4.8
 assign tp_rating_rounded = tp_rating | round: 1
 assign tp_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
-
 assign cx_live_cart = false
 if cfg.cartUpsell.enabled == true
 assign cx_live_cart = true
 endif
-
 assign cx_eff_volume = false
 if cx_live_cart
 unless cfg.cartUpsell.showVolumeUpsell == false
@@ -117,7 +124,6 @@ assign cx_eff_volume = true
 endif
 endunless
 endif
-
 assign cx_eff_shipbar = false
 if cx_live_cart
 unless cfg.cartUpsell.showFreeShippingBar == false
@@ -127,7 +133,6 @@ assign cx_eff_shipbar = true
 endif
 endunless
 endif
-
 assign cx_eff_subscription = false
 if cx_live_cart
 unless cfg.cartUpsell.showSubscriptionUpsell == false
@@ -137,7 +142,6 @@ assign cx_eff_subscription = true
 endif
 endunless
 endif
-
 assign cx_eff_trustrow = false
 if cx_live_cart
 unless cfg.cartUpsell.showTrustRow == false
@@ -147,7 +151,6 @@ assign cx_eff_trustrow = true
 endif
 endunless
 endif
-
 assign cx_eff_crosssell = false
 if cfg.cartCrossSell.enabled == true
 assign cx_scope = cfg.marketScopes.cart_cross_sell
@@ -155,7 +158,6 @@ if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
 assign cx_eff_crosssell = true
 endif
 endif
-
 assign cx_tp_on = false
 if cfg.trustpilot.enabled == true
 assign cx_scope = cfg.marketScopes.trustpilot
@@ -163,7 +165,6 @@ if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
 assign cx_tp_on = true
 endif
 endif
-
 assign cx_country = localization.country.iso_code | upcase
 assign cx_dsp = cfg.dispatch.byCountry[cx_country]
 assign cx_dsp_cutoff = cfg.dispatch.cutoff | default: '14:00'
@@ -175,7 +176,6 @@ assign cx_dsp_cutoff = cx_dsp.cutoff
 assign cx_dsp_tz = cx_dsp.timezone
 assign cx_dsp_days = cx_dsp.days
 endif
-
 assign cx_eff_dispatch = false
 if cfg.dispatch.enabled == true
 unless cfg.dispatch.showInCart == false
@@ -185,7 +185,6 @@ assign cx_eff_dispatch = true
 endif
 endunless
 endif
-
 assign cx_eff_delivery = false
 if cx_de.enabled == true and cx_del_hidden == false
 unless cx_de.showInCart == false
@@ -194,6 +193,20 @@ if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
 assign cx_eff_delivery = true
 endif
 endunless
+endif
+assign cx_eff_azfree = false
+if cfg.amazon.cartFreeLine == true
+assign cx_scope = cfg.marketScopes.az_cart_free_line
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_eff_azfree = true
+endif
+endif
+assign cx_eff_azcta = false
+if cfg.amazon.ctaCount == true
+assign cx_scope = cfg.marketScopes.az_cta_count
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_eff_azcta = true
+endif
 endif
 -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
@@ -215,6 +228,7 @@ endif
 "cartPage": {% if block.settings.enable_cart_page %}true{% else %}false{% endif %}
 },
 "market": {{ cx_market | json }},
+"pageLocale": {{ request.locale.iso_code | json }},
 "effective": {
 "dispatch": {{ cx_eff_dispatch }},
 "delivery": {{ cx_eff_delivery }},
@@ -222,10 +236,12 @@ endif
 "shipbar": {{ cx_eff_shipbar }},
 "subscription": {{ cx_eff_subscription }},
 "crossSell": {{ cx_eff_crosssell }},
-"trustRow": {{ cx_eff_trustrow }}
+"trustRow": {{ cx_eff_trustrow }},
+"azCartFreeLine": {{ cx_eff_azfree }},
+"azCtaCount": {{ cx_eff_azcta }}
 },
 {%- if cx_prev_armed %}
-"preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}},
+"preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}, "deliveryFormat": {{ cx_prev.draftConfig.deliveryFormatCart | json }}},
 {%- endif %}
 "threshold": {"cents": {% if cx_fs %}{{ cx_fs.amount | times: 100 | round }}{% else %}{{ threshold | times: 100 }}{% endif %}, "currency": {% if cx_fs %}{{ cx_fs.currencyCode | json }}{% else %}{{ shop.currency | json }}{% endif %}},
 "shopCurrency": {{ shop.currency | json }},
@@ -234,8 +250,8 @@ endif
 "currency": {{ cart.currency.iso_code | json }},
 "dispatch": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}, "showWithinHours": {{ cx_dsp_within }}},
 {%- if cx_eff_delivery or cx_draft_delivery %}
-"delivery": {"pageLocale": {{ request.locale.iso_code | json }}, "minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}},
-"deliveryStrings": {"delivery.line": {{ 'delivery.line' | t: date: '@@DATE@@' | json }}, "delivery.range": {{ 'delivery.range' | t: from: '@@FROM@@', to: '@@TO@@' | json }}, "delivery.range_same": {{ 'delivery.range_same' | t: date: '@@DATE@@' | json }}, "delivery.timeline_ship": {{ 'delivery.timeline_ship' | t: date: '@@DATE@@' | json }}, "delivery.timeline_delivered": {{ 'delivery.timeline_delivered' | t: date: '@@DATE@@' | json }}, "delivery.box_title": {{ 'delivery.box_title' | t: date: '@@DATE@@' | json }}, "delivery.tooltip": {{ 'delivery.tooltip' | t: date: '@@DATE@@' | json }}},
+"delivery": {"live": {{ cx_eff_delivery }}, "format": {{ cx_de.formatCart | json }}, "pageLocale": {{ request.locale.iso_code | json }}, "minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}},
+"deliveryStrings": {"delivery.line": {{ 'delivery.line' | t: date: '@@DATE@@' | json }}, "delivery.range": {{ 'delivery.range' | t: from: '@@FROM@@', to: '@@TO@@' | json }}, "delivery.range_same": {{ 'delivery.range_same' | t: date: '@@DATE@@' | json }}, "delivery.timeline_ship": {{ 'delivery.timeline_ship' | t: date: '@@DATE@@' | json }}, "delivery.timeline_delivered": {{ 'delivery.timeline_delivered' | t: date: '@@DATE@@' | json }}, "delivery.box_title": {{ 'delivery.box_title' | t: date: '@@DATE@@' | json }}, "delivery.tooltip": {{ 'delivery.tooltip' | t: date: '@@DATE@@' | json }}, "delivery.badge": {{ 'delivery.badge' | t | json }}, "delivery.timeline_order": {{ 'delivery.timeline_order' | t | json }}, "delivery.box_sub": {{ 'delivery.box_sub' | t | json }}},
 {%- endif %}
 "overrides": {
 "volumeTitle": {{ block.settings.volume_title_override | default: '' | json }},
@@ -272,6 +288,14 @@ endif
 "dispatch.within_minutes": {{ 'dispatch.within_minutes' | t: minutes: '@@MINUTES@@' | json }},
 "badges.secure_checkout": {{ 'badges.secure_checkout' | t | json }},
 "badges.money_back": {{ 'badges.money_back' | t: days: guarantee_days | json }},
+"amazon.qualifies": {{ 'amazon.qualifies' | t | json }},
+"amazon.add_more": {{ 'amazon.add_more' | t: amount: '@@AMOUNT@@' | json }},
+"amazon.cta_count.zero": {{ 'amazon.cta_count.zero' | t: count: '@@COUNT@@' | json }},
+"amazon.cta_count.one": {{ 'amazon.cta_count.one' | t: count: '@@COUNT@@' | json }},
+"amazon.cta_count.two": {{ 'amazon.cta_count.two' | t: count: '@@COUNT@@' | json }},
+"amazon.cta_count.few": {{ 'amazon.cta_count.few' | t: count: '@@COUNT@@' | json }},
+"amazon.cta_count.many": {{ 'amazon.cta_count.many' | t: count: '@@COUNT@@' | json }},
+"amazon.cta_count.other": {{ 'amazon.cta_count.other' | t: count: '@@COUNT@@' | json }},
 "a11y.loading": {{ 'a11y.loading' | t | json }},
 "a11y.close": {{ 'a11y.close' | t | json }}
 },
@@ -387,92 +411,17 @@ endif
 </div>
 </template>
 {%- endif -%}
-{%- if cx_eff_delivery or cx_draft_delivery -%}
-{%- liquid
-assign delivery_formats = 'line,range,timeline,box' | split: ','
-assign delivery_fmt_live = cx_de.formatCart
-unless delivery_formats contains delivery_fmt_live
-assign delivery_fmt_live = 'line'
-endunless
--%}
-{%- capture delivery_badge -%}
-<span class="cx-delivery__badge"><button type="button" class="cx-delivery__badge-btn" data-cx-delivery-badge aria-describedby="cx-delivery-tip-cart">{%- render 'cx-icons', icon: 'shield-check', size: 12 -%}<span>{{ 'delivery.badge' | t }}</span></button><span class="cx-delivery__tip" id="cx-delivery-tip-cart" role="tooltip" hidden data-cx-delivery-tip></span></span>
-{%- endcapture -%}
-{%- capture delivery_body_line -%}
-<div class="cx-delivery cx-delivery--cart cx-delivery--line" data-cx-feature="delivery_estimate">{%- render 'cx-icons', icon: 'box', size: 15 -%}<span class="cx-delivery__line" data-cx-delivery-line></span>{{ delivery_badge }}</div>
-{%- endcapture -%}
-{%- capture delivery_body_range -%}
-<div class="cx-delivery cx-delivery--cart cx-delivery--range" data-cx-feature="delivery_estimate"><span class="cx-delivery__range" data-cx-delivery-range></span>{{ delivery_badge }}</div>
-{%- endcapture -%}
-{%- capture delivery_body_timeline -%}
-<div class="cx-delivery cx-delivery--cart cx-delivery--timeline" data-cx-feature="delivery_estimate"><ol class="cx-delivery__steps list-reset"><li class="cx-delivery__step">{{ 'delivery.timeline_order' | t }}</li><li class="cx-delivery__step" data-cx-delivery-ship></li><li class="cx-delivery__step" data-cx-delivery-done></li></ol>{{ delivery_badge }}</div>
-{%- endcapture -%}
-{%- capture delivery_body_box -%}
-<div class="cx-delivery cx-delivery--cart cx-delivery--box" data-cx-feature="delivery_estimate">{%- render 'cx-icons', icon: 'check', size: 16 -%}<span class="cx-delivery__box-copy"><strong class="cx-delivery__box-title" data-cx-delivery-title></strong> <span class="cx-delivery__box-sub">{{ 'delivery.box_sub' | t }}</span> {{ delivery_badge }}</span></div>
-{%- endcapture -%}
-<template id="cx-tpl-delivery-cart"{% unless cx_eff_delivery %} data-cx-draft="1"{% endunless %}>
-{%- case delivery_fmt_live -%}
-{%- when 'range' -%}{{ delivery_body_range }}
-{%- when 'timeline' -%}{{ delivery_body_timeline }}
-{%- when 'box' -%}{{ delivery_body_box }}
-{%- when 'line' -%}{{ delivery_body_line }}
-{%- else -%}{{ delivery_body_line }}
-{%- endcase -%}
+{%- if cx_eff_azfree or cx_draft_azfree -%}
+<template id="cx-tpl-azfree-cart"{% unless cx_eff_azfree %} data-cx-draft="1"{% endunless %}>
+<div class="cx-azfree" data-cx-feature="az_cart_free_line">
+<p class="cx-azfree__line cx-azfree__line--qualified" data-cx-azfree-qualified hidden>{%- render 'cx-icons', icon: 'check', size: 14 -%}<span class="cx-azfree__text">{{ 'amazon.qualifies' | t }}</span></p>
+<p class="cx-azfree__line cx-azfree__line--unqualified" data-cx-azfree-unqualified hidden><span class="cx-azfree__text" data-cx-azfree-msg></span></p>
+</div>
 </template>
-{%- if cx_prev_armed -%}
-{%- assign delivery_fmt_draft = cx_prev.draftConfig.deliveryFormatCart -%}
-{%- if delivery_formats contains delivery_fmt_draft and delivery_fmt_draft != delivery_fmt_live -%}
-<template id="cx-tpl-delivery-cart-alt" data-cx-draft="1">
-{%- case delivery_fmt_draft -%}
-{%- when 'range' -%}{{ delivery_body_range }}
-{%- when 'timeline' -%}{{ delivery_body_timeline }}
-{%- when 'box' -%}{{ delivery_body_box }}
-{%- when 'line' -%}{{ delivery_body_line }}
-{%- endcase -%}
-</template>
-{%- endif -%}
-{%- endif -%}
 {%- endif -%}
 <script src="{{ 'cellexia-cart.js' | asset_url }}" defer></script>
 {%- endif -%}
 {%- endif -%}
-
 {% schema %}
-{
-"name": "Cellexia cart booster",
-"target": "body",
-"settings": [
-{
-"type": "text",
-"id": "volume_title_override",
-"label": "Volume upsell title override",
-"info": "Leave blank to use the translated default."
-},
-{
-"type": "text",
-"id": "subscription_title_override",
-"label": "Subscription switch title override",
-"info": "Leave blank to use the translated default."
-},
-{
-"type": "text",
-"id": "subscription_remove_override",
-"label": "Remove-subscription button label",
-"info": "Leave blank to use the translated default (\"Remove continuous treatment\"). Overrides typed here are translatable per language in Translate & Adapt."
-},
-{
-"type": "text",
-"id": "crosssell_title_override",
-"label": "Cross-sell title override",
-"info": "Leave blank to use the translated default."
-},
-{
-"type": "checkbox",
-"id": "enable_cart_page",
-"label": "Also show on the cart page",
-"default": true,
-"info": "Injects the same widgets after the cart table on /cart."
-}
-]
-}
+{"name":"Cellexia cart booster","target":"body","settings":[{"type":"text","id":"volume_title_override","label":"Volume upsell title override","info":"Leave blank to use the translated default."},{"type":"text","id":"subscription_title_override","label":"Subscription switch title override","info":"Leave blank to use the translated default."},{"type":"text","id":"subscription_remove_override","label":"Remove-subscription button label","info":"Leave blank to use the translated default. Overrides are translatable per language in Translate & Adapt."},{"type":"text","id":"crosssell_title_override","label":"Cross-sell title override","info":"Leave blank to use the translated default."},{"type":"checkbox","id":"enable_cart_page","label":"Also show on the cart page","default":true,"info":"Injects the same widgets after the cart table on /cart."}]}
 {% endschema %}

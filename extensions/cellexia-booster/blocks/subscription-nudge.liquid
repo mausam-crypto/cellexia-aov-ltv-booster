@@ -40,60 +40,8 @@ endif
 <p class="cx-nudge__body">{{ body_text }}</p>
 </div>
 </div>
-<script>
-(function () {
-try {
-var w = window;
-if (w.isB2BCustomer === true) return;
-w.__cxSeen = w.__cxSeen || {};
-if (w.__cxSeen.subscription_nudge) return;
-w.__cxSeen.subscription_nudge = 1;
-var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
-var payload = JSON.stringify({ feature: 'subscription_nudge', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
-if (navigator.sendBeacon) {
-navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
-} else if (w.fetch) {
-w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
-}
-} catch (e) { /* never break the theme */ }
-})();
-</script>
+{% render 'cx-impression', feature: 'subscription_nudge', b2b: true, market: cx_market %}
 {%- endif -%}
-
 {% schema %}
-{
-"name": "Cellexia subscription",
-"target": "section",
-"settings": [
-{
-"type": "text",
-"id": "title_override",
-"label": "Title override",
-"info": "Leave blank to use the translated default."
-},
-{
-"type": "text",
-"id": "body_override",
-"label": "Body override",
-"info": "Leave blank to use the translated default."
-},
-{
-"type": "text",
-"id": "discount_override",
-"label": "Discount % override",
-"info": "Leave blank to use the percentage configured in the Cellexia dashboard."
-},
-{
-"type": "select",
-"id": "style",
-"label": "Style",
-"options": [
-{ "value": "panel", "label": "Grey panel" },
-{ "value": "accent", "label": "Accent panel" },
-{ "value": "outline", "label": "Outline card" }
-],
-"default": "panel"
-}
-]
-}
+{"name":"Cellexia subscription","target":"section","settings":[{"type":"text","id":"title_override","label":"Title override","info":"Leave blank to use the translated default."},{"type":"text","id":"body_override","label":"Body override","info":"Leave blank to use the translated default."},{"type":"text","id":"discount_override","label":"Discount % override","info":"Leave blank to use the percentage configured in the Cellexia dashboard."},{"type":"select","id":"style","label":"Style","options":[{"value":"panel","label":"Grey panel"},{"value":"accent","label":"Accent panel"},{"value":"outline","label":"Outline card"}],"default":"panel"}]}
 {% endschema %}

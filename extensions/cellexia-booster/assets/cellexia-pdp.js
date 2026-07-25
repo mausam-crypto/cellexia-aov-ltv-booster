@@ -24,6 +24,15 @@
 
   if (window.CellexiaBooster && window.CellexiaBooster.__pdpInit) return;
 
+  // v6.1: two app embeds (pdp-booster + amazon-booster) both load this
+  // asset with their own <script> tag when active together. The first
+  // evaluation wins outright — the flag is set at load time (not in
+  // init) so a second evaluation can never race the async preview boot
+  // into a double fetch / double init.
+  window.CellexiaBooster = window.CellexiaBooster || {};
+  if (window.CellexiaBooster.__pdpLoaded) return;
+  window.CellexiaBooster.__pdpLoaded = true;
+
   // Populated by boot()/init() from #cx-pdp-config (+ data-cx-market attribute).
   var cfg = {};
 
@@ -551,6 +560,33 @@
     dispatchTimer = window.setInterval(dispatchTick, 30000);
   }
 
+  // v6.2 Liquid diet: the PDP dispatch shell (cx-tpl-dispatch) is JS-built
+  // now — a 1:1 rebuild of the old template body; the ticking text still
+  // lands exclusively via textContent from the frozen dispatch engine.
+  // dispatchAllowed carries the exact cloneTemplate/widgetAllowed gate the
+  // template used: live-effective for real visitors (server-computed
+  // cfg.dispatch.live under the same show_dispatch/cx_draft_dispatch
+  // emission gate), the verified live∪draft set inside a preview session.
+
+  function dispatchAllowed() {
+    if (PREVIEW) {
+      return PREVIEW.live.dispatch_countdown === true || PREVIEW.flags.dispatch_countdown === true;
+    }
+    return !!(cfg && cfg.dispatch && cfg.dispatch.live === true);
+  }
+
+  function dispatchBuildNode() {
+    var root = cxEl('div', 'cx-dispatch cx-dispatch--pdp', ['data-cx-feature', 'dispatch_countdown']);
+    cxSp(root);
+    root.appendChild(cxEl('span', 'cx-dispatch__dot', ['aria-hidden', 'true']));
+    root.appendChild(cxIcon('truck', 16));
+    var text = cxEl('span', 'cx-dispatch__text');
+    text.appendChild(cxEl('strong', 'cx-dispatch__main'));
+    root.appendChild(text);
+    cxSp(root);
+    return root;
+  }
+
   function mountDispatch() {
     // Injected directly after the .stock-msg row inside .pdp__grey
     // (fallback: after .pdp__actions--flex) — BEFORE the badge chain's
@@ -563,7 +599,8 @@
       if (!schedule) return;
       var remaining = dispatchRemainingMs(schedule);
       if (remaining === null) return;
-      var node = cloneTemplate('cx-tpl-dispatch', 'dispatch_countdown');
+      if (!dispatchAllowed()) return; // live gate (v6.2 JS-built shell)
+      var node = dispatchBuildNode();
       if (!node) return;
       var grey = document.querySelector('.pdp__grey');
       if (!grey) return;
@@ -571,7 +608,10 @@
       if (!anchor || !insertAfter(node, anchor)) return;
       dispatchSetText(node, remaining);
       dispatchEnsureTimer();
-      track('dispatch_countdown');
+      // Impression honesty (v6.1): when az_delivery_line will replace
+      // this widget later in the SAME task (removed before paint), no
+      // beacon — a widget never seen must never be recorded as seen.
+      if (!azReplacesDelivery()) track('dispatch_countdown');
     } catch (e) { /* never break the theme */ }
   }
 
@@ -580,12 +620,11 @@
     // anchor logic as the real mount, but the merchant always gets an
     // answer — the real countdown (plus a reassurance note), an
     // explained SAMPLE when the credibility engine hides it for real
-    // visitors, or an invalid-config diagnostic. cloneTemplate keeps
-    // its full draft/preview gating (never weakened).
+    // visitors, or an invalid-config diagnostic. dispatchAllowed keeps
+    // the full draft/preview gating (never weakened).
     if (!PREVIEW) return; // hard gate: never render for real visitors
     try {
-      var tpl = document.getElementById('cx-tpl-dispatch');
-      if (!tpl || !tpl.content || !widgetAllowed(tpl, 'dispatch_countdown')) return; // feature off
+      if (!dispatchAllowed()) return; // feature off (live∪draft in preview)
       var grey = document.querySelector('.pdp__grey');
       if (!grey) return;
       // Idempotency scoped to the PDP surface: the cart engine stamps the
@@ -608,7 +647,7 @@
         insertAfter(note, anchor);
         return;
       }
-      var node = cloneTemplate('cx-tpl-dispatch', 'dispatch_countdown');
+      var node = dispatchBuildNode();
       if (!node) return;
       if (!insertAfter(node, anchor)) return;
       dispatchPreviewSync(node, schedule, remaining);
@@ -967,14 +1006,85 @@
     } catch (e) { /* never break the theme */ }
   }
 
-  function deliveryTemplateId() {
-    // v5.9: inside a verified preview session prefer the alt template (the
-    // merchant's armed DRAFT format) — exactly the survey-alt convention.
-    if (PREVIEW) {
-      var alt = document.getElementById('cx-tpl-delivery-alt');
-      if (alt && alt.content) return 'cx-tpl-delivery-alt';
+  // v6.2 Liquid diet: the PDP delivery shells (cx-tpl-delivery + alt, four
+  // formats) are JS-built now. Same preview convention as before: inside a
+  // verified preview session the merchant's armed DRAFT format (shipped in
+  // cfg.preview.deliveryFormat — tokenless, armed-only) wins over the live
+  // format, exactly what the alt-template preference used to produce. The
+  // markup is a 1:1 rebuild of the old capture bodies; every dynamic value
+  // still lands via textContent from the fail-closed engine.
+
+  function deliveryBuildBadge() {
+    var badge = cxEl('span', 'cx-delivery__badge');
+    var btn = cxEl('button', null, ['type', 'button', 'class', 'cx-delivery__badge-btn', 'data-cx-delivery-badge', '', 'aria-describedby', 'cx-delivery-tip']);
+    btn.appendChild(cxIcon('shield-check', 12));
+    var label = document.createElement('span');
+    label.textContent = deliveryT('delivery.badge');
+    btn.appendChild(label);
+    badge.appendChild(btn);
+    badge.appendChild(cxEl('span', 'cx-delivery__tip', ['id', 'cx-delivery-tip', 'role', 'tooltip', 'hidden', '', 'data-cx-delivery-tip', '']));
+    return badge;
+  }
+
+  function deliveryBuildNode(fmt) {
+    var root;
+    if (fmt === 'range') {
+      root = cxEl('div', 'cx-delivery cx-delivery--range', ['data-cx-feature', 'delivery_estimate']);
+      root.appendChild(cxEl('span', 'cx-delivery__range', ['data-cx-delivery-range', '']));
+      root.appendChild(deliveryBuildBadge());
+    } else if (fmt === 'timeline') {
+      root = cxEl('div', 'cx-delivery cx-delivery--timeline', ['data-cx-feature', 'delivery_estimate']);
+      var ol = cxEl('ol', 'cx-delivery__steps list-reset');
+      var li1 = cxEl('li', 'cx-delivery__step');
+      li1.textContent = deliveryT('delivery.timeline_order');
+      ol.appendChild(li1);
+      ol.appendChild(cxEl('li', 'cx-delivery__step', ['data-cx-delivery-ship', '']));
+      ol.appendChild(cxEl('li', 'cx-delivery__step', ['data-cx-delivery-done', '']));
+      root.appendChild(ol);
+      root.appendChild(deliveryBuildBadge());
+    } else if (fmt === 'box') {
+      root = cxEl('div', 'cx-delivery cx-delivery--box', ['data-cx-feature', 'delivery_estimate']);
+      root.appendChild(cxIcon('check', 16));
+      var copy = cxEl('span', 'cx-delivery__box-copy');
+      copy.appendChild(cxEl('strong', 'cx-delivery__box-title', ['data-cx-delivery-title', '']));
+      copy.appendChild(document.createTextNode(' '));
+      var sub = cxEl('span', 'cx-delivery__box-sub');
+      sub.textContent = deliveryT('delivery.box_sub');
+      copy.appendChild(sub);
+      copy.appendChild(document.createTextNode(' '));
+      copy.appendChild(deliveryBuildBadge());
+      root.appendChild(copy);
+    } else {
+      root = cxEl('div', 'cx-delivery cx-delivery--line', ['data-cx-feature', 'delivery_estimate']);
+      root.appendChild(cxIcon('box', 15));
+      root.appendChild(cxEl('span', 'cx-delivery__line', ['data-cx-delivery-line', '']));
+      root.appendChild(deliveryBuildBadge());
     }
-    return 'cx-tpl-delivery';
+    return root;
+  }
+
+  function deliveryValidFormat(f) {
+    return f === 'line' || f === 'range' || f === 'timeline' || f === 'box';
+  }
+
+  function deliveryBuildFormat() {
+    var fmt = cfg && cfg.delivery && typeof cfg.delivery.format === 'string' && deliveryValidFormat(cfg.delivery.format)
+      ? cfg.delivery.format : 'line';
+    if (PREVIEW) {
+      var draft = cfg && cfg.preview && typeof cfg.preview.deliveryFormat === 'string' ? cfg.preview.deliveryFormat : '';
+      if (deliveryValidFormat(draft)) fmt = draft;
+    }
+    return fmt;
+  }
+
+  function deliveryAllowed() {
+    // The exact cloneTemplate/widgetAllowed gate the old template carried:
+    // live-effective for real visitors (server-computed cfg.delivery.live),
+    // the verified live∪draft set inside a preview session.
+    if (PREVIEW) {
+      return PREVIEW.live.delivery_estimate === true || PREVIEW.flags.delivery_estimate === true;
+    }
+    return !!(cfg && cfg.delivery && cfg.delivery.live === true);
   }
 
   function deliveryTick() {
@@ -1026,7 +1136,8 @@
       if (!result) return; // no defensible dates: fail closed
       var texts = deliveryTexts(result, dc);
       if (!texts) return; // missing strings: fail closed
-      var node = cloneTemplate(deliveryTemplateId(), 'delivery_estimate');
+      if (!deliveryAllowed()) return; // live/preview gate (v6.2 JS-built shell)
+      var node = deliveryBuildNode(deliveryBuildFormat());
       if (!node) return;
       var grey = document.querySelector('.pdp__grey');
       if (!grey) return;
@@ -1037,7 +1148,9 @@
       deliverySetText(node, texts);
       bindDeliveryTooltip(node);
       deliveryEnsureTimer();
-      track('delivery_estimate');
+      // Impression honesty (v6.1): no beacon when the az delivery line
+      // will replace this widget before paint (same rule as dispatch).
+      if (!azReplacesDelivery()) track('delivery_estimate');
     } catch (e) { /* never break the theme */ }
   }
 
@@ -1054,12 +1167,266 @@
   // template — it is draft-marked and only emitted inside the armed
   // Liquid gate anyway. No config text ever reaches innerHTML.
 
-  function surveyTemplateId() {
+  // v6.2 Liquid diet: the five survey formats (cx-tpl-pdp-survey + alt)
+  // are JS-built now, 1:1 rebuilds of the old capture bodies. Data +
+  // page-static strings ship in cfg.survey / cfg.surveyStrings (emitted
+  // under the exact show_survey/cx_draft_survey gate the templates used,
+  // numbers pre-baked server-side, fail-closed sanity checks unchanged in
+  // buildSurveyDots). The alt-format preview keeps its convention: inside
+  // a verified preview session the armed DRAFT format
+  // (cfg.preview.surveyFormat, tokenless) switches the builder argument.
+
+  var SURVEY_FORMATS = ['seal', 'report', 'question', 'tally', 'strip'];
+
+  function surveyData() {
+    return cfg && cfg.survey && typeof cfg.survey === 'object' ? cfg.survey : null;
+  }
+
+  function surveyStr(key) {
+    var map = cfg && cfg.surveyStrings && typeof cfg.surveyStrings === 'object' ? cfg.surveyStrings : {};
+    return typeof map[key] === 'string' ? decodeEntities(map[key]) : '';
+  }
+
+  function surveyAllowed() {
     if (PREVIEW) {
-      var alt = document.getElementById('cx-tpl-survey-alt');
-      if (alt && alt.content) return 'cx-tpl-survey-alt';
+      return PREVIEW.live.derm_survey === true || PREVIEW.flags.derm_survey === true;
     }
-    return 'cx-tpl-pdp-survey';
+    return !!(cfg && cfg.survey && cfg.survey.live === true);
+  }
+
+  function surveyBuildFormat() {
+    var d = surveyData();
+    var fmt = d && typeof d.fmt === 'string' && SURVEY_FORMATS.indexOf(d.fmt) !== -1 ? d.fmt : 'seal';
+    if (PREVIEW) {
+      var draft = cfg && cfg.preview && typeof cfg.preview.surveyFormat === 'string' ? cfg.preview.surveyFormat : '';
+      if (SURVEY_FORMATS.indexOf(draft) !== -1) fmt = draft;
+    }
+    return fmt;
+  }
+
+  function surveyBuildPanel(panel) {
+    var d = surveyData();
+    var method = d && typeof d.method === 'string' ? d.method : '';
+    var verifier = d && typeof d.verifier === 'string' ? d.verifier.replace(/^\s+|\s+$/g, '') : '';
+    var url = d && typeof d.url === 'string' ? d.url.replace(/^\s+|\s+$/g, '') : '';
+    var p, i;
+    if (method.replace(/\s+/g, '') !== '') {
+      // Merchant methodology: one <p> per non-blank line (the old
+      // escape|newline_to_br|split path — flush <p>s, textContent only).
+      var lines = method.split(/\r?\n/);
+      for (i = 0; i < lines.length; i++) {
+        var lineText = lines[i].replace(/^\s+|\s+$/g, '');
+        if (!lineText) continue;
+        p = document.createElement('p');
+        p.textContent = lineText;
+        panel.appendChild(p);
+      }
+    } else {
+      var defaults = [['p1', ''], ['p2', ''], ['p3', 'cx-survey__panel-q'], ['p4', ''], ['p5', '']];
+      for (i = 0; i < defaults.length; i++) {
+        if (i > 0) panel.appendChild(document.createTextNode(' '));
+        p = defaults[i][1] ? cxEl('p', defaults[i][1]) : document.createElement('p');
+        p.textContent = surveyStr(defaults[i][0]);
+        panel.appendChild(p);
+      }
+    }
+    if (verifier) {
+      var verify = cxEl('p', 'cx-survey__panel-verify');
+      if (url) {
+        var a = cxEl('a', 'cx-proof__link no-dec', ['href', url, 'target', '_blank', 'rel', 'noopener nofollow']);
+        a.textContent = surveyStr('verified_by');
+        verify.appendChild(a);
+      } else {
+        verify.appendChild(document.createTextNode(surveyStr('verified_by')));
+      }
+      panel.appendChild(verify);
+    }
+  }
+
+  function surveyBuildHow() {
+    var d = surveyData();
+    var verifier = d && typeof d.verifier === 'string' ? d.verifier.replace(/^\s+|\s+$/g, '') : '';
+    var root = cxEl('div', 'cx-survey__how', ['data-cx-survey-how', '']);
+    cxSp(root);
+    var row = cxEl('div', 'cx-survey__how-row');
+    cxSp(row);
+    var btn = cxEl('button', null, ['type', 'button', 'class', 'cx-survey__how-btn', 'data-cx-survey-toggle', '', 'aria-expanded', 'false', 'aria-controls', 'cx-survey-method']);
+    btn.appendChild(cxIcon('question', 15));
+    var howLabel = document.createElement('span');
+    howLabel.textContent = surveyStr('how');
+    btn.appendChild(howLabel);
+    cxSp(btn);
+    row.appendChild(btn);
+    if (verifier) {
+      var chip = cxEl('span', 'cx-survey__chip');
+      chip.appendChild(cxIcon('seal-check', 13));
+      var chipLabel = document.createElement('span');
+      chipLabel.textContent = surveyStr('verified_badge');
+      chip.appendChild(chipLabel);
+      row.appendChild(chip);
+    }
+    root.appendChild(row);
+    cxSp(root);
+    var panel = cxEl('div', 'cx-survey__panel', ['id', 'cx-survey-method', 'hidden', '']);
+    cxSp(panel);
+    surveyBuildPanel(panel);
+    cxSp(panel);
+    root.appendChild(panel);
+    cxSp(root);
+    return root;
+  }
+
+  function surveyEyebrow() {
+    var p = cxEl('p', 'cx-proof__eyebrow eyebrow eyebrow--sm');
+    p.textContent = surveyStr('eyebrow');
+    return p;
+  }
+
+  function surveyBuildSection(fmt) {
+    var d = surveyData();
+    if (!d) return null;
+    var pct = typeof d.pct === 'number' && isFinite(d.pct) ? d.pct : 0;
+    var yes = typeof d.yes === 'number' && isFinite(d.yes) ? d.yes : 0;
+    var total = typeof d.total === 'number' && isFinite(d.total) ? d.total : 0;
+    var root = cxEl('section', 'cx-proof cx-survey cx-survey--' + fmt, ['data-cx-feature', 'derm_survey']);
+    cxSp(root);
+    root.appendChild(surveyEyebrow());
+    cxSp(root);
+    var el, inner;
+    if (fmt === 'report') {
+      var report = cxEl('div', 'cx-survey__report');
+      cxSp(report);
+      el = cxEl('h2', 'cx-survey__report-title');
+      el.textContent = surveyStr('report_title');
+      report.appendChild(el);
+      cxSp(report);
+      var dl = cxEl('dl', 'cx-survey__report-rows');
+      cxSp(dl);
+      var rows = [['report_surveyed', String(total)], ['report_yes', String(yes)], ['report_recommend', pct + '%']];
+      for (var r = 0; r < rows.length; r++) {
+        var rowEl = cxEl('div', 'cx-survey__report-row');
+        var dt = document.createElement('dt');
+        dt.textContent = surveyStr(rows[r][0]);
+        rowEl.appendChild(dt);
+        var dd = document.createElement('dd');
+        dd.textContent = rows[r][1];
+        rowEl.appendChild(dd);
+        dl.appendChild(rowEl);
+        cxSp(dl);
+      }
+      report.appendChild(dl);
+      cxSp(report);
+      report.appendChild(surveyBuildHow());
+      cxSp(report);
+      root.appendChild(report);
+      cxSp(root);
+    } else if (fmt === 'question') {
+      el = cxEl('p', 'cx-survey__intro');
+      el.textContent = surveyStr('question_intro');
+      root.appendChild(el);
+      cxSp(root);
+      el = cxEl('blockquote', 'cx-survey__quote');
+      el.textContent = surveyStr('p3');
+      root.appendChild(el);
+      cxSp(root);
+      el = cxEl('p', 'cx-survey__result');
+      el.textContent = surveyStr('question_result');
+      root.appendChild(el);
+      cxSp(root);
+      root.appendChild(surveyBuildHow());
+      cxSp(root);
+    } else if (fmt === 'tally') {
+      var head = cxEl('div', 'cx-survey__tally-head');
+      cxSp(head);
+      el = cxEl('span', 'cx-survey__tally-pct', ['aria-hidden', 'true']);
+      el.textContent = pct + '%';
+      head.appendChild(el);
+      cxSp(head);
+      el = cxEl('span', 'cx-survey__count');
+      el.textContent = surveyStr('count');
+      head.appendChild(el);
+      cxSp(head);
+      root.appendChild(head);
+      cxSp(root);
+      root.appendChild(cxEl('div', 'cx-survey__dots', ['data-cx-yes', String(yes), 'data-cx-total', String(total), 'aria-hidden', 'true']));
+      cxSp(root);
+      el = cxEl('span', 'sr-only');
+      el.textContent = pct + '%';
+      root.appendChild(el);
+      cxSp(root);
+      el = cxEl('p', 'cx-survey__legend');
+      el.textContent = surveyStr('dot_legend');
+      root.appendChild(el);
+      cxSp(root);
+      root.appendChild(surveyBuildHow());
+      cxSp(root);
+    } else if (fmt === 'strip') {
+      var line = cxEl('p', 'cx-survey__strip-line');
+      el = cxEl('strong', 'cx-survey__strip-pct');
+      el.textContent = pct + '%';
+      line.appendChild(el);
+      line.appendChild(document.createTextNode(' '));
+      inner = document.createElement('span');
+      inner.textContent = surveyStr('title_pct');
+      line.appendChild(inner);
+      root.appendChild(line);
+      cxSp(root);
+      root.appendChild(surveyBuildHow());
+      cxSp(root);
+    } else { // seal
+      var arc = typeof d.arc === 'number' && isFinite(d.arc) ? d.arc : 0;
+      var sealRow = cxEl('div', 'cx-survey__seal-row');
+      cxSp(sealRow);
+      var fig = cxEl('div', 'cx-survey__seal-fig');
+      cxSp(fig);
+      var wrap = cxEl('div', 'cx-survey__seal-wrap');
+      cxSp(wrap);
+      var svg = cxSvg('svg', 'cx-survey__ring', ['viewBox', '0 0 100 100', 'aria-hidden', 'true', 'focusable', 'false']);
+      cxSp(svg);
+      svg.appendChild(cxSvg('circle', 'cx-survey__ring-track', ['cx', '50', 'cy', '50', 'r', '45']));
+      cxSp(svg);
+      svg.appendChild(cxSvg('circle', 'cx-survey__ring-arc', ['cx', '50', 'cy', '50', 'r', '45', 'style', '--cx-arc: ' + arc + 'px']));
+      cxSp(svg);
+      wrap.appendChild(svg);
+      cxSp(wrap);
+      el = cxEl('span', 'cx-survey__pct');
+      el.textContent = pct + '%';
+      wrap.appendChild(el);
+      cxSp(wrap);
+      fig.appendChild(wrap);
+      cxSp(fig);
+      el = cxEl('p', 'cx-survey__count');
+      el.textContent = surveyStr('count');
+      fig.appendChild(el);
+      cxSp(fig);
+      sealRow.appendChild(fig);
+      cxSp(sealRow);
+      var body = cxEl('div', 'cx-survey__seal-body');
+      cxSp(body);
+      el = cxEl('h2', 'cx-survey__headline');
+      el.textContent = surveyStr('title_pct');
+      body.appendChild(el);
+      cxSp(body);
+      body.appendChild(surveyBuildHow());
+      cxSp(body);
+      sealRow.appendChild(body);
+      cxSp(sealRow);
+      root.appendChild(sealRow);
+      cxSp(root);
+    }
+    return root;
+  }
+
+  function surveyTplNode() {
+    // v6.2 replacement for cloneTemplate(surveyTemplateId(), 'derm_survey'):
+    // same live/preview gate, same emission gate (payload presence), the
+    // preview draft format switches the builder argument.
+    try {
+      if (!surveyData() || !surveyAllowed()) return null;
+      return surveyBuildSection(surveyBuildFormat());
+    } catch (e) {
+      return null;
+    }
   }
 
   function buildSurveyDots(widget) {
@@ -1125,6 +1492,94 @@
     } catch (e) { /* never break the theme */ }
   }
 
+  // ------------------------------------------ empty bottle guarantee (v6.2)
+  //
+  // v6.2 Liquid diet: cx-tpl-pdp-bottle is JS-built now, a 1:1 rebuild of
+  // the old template body. The server-translated strings (title incl. the
+  // merchant override, body with the pluralized days label + container
+  // word baked in, the three points, the guarantee-check button label)
+  // ship in the #cx-bottle-config island, emitted under the exact
+  // show_bottle/cx_draft_bottle gate the template used, with "live"
+  // carrying the data-cx-draft distinction. Everything lands via
+  // textContent (decodeEntities at the consumption point, same as
+  // surveyStr); the modal (cx-tpl-guarantee-check) stays a Liquid
+  // template and its gcheck wiring is untouched.
+
+  function bottleData() {
+    try {
+      var el = document.getElementById('cx-bottle-config');
+      if (!el) return null; // Liquid gate emitted nothing: fail closed
+      var data = JSON.parse(el.textContent || 'null');
+      return data && typeof data === 'object' ? data : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function bottleStr(data, key) {
+    return typeof data[key] === 'string' ? decodeEntities(data[key]) : '';
+  }
+
+  function bottleAllowed(data) {
+    // The exact cloneTemplate/widgetAllowed gate the old template carried.
+    if (PREVIEW) {
+      return PREVIEW.live.empty_bottle_guarantee === true || PREVIEW.flags.empty_bottle_guarantee === true;
+    }
+    return data.live === true;
+  }
+
+  function bottleBuildNode(data) {
+    var root = cxEl('section', 'cx-proof cx-bottle', ['data-cx-feature', 'empty_bottle_guarantee']);
+    cxSp(root);
+    var icon = cxEl('div', 'cx-bottle__icon', ['aria-hidden', 'true']);
+    icon.appendChild(cxIcon('bottle', 26));
+    root.appendChild(icon);
+    cxSp(root);
+    var content = cxEl('div', 'cx-bottle__content');
+    cxSp(content);
+    var h2 = cxEl('h2', 'cx-bottle__title');
+    h2.textContent = bottleStr(data, 'title');
+    content.appendChild(h2);
+    var body = cxEl('p', 'cx-bottle__body');
+    body.textContent = bottleStr(data, 'body');
+    content.appendChild(body);
+    cxSp(content);
+    var ul = cxEl('ul', 'cx-bottle__points list-reset');
+    cxSp(ul);
+    var keys = ['p1', 'p2', 'p3'];
+    for (var i = 0; i < keys.length; i++) {
+      var li = cxEl('li', 'cx-bottle__point');
+      li.appendChild(cxIcon('check', 16));
+      var span = document.createElement('span');
+      span.textContent = bottleStr(data, keys[i]);
+      li.appendChild(span);
+      ul.appendChild(li);
+      cxSp(ul);
+    }
+    content.appendChild(ul);
+    cxSp(content);
+    var btn = cxEl('button', null, ['type', 'button', 'class', 'cx-bottle__check', 'data-cx-guarantee-check', '']);
+    btn.textContent = bottleStr(data, 'check');
+    content.appendChild(btn);
+    cxSp(content);
+    root.appendChild(content);
+    cxSp(root);
+    return root;
+  }
+
+  function bottleTplNode() {
+    // v6.2 replacement for cloneTemplate('cx-tpl-pdp-bottle',
+    // 'empty_bottle_guarantee'): same live/preview gate, same emission
+    // gate (island presence).
+    try {
+      var data = bottleData();
+      if (!data || !bottleAllowed(data)) return null;
+      return bottleBuildNode(data);
+    } catch (e) {
+      return null;
+    }
+  }
+
   /**
    * SPEC v3 proof stack — template id / feature key pairs in CRO order.
    * Liquid only renders the templates that survived flag + market +
@@ -1144,17 +1599,20 @@
 
       var widgets = [];
       for (var i = 0; i < PROOF_ORDER.length; i++) {
-        var tplId = PROOF_ORDER[i][0];
-        // v5.8: in a verified preview session the survey slot prefers the
-        // alt template (draft format) when Liquid emitted one.
-        if (tplId === 'cx-tpl-pdp-survey') tplId = surveyTemplateId();
-        var node = cloneTemplate(tplId, PROOF_ORDER[i][1]);
+        var feature = PROOF_ORDER[i][1];
+        var node;
+        // v6.2: the survey and bottle slots are JS-built (their templates
+        // migrated to builders — the preview draft-format preference lives
+        // in surveyBuildFormat now); the rest still clone Liquid templates.
+        if (feature === 'derm_survey') node = surveyTplNode();
+        else if (feature === 'empty_bottle_guarantee') node = bottleTplNode();
+        else node = cloneTemplate(PROOF_ORDER[i][0], feature);
         if (node) {
-          if (PROOF_ORDER[i][1] === 'derm_survey') {
+          if (feature === 'derm_survey') {
             bindSurveyDisclosure(node);
             buildSurveyDots(node);
           }
-          widgets.push({ node: node, feature: PROOF_ORDER[i][1] });
+          widgets.push({ node: node, feature: feature });
         }
       }
       if (widgets.length === 0) return;
@@ -1195,6 +1653,1333 @@
     } catch (e) { /* never break the theme */ }
   }
 
+  // ================================================================
+  // Amazon-pattern widgets (v6.1) — the az module.
+  //
+  // Eight PDP features carried by the amazon-booster app embed
+  // (#cx-az-config + cx-tpl-az-* templates). Everything reuses this
+  // file's existing machinery unchanged: cloneTemplate/widgetAllowed
+  // for draft gating, the dispatch + delivery engines for the compound
+  // delivery line, deliveryFormatDate for page-locale dates,
+  // decodeEntities for every t-filtered string, track() for beacons
+  // (auto-suppressed in preview). Replacement suppression keys on the
+  // same effective/preview helpers (azOn), so a verified preview
+  // session sees the swap exactly as live visitors would.
+  //
+  // We render Amazon's PATTERNS, never their brand — every visible
+  // string is a translator-owned `amazon` locale key; nothing in this
+  // module composes brand words. Honesty guards re-checked here:
+  // bought count hidden when unset/stale (>45 days), stock line only
+  // from the theme's real variant availability, delivery line only
+  // with a formattable threshold (the over-X clause is mandatory).
+  // ================================================================
+
+  var AZ_CFG = null;      // parsed #cx-az-config (cached)
+  var AZ_CFG_READ = false;
+  var AZ_PROTECTION = 'cellexia-order-protection';
+
+  function azReadConfig() {
+    if (AZ_CFG_READ) return AZ_CFG;
+    AZ_CFG_READ = true;
+    var el = document.getElementById('cx-az-config');
+    if (!el) return null;
+    try {
+      var raw = JSON.parse(el.textContent || '{}');
+      if (raw && typeof raw === 'object') {
+        var market = el.getAttribute('data-cx-market');
+        raw.market = typeof market === 'string' ? market : '';
+        AZ_CFG = raw;
+      }
+    } catch (e) { AZ_CFG = null; }
+    return AZ_CFG;
+  }
+
+  function azPreviewArmed() {
+    var c = azReadConfig();
+    return !!(c && c.preview && c.preview.armed === true);
+  }
+
+  function azOn(key) {
+    // The az twin of the cart's featureOn(): server-computed live
+    // effectiveness for real visitors, live-in-simulated-market ∪ draft
+    // flags inside a verified preview session. No scope logic in JS.
+    if (PREVIEW) {
+      return PREVIEW.live[key] === true || PREVIEW.flags[key] === true;
+    }
+    return !!(AZ_CFG && AZ_CFG.effective && AZ_CFG.effective[key] === true);
+  }
+
+  function azT(key, params) {
+    // Sentinel-param substitution over the az strings map — the exact
+    // dispatchT/deliveryT convention ('' on a miss so callers fail
+    // closed; decode BEFORE substitution; textContent-only consumers).
+    // Shopify bakes "Translation missing: <locale>.<key>" markers into
+    // the config JSON when a locale file lacks the key — treat those
+    // exactly like a missing string (the cart-side azStr rule) so no
+    // broken text can ever reach a buyer.
+    var map = AZ_CFG && AZ_CFG.strings && typeof AZ_CFG.strings === 'object' ? AZ_CFG.strings : {};
+    var raw = typeof map[key] === 'string' ? map[key] : '';
+    if (!raw || raw.indexOf('Translation missing') === 0) return '';
+    var str = decodeEntities(raw);
+    if (!str) return '';
+    if (params) {
+      Object.keys(params).forEach(function (p) {
+        var value = String(params[p]);
+        str = str.split('@@' + p.toUpperCase() + '@@').join(value);
+        str = str.replace(new RegExp('\\{\\{\\s*' + p + '\\s*\\}\\}', 'g'), value);
+      });
+    }
+    return str;
+  }
+
+  function azMoney(cents) {
+    // Mirrors cellexia-cart.js money(): the theme's own Intl formatter
+    // when present, else Intl with the active presentment currency.
+    var units = (Number(cents) || 0) / 100;
+    try {
+      if (window.formatter && typeof window.formatter.format === 'function') {
+        return window.formatter.format(units);
+      }
+    } catch (e) { /* fall through */ }
+    var currency = '';
+    try {
+      if (window.Shopify && window.Shopify.currency && window.Shopify.currency.active) {
+        currency = window.Shopify.currency.active;
+      }
+    } catch (e) { /* noop */ }
+    if (!currency && AZ_CFG && typeof AZ_CFG.currency === 'string') currency = AZ_CFG.currency;
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'EUR' }).format(units);
+    } catch (e2) {
+      return units.toFixed(2);
+    }
+  }
+
+  function azPageLocale() {
+    return AZ_CFG && typeof AZ_CFG.pageLocale === 'string' && AZ_CFG.pageLocale ? AZ_CFG.pageLocale : '';
+  }
+
+  function azCompact(n) {
+    // "{n}+ bought" compact figure in the PAGE locale. The "+" claims
+    // AT LEAST the shown figure, so the value is floored to the
+    // compact precision before formatting (1 940 -> "1K", never "2K");
+    // roundingMode floor is passed for locales whose compact unit
+    // differs (ja 万) — older engines ignore the unknown option, and
+    // the pre-floor keeps the common Latin K/M case honest everywhere.
+    var anchor = n;
+    if (n >= 1000000) anchor = Math.floor(n / 1000000) * 1000000;
+    else if (n >= 1000) anchor = Math.floor(n / 1000) * 1000;
+    // Per-locale readability opt-out: the CLDR short-compact unit is
+    // cryptic/ambiguous in a trust claim for da ("2 t+" — t also means
+    // hours), fi ("2 t.+") and hu ("2 E+"), so below 10 000 those pages
+    // get plain grouped digits ("2 000+") instead; from 10 000 up the
+    // longer figure gives the unit enough context. Honesty unchanged —
+    // the anchor is already floored above.
+    var azLang = (azPageLocale() || '').split('-')[0].toLowerCase();
+    if ((azLang === 'da' || azLang === 'fi' || azLang === 'hu') && anchor < 10000) {
+      try {
+        var grouped = new Intl.NumberFormat(azPageLocale(), { maximumFractionDigits: 0 }).format(anchor);
+        if (typeof grouped === 'string' && grouped) return grouped;
+      } catch (e0) { /* fall through to compact */ }
+    }
+    try {
+      var opts = { notation: 'compact', maximumFractionDigits: 0, roundingMode: 'floor' };
+      var s = new Intl.NumberFormat(azPageLocale() || undefined, opts).format(anchor);
+      if (typeof s === 'string' && s) return s;
+    } catch (e) { /* fall through */ }
+    try {
+      var s2 = new Intl.NumberFormat(azPageLocale() || undefined, { notation: 'compact', maximumFractionDigits: 0 }).format(anchor);
+      if (typeof s2 === 'string' && s2) return s2;
+    } catch (e2) { /* fall through */ }
+    return String(anchor);
+  }
+
+  function azFetchJSON(url, options) {
+    return window.fetch(url, options || { headers: { Accept: 'application/json' } }).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    });
+  }
+
+  function azRemoveAll(selector) {
+    try {
+      var nodes = document.querySelectorAll(selector);
+      for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
+      }
+    } catch (e) { /* noop */ }
+  }
+
+  function azWillReplace(key) {
+    // True when the az replacement for `key` is on for this session AND
+    // its (v6.2 JS-built) widget would render — i.e. azInit() (which
+    // runs later in the same task) will suppress the classic widget the
+    // key replaces. Used to keep the classic impression beacons honest:
+    // a widget removed before paint must never be recorded as seen.
+    // Same gates as azTpl(): azOn (the old widgetAllowed rule) + the
+    // az_any_*-gated config payload (the old template-emission gate).
+    try {
+      azReadConfig();
+      if (!azOn(key)) return false;
+      return azTplPayload(key);
+    } catch (e) { return false; }
+  }
+
+  function azReplacesDelivery() {
+    // az_delivery_line additionally requires a renderable line (the same
+    // fail-closed azDeliveryData gate its mount uses): when the az line
+    // cannot render, the classic widgets stay in place and their beacons
+    // must fire normally. Gap-fill first so the shared engines see the
+    // az embed's config even before azInit() ran.
+    try {
+      if (!azWillReplace('az_delivery_line')) return false;
+      azGapFillConfig();
+      return azDeliveryData() !== null;
+    } catch (e) { return false; }
+  }
+
+  // ------------------------------------------------ product / variant data
+
+  function azProductData() {
+    return AZ_CFG && AZ_CFG.product && typeof AZ_CFG.product === 'object' ? AZ_CFG.product : null;
+  }
+
+  function azCurrentVariantId() {
+    // Theme truth first: the sm-rc hidden variant selector, then the
+    // active tier button, then the Liquid-baked initial selection.
+    try {
+      var sel = document.querySelector('select[sm-rc-variant-selector]');
+      if (sel && sel.selectedIndex >= 0 && sel.options && sel.options[sel.selectedIndex]) {
+        var v = sel.options[sel.selectedIndex].value;
+        if (v) return String(v);
+      }
+    } catch (e) { /* noop */ }
+    try {
+      var btn = document.querySelector('.option__wrap .active[data-val-id]');
+      if (btn) {
+        var b = btn.getAttribute('data-val-id');
+        if (b) return String(b);
+      }
+    } catch (e) { /* noop */ }
+    var p = azProductData();
+    return p && p.selectedVariant != null ? String(p.selectedVariant) : '';
+  }
+
+  function azVariantInfo(id) {
+    var p = azProductData();
+    if (!p || !p.variants || typeof p.variants !== 'object') return null;
+    var v = p.variants[String(id)];
+    return v && typeof v === 'object' ? v : null;
+  }
+
+  function azWarehouseName() {
+    // Warehouse country NAME in the PAGE language via Intl.DisplayNames
+    // (auto-translated, no locale strings needed). '' on any miss —
+    // callers fail closed to hiding the row.
+    try {
+      var sf = AZ_CFG && AZ_CFG.shipsFrom;
+      var wh = sf && typeof sf.warehouse === 'string' ? sf.warehouse.toUpperCase() : '';
+      if (!/^[A-Z]{2}$/.test(wh)) return '';
+      if (!window.Intl || typeof Intl.DisplayNames !== 'function') return '';
+      var locale = azPageLocale();
+      if (!locale) return '';
+      var name = new Intl.DisplayNames([locale], { type: 'region' }).of(wh);
+      return typeof name === 'string' ? name : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // ------------------------------------------------- az_bestseller_badge
+
+  function azMountBestseller() {
+    try {
+      if (document.querySelector('.cx-az-bestseller')) return; // idempotent
+      var node = azTpl('az_bestseller_badge');
+      if (!node) return;
+      var heading = document.querySelector('.pdp__info .pdp__heading') || document.querySelector('.pdp__heading');
+      if (!heading || !heading.parentNode) return;
+      try { heading.parentNode.insertBefore(node, heading); } catch (e) { return; }
+      track('az_bestseller_badge');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  // ---------------------------------------------------- az_bought_count
+
+  function azMountBought() {
+    try {
+      if (document.querySelector('.cx-az-bought')) return; // idempotent
+      var node = azTpl('az_bought_count');
+      if (!node) return;
+      var n = parseInt(node.getAttribute('data-cx-az-n'), 10);
+      var set = parseInt(node.getAttribute('data-cx-az-set'), 10);
+      if (!isFinite(n) || n <= 0 || !isFinite(set) || set <= 0) return;
+      // Honesty guard re-checked client-side: entered more than 45 days
+      // ago (page cache included) -> hidden, never an outdated claim.
+      var age = Math.floor(Date.now() / 1000) - set;
+      if (age < 0 || age > 45 * 86400) return;
+      var str = azT('amazon.bought_count');
+      if (!str) return;
+      var compact = azCompact(n);
+      if (!compact) return;
+      var parts = str.split('@@N@@');
+      if (parts.length >= 2) {
+        node.appendChild(document.createTextNode(parts[0]));
+        var strong = document.createElement('strong');
+        strong.className = 'cx-az-bought__n';
+        strong.textContent = compact;
+        node.appendChild(strong);
+        node.appendChild(document.createTextNode(parts.slice(1).join('@@N@@')));
+      } else {
+        node.textContent = azT('amazon.bought_count', { n: compact });
+      }
+      var anchor = document.querySelector('.pdp__reviews') || document.querySelector('.pdp__heading');
+      if (!anchor || !insertAfter(node, anchor)) return;
+      track('az_bought_count');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  // ------------------------------------------------------ az_stock_line
+
+  var azStockState = null; // { node, ships, themeMsg, prevDisplay, tracked }
+
+  function azStockSync() {
+    // Honest swap: our green "In Stock" shows ONLY while the currently
+    // selected variant is really available (theme variant data baked
+    // into the az config); otherwise the theme's own .stock-msg is
+    // restored untouched. Re-run on every variant change.
+    var st = azStockState;
+    if (!st) return;
+    try {
+      var info = azVariantInfo(azCurrentVariantId());
+      var available = !!(info && info.available === true);
+      if (available) {
+        st.node.removeAttribute('hidden');
+        if (st.themeMsg) st.themeMsg.style.display = 'none';
+        if (!st.tracked) {
+          st.tracked = true;
+          track('az_stock_line');
+        }
+      } else {
+        st.node.setAttribute('hidden', '');
+        if (st.themeMsg) st.themeMsg.style.display = st.prevDisplay;
+      }
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function azMountStock() {
+    try {
+      if (document.querySelector('.cx-az-stock')) return; // idempotent
+      var node = azTpl('az_stock_line');
+      if (!node) return;
+      var grey = document.querySelector('.pdp__grey');
+      if (!grey) return;
+      var themeMsg = grey.querySelector('.stock-msg');
+      var anchor = themeMsg || grey.querySelector('.pdp__actions--flex');
+      if (!anchor) return;
+      // Separate small "Ships from {country}" row only when the buyer's
+      // country maps to a warehouse (default-warehouse fallback).
+      var name = azWarehouseName();
+      if (name) {
+        var ships = node.querySelector('[data-cx-az-stock-ships]');
+        var line = azT('amazon.ships_from', { country: name });
+        if (ships && line) {
+          ships.textContent = line;
+          ships.removeAttribute('hidden');
+        }
+      }
+      if (!insertAfter(node, anchor)) return;
+      azStockState = {
+        node: node,
+        themeMsg: themeMsg,
+        prevDisplay: themeMsg ? themeMsg.style.display || '' : '',
+        tracked: false
+      };
+      azStockSync();
+    } catch (e) { /* never break the theme */ }
+  }
+
+  // -------------------------------------------------- az_delivery_line
+  //
+  // The compound Amazon-structure line: "FREE delivery {bold date} on
+  // orders over {threshold}" + the bold ticking "Order within ..."
+  // clause. Dates and countdown come from the EXISTING delivery +
+  // dispatch engines above (never forked); the threshold clause is
+  // resolved server-side in the buyer's presentment currency and is
+  // mandatory — no formattable threshold, no line (fail closed).
+
+  var azDeliveryTimer = null;
+
+  function azDeliveryData() {
+    if (!AZ_CFG || AZ_CFG.thresholdOk !== true) return null;
+    var dc = deliveryConfig();
+    if (!dc) return null;
+    var result = deliveryCompute(dc);
+    if (!result) return null;
+    var dateL = deliveryFormatDate(result.max, dc.pageLocale);
+    if (!dateL) return null;
+    var free = azT('amazon.free_delivery');
+    var over = azT('amazon.over_threshold');
+    if (!free || !over) return null;
+    return { date: dateL, free: free, over: over };
+  }
+
+  function azDeliveryRender(node) {
+    var data = azDeliveryData();
+    if (!data) return false;
+    var line = node.querySelector('[data-cx-az-del-line]');
+    if (!line) return false;
+    while (line.firstChild) line.removeChild(line.firstChild);
+    line.appendChild(document.createTextNode(data.free + ' '));
+    var strong = document.createElement('strong');
+    strong.className = 'cx-az-delivery__date';
+    strong.textContent = data.date;
+    line.appendChild(strong);
+    // Threshold clause joined with a plain space UNLESS the translation
+    // starts with its own punctuation (fi leads with ", kun ..." — the
+    // comma must hug the date, not float after a space).
+    line.appendChild(document.createTextNode((data.over.charAt(0) === ',' ? '' : ' ') + data.over));
+    // The live countdown clause reuses the dispatch ENGINE wholesale
+    // (same credibility window, same fail-closed rules) but prefers the
+    // terse Amazon-pattern string amazon.order_within ("Order within
+    // 4 hrs 12 mins") over the purpose-tailed dispatch.within sentence;
+    // the dispatch strings remain the fallback so the clause never goes
+    // mute when a locale lacks the amazon key.
+    var count = node.querySelector('[data-cx-az-del-count]');
+    if (count) {
+      var text = '';
+      var schedule = dispatchSchedule();
+      var remaining = schedule ? dispatchRemainingMs(schedule) : null;
+      if (remaining !== null) {
+        var totalMin = Math.floor(remaining / 60000);
+        if (totalMin >= 60) {
+          text = azT('amazon.order_within', { hours: Math.floor(totalMin / 60), minutes: totalMin % 60 });
+          if (!text) text = dispatchT('dispatch.within', { hours: Math.floor(totalMin / 60), minutes: totalMin % 60 });
+        } else {
+          text = dispatchT('dispatch.within_minutes', { minutes: Math.max(1, Math.ceil(remaining / 60000)) });
+        }
+      }
+      if (text) {
+        count.textContent = text;
+        count.removeAttribute('hidden');
+      } else {
+        count.textContent = '';
+        count.setAttribute('hidden', '');
+      }
+    }
+    return true;
+  }
+
+  function azDeliveryTick() {
+    var nodes = document.querySelectorAll('.cx-az-delivery');
+    if (!nodes.length) {
+      if (azDeliveryTimer) { window.clearInterval(azDeliveryTimer); azDeliveryTimer = null; }
+      return;
+    }
+    for (var i = 0; i < nodes.length; i++) {
+      if (!azDeliveryRender(nodes[i])) {
+        try {
+          if (nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
+        } catch (e) { /* noop */ }
+      }
+    }
+  }
+
+  function azMountDeliveryLine() {
+    try {
+      if (document.querySelector('.cx-az-delivery')) return; // idempotent
+      var node = azTpl('az_delivery_line');
+      if (!node) return;
+      if (!azDeliveryRender(node)) return; // fail closed: no defensible line
+      var grey = document.querySelector('.pdp__grey');
+      if (!grey) return;
+      // Amazon ordering: the delivery line sits ABOVE the stock line.
+      var placed = false;
+      var stockNode = grey.querySelector('.stock-msg') || grey.querySelector('.cx-az-stock');
+      if (stockNode && stockNode.parentNode === grey) {
+        try {
+          grey.insertBefore(node, stockNode);
+          placed = true;
+        } catch (e) { placed = false; }
+      }
+      if (!placed) {
+        var anchor = grey.querySelector('.pdp__actions--flex');
+        if (!anchor || !insertAfter(node, anchor)) return;
+      }
+      // Replacement contract: the standard PDP delivery_estimate widget
+      // AND the PDP dispatch_countdown line are suppressed while
+      // az_delivery_line is effective (preview sessions included) —
+      // but ONLY now that the az line rendered AND was placed. The cart
+      // rule applied to the PDP: a fail-closed replacement must never
+      // leave the standard widgets mute with nothing in their place.
+      azRemoveAll('.pdp__grey .cx-dispatch--pdp');
+      azRemoveAll('.pdp__grey .cx-delivery');
+      azRemoveAll('.pdp__grey [data-cx-note="dispatch"]');
+      if (!azDeliveryTimer) azDeliveryTimer = window.setInterval(azDeliveryTick, 30000);
+      track('az_delivery_line');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  // ------------------------------------------------------ az_microcopy
+
+  function azMountMicrocopy() {
+    try {
+      if (document.querySelector('.cx-az-micro')) return; // idempotent
+      var node = azTpl('az_microcopy');
+      if (!node) return;
+      var grey = document.querySelector('.pdp__grey');
+      if (!grey) return;
+      var anchor = grey.querySelector('.pdp__actions--flex') || grey.querySelector('.stock-msg');
+      if (!anchor) return;
+      // Ships-from row: warehouse country name in the page language,
+      // falling back to the merchant-set default label; no label, no row.
+      var label = azWarehouseName();
+      if (!label && AZ_CFG && AZ_CFG.shipsFrom && typeof AZ_CFG.shipsFrom.defaultLabel === 'string') {
+        label = AZ_CFG.shipsFrom.defaultLabel.replace(/^\s+|\s+$/g, '');
+      }
+      if (label) {
+        var row = node.querySelector('[data-cx-az-micro-ships]');
+        var slot = node.querySelector('[data-cx-az-ships-slot]');
+        var line = azT('amazon.ships_from', { country: label });
+        if (row && slot && line) {
+          slot.textContent = line;
+          row.removeAttribute('hidden');
+        }
+      }
+      // FREE returns reveal — same accessible disclosure pattern as the
+      // survey "how" toggle (click toggles, Escape closes + refocuses).
+      var btn = node.querySelector('[data-cx-az-returns]');
+      var panel = node.querySelector('.cx-az-micro__panel');
+      if (btn && panel) {
+        btn.addEventListener('click', function () {
+          var open = btn.getAttribute('aria-expanded') === 'true';
+          btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+          if (open) panel.setAttribute('hidden', '');
+          else panel.removeAttribute('hidden');
+        });
+        node.addEventListener('keydown', function (event) {
+          if ((event.key === 'Escape' || event.key === 'Esc') && btn.getAttribute('aria-expanded') === 'true') {
+            btn.setAttribute('aria-expanded', 'false');
+            panel.setAttribute('hidden', '');
+            try { btn.focus(); } catch (e) { /* noop */ }
+          }
+        });
+      }
+      if (!insertAfter(node, anchor)) return;
+      // Replacement contract: the app-injected PDP trust-badges strip is
+      // suppressed while az_microcopy is effective. Theme-editor-placed
+      // trust blocks cannot be auto-removed (admin help says so).
+      azRemoveAll('.cx-pdp-badges');
+      track('az_microcopy');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  // ------------------------------------------- az_fbt + az_similar_items
+
+  function azSectionsContainer() {
+    var existing = document.querySelector('.cx-az-sections');
+    if (existing) return existing;
+    var wrap = document.createElement('div');
+    // Same container classes + anchor chain as the proof stack, placed
+    // ABOVE it (FBT reads as part of the buy decision, proof below).
+    wrap.className = 'cx-az-sections container container--md';
+    var stack = document.querySelector('.cx-proof-stack');
+    if (stack && stack.parentNode) {
+      try {
+        stack.parentNode.insertBefore(wrap, stack);
+        return wrap;
+      } catch (e) { /* fall through */ }
+    }
+    var tabs = document.querySelector('.pdp__tabs');
+    if (tabs && tabs.parentNode) {
+      try {
+        tabs.parentNode.insertBefore(wrap, tabs);
+        return wrap;
+      } catch (e) { /* fall through */ }
+    }
+    var pdp = document.querySelector('section.pdp') || document.querySelector('.pdp');
+    if (pdp && insertAfter(wrap, pdp)) return wrap;
+    return null;
+  }
+
+  function azRecImage(product) {
+    var img = product.featured_image;
+    if (img && typeof img === 'object') img = img.src || img.url || null;
+    if (!img && Array.isArray(product.images) && product.images.length) {
+      img = product.images[0];
+      if (img && typeof img === 'object') img = img.src || img.url || null;
+    }
+    return typeof img === 'string' && img ? img : null;
+  }
+
+  function azSizedImage(url, width) {
+    try {
+      if (!/^(https?:)?\/\//.test(url)) return url;
+      return url + (url.indexOf('?') === -1 ? '?' : '&') + 'width=' + width;
+    } catch (e) { return url; }
+  }
+
+  function azFetchRecs(productId, intent) {
+    var url = routeRoot() + 'recommendations/products.json?product_id=' +
+      encodeURIComponent(String(productId)) + '&limit=8&intent=' + intent;
+    return azFetchJSON(url)
+      .then(function (data) {
+        return data && Array.isArray(data.products) ? data.products : [];
+      })
+      .catch(function () { return []; });
+  }
+
+  function azFetchHandleData(handles) {
+    // Presentment-correct price/availability via OUR app proxy — the
+    // same enrichment source as the cart cross-sell (recommendations
+    // payloads are only trusted for handle/title/image/url).
+    return azFetchJSON(routeRoot() + 'apps/cellexia/cart-data?handles=' + encodeURIComponent(handles.join(',')))
+      .then(function (data) {
+        return data && data.productsByHandle && typeof data.productsByHandle === 'object' ? data.productsByHandle : {};
+      })
+      .catch(function () { return {}; });
+  }
+
+  function azFirstAvailableVariant(entry) {
+    if (!entry || !Array.isArray(entry.variants)) return null;
+    for (var i = 0; i < entry.variants.length; i++) {
+      var v = entry.variants[i];
+      if (v && v.id != null && v.available !== false && typeof v.price === 'number') return v;
+    }
+    return null;
+  }
+
+  var azFbtBusy = false;
+
+  function azFbtRows(node) {
+    return node.querySelectorAll('[data-cx-az-fbt-row]');
+  }
+
+  function azFbtUpdate(node) {
+    // Live checkbox math: total + button label recomputed on every
+    // check/uncheck. Label = "Add both to cart" for exactly two (where
+    // the language ships the both form), else the count plural.
+    try {
+      var rows = azFbtRows(node);
+      var total = 0;
+      var count = 0;
+      for (var i = 0; i < rows.length; i++) {
+        var check = rows[i].querySelector('.cx-az-fbt__check');
+        if (!check || !check.checked) continue;
+        count++;
+        total += Number(rows[i].getAttribute('data-price-cents')) || 0;
+      }
+      var totalEl = node.querySelector('[data-cx-az-fbt-total]');
+      if (totalEl) totalEl.textContent = azMoney(total);
+      var btn = node.querySelector('[data-cx-az-fbt-add]');
+      if (btn) {
+        var label = '';
+        if (count === 2) label = azT('amazon.fbt_add_both');
+        if (!label) label = azT('amazon.fbt_add_' + Math.min(Math.max(count, 1), 4));
+        if (label) btn.textContent = label;
+        btn.disabled = count < 1 || azFbtBusy;
+      }
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function azFbtSyncThis(node) {
+    // The "This item:" row tracks the theme's currently selected
+    // variant (tier switches change price) — honest totals always.
+    try {
+      var row = node.querySelector('[data-cx-this]');
+      if (!row) return;
+      var vid = azCurrentVariantId();
+      var info = vid ? azVariantInfo(vid) : null;
+      if (!info || typeof info.price !== 'number') return;
+      row.setAttribute('data-variant-id', vid);
+      row.setAttribute('data-price-cents', String(info.price));
+      var priceEl = row.querySelector('[data-cx-az-fbt-price]');
+      if (priceEl) priceEl.textContent = azMoney(info.price);
+      azFbtUpdate(node);
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function azFbtAdd(node) {
+    if (azFbtBusy) return;
+    var rows = azFbtRows(node);
+    var items = [];
+    for (var i = 0; i < rows.length; i++) {
+      var check = rows[i].querySelector('.cx-az-fbt__check');
+      if (!check || !check.checked) continue;
+      var id = Number(rows[i].getAttribute('data-variant-id'));
+      if (!isFinite(id) || id <= 0) continue;
+      items.push({ id: id, quantity: 1, properties: { _cellexia_upsell: 'fbt' } });
+    }
+    if (!items.length || !window.fetch) return;
+    azFbtBusy = true;
+    azFbtUpdate(node);
+    var done = function () {
+      azFbtBusy = false;
+      azFbtUpdate(node);
+    };
+    window.fetch(routeRoot() + 'cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ items: items })
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function () {
+        // Theme refresh convention: refetch the cart and hand it to the
+        // theme's own refreshMiniCart (rebuilds the drawer + opens it).
+        return azFetchJSON(routeRoot() + 'cart.js').then(function (cart) {
+          try {
+            if (typeof window.refreshMiniCart === 'function') window.refreshMiniCart(cart);
+          } catch (e) { /* noop */ }
+        });
+      })
+      .then(function () {
+        track('az_fbt', 'click');
+        done();
+      })
+      .catch(function () {
+        done();
+      });
+  }
+
+  function azFbtFinish(node) {
+    // Shared tail for manual (server-rendered rows) and auto (JS-built
+    // rows): thumbnail strip joined by "+" glyphs, checkbox math, add
+    // button, attachment + beacon. Fewer than two rows = nothing to
+    // bundle = no section (no orphan headings).
+    try {
+      var rows = azFbtRows(node);
+      if (rows.length < 2) return;
+      azFbtSyncThis(node);
+      var strip = node.querySelector('[data-cx-az-fbt-strip]');
+      if (strip) {
+        var first = true;
+        for (var i = 0; i < rows.length; i++) {
+          var src = rows[i].getAttribute('data-cx-img');
+          if (!src) continue;
+          if (!first) {
+            var plus = document.createElement('span');
+            plus.className = 'cx-az-fbt__plus';
+            plus.textContent = '+';
+            strip.appendChild(plus);
+          }
+          var img = document.createElement('img');
+          img.className = 'cx-az-fbt__thumb';
+          img.src = src;
+          img.alt = '';
+          img.loading = 'lazy';
+          img.width = 100;
+          img.height = 100;
+          strip.appendChild(img);
+          first = false;
+        }
+      }
+      node.addEventListener('change', function (event) {
+        var el = event.target;
+        if (el && el.className && String(el.className).indexOf('cx-az-fbt__check') !== -1) {
+          azFbtUpdate(node);
+        }
+      });
+      var btn = node.querySelector('[data-cx-az-fbt-add]');
+      if (btn) {
+        btn.addEventListener('click', function () { azFbtAdd(node); });
+      }
+      azFbtUpdate(node);
+      var host = azSectionsContainer();
+      if (!host) return;
+      // FBT always precedes the similar-items row, whichever resolved
+      // first (similar is async too).
+      var similar = host.querySelector('.cx-az-similar');
+      if (similar) host.insertBefore(node, similar);
+      else host.appendChild(node);
+      track('az_fbt');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function azFbtRowEl(row) {
+    var li = document.createElement('li');
+    li.className = 'cx-az-fbt__row';
+    li.setAttribute('data-cx-az-fbt-row', '');
+    li.setAttribute('data-variant-id', String(row.variantId));
+    li.setAttribute('data-price-cents', String(row.priceCents));
+    if (row.image) li.setAttribute('data-cx-img', azSizedImage(row.image, 250));
+    var label = document.createElement('label');
+    label.className = 'cx-az-fbt__label';
+    var input = document.createElement('input');
+    input.type = 'checkbox';
+    input.className = 'cx-az-fbt__check';
+    input.checked = true;
+    var text = document.createElement('span');
+    text.className = 'cx-az-fbt__text';
+    text.textContent = row.title;
+    label.appendChild(input);
+    label.appendChild(text);
+    var price = document.createElement('span');
+    price.className = 'cx-az-fbt__price';
+    price.textContent = azMoney(row.priceCents);
+    li.appendChild(label);
+    li.appendChild(price);
+    return li;
+  }
+
+  function azMountFbt() {
+    try {
+      if (document.querySelector('.cx-az-fbt')) return; // idempotent
+      var node = azTpl('az_fbt');
+      if (!node) return;
+      if (node.getAttribute('data-cx-az-mode') === 'manual') {
+        azFbtFinish(node);
+        return;
+      }
+      // Auto: Shopify complementary recommendations for THIS product,
+      // enriched through the app proxy — the cart cross-sell's API
+      // family. Zero usable items = no section.
+      if (!window.fetch) return;
+      var p = azProductData();
+      if (!p || p.id == null) return;
+      azFetchRecs(p.id, 'complementary')
+        .then(function (products) {
+          var picks = [];
+          var seen = {};
+          for (var i = 0; i < products.length && picks.length < 2; i++) {
+            var pr = products[i];
+            if (!pr || typeof pr.handle !== 'string' || !pr.handle) continue;
+            if (pr.handle === p.handle || pr.handle === AZ_PROTECTION) continue;
+            if (seen[pr.handle]) continue;
+            var title = typeof pr.title === 'string' ? pr.title : '';
+            if (!title) continue;
+            seen[pr.handle] = true;
+            picks.push({ handle: pr.handle, title: title, image: azRecImage(pr) });
+          }
+          if (!picks.length) return null;
+          return azFetchHandleData(picks.map(function (pick) { return pick.handle; })).then(function (byHandle) {
+            var rows = [];
+            picks.forEach(function (pick) {
+              var variant = azFirstAvailableVariant(byHandle[pick.handle]);
+              if (!variant) return;
+              rows.push({
+                variantId: variant.id,
+                priceCents: variant.price,
+                title: pick.title,
+                image: pick.image
+              });
+            });
+            return rows;
+          });
+        })
+        .then(function (rows) {
+          if (!rows || !rows.length) return;
+          var list = node.querySelector('[data-cx-az-fbt-rows]');
+          if (!list) return;
+          for (var i = 0; i < rows.length; i++) list.appendChild(azFbtRowEl(rows[i]));
+          azFbtFinish(node);
+        })
+        .catch(function () { /* fail closed: no section */ });
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function azMountSimilar() {
+    try {
+      if (document.querySelector('.cx-az-similar')) return; // idempotent
+      var node = azTpl('az_similar_items');
+      if (!node) return;
+      if (!window.fetch) return;
+      var p = azProductData();
+      if (!p || p.id == null) return;
+      azFetchRecs(p.id, 'related')
+        .then(function (products) {
+          var picks = [];
+          var seen = {};
+          for (var i = 0; i < products.length && picks.length < 6; i++) {
+            var pr = products[i];
+            if (!pr || typeof pr.handle !== 'string' || !pr.handle) continue;
+            if (pr.handle === p.handle || pr.handle === AZ_PROTECTION) continue;
+            if (seen[pr.handle]) continue;
+            var title = typeof pr.title === 'string' ? pr.title : '';
+            if (!title) continue;
+            seen[pr.handle] = true;
+            picks.push({
+              handle: pr.handle,
+              title: title,
+              image: azRecImage(pr),
+              url: typeof pr.url === 'string' && pr.url.charAt(0) === '/' ? pr.url : '/products/' + pr.handle
+            });
+          }
+          if (!picks.length) return null;
+          return azFetchHandleData(picks.map(function (pick) { return pick.handle; })).then(function (byHandle) {
+            var cards = [];
+            picks.forEach(function (pick) {
+              var variant = azFirstAvailableVariant(byHandle[pick.handle]);
+              if (!variant) return;
+              cards.push({ pick: pick, priceCents: variant.price });
+            });
+            return cards;
+          });
+        })
+        .then(function (cards) {
+          if (!cards || !cards.length) return;
+          var list = node.querySelector('[data-cx-az-similar-list]');
+          if (!list) return;
+          for (var i = 0; i < cards.length; i++) {
+            var card = cards[i];
+            var li = document.createElement('li');
+            li.className = 'cx-az-similar__card';
+            var a = document.createElement('a');
+            a.className = 'cx-az-similar__link no-dec';
+            a.href = card.pick.url;
+            if (card.pick.image) {
+              var img = document.createElement('img');
+              img.className = 'cx-az-similar__img';
+              img.src = azSizedImage(card.pick.image, 320);
+              img.alt = card.pick.title;
+              img.loading = 'lazy';
+              img.width = 150;
+              img.height = 150;
+              a.appendChild(img);
+            }
+            var title = document.createElement('span');
+            title.className = 'cx-az-similar__name';
+            title.textContent = card.pick.title;
+            a.appendChild(title);
+            var price = document.createElement('span');
+            price.className = 'cx-az-similar__price';
+            price.textContent = azMoney(card.priceCents);
+            a.appendChild(price);
+            li.appendChild(a);
+            list.appendChild(li);
+          }
+          var host = azSectionsContainer();
+          if (!host) return;
+          host.appendChild(node);
+          track('az_similar_items');
+        })
+        .catch(function () { /* fail closed: no section */ });
+    } catch (e) { /* never break the theme */ }
+  }
+
+  // -------------------------------------------------------- az_buy_box
+  //
+  // DOM surgery on the theme's own buy area: .pdp__grey becomes the
+  // bordered decision card, the theme's price block + variant options
+  // are pulled inside (moved nodes keep their jQuery bindings), and the
+  // card's direct children are re-ordered to the Amazon pattern: price,
+  // delivery line(s), stock line, variant control, quantity + ATC,
+  // microcopy rows. Runs LAST so it sees every mounted widget. Any
+  // missing anchor degrades gracefully (chrome only, or full no-op).
+
+  var AZ_BUYBOX_ORDER = [
+    '.pdp__price',
+    '.cx-az-delivery',
+    '.cx-dispatch--pdp',
+    '.cx-delivery',
+    '.cx-az-stock',
+    '.stock-msg',
+    '.pdp__options',
+    '.pdp__actions--flex',
+    '.cx-az-micro',
+    '.cx-pdp-badges'
+  ];
+
+  function azMountBuyBox() {
+    try {
+      if (!azOn('az_buy_box')) return;
+      var grey = document.querySelector('.pdp__grey');
+      if (!grey) return; // graceful no-op: anchor missing
+      if (grey.getAttribute('data-cx-az-buybox') === '1') return; // idempotent
+      grey.setAttribute('data-cx-az-buybox', '1');
+      grey.classList.add('cx-az-buybox');
+      grey.setAttribute('data-cx-feature', 'az_buy_box');
+      try {
+        var price = document.querySelector('.pdp__info .pdp__price') || document.querySelector('.pdp__price');
+        if (price && !grey.contains(price)) grey.insertBefore(price, grey.firstChild);
+        var opts = document.querySelector('.pdp__info .pdp__options') || document.querySelector('.pdp__options');
+        if (opts && !grey.contains(opts)) grey.appendChild(opts);
+        var anchor = document.createComment('cx-az-order');
+        grey.insertBefore(anchor, grey.firstChild);
+        for (var i = 0; i < AZ_BUYBOX_ORDER.length; i++) {
+          var nodes = grey.querySelectorAll(AZ_BUYBOX_ORDER[i]);
+          for (var j = 0; j < nodes.length; j++) {
+            if (nodes[j].parentNode === grey) grey.insertBefore(nodes[j], anchor);
+          }
+        }
+        grey.removeChild(anchor);
+      } catch (e) { /* chrome without reorder is still a valid card */ }
+      track('az_buy_box');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  // -------------------------------------------------- variant re-sync
+
+  var azVariantBound = false;
+
+  function azVariantSync() {
+    try { azStockSync(); } catch (e) { /* noop */ }
+    try {
+      var fbt = document.querySelector('.cx-az-fbt');
+      if (fbt) azFbtSyncThis(fbt);
+    } catch (e) { /* noop */ }
+  }
+
+  function azBindVariantSync() {
+    if (azVariantBound) return;
+    azVariantBound = true;
+    try {
+      // The theme swaps variants via tier buttons + a hidden sm-rc
+      // selector; re-sync shortly after either signal (delegated, so
+      // late-rendered controls are covered).
+      document.addEventListener('click', function (event) {
+        var el = event.target;
+        while (el && el.nodeType === 1) {
+          if (el.matches && el.matches('.option__wrap button')) {
+            window.setTimeout(azVariantSync, 80);
+            return;
+          }
+          el = el.parentNode;
+        }
+      });
+      document.addEventListener('change', function (event) {
+        var el = event.target;
+        if (el && el.matches && el.matches('select[sm-rc-variant-selector], [sm-rc-variant-selector]')) {
+          window.setTimeout(azVariantSync, 0);
+        }
+      });
+    } catch (e) { /* noop */ }
+  }
+
+  // ================================================================
+  // v6.2 Liquid diet — JS-built az widget markup.
+  //
+  // The az PDP widgets' <template> fragments moved out of
+  // amazon-booster.liquid (Shopify caps an extension's total Liquid at
+  // 100KB). Each builder reproduces the old template body 1:1 — same
+  // tags, classes and attributes in the same order, single-space text
+  // nodes where the template's newlines rendered — and every dynamic
+  // value still reaches the DOM via textContent / setAttribute only
+  // (cxIcon's innerHTML sees exclusively the static icon constants).
+  // Gating is unchanged in effect: azTpl(key) requires azOn(key) — the
+  // exact widgetAllowed() live/preview rule — AND the widget's
+  // az_any_*-gated config payload, which the Liquid emits precisely
+  // when it used to emit the template (embed setting + honesty data
+  // gates included), so disarmed pages and previews behave as before.
+
+  var CX_AZ_ICONS = {
+    // stroke-width + inner markup; outer <svg> shell is composed in
+    // cxIcon and is byte-equal to the cx-icons snippet output.
+    lock: ['1.5', '<rect x="3.5" y="8.5" width="13" height="9" rx="2"/><path d="M6.5 8.5V6a3.5 3.5 0 0 1 7 0v2.5"/><circle cx="10" cy="13" r="1.25" fill="currentColor" stroke="none"/>'],
+    truck: ['1.5', '<path d="M1.5 4.5h10v9h-10z"/><path d="M11.5 7.5h3.2l3.3 3.3v2.7h-6.5"/><circle cx="5.5" cy="15" r="1.75"/><circle cx="14.5" cy="15" r="1.75"/>'],
+    bottle: ['1.5', '<rect x="7.8" y="1.8" width="4.4" height="2.6" rx="0.8"/><path d="M8.6 4.4v1.8M11.4 4.4v1.8"/><path d="M8.6 6.2h2.8c1.7.5 2.8 2 2.8 3.9v5.7a2.2 2.2 0 0 1-2.2 2.2H8a2.2 2.2 0 0 1-2.2-2.2v-5.7c0-1.9 1.1-3.4 2.8-3.9Z"/><path d="M5.8 12.4h8.4"/>'],
+    refresh: ['1.5', '<path d="M16.5 8A6.8 6.8 0 0 0 4.2 6.2L2.8 7.9"/><path d="M2.8 3.9v4h4"/><path d="M3.5 12a6.8 6.8 0 0 0 12.3 1.8l1.4-1.7"/><path d="M17.2 16.1v-4h-4"/>'],
+    box: ['1.5', '<path d="m10 2.2 7 3.5v8.6l-7 3.5-7-3.5V5.7z"/><path d="M3 5.7l7 3.5 7-3.5"/><path d="M10 9.2v8.6"/><path d="m6.5 3.95 7 3.5"/>'],
+    check: ['2', '<path d="m3.5 10.5 4.2 4.2 8.8-9.4"/>'],
+    'shield-check': ['1.5', '<path d="M10 1.8 3.5 4.2v5c0 4.2 2.8 7.3 6.5 8.9 3.7-1.6 6.5-4.7 6.5-8.9v-5z"/><path d="m7 9.8 2.2 2.2L13.2 8"/>'],
+    question: ['1.5', '<circle cx="10" cy="10" r="7.5"/><path d="M7.8 7.8a2.2 2.2 0 1 1 3.1 2.4c-.7.3-.9.8-.9 1.5"/><circle cx="10" cy="14.1" r="0.9" fill="currentColor" stroke="none"/>'],
+    'seal-check': ['1.5', '<circle cx="10" cy="8" r="4.6"/><path d="m8.1 8.1 1.4 1.4 2.4-2.8"/><path d="M4.6 11.4c-1.2 1.4-1.8 3.2-1.7 5 1.7 0 3.3-.7 4.6-1.9"/><path d="M15.4 11.4c1.2 1.4 1.8 3.2 1.7 5-1.7 0-3.3-.7-4.6-1.9"/><path d="m6.2 14.7.9 1"/><path d="m13.8 14.7-.9 1"/>']
+  };
+
+  function cxIcon(name, size) {
+    // Static-markup twin of {% render 'cx-icons', icon: name, size: n %}
+    // for the icons the JS-built widgets use. No dynamic value ever
+    // reaches this innerHTML.
+    var spec = CX_AZ_ICONS[name];
+    if (!spec) return document.createTextNode('');
+    var wrap = document.createElement('div');
+    wrap.innerHTML = '<svg class="cx-icon" width="' + size + '" height="' + size +
+      '" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="' + spec[0] +
+      '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + spec[1] + '</svg>';
+    return wrap.firstChild || document.createTextNode('');
+  }
+
+  function cxEl(tag, cls, attrs) {
+    // class first (template attribute order), then attrs as flat
+    // [name, value, ...] pairs.
+    var el = document.createElement(tag);
+    if (cls) el.setAttribute('class', cls);
+    if (attrs) {
+      for (var i = 0; i < attrs.length; i += 2) el.setAttribute(attrs[i], attrs[i + 1]);
+    }
+    return el;
+  }
+
+  function cxSp(el) {
+    // The single collapsed space an old template newline rendered as.
+    el.appendChild(document.createTextNode(' '));
+    return el;
+  }
+
+  function cxSvg(tag, cls, attrs) {
+    // SVG-namespaced twin of cxEl (the old templates' <svg> markup was
+    // namespaced by the HTML parser; createElementNS keeps that true).
+    var el = document.createElementNS
+      ? document.createElementNS('http://www.w3.org/2000/svg', tag)
+      : document.createElement(tag);
+    if (cls) el.setAttribute('class', cls);
+    if (attrs) {
+      for (var i = 0; i < attrs.length; i += 2) el.setAttribute(attrs[i], attrs[i + 1]);
+    }
+    return el;
+  }
+
+  function azHasStr(key) {
+    return !!(AZ_CFG && AZ_CFG.strings && typeof AZ_CFG.strings[key] === 'string');
+  }
+
+  function azBuildDelivery() {
+    var root = cxEl('div', 'cx-az-delivery', ['data-cx-feature', 'az_delivery_line']);
+    cxSp(root);
+    root.appendChild(cxEl('span', 'cx-az-delivery__line', ['data-cx-az-del-line', '']));
+    cxSp(root);
+    root.appendChild(cxEl('strong', 'cx-az-delivery__countdown', ['data-cx-az-del-count', '', 'hidden', '']));
+    cxSp(root);
+    return root;
+  }
+
+  function azBuildStock() {
+    var root = cxEl('div', 'cx-az-stock', ['data-cx-feature', 'az_stock_line', 'hidden', '']);
+    cxSp(root);
+    var instock = cxEl('span', 'cx-az-stock__instock');
+    instock.textContent = azT('amazon.in_stock');
+    root.appendChild(instock);
+    cxSp(root);
+    root.appendChild(cxEl('span', 'cx-az-stock__ships', ['data-cx-az-stock-ships', '', 'hidden', '']));
+    cxSp(root);
+    return root;
+  }
+
+  function azBuildMicro() {
+    var root = cxEl('div', 'cx-az-micro', ['data-cx-feature', 'az_microcopy']);
+    cxSp(root);
+    var row1 = cxEl('div', 'cx-az-micro__row');
+    row1.appendChild(cxIcon('lock', 13));
+    var secure = document.createElement('span');
+    secure.textContent = azT('amazon.secure');
+    row1.appendChild(secure);
+    cxSp(row1);
+    root.appendChild(row1);
+    cxSp(root);
+    var row2 = cxEl('div', 'cx-az-micro__row', ['data-cx-az-micro-ships', '', 'hidden', '']);
+    row2.appendChild(cxIcon('truck', 13));
+    row2.appendChild(cxEl('span', null, ['data-cx-az-ships-slot', '']));
+    cxSp(row2);
+    root.appendChild(row2);
+    cxSp(root);
+    var row3 = cxEl('div', 'cx-az-micro__row cx-az-micro__row--returns');
+    cxSp(row3);
+    var btn = cxEl('button', null, ['type', 'button', 'class', 'cx-az-micro__reveal', 'data-cx-az-returns', '', 'aria-expanded', 'false', 'aria-controls', 'cx-az-returns-panel']);
+    btn.appendChild(cxIcon('refresh', 13));
+    var ret = document.createElement('span');
+    ret.textContent = azT('amazon.free_returns');
+    btn.appendChild(ret);
+    cxSp(btn);
+    row3.appendChild(btn);
+    cxSp(row3);
+    var panel = cxEl('div', 'cx-az-micro__panel', ['id', 'cx-az-returns-panel', 'hidden', '']);
+    panel.textContent = azT('guarantee.title');
+    row3.appendChild(panel);
+    cxSp(row3);
+    root.appendChild(row3);
+    cxSp(root);
+    return root;
+  }
+
+  function azBuildBought() {
+    var b = AZ_CFG.bought;
+    return cxEl('p', 'cx-az-bought', ['data-cx-feature', 'az_bought_count', 'data-cx-az-n', String(b.n), 'data-cx-az-set', String(b.set)]);
+  }
+
+  function azBuildBest() {
+    var root = cxEl('p', 'cx-az-bestseller', ['data-cx-feature', 'az_bestseller_badge']);
+    cxSp(root);
+    var pill = cxEl('span', 'cx-az-bestseller__pill');
+    pill.textContent = azT('amazon.bestseller');
+    root.appendChild(pill);
+    cxSp(root);
+    var cat = cxEl('span', 'cx-az-bestseller__cat');
+    cat.textContent = typeof AZ_CFG.bestCat === 'string' ? AZ_CFG.bestCat : '';
+    root.appendChild(cat);
+    cxSp(root);
+    return root;
+  }
+
+  function azBuildFbtRowLi(row, isThis) {
+    var li = document.createElement('li');
+    li.setAttribute('class', 'cx-az-fbt__row');
+    li.setAttribute('data-cx-az-fbt-row', '');
+    if (isThis) li.setAttribute('data-cx-this', '1');
+    li.setAttribute('data-variant-id', String(row.id));
+    li.setAttribute('data-price-cents', String(row.price));
+    if (row.img) li.setAttribute('data-cx-img', String(row.img));
+    cxSp(li);
+    var label = cxEl('label', 'cx-az-fbt__label');
+    cxSp(label);
+    var input = cxEl('input', null, ['type', 'checkbox', 'class', 'cx-az-fbt__check', 'checked', '']);
+    if (isThis) input.setAttribute('disabled', '');
+    label.appendChild(input);
+    cxSp(label);
+    var text = cxEl('span', 'cx-az-fbt__text');
+    if (isThis) {
+      var strong = cxEl('strong', 'cx-az-fbt__this');
+      strong.textContent = azT('amazon.fbt_this_item');
+      text.appendChild(strong);
+      text.appendChild(document.createTextNode(' ' + String(row.title)));
+    } else {
+      text.textContent = String(row.title);
+    }
+    label.appendChild(text);
+    cxSp(label);
+    li.appendChild(label);
+    cxSp(li);
+    var price = isThis
+      ? cxEl('span', 'cx-az-fbt__price', ['data-cx-az-fbt-price', ''])
+      : cxEl('span', 'cx-az-fbt__price');
+    price.textContent = String(row.priceFmt);
+    li.appendChild(price);
+    cxSp(li);
+    return li;
+  }
+
+  function azBuildFbt() {
+    var f = AZ_CFG.fbt;
+    var p = azProductData();
+    if (!f || typeof f !== 'object' || !p) return null;
+    var mode = f.mode === 'manual' ? 'manual' : 'auto';
+    var vid = p.selectedVariant != null ? String(p.selectedVariant) : '';
+    var info = azVariantInfo(vid);
+    var root = cxEl('section', 'cx-az-fbt', ['data-cx-feature', 'az_fbt', 'data-cx-az-mode', mode]);
+    cxSp(root);
+    var h = cxEl('h2', 'cx-az-fbt__title heading--four');
+    h.textContent = azT('amazon.fbt_title');
+    root.appendChild(h);
+    cxSp(root);
+    root.appendChild(cxEl('div', 'cx-az-fbt__strip', ['data-cx-az-fbt-strip', '', 'aria-hidden', 'true']));
+    cxSp(root);
+    var ul = cxEl('ul', 'cx-az-fbt__rows list-reset', ['data-cx-az-fbt-rows', '']);
+    cxSp(ul);
+    ul.appendChild(azBuildFbtRowLi({
+      id: vid,
+      price: info && typeof info.price === 'number' ? info.price : '',
+      priceFmt: typeof f.priceFmt === 'string' ? f.priceFmt : '',
+      title: typeof f.title === 'string' ? f.title : '',
+      img: typeof f.img === 'string' ? f.img : ''
+    }, true));
+    if (mode === 'manual' && f.rows && f.rows.length) {
+      for (var i = 0; i < f.rows.length && i < 3; i++) {
+        var r = f.rows[i];
+        if (r && typeof r === 'object') ul.appendChild(azBuildFbtRowLi(r, false));
+      }
+    }
+    root.appendChild(ul);
+    cxSp(root);
+    var summary = cxEl('div', 'cx-az-fbt__summary');
+    cxSp(summary);
+    var totalLabel = cxEl('span', 'cx-az-fbt__total-label');
+    totalLabel.textContent = azT('amazon.fbt_total');
+    summary.appendChild(totalLabel);
+    cxSp(summary);
+    summary.appendChild(cxEl('strong', 'cx-az-fbt__total', ['data-cx-az-fbt-total', '']));
+    cxSp(summary);
+    root.appendChild(summary);
+    cxSp(root);
+    root.appendChild(cxEl('button', null, ['type', 'button', 'class', 'btn btn--primary cx-az-fbt__add', 'data-cx-az-fbt-add', '']));
+    cxSp(root);
+    return root;
+  }
+
+  function azBuildSimilar() {
+    var root = cxEl('section', 'cx-az-similar', ['data-cx-feature', 'az_similar_items']);
+    cxSp(root);
+    var h = cxEl('h2', 'cx-az-similar__title heading--four');
+    h.textContent = azT('amazon.similar_title');
+    root.appendChild(h);
+    cxSp(root);
+    var scroll = cxEl('div', 'cx-az-similar__scroll');
+    cxSp(scroll);
+    scroll.appendChild(cxEl('ul', 'cx-az-similar__list list-reset', ['data-cx-az-similar-list', '']));
+    cxSp(scroll);
+    root.appendChild(scroll);
+    cxSp(root);
+    return root;
+  }
+
+  function azTplPayload(key) {
+    // The server used to gate each <template> emission on az_any_* — the
+    // same booleans now gate the widget's config payload, so payload
+    // presence IS template presence (embed settings + honesty gates
+    // included). Missing payload = fail closed, exactly like a missing
+    // template.
+    if (!AZ_CFG) return false;
+    if (key === 'az_delivery_line') return AZ_CFG.thresholdOk === true;
+    if (key === 'az_stock_line') return azHasStr('amazon.in_stock');
+    if (key === 'az_microcopy') return azHasStr('amazon.secure');
+    if (key === 'az_bought_count') return !!(AZ_CFG.bought && typeof AZ_CFG.bought === 'object');
+    if (key === 'az_bestseller_badge') return azHasStr('amazon.bestseller');
+    if (key === 'az_fbt') return !!(AZ_CFG.fbt && typeof AZ_CFG.fbt === 'object');
+    if (key === 'az_similar_items') return azHasStr('amazon.similar_title');
+    return false;
+  }
+
+  function azTpl(key) {
+    // v6.2 replacement for cloneTemplate('cx-tpl-az-*', key): same
+    // effective/draft gate (azOn === widgetAllowed semantics), same
+    // server emission gate (azTplPayload), fresh built node or null.
+    try {
+      azReadConfig();
+      if (!azOn(key) || !azTplPayload(key)) return null;
+      if (key === 'az_delivery_line') return azBuildDelivery();
+      if (key === 'az_stock_line') return azBuildStock();
+      if (key === 'az_microcopy') return azBuildMicro();
+      if (key === 'az_bought_count') return azBuildBought();
+      if (key === 'az_bestseller_badge') return azBuildBest();
+      if (key === 'az_fbt') return azBuildFbt();
+      if (key === 'az_similar_items') return azBuildSimilar();
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // -------------------------------------------------------- az entry
+
+  function azGapFillConfig() {
+    // Gap-fill the classic config so the shared engines run when the
+    // amazon-booster embed is the only one emitting anything. Never
+    // overrides a value the classic block already provided. Idempotent
+    // — shared by azInit() and the pre-mount beacon-honesty checks.
+    var c = azReadConfig();
+    if (!c) return false; // embed absent / config missing: nothing to do
+    if (!cfg || typeof cfg !== 'object') cfg = {};
+    if (!cfg.market && typeof c.market === 'string') cfg.market = c.market;
+    if (!cfg.dispatch && c.dispatch) cfg.dispatch = c.dispatch;
+    if (!cfg.delivery && c.delivery) cfg.delivery = c.delivery;
+    if (!cfg.deliveryStrings && c.deliveryStrings) cfg.deliveryStrings = c.deliveryStrings;
+    if (c.strings && typeof c.strings === 'object') {
+      if (!cfg.strings || typeof cfg.strings !== 'object') cfg.strings = {};
+      if (typeof cfg.strings['dispatch.within'] !== 'string' && typeof c.strings['dispatch.within'] === 'string') {
+        cfg.strings['dispatch.within'] = c.strings['dispatch.within'];
+      }
+      if (typeof cfg.strings['dispatch.within_minutes'] !== 'string' && typeof c.strings['dispatch.within_minutes'] === 'string') {
+        cfg.strings['dispatch.within_minutes'] = c.strings['dispatch.within_minutes'];
+      }
+    }
+    return true;
+  }
+
+  function azInit() {
+    try {
+      if (!azGapFillConfig()) return; // embed absent / config missing
+      azMountBestseller();
+      azMountBought();
+      azMountStock();
+      azMountDeliveryLine();
+      azMountMicrocopy();
+      azMountFbt();
+      azMountSimilar();
+      azMountBuyBox();
+      azBindVariantSync();
+    } catch (e) { /* never break the theme */ }
+  }
+
   function init() {
     try {
       cfg = readConfig();
@@ -1210,7 +2995,10 @@
           var badges = cloneTemplate('cx-tpl-pdp-badges', 'trust_badges');
           if (badges && insertAfter(badges, anchor)) {
             anchor = badges;
-            track('trust_badges');
+            // Impression honesty (v6.1): azMountMicrocopy removes this
+            // strip later in the SAME task while az_microcopy is
+            // effective — removed before paint means no beacon.
+            if (!azWillReplace('az_microcopy')) track('trust_badges');
           }
           var guarantee = cloneTemplate('cx-tpl-pdp-guarantee', 'guarantee');
           if (guarantee && insertAfter(guarantee, anchor)) {
@@ -1244,6 +3032,10 @@
 
       // --- guarantee-check modal trigger (v4.9) ---
       bindGuaranteeCheck();
+
+      // --- Amazon-pattern widgets (v6.1) — after the classic mounts so
+      // the replacement suppressions see the final standard DOM ---
+      azInit();
     } catch (e) { /* never break the theme */ }
 
     window.CellexiaBooster = window.CellexiaBooster || {};
@@ -1298,7 +3090,9 @@
     try {
       token = window.sessionStorage ? window.sessionStorage.getItem('cx_preview_token') : null;
     } catch (e) { token = null; }
-    var armed = !!(cfg.preview && cfg.preview.armed === true);
+    // v6.1: the amazon-booster embed arms preview independently of the
+    // classic block (it may be the only embed emitting anything).
+    var armed = !!(cfg.preview && cfg.preview.armed === true) || azPreviewArmed();
     if (!token || !armed || !window.fetch) {
       init();
       return;

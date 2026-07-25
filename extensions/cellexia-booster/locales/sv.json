@@ -160,5 +160,31 @@
     "box_sub": "… annars återbetalar vi dig eller skickar en gratis ersättningsprodukt.",
     "badge": "Leveransgaranti",
     "tooltip": "Levererat senast {{ date }} – annars återbetalar vi dig eller skickar en gratis ersättningsprodukt."
+  },
+  "amazon": {
+    "in_stock": "I lager",
+    "free_delivery": "FRI leverans",
+    "over_threshold": "vid beställningar över {{ amount }}",
+    "add_more": "Lägg till {{ amount }} till för att få FRI frakt.",
+    "qualifies": "Din beställning kvalificerar sig för FRI frakt.",
+    "order_within": "Beställ inom {{ hours }} tim {{ minutes }} min",
+    "ships_from": "Skickas från {{ country }}",
+    "secure": "Säker transaktion",
+    "free_returns": "FRIA returer",
+    "bought_count": "{{ n }}+ köpta under den senaste månaden",
+    "bestseller": "Bästsäljare nr {{ rank }}",
+    "fbt_title": "Köps ofta tillsammans",
+    "fbt_this_item": "Denna artikel:",
+    "fbt_total": "Totalpris:",
+    "fbt_add": {
+      "one": "Lägg i varukorgen",
+      "other": "Lägg alla {{ count }} i varukorgen"
+    },
+    "fbt_add_both": "Lägg båda i varukorgen",
+    "similar_title": "Liknande artiklar",
+    "cta_count": {
+      "one": "Gå till kassan ({{ count }} artikel)",
+      "other": "Gå till kassan ({{ count }} artiklar)"
+    }
   }
 }

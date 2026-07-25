@@ -160,5 +160,31 @@
     "box_sub": "…oppure ti rimborsiamo o ti inviamo gratuitamente un prodotto sostitutivo.",
     "badge": "Garanzia di consegna",
     "tooltip": "Consegna entro e non oltre {{ date }} — altrimenti ti rimborsiamo o ti inviamo gratuitamente un prodotto sostitutivo."
+  },
+  "amazon": {
+    "in_stock": "Disponibilità immediata",
+    "free_delivery": "Consegna GRATUITA",
+    "over_threshold": "per ordini superiori a {{ amount }}",
+    "add_more": "Aggiungi ancora {{ amount }} per ottenere la spedizione GRATUITA.",
+    "qualifies": "Il tuo ordine soddisfa i requisiti per la spedizione GRATUITA.",
+    "order_within": "Ordina entro {{ hours }} h {{ minutes }} min",
+    "ships_from": "Spedito da: {{ country }}",
+    "secure": "Transazione sicura",
+    "free_returns": "Resi GRATUITI",
+    "bought_count": "{{ n }}+ acquistati nel mese scorso",
+    "bestseller": "N. {{ rank }} più venduto",
+    "fbt_title": "Spesso comprati insieme",
+    "fbt_this_item": "Questo articolo:",
+    "fbt_total": "Prezzo totale:",
+    "fbt_add": {
+      "one": "Aggiungi al carrello",
+      "other": "Aggiungi tutti e {{ count }} al carrello"
+    },
+    "fbt_add_both": "Aggiungi entrambi al carrello",
+    "similar_title": "Articoli simili",
+    "cta_count": {
+      "one": "Procedi all'ordine ({{ count }} articolo)",
+      "other": "Procedi all'ordine ({{ count }} articoli)"
+    }
   }
 }

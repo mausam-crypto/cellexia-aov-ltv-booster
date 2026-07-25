@@ -652,6 +652,80 @@ export function featureReadiness(
   };
   readiness.dispatch_countdown = dispatchReadiness(settings.dispatch);
   readiness.delivery_estimate = deliveryReadiness(settings);
+
+  // --- Amazon-pattern features (v6.1) --------------------------------------
+  // The eight PDP az_* widgets ship in the separate "Cellexia Amazon
+  // patterns" app embed, which must be enabled ONCE in the theme editor. The
+  // app cannot currently detect embed state server-side, so the reminder is
+  // static and honest about that.
+  const embedNote =
+    " Requires the “Cellexia Amazon patterns” app embed to be enabled once in the theme editor (Theme editor → App embeds) — the app cannot detect that automatically, so if nothing renders, check the embed first.";
+  readiness.az_buy_box = {
+    ready: true,
+    reason:
+      "Assembles a bordered decision card around the theme's existing buy area. If a product template lacks the expected theme anchors the card gracefully no-ops (nothing renders)." +
+      embedNote,
+  };
+  readiness.az_microcopy = {
+    ready: true,
+    reason:
+      "Replaces the app-injected PDP trust-badges strip while on. A trust-badges block placed manually in the theme editor cannot be auto-removed — remove that block by hand if you placed one." +
+      embedNote,
+  };
+  readiness.az_delivery_line = {
+    ready: true,
+    reason:
+      "Replaces the standard delivery widget AND the PDP dispatch countdown line while on. Uses the same dispatch schedule and per-country delivery config as those features and stands alone: the Amazon embed ships that config itself, so this line renders even when the delivery estimate or dispatch countdown is switched off, hidden on product pages, or scoped to other markets. It still fails closed when the delivery settings are incomplete or the buyer's country is hidden for the delivery estimate. The free-shipping threshold clause follows the per-market thresholds." +
+      embedNote,
+  };
+  {
+    const mapped = Object.keys(settings.amazon.shipsFromByCountry ?? {}).length;
+    const shipsFrom = settings.amazon.defaultWarehouse
+      ? `“Ships from” uses ${mapped} country mapping${mapped === 1 ? "" : "s"} with a default warehouse fallback.`
+      : mapped > 0
+        ? `“Ships from” renders only for the ${mapped} mapped buyer countr${mapped === 1 ? "y" : "ies"} (no default warehouse set).`
+        : "No warehouse map configured yet — buyers see the green “In Stock” line only (“Ships from” stays hidden).";
+    readiness.az_stock_line = {
+      ready: true,
+      reason:
+        `Honest by construction: “In Stock” renders only when the theme's real inventory data says available; low-stock states pass through untouched. ${shipsFrom}` +
+        embedNote,
+    };
+  }
+  readiness.az_bought_count = {
+    ready: true,
+    reason:
+      "Renders only on products with a fresh merchant-set number — counts unset, zero or older than 45 days are hidden (honesty guard). Set numbers on the Amazon patterns page." +
+      embedNote,
+  };
+  readiness.az_bestseller_badge = {
+    ready: true,
+    reason:
+      "Never renders without a merchant-entered rank + category (per product, on the Amazon patterns page). The category renders exactly as entered." +
+      embedNote,
+  };
+  readiness.az_fbt = {
+    ready: true,
+    reason:
+      "Automatic complementary recommendations by default; per-product manual overrides on the Amazon patterns page. The cart cross-sell stays independent; a theme-native related-products section is a theme setting you can disable in the theme editor." +
+      embedNote,
+  };
+  readiness.az_similar_items = {
+    ready: true,
+    reason:
+      "Automatic related-intent recommendations only — renders under “Frequently bought together” when both are on, or standalone." +
+      embedNote,
+  };
+  readiness.az_cart_free_line = {
+    ready: true,
+    reason:
+      "Replaces the free-shipping bar's TEXT line while on — the progress bar itself stays below the sentence. Uses the existing per-market threshold and live cart total.",
+  };
+  readiness.az_cta_count = {
+    ready: true,
+    reason:
+      "Relabels the theme's cart checkout button with a live, plural-correct item count; the theme's original label is restored the moment the feature is turned off or the preview ends.",
+  };
   readiness.clinical_study = contentReadiness(counts?.clinical, "clinical study");
   readiness.verified_before_after = contentReadiness(
     counts?.ba,

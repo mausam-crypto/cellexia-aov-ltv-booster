@@ -56,58 +56,8 @@ assign tp_sep = 'trustpilot.decimal_separator' | t
 {%- endif -%}
 {%- endif -%}
 </div>
-<script>
-(function () {
-try {
-var w = window;
-w.__cxSeen = w.__cxSeen || {};
-if (w.__cxSeen.trustpilot) return;
-w.__cxSeen.trustpilot = 1;
-var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
-var payload = JSON.stringify({ feature: 'trustpilot', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
-if (navigator.sendBeacon) {
-navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
-} else if (w.fetch) {
-w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
-}
-} catch (e) { /* never break the theme */ }
-})();
-</script>
+{% render 'cx-impression', feature: 'trustpilot', market: cx_market %}
 {%- endif -%}
-
 {% schema %}
-{
-"name": "Cellexia Trustpilot",
-"target": "section",
-"settings": [
-{
-"type": "text",
-"id": "rating_override",
-"label": "Rating override (0–5)",
-"info": "Leave blank to use the rating configured in the Cellexia dashboard."
-},
-{
-"type": "text",
-"id": "count_override",
-"label": "Review count override",
-"info": "Leave blank to use the count configured in the Cellexia dashboard."
-},
-{
-"type": "text",
-"id": "url_override",
-"label": "Trustpilot profile URL override",
-"info": "Leave blank to use the URL configured in the Cellexia dashboard."
-},
-{
-"type": "select",
-"id": "layout",
-"label": "Layout",
-"options": [
-{ "value": "row", "label": "Single row" },
-{ "value": "stack", "label": "Stacked" }
-],
-"default": "row"
-}
-]
-}
+{"name":"Cellexia Trustpilot","target":"section","settings":[{"type":"text","id":"rating_override","label":"Rating override (0–5)","info":"Leave blank to use the rating configured in the Cellexia dashboard."},{"type":"text","id":"count_override","label":"Review count override","info":"Leave blank to use the count configured in the Cellexia dashboard."},{"type":"text","id":"url_override","label":"Trustpilot profile URL override","info":"Leave blank to use the URL configured in the Cellexia dashboard."},{"type":"select","id":"layout","label":"Layout","options":[{"value":"row","label":"Single row"},{"value":"stack","label":"Stacked"}],"default":"row"}]}
 {% endschema %}

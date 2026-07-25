@@ -160,5 +160,31 @@
     "box_sub": "… tai palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle.",
     "badge": "Toimitustakuu",
     "tooltip": "Perillä viimeistään: {{ date }}. Muussa tapauksessa palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle."
+  },
+  "amazon": {
+    "in_stock": "Varastossa",
+    "free_delivery": "ILMAINEN toimitus",
+    "over_threshold": ", kun tilauksesi ylittää {{ amount }}",
+    "add_more": "Lisää vielä {{ amount }}, niin saat ILMAISEN toimituksen.",
+    "qualifies": "Tilauksesi oikeuttaa ILMAISEEN toimitukseen.",
+    "order_within": "Tilaa {{ hours }} h {{ minutes }} min kuluessa",
+    "ships_from": "Lähetysmaa: {{ country }}",
+    "secure": "Turvallinen maksutapahtuma",
+    "free_returns": "ILMAISET palautukset",
+    "bought_count": "{{ n }}+ ostettu viime kuun aikana",
+    "bestseller": "Myydyin nro {{ rank }}",
+    "fbt_title": "Ostetaan usein yhdessä",
+    "fbt_this_item": "Tämä tuote:",
+    "fbt_total": "Kokonaishinta:",
+    "fbt_add": {
+      "one": "Lisää ostoskoriin",
+      "other": "Lisää kaikki {{ count }} ostoskoriin"
+    },
+    "fbt_add_both": "Lisää molemmat ostoskoriin",
+    "similar_title": "Samankaltaisia tuotteita",
+    "cta_count": {
+      "one": "Siirry kassalle ({{ count }} tuote)",
+      "other": "Siirry kassalle ({{ count }} tuotetta)"
+    }
   }
 }

@@ -67,7 +67,17 @@ export type FeatureKey =
   | "derm_survey"
   | "cart_cross_sell"
   | "dispatch_countdown"
-  | "delivery_estimate";
+  | "delivery_estimate"
+  | "az_buy_box"
+  | "az_microcopy"
+  | "az_delivery_line"
+  | "az_stock_line"
+  | "az_bought_count"
+  | "az_bestseller_badge"
+  | "az_fbt"
+  | "az_similar_items"
+  | "az_cart_free_line"
+  | "az_cta_count";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "cart_volume_upsell",
@@ -90,7 +100,37 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "cart_cross_sell",
   "dispatch_countdown",
   "delivery_estimate",
+  "az_buy_box",
+  "az_microcopy",
+  "az_delivery_line",
+  "az_stock_line",
+  "az_bought_count",
+  "az_bestseller_badge",
+  "az_fbt",
+  "az_similar_items",
+  "az_cart_free_line",
+  "az_cta_count",
 ];
+
+/**
+ * The ten Amazon-pattern feature flags (v6.1), stored as sibling booleans in
+ * the single `amazon` settings section — no shared master switch (each key
+ * toggles independently, unlike the cart sub-features). The array order
+ * mirrors FEATURE_KEYS' az_* order.
+ */
+export const AMAZON_FLAG_FIELDS = [
+  "buyBox",
+  "microcopy",
+  "deliveryLine",
+  "stockLine",
+  "boughtCount",
+  "bestsellerBadge",
+  "fbt",
+  "similarItems",
+  "cartFreeLine",
+  "ctaCount",
+] as const;
+export type AmazonFlagField = (typeof AMAZON_FLAG_FIELDS)[number];
 
 /** The five merchant-selectable derm-survey display formats (v5.8). */
 export const DERM_SURVEY_FORMATS = [
@@ -396,6 +436,54 @@ export interface BoosterSettings {
     byCountry: Record<string, DeliveryCountryOverride>;
   };
   /**
+   * Amazon-pattern features (v6.1) — ten independent flags plus the
+   * language-neutral "Ships from" warehouse config. We model Amazon's
+   * PATTERNS (layout, ordering, color conventions, microcopy structure),
+   * never their brand: the storefront templates must not render the words
+   * "Amazon"/"Prime"/"Amazon's Choice", the smile mark or their exact badge
+   * trade dress. All ten default OFF (safe-by-default).
+   */
+  amazon: {
+    /** az_buy_box — bordered decision card assembled around the theme's buy area. */
+    buyBox: boolean;
+    /** az_microcopy — terse gray trust rows under the ATC (replaces the PDP trust-badges strip while on). */
+    microcopy: boolean;
+    /** az_delivery_line — "FREE delivery {date} on orders over {threshold}" + countdown clause. */
+    deliveryLine: boolean;
+    /** az_stock_line — green "In Stock" + "Ships from {country}" (replaces the theme's .stock-msg while on). */
+    stockLine: boolean;
+    /** az_bought_count — "{n}+ bought in past month" (per-product merchant data). */
+    boughtCount: boolean;
+    /** az_bestseller_badge — "#{rank} Bestseller · {category}" pill (per-product merchant data). */
+    bestsellerBadge: boolean;
+    /** az_fbt — "Frequently bought together" block on the PDP. */
+    fbt: boolean;
+    /** az_similar_items — horizontal related-items card row under FBT. */
+    similarItems: boolean;
+    /** az_cart_free_line — declarative free-shipping sentence atop the cart booster. */
+    cartFreeLine: boolean;
+    /** az_cta_count — "Proceed to checkout (N items)" decoration of the theme's button. */
+    ctaCount: boolean;
+    /**
+     * Buyer country ISO2 -> warehouse country ISO2 for the "Ships from" row
+     * (e.g. CH -> CH, NL -> NL). The warehouse country NAME renders in the
+     * page language via Intl.DisplayNames — no locale strings needed.
+     * Dynamic record: replaced wholesale on save (see DYNAMIC_RECORD_KEYS).
+     */
+    shipsFromByCountry: Record<string, string>;
+    /** Fallback warehouse ISO2 for buyers without a map entry ("" = the
+     *  "Ships from" row is hidden for unmapped buyers). */
+    defaultWarehouse: string;
+    /**
+     * az_microcopy only: merchant-set plain-text label for the trust
+     * microcopy "Ships from {label}" row when NO warehouse country resolves
+     * for the buyer (no map entry and no default warehouse). "" = the row is
+     * simply hidden for unmapped buyers. Language-neutral merchant text
+     * (e.g. a city or warehouse name), trimmed + length-capped on save.
+     */
+    shipsFromDefault: string;
+  };
+  /**
    * Per-feature market targeting. A feature is visible in market M only when
    * its flags are on AND (scope.mode === "all" || scope.markets includes M).
    * Market handles are Shopify Markets handles (e.g. "ireland").
@@ -556,6 +644,21 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     showInCheckout: true,
     byCountry: {},
   },
+  amazon: {
+    buyBox: false,
+    microcopy: false,
+    deliveryLine: false,
+    stockLine: false,
+    boughtCount: false,
+    bestsellerBadge: false,
+    fbt: false,
+    similarItems: false,
+    cartFreeLine: false,
+    ctaCount: false,
+    shipsFromByCountry: {},
+    defaultWarehouse: "",
+    shipsFromDefault: "",
+  },
   marketScopes: defaultMarketScopes(),
 };
 
@@ -581,7 +684,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * empty them — these are replaced wholesale instead (sanitizeSettings then
  * validates every entry).
  */
-const DYNAMIC_RECORD_KEYS = new Set(["byMarket", "byCountry"]);
+const DYNAMIC_RECORD_KEYS = new Set([
+  "byMarket",
+  "byCountry",
+  // amazon.shipsFromByCountry — buyer-ISO2 keyed, default {} (the key-driven
+  // merge would silently empty it otherwise; sanitizeSettings re-validates
+  // every entry).
+  "shipsFromByCountry",
+]);
 
 /** Deep-merge stored/partial settings over defaults so new fields added in
  *  later app versions always have sane values. Arrays are replaced, not merged. */
@@ -1087,6 +1197,43 @@ export function sanitizeSettings(
     next.dermSurvey.format = DEFAULT_SETTINGS.dermSurvey.format;
   }
 
+  {
+    const iso2 = /^[A-Z]{2}$/;
+    const az = next.amazon;
+    // The ten flags are independent booleans — anything non-boolean falls
+    // back to the safe default (OFF).
+    for (const field of AMAZON_FLAG_FIELDS) {
+      if (typeof az[field] !== "boolean") {
+        az[field] = DEFAULT_SETTINGS.amazon[field];
+      }
+    }
+    // shipsFromByCountry is a DYNAMIC_RECORD_KEYS record (replaced wholesale
+    // by the merge) — keep only ISO2 -> ISO2 entries, uppercased.
+    const cleanMap: Record<string, string> = {};
+    for (const [buyer, warehouse] of Object.entries(
+      az.shipsFromByCountry ?? {},
+    )) {
+      const buyerCode = buyer.toUpperCase();
+      const warehouseCode =
+        typeof warehouse === "string" ? warehouse.toUpperCase() : "";
+      if (iso2.test(buyerCode) && iso2.test(warehouseCode)) {
+        cleanMap[buyerCode] = warehouseCode;
+      }
+    }
+    az.shipsFromByCountry = cleanMap;
+    const fallback =
+      typeof az.defaultWarehouse === "string"
+        ? az.defaultWarehouse.toUpperCase()
+        : "";
+    az.defaultWarehouse = iso2.test(fallback) ? fallback : "";
+    // az_microcopy "Ships from" fallback label: plain merchant text,
+    // trimmed and length-capped ("" = row hidden for unmapped buyers).
+    az.shipsFromDefault =
+      typeof az.shipsFromDefault === "string"
+        ? az.shipsFromDefault.trim().slice(0, 80)
+        : "";
+  }
+
   const marketHandlePattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
   const sanitizedScopes = defaultMarketScopes();
   for (const key of FEATURE_KEYS) {
@@ -1300,6 +1447,86 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     },
     siblings: [],
   },
+  az_buy_box: {
+    label: "Buy-box decision card",
+    get: (s) => s.amazon.buyBox,
+    set: (s, on) => {
+      s.amazon.buyBox = on;
+    },
+    siblings: [],
+  },
+  az_microcopy: {
+    label: "Trust microcopy rows",
+    get: (s) => s.amazon.microcopy,
+    set: (s, on) => {
+      s.amazon.microcopy = on;
+    },
+    siblings: [],
+  },
+  az_delivery_line: {
+    label: "Compound delivery line",
+    get: (s) => s.amazon.deliveryLine,
+    set: (s, on) => {
+      s.amazon.deliveryLine = on;
+    },
+    siblings: [],
+  },
+  az_stock_line: {
+    label: "In-stock + ships-from line",
+    get: (s) => s.amazon.stockLine,
+    set: (s, on) => {
+      s.amazon.stockLine = on;
+    },
+    siblings: [],
+  },
+  az_bought_count: {
+    label: "Bought-in-past-month count",
+    get: (s) => s.amazon.boughtCount,
+    set: (s, on) => {
+      s.amazon.boughtCount = on;
+    },
+    siblings: [],
+  },
+  az_bestseller_badge: {
+    label: "Bestseller badge",
+    get: (s) => s.amazon.bestsellerBadge,
+    set: (s, on) => {
+      s.amazon.bestsellerBadge = on;
+    },
+    siblings: [],
+  },
+  az_fbt: {
+    label: "Frequently bought together",
+    get: (s) => s.amazon.fbt,
+    set: (s, on) => {
+      s.amazon.fbt = on;
+    },
+    siblings: [],
+  },
+  az_similar_items: {
+    label: "Similar items row",
+    get: (s) => s.amazon.similarItems,
+    set: (s, on) => {
+      s.amazon.similarItems = on;
+    },
+    siblings: [],
+  },
+  az_cart_free_line: {
+    label: "Cart free-shipping sentence",
+    get: (s) => s.amazon.cartFreeLine,
+    set: (s, on) => {
+      s.amazon.cartFreeLine = on;
+    },
+    siblings: [],
+  },
+  az_cta_count: {
+    label: "Checkout button item count",
+    get: (s) => s.amazon.ctaCount,
+    set: (s, on) => {
+      s.amazon.ctaCount = on;
+    },
+    siblings: [],
+  },
 };
 
 function scopeFor(settings: BoosterSettings, key: FeatureKey): MarketScope {
@@ -1368,6 +1595,7 @@ export const FEATURE_RAW_FIELD: Record<
   FeatureKey,
   | { kind: "cart"; field: CartSubFlagField }
   | { kind: "section"; field: StandaloneSectionField }
+  | { kind: "amazon"; field: AmazonFlagField }
 > = {
   cart_volume_upsell: { kind: "cart", field: "showVolumeUpsell" },
   free_shipping_bar: { kind: "cart", field: "showFreeShippingBar" },
@@ -1389,6 +1617,16 @@ export const FEATURE_RAW_FIELD: Record<
   cart_cross_sell: { kind: "section", field: "cartCrossSell" },
   dispatch_countdown: { kind: "section", field: "dispatch" },
   delivery_estimate: { kind: "section", field: "deliveryEstimate" },
+  az_buy_box: { kind: "amazon", field: "buyBox" },
+  az_microcopy: { kind: "amazon", field: "microcopy" },
+  az_delivery_line: { kind: "amazon", field: "deliveryLine" },
+  az_stock_line: { kind: "amazon", field: "stockLine" },
+  az_bought_count: { kind: "amazon", field: "boughtCount" },
+  az_bestseller_badge: { kind: "amazon", field: "bestsellerBadge" },
+  az_fbt: { kind: "amazon", field: "fbt" },
+  az_similar_items: { kind: "amazon", field: "similarItems" },
+  az_cart_free_line: { kind: "amazon", field: "cartFreeLine" },
+  az_cta_count: { kind: "amazon", field: "ctaCount" },
 };
 
 /**
@@ -1405,6 +1643,9 @@ export interface FlagsSnapshot {
   cartMaster: boolean;
   cartSubFlags: Record<CartSubFlagField, boolean>;
   sectionEnabled: Record<StandaloneSectionField, boolean>;
+  /** The ten amazon.* flags (v6.1). Optional: snapshots persisted by older
+   *  app versions predate the section — restores skip what is absent. */
+  amazonFlags?: Record<AmazonFlagField, boolean>;
   marketScopes: Record<FeatureKey, MarketScope>;
 }
 
@@ -1420,6 +1661,9 @@ export function snapshotFlags(settings: BoosterSettings): FlagsSnapshot {
         settings[field].enabled,
       ]),
     ) as Record<StandaloneSectionField, boolean>,
+    amazonFlags: Object.fromEntries(
+      AMAZON_FLAG_FIELDS.map((field) => [field, settings.amazon[field]]),
+    ) as Record<AmazonFlagField, boolean>,
     marketScopes: structuredClone(settings.marketScopes),
   };
 }
@@ -1434,6 +1678,12 @@ export function restoreFlags(
   }
   for (const field of STANDALONE_SECTION_FIELDS) {
     settings[field].enabled = snapshot.sectionEnabled[field];
+  }
+  // Older-shape snapshots (pre-v6.1) carry no amazonFlags — leave the
+  // current values untouched rather than zeroing them.
+  for (const field of AMAZON_FLAG_FIELDS) {
+    const value = snapshot.amazonFlags?.[field];
+    if (typeof value === "boolean") settings.amazon[field] = value;
   }
   settings.marketScopes = structuredClone(snapshot.marketScopes);
   return settings;
@@ -1472,6 +1722,10 @@ export function restoreFlagsSelective(
     if (raw?.kind === "section") {
       const value = snapshot.sectionEnabled?.[raw.field];
       if (typeof value === "boolean") settings[raw.field].enabled = value;
+    }
+    if (raw?.kind === "amazon") {
+      const value = snapshot.amazonFlags?.[raw.field];
+      if (typeof value === "boolean") settings.amazon[raw.field] = value;
     }
     const scope = snapshot.marketScopes?.[key];
     if (

@@ -162,5 +162,33 @@
     "box_sub": "…sau îți returnăm banii ori îți trimitem gratuit un produs de înlocuire.",
     "badge": "Garanția livrării",
     "tooltip": "Livrat cel târziu {{ date }} — altfel îți returnăm banii sau îți trimitem gratuit un produs de înlocuire."
+  },
+  "amazon": {
+    "in_stock": "În stoc",
+    "free_delivery": "Livrare GRATUITĂ",
+    "over_threshold": "la comenzi de peste {{ amount }}",
+    "add_more": "Adaugă încă {{ amount }} pentru a beneficia de livrare GRATUITĂ.",
+    "qualifies": "Comanda ta se califică pentru livrare GRATUITĂ.",
+    "order_within": "Comandă în cel mult {{ hours }} h {{ minutes }} min",
+    "ships_from": "Expediat din {{ country }}",
+    "secure": "Tranzacție securizată",
+    "free_returns": "Retururi GRATUITE",
+    "bought_count": "{{ n }}+ cumpărate în ultima lună",
+    "bestseller": "Bestseller nr. {{ rank }}",
+    "fbt_title": "Cumpărate frecvent împreună",
+    "fbt_this_item": "Acest produs:",
+    "fbt_total": "Preț total:",
+    "fbt_add": {
+      "one": "Adaugă în coș",
+      "few": "Adaugă toate cele {{ count }} în coș",
+      "other": "Adaugă toate cele {{ count }} în coș"
+    },
+    "fbt_add_both": "Adaugă-le pe amândouă în coș",
+    "similar_title": "Produse similare",
+    "cta_count": {
+      "one": "Finalizează comanda ({{ count }} produs)",
+      "few": "Finalizează comanda ({{ count }} produse)",
+      "other": "Finalizează comanda ({{ count }} de produse)"
+    }
   }
 }

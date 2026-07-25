@@ -16,6 +16,18 @@
  * exception: when a stale preview token is authoritatively rejected,
  * fireMissedSessionBeacon() fires the session event the inline beacon
  * skipped (its suppression keys on the cx_preview_ok flag).
+ *
+ * v6.1 Amazon-pattern cart features (conventions only, never the brand):
+ * az_cart_free_line renders the green declarative threshold sentence at
+ * the very TOP of the booster root (same threshold/cart-total machinery
+ * as the shipbar; while it renders, the shipbar keeps its bar but drops
+ * its text line) and az_cta_count decorates the THEME's checkout buttons
+ * with a CLDR-plural-correct "Proceed to checkout (N items)" label —
+ * original label stored once (never double-decorated) and restored
+ * verbatim whenever the feature stops being effective or its strings are
+ * unusable. Both key off the same featureOn()/effective helpers, so
+ * verified preview sessions see the replacement while live visitors see
+ * the standard widgets.
  */
 (function () {
   'use strict';
@@ -85,7 +97,9 @@
     crossSell: 'cart_cross_sell',
     trustRow: 'cart_trust_row',
     dispatch: 'dispatch_countdown',
-    delivery: 'delivery_estimate'
+    delivery: 'delivery_estimate',
+    azCartFreeLine: 'az_cart_free_line',
+    azCtaCount: 'az_cta_count'
   };
 
   function featureOn(key) {
@@ -590,7 +604,13 @@
         for (var i = 0; i < badges.length; i++) badges[i].textContent = String(cart.item_count);
       }
       if (cart) {
-        var subtotals = document.querySelectorAll('.mini-cart__footer .sub-total .total, .mini-cart__actions .btn span');
+        // v6.1: the az_cta_count decoration wraps the drawer checkout
+        // button's label in .cx-azcta-label/.cx-azcta-original spans —
+        // exclude them here so a quiet refresh can never overwrite the
+        // decorated label (or flatten the stored original) with money
+        // text. The theme's own .checkout-subtotal span INSIDE the
+        // stored original still matches and stays current for restore.
+        var subtotals = document.querySelectorAll('.mini-cart__footer .sub-total .total, .mini-cart__actions .btn span:not(.cx-azcta-label):not(.cx-azcta-original)');
         for (var j = 0; j < subtotals.length; j++) subtotals[j].textContent = money(cart.items_subtotal_price);
         state.themeStale = cart;
       }
@@ -828,28 +848,97 @@
     container.appendChild(note);
   }
 
-  function renderShipbar(container) {
+  // ------------------------------------ Amazon-pattern cart line (v6.1)
+  //
+  // az_cart_free_line — the green declarative threshold sentence at the
+  // very TOP of the booster root ("Your order qualifies for FREE
+  // shipping." / "Add X more to qualify for FREE shipping."), computed
+  // from the SAME thresholdCents() + items_subtotal_price machinery the
+  // shipbar uses so the two can never disagree. The Liquid template
+  // ships BOTH states (qualified text baked, unqualified an empty shell)
+  // and this renderer reveals exactly one. FAIL CLOSED on anything
+  // unusable: feature off, no template, no threshold, missing or
+  // "Translation missing:" strings -> render nothing AND leave the
+  // shipbar's own text line alone (renderInto only suppresses that line
+  // when this sentence actually rendered).
+
+  function azStr(key) {
+    // Amazon-group strings arrive from Liquid even before the locale
+    // files carry them (the amazon.* keys are owned by the PDP/locales
+    // work): Shopify then bakes "Translation missing: <locale>.<key>"
+    // markers into the config JSON. Treat those exactly like a missing
+    // string so no broken text can ever reach a buyer.
+    var s = STRINGS[key];
+    if (typeof s !== 'string' || !s) return null;
+    if (s.indexOf('Translation missing') === 0) return null;
+    return s;
+  }
+
+  function renderAzFreeLine(container) {
+    if (!featureOn('azCartFreeLine') || !state.cart) return null;
+    var goal = thresholdCents();
+    if (!(goal > 0)) return null;
+    var tpl = document.getElementById('cx-tpl-azfree-cart');
+    if (!tpl || !tpl.content) return null;
+    var subtotal = Number(state.cart.items_subtotal_price) || 0;
+    var qualified = subtotal >= goal;
+    // String availability decides renderability BEFORE any DOM work.
+    if (qualified && !azStr('amazon.qualifies')) return null;
+    if (!qualified && !azStr('amazon.add_more')) return null;
+    try {
+      var node = tpl.content.cloneNode(true).firstElementChild;
+      if (!node) return null;
+      var line = node.querySelector(qualified ? '[data-cx-azfree-qualified]' : '[data-cx-azfree-unqualified]');
+      if (!line) return null;
+      if (!qualified) {
+        var slot = line.querySelector('[data-cx-azfree-msg]') || line;
+        // Same sentinel split as the shipbar: text + <strong> amount +
+        // text, everything through createTextNode/textContent.
+        var template = t('amazon.add_more');
+        var parts = template.split(/@@AMOUNT@@|\{\{\s*amount\s*\}\}/);
+        slot.appendChild(document.createTextNode(parts[0] || ''));
+        slot.appendChild(el('strong', 'cx-azfree__amount', money(goal - subtotal)));
+        if (parts.length > 1) slot.appendChild(document.createTextNode(parts.slice(1).join('')));
+      }
+      line.removeAttribute('hidden');
+      node.className += qualified ? ' cx-azfree--qualified' : ' cx-azfree--unqualified';
+      container.appendChild(node);
+      return 'az_cart_free_line';
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function renderShipbar(container, suppressMsg) {
+    // v6.1: suppressMsg is true when the az_cart_free_line sentence
+    // actually rendered above — the Amazon-pattern replacement semantics
+    // swap the shipbar's TEXT line for the green sentence while keeping
+    // the progress bar itself. Keyed on the RENDERED sentence (not just
+    // the flag) so a fail-closed sentence can never leave the shipbar
+    // mute with nothing in its place.
     if (!featureOn('shipbar') || !state.cart) return null;
     var goal = thresholdCents();
     if (!(goal > 0)) return null;
     var subtotal = Number(state.cart.items_subtotal_price) || 0;
     var wrap = el('div', 'cx-shipbar');
     wrap.setAttribute('data-cx-feature', 'free_shipping_bar');
-    var msg = el('p', 'cx-shipbar__msg');
-    if (subtotal >= goal) {
-      wrap.className += ' cx-shipbar--unlocked';
-      msg.textContent = t('shipbar.unlocked');
-    } else {
-      var template = t('shipbar.away_html');
-      // Liquid renders the translation with amount: '@@AMOUNT@@' so the token
-      // is guaranteed to survive; legacy {{ amount }} kept as a fallback.
-      var parts = template.split(/@@AMOUNT@@|\{\{\s*amount\s*\}\}/);
-      msg.appendChild(document.createTextNode(parts[0] || ''));
-      var strong = el('strong', 'cx-shipbar__amount', money(goal - subtotal));
-      msg.appendChild(strong);
-      if (parts.length > 1) msg.appendChild(document.createTextNode(parts.slice(1).join('')));
+    if (subtotal >= goal) wrap.className += ' cx-shipbar--unlocked';
+    if (!suppressMsg) {
+      var msg = el('p', 'cx-shipbar__msg');
+      if (subtotal >= goal) {
+        msg.textContent = t('shipbar.unlocked');
+      } else {
+        var template = t('shipbar.away_html');
+        // Liquid renders the translation with amount: '@@AMOUNT@@' so the token
+        // is guaranteed to survive; legacy {{ amount }} kept as a fallback.
+        var parts = template.split(/@@AMOUNT@@|\{\{\s*amount\s*\}\}/);
+        msg.appendChild(document.createTextNode(parts[0] || ''));
+        var strong = el('strong', 'cx-shipbar__amount', money(goal - subtotal));
+        msg.appendChild(strong);
+        if (parts.length > 1) msg.appendChild(document.createTextNode(parts.slice(1).join('')));
+      }
+      wrap.appendChild(msg);
     }
-    wrap.appendChild(msg);
     var track_ = el('div', 'cx-shipbar__track');
     track_.setAttribute('aria-hidden', 'true');
     var fill = el('div', 'cx-shipbar__fill');
@@ -2036,14 +2125,120 @@
     } catch (e) { /* never break the theme */ }
   }
 
-  function deliveryTemplateId() {
-    // v6.0: inside a verified preview session prefer the alt template (the
-    // merchant's armed DRAFT cart format) — exactly the PDP convention.
-    if (PREVIEW) {
-      var alt = document.getElementById('cx-tpl-delivery-cart-alt');
-      if (alt && alt.content) return 'cx-tpl-delivery-cart-alt';
+  // v6.2 Liquid diet: the cart delivery shells (cx-tpl-delivery-cart + alt,
+  // four formats) are JS-built now. cxIcon/cxEl and the deliveryBuild*
+  // functions below are BYTE-TWIN copies of the cellexia-pdp.js ones (the
+  // prover enforces cross-file byte-parity); only CX_AZ_ICONS carries the
+  // cart-needed subset of the icon data and deliveryCartClass is the
+  // cart-specific wiring (surface variant class). Same preview convention
+  // as before: inside a verified preview session the merchant's armed
+  // DRAFT cart format (shipped in cfg.preview.deliveryFormat — tokenless,
+  // armed-only) wins over the live format, exactly what the alt-template
+  // preference used to produce. Every dynamic value still lands via
+  // textContent from the fail-closed engine.
+
+  var CX_AZ_ICONS = {
+    // cart subset: only the icons the delivery shells render
+    box: ['1.5', '<path d="m10 2.2 7 3.5v8.6l-7 3.5-7-3.5V5.7z"/><path d="M3 5.7l7 3.5 7-3.5"/><path d="M10 9.2v8.6"/><path d="m6.5 3.95 7 3.5"/>'],
+    check: ['2', '<path d="m3.5 10.5 4.2 4.2 8.8-9.4"/>'],
+    'shield-check': ['1.5', '<path d="M10 1.8 3.5 4.2v5c0 4.2 2.8 7.3 6.5 8.9 3.7-1.6 6.5-4.7 6.5-8.9v-5z"/><path d="m7 9.8 2.2 2.2L13.2 8"/>']
+  };
+
+  function cxIcon(name, size) {
+    // Static-markup twin of {% render 'cx-icons', icon: name, size: n %}
+    // for the icons the JS-built widgets use. No dynamic value ever
+    // reaches this innerHTML.
+    var spec = CX_AZ_ICONS[name];
+    if (!spec) return document.createTextNode('');
+    var wrap = document.createElement('div');
+    wrap.innerHTML = '<svg class="cx-icon" width="' + size + '" height="' + size +
+      '" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="' + spec[0] +
+      '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + spec[1] + '</svg>';
+    return wrap.firstChild || document.createTextNode('');
+  }
+
+  function cxEl(tag, cls, attrs) {
+    // class first (template attribute order), then attrs as flat
+    // [name, value, ...] pairs.
+    var el = document.createElement(tag);
+    if (cls) el.setAttribute('class', cls);
+    if (attrs) {
+      for (var i = 0; i < attrs.length; i += 2) el.setAttribute(attrs[i], attrs[i + 1]);
     }
-    return 'cx-tpl-delivery-cart';
+    return el;
+  }
+
+  function deliveryBuildBadge() {
+    var badge = cxEl('span', 'cx-delivery__badge');
+    var btn = cxEl('button', null, ['type', 'button', 'class', 'cx-delivery__badge-btn', 'data-cx-delivery-badge', '', 'aria-describedby', 'cx-delivery-tip']);
+    btn.appendChild(cxIcon('shield-check', 12));
+    var label = document.createElement('span');
+    label.textContent = deliveryT('delivery.badge');
+    btn.appendChild(label);
+    badge.appendChild(btn);
+    badge.appendChild(cxEl('span', 'cx-delivery__tip', ['id', 'cx-delivery-tip', 'role', 'tooltip', 'hidden', '', 'data-cx-delivery-tip', '']));
+    return badge;
+  }
+
+  function deliveryBuildNode(fmt) {
+    var root;
+    if (fmt === 'range') {
+      root = cxEl('div', 'cx-delivery cx-delivery--range', ['data-cx-feature', 'delivery_estimate']);
+      root.appendChild(cxEl('span', 'cx-delivery__range', ['data-cx-delivery-range', '']));
+      root.appendChild(deliveryBuildBadge());
+    } else if (fmt === 'timeline') {
+      root = cxEl('div', 'cx-delivery cx-delivery--timeline', ['data-cx-feature', 'delivery_estimate']);
+      var ol = cxEl('ol', 'cx-delivery__steps list-reset');
+      var li1 = cxEl('li', 'cx-delivery__step');
+      li1.textContent = deliveryT('delivery.timeline_order');
+      ol.appendChild(li1);
+      ol.appendChild(cxEl('li', 'cx-delivery__step', ['data-cx-delivery-ship', '']));
+      ol.appendChild(cxEl('li', 'cx-delivery__step', ['data-cx-delivery-done', '']));
+      root.appendChild(ol);
+      root.appendChild(deliveryBuildBadge());
+    } else if (fmt === 'box') {
+      root = cxEl('div', 'cx-delivery cx-delivery--box', ['data-cx-feature', 'delivery_estimate']);
+      root.appendChild(cxIcon('check', 16));
+      var copy = cxEl('span', 'cx-delivery__box-copy');
+      copy.appendChild(cxEl('strong', 'cx-delivery__box-title', ['data-cx-delivery-title', '']));
+      copy.appendChild(document.createTextNode(' '));
+      var sub = cxEl('span', 'cx-delivery__box-sub');
+      sub.textContent = deliveryT('delivery.box_sub');
+      copy.appendChild(sub);
+      copy.appendChild(document.createTextNode(' '));
+      copy.appendChild(deliveryBuildBadge());
+      root.appendChild(copy);
+    } else {
+      root = cxEl('div', 'cx-delivery cx-delivery--line', ['data-cx-feature', 'delivery_estimate']);
+      root.appendChild(cxIcon('box', 15));
+      root.appendChild(cxEl('span', 'cx-delivery__line', ['data-cx-delivery-line', '']));
+      root.appendChild(deliveryBuildBadge());
+    }
+    return root;
+  }
+
+  function deliveryValidFormat(f) {
+    return f === 'line' || f === 'range' || f === 'timeline' || f === 'box';
+  }
+
+  function deliveryBuildFormat() {
+    var fmt = cfg && cfg.delivery && typeof cfg.delivery.format === 'string' && deliveryValidFormat(cfg.delivery.format)
+      ? cfg.delivery.format : 'line';
+    if (PREVIEW) {
+      var draft = cfg && cfg.preview && typeof cfg.preview.deliveryFormat === 'string' ? cfg.preview.deliveryFormat : '';
+      if (deliveryValidFormat(draft)) fmt = draft;
+    }
+    return fmt;
+  }
+
+  function deliveryCartClass(node) {
+    // Cart-specific wiring, OUTSIDE the byte-twin builder block: the old
+    // cart template bodies carried the cx-delivery--cart surface variant
+    // class right after the base class (deliveryTick and the CSS key off
+    // it). Splicing it here keeps the shared builders byte-identical to
+    // the PDP file.
+    node.className = node.className.replace('cx-delivery ', 'cx-delivery cx-delivery--cart ');
+    return node;
   }
 
   function deliveryTick() {
@@ -2084,13 +2279,12 @@
   function renderDelivery(container) {
     // CART twin of the PDP mountDelivery: called by renderInto directly
     // AFTER renderDispatch (CRO order: urgency then reassurance, both
-    // above the shipbar). Every gate fails closed: feature off, no
-    // template (live + draft gating via the Liquid emission + featureOn),
+    // above the shipbar). Every gate fails closed: feature off (featureOn
+    // carries the live/draft gate the template emission used to enforce),
     // invalid/hidden config, no computable dates, missing strings ->
-    // render nothing.
+    // render nothing. v6.2: the shell is JS-built (byte-twin builders
+    // above) instead of cloned from a Liquid template.
     if (!featureOn('delivery')) return null;
-    var tpl = document.getElementById(deliveryTemplateId());
-    if (!tpl || !tpl.content) return null;
     var dc = deliveryConfig();
     if (!dc) return null; // invalid/hidden config: fail closed
     var result = deliveryCompute(dc);
@@ -2098,7 +2292,7 @@
     var texts = deliveryTexts(result, dc);
     if (!texts) return null; // missing strings: fail closed
     try {
-      var node = tpl.content.cloneNode(true).firstElementChild;
+      var node = deliveryCartClass(deliveryBuildNode(deliveryBuildFormat()));
       if (!node) return null;
       // Unique tooltip id per clone — drawer and cart page can both
       // mount, and aria-describedby must never point at a twin's tip.
@@ -2128,14 +2322,22 @@
     if (state.busy) root.setAttribute('aria-busy', 'true');
     else root.removeAttribute('aria-busy');
     var features = [];
+    // Amazon-pattern threshold sentence (v6.1) — the very TOP of the
+    // booster root, per the pattern (Amazon's green line sits above
+    // everything in the order summary). Its return value drives the
+    // shipbar text-line suppression below.
+    var azFree = renderAzFreeLine(root);
+    if (azFree) features.push(azFree);
     renderNotice(root);
     var f;
-    // Dispatch countdown first — top of the widget root, above the shipbar.
+    // Dispatch countdown next — above the shipbar.
     f = renderDispatch(root); if (f) features.push(f);
     // Delivery estimate directly after it (v6.0) — CRO order: urgency,
     // then reassurance, both above the shipbar.
     f = renderDelivery(root); if (f) features.push(f);
-    f = renderShipbar(root); if (f) features.push(f);
+    // v6.1 replacement semantics: while the az sentence RENDERED, the
+    // shipbar keeps its progress bar but drops its own message line.
+    f = renderShipbar(root, !!azFree); if (f) features.push(f);
     var offerFeatures = renderOffers(root, context);
     for (var i = 0; i < offerFeatures.length; i++) features.push(offerFeatures[i]);
     // CRO order: offers, then cross-sell, then social proof last.
@@ -2286,6 +2488,116 @@
     } catch (e) { /* never break the theme */ }
   }
 
+  // --------------------------- Amazon-pattern checkout CTA count (v6.1)
+  //
+  // az_cta_count decorates the THEME's checkout buttons — drawer
+  // (.mini-cart__actions) and cart page (div.checkout), selectors per
+  // docs/theme-integration.md — with a CLDR-plural-correct
+  // "Proceed to checkout (N items)" label. TEXT swap only: the button
+  // keeps 100% theme styling. The original label nodes are MOVED (never
+  // cloned) into a hidden .cx-azcta-original span on first decoration —
+  // stored once, the data-cx-azcta marker prevents double-decoration —
+  // and moved back verbatim the moment the feature stops being effective
+  // or its strings are unusable. Keeping the original subtree alive in
+  // the DOM keeps the theme's own .checkout-subtotal updater working
+  // against it, so a restored label is always current. The pass re-runs
+  // from renderAll() on every cart mutation (the existing refresh hooks);
+  // refreshMiniCart only rebuilds .mini-cart__list, so the buttons
+  // survive re-renders and only the count text needs updating.
+
+  var azCtaEverDecorated = false;
+
+  var AZ_CTA_SELECTOR = '.mini-cart__actions a.btn--primary[href*="checkout"], .checkout a.btn--primary[href*="checkout"]';
+
+  function azCtaLabel(count) {
+    // CLDR plural selection in the PAGE language via Intl.PluralRules.
+    // The Liquid config ships one string per category
+    // ("amazon.cta_count.<cat>", sentinel @@COUNT@@); categories a
+    // language does not define arrive as "Translation missing" markers
+    // and azStr discards them. "other" is mandatory in CLDR — without a
+    // usable "other" the label is unbuildable: null (fail closed, the
+    // theme label stays/returns).
+    if (!azStr('amazon.cta_count.other')) return null;
+    var n = Math.floor(Number(count));
+    if (!(n >= 0)) return null;
+    var locale = typeof cfg.pageLocale === 'string' && cfg.pageLocale ? cfg.pageLocale : undefined;
+    var cat = 'other';
+    try {
+      if (typeof Intl !== 'undefined' && typeof Intl.PluralRules === 'function') {
+        cat = new Intl.PluralRules(locale).select(n);
+      } else {
+        cat = n === 1 ? 'one' : 'other';
+      }
+    } catch (e) {
+      // Intl rejected the locale tag: browser-default rules beat the
+      // two-way fallback, which beats giving up.
+      try { cat = new Intl.PluralRules().select(n); } catch (e2) { cat = n === 1 ? 'one' : 'other'; }
+    }
+    if (!azStr('amazon.cta_count.' + cat)) cat = 'other';
+    // Digits in the page locale too (ar keeps Arabic-Indic digits);
+    // PluralRules got the raw number above.
+    var display = String(n);
+    try { display = n.toLocaleString(locale); } catch (e3) { display = String(n); }
+    return t('amazon.cta_count.' + cat, { count: display });
+  }
+
+  function restoreAzCtaButton(node) {
+    try {
+      if (!node || node.getAttribute('data-cx-azcta') !== '1') return;
+      var lbl = node.querySelector('.cx-azcta-label');
+      var orig = node.querySelector('.cx-azcta-original');
+      if (lbl && lbl.parentNode) lbl.parentNode.removeChild(lbl);
+      if (orig && orig.parentNode === node) {
+        while (orig.firstChild) node.insertBefore(orig.firstChild, orig);
+        node.removeChild(orig);
+      }
+      node.removeAttribute('data-cx-azcta');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function decorateCtaButtons() {
+    try {
+      var effective = featureOn('azCtaCount') && state.cart && typeof state.cart.item_count === 'number';
+      var label = effective ? azCtaLabel(state.cart.item_count) : null;
+      // Fast exit for real visitors with the feature off: never touched
+      // a button, nothing to scan or restore.
+      if (label === null && !azCtaEverDecorated) return;
+      var nodes = document.querySelectorAll(AZ_CTA_SELECTOR);
+      if (!nodes.length) return;
+      var drawerHit = false;
+      var pageHit = false;
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (label === null) {
+          restoreAzCtaButton(node);
+          continue;
+        }
+        if (node.getAttribute('data-cx-azcta') !== '1') {
+          var orig = el('span', 'cx-azcta-original');
+          orig.setAttribute('hidden', '');
+          while (node.firstChild) orig.appendChild(node.firstChild);
+          node.appendChild(el('span', 'cx-azcta-label'));
+          node.appendChild(orig);
+          node.setAttribute('data-cx-azcta', '1');
+          azCtaEverDecorated = true;
+        }
+        var lbl = node.querySelector('.cx-azcta-label');
+        if (lbl) lbl.textContent = label;
+        var inDrawer = false;
+        try { inDrawer = !!(node.closest && node.closest('.mini-cart')); } catch (e2) { inDrawer = false; }
+        if (inDrawer) drawerHit = true;
+        else pageHit = true;
+      }
+      if (label !== null) {
+        // Impression semantics match the widget roots: drawer counts per
+        // open (fireDrawerImpressions guards drawerIsOpen + the per-open
+        // reset), page counts once per page view.
+        if (drawerHit) fireDrawerImpressions(['az_cta_count']);
+        if (pageHit) firePageImpressions(['az_cta_count']);
+      }
+    } catch (e) { /* never break the theme */ }
+  }
+
   function renderAll() {
     try {
       var drawerRoot = ensureDrawerRoot();
@@ -2299,6 +2611,7 @@
         firePageImpressions(pageFeatures);
       }
       decorateSubscriptionRows();
+      decorateCtaButtons();
     } catch (e) { /* never break the theme */ }
   }
 

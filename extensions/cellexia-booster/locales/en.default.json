@@ -160,5 +160,31 @@
     "box_sub": "…or we refund you or send a free replacement.",
     "badge": "Delivery guarantee",
     "tooltip": "Delivered on or before {{ date }} — or we refund you or send a free replacement."
+  },
+  "amazon": {
+    "in_stock": "In Stock",
+    "free_delivery": "FREE delivery",
+    "over_threshold": "on orders over {{ amount }}",
+    "add_more": "Add {{ amount }} more to qualify for FREE shipping.",
+    "qualifies": "Your order qualifies for FREE shipping.",
+    "order_within": "Order within {{ hours }} hrs {{ minutes }} mins",
+    "ships_from": "Ships from {{ country }}",
+    "secure": "Secure transaction",
+    "free_returns": "FREE returns",
+    "bought_count": "{{ n }}+ bought in past month",
+    "bestseller": "#{{ rank }} Bestseller",
+    "fbt_title": "Frequently bought together",
+    "fbt_this_item": "This item:",
+    "fbt_total": "Total price:",
+    "fbt_add": {
+      "one": "Add to cart",
+      "other": "Add all {{ count }} to cart"
+    },
+    "fbt_add_both": "Add both to cart",
+    "similar_title": "Similar items",
+    "cta_count": {
+      "one": "Proceed to checkout ({{ count }} item)",
+      "other": "Proceed to checkout ({{ count }} items)"
+    }
   }
 }

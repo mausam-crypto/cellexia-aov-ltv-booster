@@ -71,54 +71,8 @@ endif
 </a>
 {%- endif -%}
 </div>
-<script>
-(function () {
-try {
-var w = window;
-w.__cxSeen = w.__cxSeen || {};
-if (w.__cxSeen.clinical_results) return;
-w.__cxSeen.clinical_results = 1;
-var root = (w.Shopify && w.Shopify.routes && w.Shopify.routes.root) || '/';
-var payload = JSON.stringify({ feature: 'clinical_results', type: 'impression', {% if cx_market != blank %}market: {{ cx_market | json }}, {% endif %}currency: (w.Shopify && w.Shopify.currency && w.Shopify.currency.active) || undefined });
-if (navigator.sendBeacon) {
-navigator.sendBeacon(root + 'apps/cellexia/track', new Blob([payload], { type: 'application/json' }));
-} else if (w.fetch) {
-w.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(function () {});
-}
-} catch (e) { /* never break the theme */ }
-})();
-</script>
+{% render 'cx-impression', feature: 'clinical_results', market: cx_market %}
 {%- endif -%}
-
 {% schema %}
-{
-"name": "Cellexia clinical results",
-"target": "section",
-"settings": [
-{
-"type": "text",
-"id": "eyebrow_override",
-"label": "Eyebrow override",
-"info": "Leave blank to use the translated default."
-},
-{
-"type": "text",
-"id": "title_override",
-"label": "Title override",
-"info": "Leave blank to use the translated default."
-},
-{ "type": "text", "id": "label_override_1", "label": "Stat 1 label override" },
-{ "type": "text", "id": "label_override_2", "label": "Stat 2 label override" },
-{ "type": "text", "id": "label_override_3", "label": "Stat 3 label override" },
-{ "type": "text", "id": "label_override_4", "label": "Stat 4 label override" },
-{
-"type": "checkbox",
-"id": "show_footnote",
-"label": "Show methodology footnote",
-"default": true
-},
-{ "type": "text", "id": "cta_text", "label": "Link text", "info": "Leave blank to use the translated default." },
-{ "type": "text", "id": "cta_url", "label": "Link URL", "info": "Leave blank to hide the link." }
-]
-}
+{"name":"Cellexia clinical results","target":"section","settings":[{"type":"text","id":"eyebrow_override","label":"Eyebrow override","info":"Leave blank to use the translated default."},{"type":"text","id":"title_override","label":"Title override","info":"Leave blank to use the translated default."},{"type":"text","id":"label_override_1","label":"Stat 1 label override"},{"type":"text","id":"label_override_2","label":"Stat 2 label override"},{"type":"text","id":"label_override_3","label":"Stat 3 label override"},{"type":"text","id":"label_override_4","label":"Stat 4 label override"},{"type":"checkbox","id":"show_footnote","label":"Show methodology footnote","default":true},{"type":"text","id":"cta_text","label":"Link text","info":"Leave blank to use the translated default."},{"type":"text","id":"cta_url","label":"Link URL","info":"Leave blank to hide the link."}]}
 {% endschema %}

@@ -1,0 +1,335 @@
+{%- if request.page_type == 'product' -%}
+{%- assign cfg = app.metafields.cellexia.config.value -%}
+{%- if cfg -%}
+{%- assign cx_market = localization.market.handle | default: '' -%}
+{%- assign cx_country = localization.country.iso_code | upcase -%}
+{%- assign cx_prev = cfg.preview -%}
+{%- assign cx_prev_armed = false -%}
+{%- if cx_prev.armed == true -%}
+{%- assign cx_prev_armed = true -%}
+{%- endif -%}
+{%- liquid
+assign cx_pdp_flags = product.metafields.cellexia.pdp_flags.value
+assign az_bought_n = cx_pdp_flags.boughtCount | default: 0
+assign az_set_epoch = 0
+if cx_pdp_flags.boughtCountSetAt
+assign az_set_epoch = cx_pdp_flags.boughtCountSetAt | date: '%s' | plus: 0
+endif
+assign az_now_epoch = 'now' | date: '%s' | plus: 0
+assign az_bought_ok = false
+if az_bought_n > 0 and az_set_epoch > 0
+assign az_bought_age = az_now_epoch | minus: az_set_epoch
+if az_bought_age >= 0 and az_bought_age <= 3888000
+assign az_bought_ok = true
+endif
+endif
+assign az_best = cx_pdp_flags.bestsellerLabel
+assign az_best_rank = az_best.rank | default: 0
+assign az_best_cat = az_best.category | default: ''
+assign az_best_ok = false
+if az_best_rank > 0 and az_best_cat != blank
+assign az_best_ok = true
+endif
+assign az_fbt_manual = cx_pdp_flags.fbtManual
+assign az_threshold = cfg.global.freeShippingThreshold | default: 150
+assign az_thr_money = az_threshold | times: 100 | money
+assign cx_fs = cfg.freeShipping.byMarket[cx_market]
+assign az_thr_ok = false
+if cx_fs and cx_fs.currencyCode == cart.currency.iso_code
+assign az_thr_money = cx_fs.amount | times: 100 | round | money
+assign az_thr_ok = true
+elsif cart.currency.iso_code == shop.currency
+assign az_thr_ok = true
+endif
+assign cx_dsp = cfg.dispatch.byCountry[cx_country]
+assign cx_dsp_cutoff = cfg.dispatch.cutoff | default: '14:00'
+assign cx_dsp_tz = cfg.dispatch.timezone | default: 'Europe/Paris'
+assign cx_dsp_days = cfg.dispatch.days
+if cx_dsp
+assign cx_dsp_cutoff = cx_dsp.cutoff
+assign cx_dsp_tz = cx_dsp.timezone
+assign cx_dsp_days = cx_dsp.days
+endif
+assign cx_de = cfg.deliveryEstimate
+assign cx_del_c = cx_de.byCountry[cx_country]
+assign az_del_hidden = false
+if cx_del_c.hidden == true
+assign az_del_hidden = true
+endif
+assign az_sf = cfg.amazon.shipsFromByCountry[cx_country]
+if az_sf == blank
+assign az_sf = cfg.amazon.defaultWarehouse
+endif
+assign guarantee_days = cfg.guarantee.days | default: 60
+assign az_eff_buybox = false
+if cfg.amazon.buyBox == true and block.settings.show_az_buy_box
+assign cx_scope = cfg.marketScopes.az_buy_box
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign az_eff_buybox = true
+endif
+endif
+assign az_eff_micro = false
+if cfg.amazon.microcopy == true and block.settings.show_az_microcopy
+assign cx_scope = cfg.marketScopes.az_microcopy
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign az_eff_micro = true
+endif
+endif
+assign az_eff_delivery = false
+if cfg.amazon.deliveryLine == true and block.settings.show_az_delivery_line and az_thr_ok and az_del_hidden == false
+assign cx_scope = cfg.marketScopes.az_delivery_line
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign az_eff_delivery = true
+endif
+endif
+assign az_eff_stock = false
+if cfg.amazon.stockLine == true and block.settings.show_az_stock_line
+assign cx_scope = cfg.marketScopes.az_stock_line
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign az_eff_stock = true
+endif
+endif
+assign az_eff_bought = false
+if cfg.amazon.boughtCount == true and block.settings.show_az_bought_count and az_bought_ok
+assign cx_scope = cfg.marketScopes.az_bought_count
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign az_eff_bought = true
+endif
+endif
+assign az_eff_best = false
+if cfg.amazon.bestsellerBadge == true and block.settings.show_az_bestseller_badge and az_best_ok
+assign cx_scope = cfg.marketScopes.az_bestseller_badge
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign az_eff_best = true
+endif
+endif
+assign az_eff_fbt = false
+if cfg.amazon.fbt == true and block.settings.show_az_fbt
+assign cx_scope = cfg.marketScopes.az_fbt
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign az_eff_fbt = true
+endif
+endif
+assign az_eff_similar = false
+if cfg.amazon.similarItems == true and block.settings.show_az_similar_items
+assign cx_scope = cfg.marketScopes.az_similar_items
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign az_eff_similar = true
+endif
+endif
+assign cx_draft_az_buybox = false
+assign cx_draft_az_micro = false
+assign cx_draft_az_delivery = false
+assign cx_draft_az_stock = false
+assign cx_draft_az_bought = false
+assign cx_draft_az_best = false
+assign cx_draft_az_fbt = false
+assign cx_draft_az_similar = false
+if cx_prev_armed
+assign cx_prev_flags = cx_prev.draftFlags
+if block.settings.show_az_buy_box
+if cx_prev_flags.az_buy_box == true or cfg.amazon.buyBox == true
+assign cx_draft_az_buybox = true
+endif
+endif
+if block.settings.show_az_microcopy
+if cx_prev_flags.az_microcopy == true or cfg.amazon.microcopy == true
+assign cx_draft_az_micro = true
+endif
+endif
+if block.settings.show_az_delivery_line and az_thr_ok and az_del_hidden == false
+if cx_prev_flags.az_delivery_line == true or cfg.amazon.deliveryLine == true
+assign cx_draft_az_delivery = true
+endif
+endif
+if block.settings.show_az_stock_line
+if cx_prev_flags.az_stock_line == true or cfg.amazon.stockLine == true
+assign cx_draft_az_stock = true
+endif
+endif
+if block.settings.show_az_bought_count and az_bought_ok
+if cx_prev_flags.az_bought_count == true or cfg.amazon.boughtCount == true
+assign cx_draft_az_bought = true
+endif
+endif
+if block.settings.show_az_bestseller_badge and az_best_ok
+if cx_prev_flags.az_bestseller_badge == true or cfg.amazon.bestsellerBadge == true
+assign cx_draft_az_best = true
+endif
+endif
+if block.settings.show_az_fbt
+if cx_prev_flags.az_fbt == true or cfg.amazon.fbt == true
+assign cx_draft_az_fbt = true
+endif
+endif
+if block.settings.show_az_similar_items
+if cx_prev_flags.az_similar_items == true or cfg.amazon.similarItems == true
+assign cx_draft_az_similar = true
+endif
+endif
+endif
+assign az_any_buybox = false
+if az_eff_buybox or cx_draft_az_buybox
+assign az_any_buybox = true
+endif
+assign az_any_micro = false
+if az_eff_micro or cx_draft_az_micro
+assign az_any_micro = true
+endif
+assign az_any_delivery = false
+if az_eff_delivery or cx_draft_az_delivery
+assign az_any_delivery = true
+endif
+assign az_any_stock = false
+if az_eff_stock or cx_draft_az_stock
+assign az_any_stock = true
+endif
+assign az_any_bought = false
+if az_eff_bought or cx_draft_az_bought
+assign az_any_bought = true
+endif
+assign az_any_best = false
+if az_eff_best or cx_draft_az_best
+assign az_any_best = true
+endif
+assign az_any_fbt = false
+if az_eff_fbt or cx_draft_az_fbt
+assign az_any_fbt = true
+endif
+assign az_any_similar = false
+if az_eff_similar or cx_draft_az_similar
+assign az_any_similar = true
+endif
+assign az_any = false
+if az_any_buybox or az_any_micro or az_any_delivery or az_any_stock or az_any_bought or az_any_best or az_any_fbt or az_any_similar
+assign az_any = true
+endif
+assign az_need_product = false
+if az_any_stock or az_any_fbt or az_any_similar
+assign az_need_product = true
+endif
+assign az_need_ships = false
+if az_any_stock or az_any_micro
+assign az_need_ships = true
+endif
+-%}
+{%- if az_any -%}
+{{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+<script type="application/json" id="cx-az-config" data-cx-market="{{ cx_market | escape }}">
+{
+"pageLocale": {{ request.locale.iso_code | json }},
+"currency": {{ cart.currency.iso_code | json }},
+"country": {{ cx_country | json }},
+{%- if az_need_product %}
+"product": {"id": {{ product.id | json }}, "handle": {{ product.handle | json }}, "url": {{ product.url | json }}, "selectedVariant": {{ product.selected_or_first_available_variant.id | append: '' | json }}, "variants": {
+{%- for az_v in product.variants -%}
+{{ az_v.id | append: '' | json }}: {"available": {{ az_v.available | json }}, "price": {{ az_v.price | json }}}{%- unless forloop.last -%},{%- endunless -%}
+{%- endfor -%}
+}},
+{%- endif %}
+{%- if az_need_ships %}
+"shipsFrom": {"warehouse": {{ az_sf | default: '' | json }}, "defaultLabel": {{ cfg.amazon.shipsFromDefault | default: '' | json }}},
+{%- endif %}
+{%- if az_any_delivery %}
+"thresholdOk": true,
+"dispatch": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}, "showWithinHours": {{ cfg.dispatch.showWithinHours | default: 8 }}},
+"delivery": {"pageLocale": {{ request.locale.iso_code | json }}, "minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}},
+"deliveryStrings": {"delivery.line": {{ 'delivery.line' | t: date: '@@DATE@@' | json }}, "delivery.range": {{ 'delivery.range' | t: from: '@@FROM@@', to: '@@TO@@' | json }}, "delivery.range_same": {{ 'delivery.range_same' | t: date: '@@DATE@@' | json }}, "delivery.timeline_ship": {{ 'delivery.timeline_ship' | t: date: '@@DATE@@' | json }}, "delivery.timeline_delivered": {{ 'delivery.timeline_delivered' | t: date: '@@DATE@@' | json }}, "delivery.box_title": {{ 'delivery.box_title' | t: date: '@@DATE@@' | json }}, "delivery.tooltip": {{ 'delivery.tooltip' | t: date: '@@DATE@@' | json }}},
+{%- endif %}
+{%- if az_any_bought %}
+"bought": {"n": {{ az_bought_n }}, "set": {{ az_set_epoch }}},
+{%- endif %}
+{%- if az_any_best %}
+"bestCat": {{ az_best_cat | json }},
+{%- endif %}
+{%- if az_any_fbt %}
+"fbt": {"mode": {% if az_fbt_manual.size > 0 %}"manual"{% else %}"auto"{% endif %}, "title": {{ product.title | json }}, "priceFmt": {{ product.selected_or_first_available_variant.price | money | json }}{% if product.featured_image %}, "img": {{ product.featured_image | image_url: width: 250 | json }}{% endif %}, "rows": [
+{%- assign az_fbt_first = true -%}
+{%- for az_it in az_fbt_manual limit: 3 -%}
+{%- assign az_p = all_products[az_it.handle] -%}
+{%- if az_p.id and az_p.handle != product.handle -%}
+{%- assign az_vid = az_it.variantId | split: '/' | last | append: '' -%}
+{%- assign az_variant = false -%}
+{%- for az_pv in az_p.variants -%}
+{%- assign az_pv_id = az_pv.id | append: '' -%}
+{%- if az_pv_id == az_vid -%}
+{%- assign az_variant = az_pv -%}
+{%- break -%}
+{%- endif -%}
+{%- endfor -%}
+{%- if az_variant and az_variant.available -%}
+{%- assign az_img = az_variant.image | default: az_p.featured_image -%}
+{%- assign az_row_title = az_p.title -%}
+{%- unless az_variant.title == 'Default Title' or az_p.variants.size == 1 -%}
+{%- assign az_row_title = az_row_title | append: ' — ' | append: az_variant.title -%}
+{%- endunless -%}
+{%- unless az_fbt_first -%},{%- endunless -%}
+{%- assign az_fbt_first = false -%}
+{"id": {{ az_variant.id | append: '' | json }}, "price": {{ az_variant.price | json }}, "priceFmt": {{ az_variant.price | money | json }}, "title": {{ az_row_title | json }}{% if az_img %}, "img": {{ az_img | image_url: width: 250 | json }}{% endif %}}
+{%- endif -%}
+{%- endif -%}
+{%- endfor -%}
+]},
+{%- endif %}
+"strings": {
+"_": 1
+{%- if az_any_delivery %}
+,"dispatch.within": {{ 'dispatch.within' | t: hours: '@@HOURS@@', minutes: '@@MINUTES@@' | json }}
+,"dispatch.within_minutes": {{ 'dispatch.within_minutes' | t: minutes: '@@MINUTES@@' | json }}
+,"amazon.order_within": {{ 'amazon.order_within' | t: hours: '@@HOURS@@', minutes: '@@MINUTES@@' | json }}
+,"amazon.free_delivery": {{ 'amazon.free_delivery' | t | json }}
+,"amazon.over_threshold": {{ 'amazon.over_threshold' | t: amount: az_thr_money | json }}
+{%- endif %}
+{%- if az_need_ships %}
+,"amazon.ships_from": {{ 'amazon.ships_from' | t: country: '@@COUNTRY@@' | json }}
+{%- endif %}
+{%- if az_any_stock %}
+,"amazon.in_stock": {{ 'amazon.in_stock' | t | json }}
+{%- endif %}
+{%- if az_any_micro %}
+,"amazon.secure": {{ 'amazon.secure' | t | json }}
+,"amazon.free_returns": {{ 'amazon.free_returns' | t | json }}
+,"guarantee.title": {{ 'guarantee.title' | t: days: guarantee_days | json }}
+{%- endif %}
+{%- if az_any_bought %}
+,"amazon.bought_count": {{ 'amazon.bought_count' | t: count: az_bought_n, n: '@@N@@' | json }}
+{%- endif %}
+{%- if az_any_best %}
+,"amazon.bestseller": {{ 'amazon.bestseller' | t: rank: az_best_rank | json }}
+{%- endif %}
+{%- if az_any_fbt %}
+,"amazon.fbt_title": {{ 'amazon.fbt_title' | t | json }}
+,"amazon.fbt_total": {{ 'amazon.fbt_total' | t | json }}
+,"amazon.fbt_add_1": {{ 'amazon.fbt_add' | t: count: 1 | json }}
+,"amazon.fbt_add_2": {{ 'amazon.fbt_add' | t: count: 2 | json }}
+,"amazon.fbt_add_3": {{ 'amazon.fbt_add' | t: count: 3 | json }}
+,"amazon.fbt_add_4": {{ 'amazon.fbt_add' | t: count: 4 | json }}
+,"amazon.fbt_add_both": {{ 'amazon.fbt_add_both' | t | json }}
+,"amazon.fbt_this_item": {{ 'amazon.fbt_this_item' | t | json }}
+{%- endif %}
+{%- if az_any_similar %}
+,"amazon.similar_title": {{ 'amazon.similar_title' | t | json }}
+{%- endif %}
+},
+{%- if cx_prev_armed %}
+"preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}},
+{%- endif %}
+"effective": {
+"az_buy_box": {{ az_eff_buybox }},
+"az_microcopy": {{ az_eff_micro }},
+"az_delivery_line": {{ az_eff_delivery }},
+"az_stock_line": {{ az_eff_stock }},
+"az_bought_count": {{ az_eff_bought }},
+"az_bestseller_badge": {{ az_eff_best }},
+"az_fbt": {{ az_eff_fbt }},
+"az_similar_items": {{ az_eff_similar }}
+}
+}
+</script>
+<script src="{{ 'cellexia-pdp.js' | asset_url }}" defer></script>
+{%- endif -%}
+{%- endif -%}
+{%- endif -%}
+{% schema %}
+{"name":"Cellexia Amazon patterns","target":"body","settings":[{"type":"paragraph","content":"Enable this embed once; each widget also needs its feature switched ON in the Cellexia app (all are OFF by default)."},{"type":"checkbox","id":"show_az_buy_box","label":"Show the buy-box decision card","default":true},{"type":"checkbox","id":"show_az_microcopy","label":"Show trust microcopy under the add-to-cart button","default":true,"info":"Replaces the app's trust-badge strip on product pages. A trust block placed manually in the theme editor must be removed yourself."},{"type":"checkbox","id":"show_az_delivery_line","label":"Show the compound FREE-delivery line","default":true,"info":"Replaces the standard delivery estimate and dispatch countdown on product pages."},{"type":"checkbox","id":"show_az_stock_line","label":"Show the In-Stock line","default":true,"info":"Replaces the theme's stock message; renders only when the selected variant is really available."},{"type":"checkbox","id":"show_az_bought_count","label":"Show the bought-in-past-month count","default":true,"info":"Renders only when a per-product count was entered in the app within the last 45 days."},{"type":"checkbox","id":"show_az_bestseller_badge","label":"Show the bestseller badge","default":true,"info":"Renders only with a per-product rank and category from the app. The category renders as entered (translate it via Translate & Adapt)."},{"type":"checkbox","id":"show_az_fbt","label":"Show Frequently bought together","default":true,"info":"Uses Shopify's complementary recommendations unless a manual list is set per product in the app."},{"type":"checkbox","id":"show_az_similar_items","label":"Show the Similar items row","default":true}]}
+{% endschema %}

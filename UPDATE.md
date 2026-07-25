@@ -110,6 +110,23 @@ auto-detection, and booster auto-translation need them).
    render exactly as before for buyers; `https://<store>/apps/cellexia/track`
    returns `{"ok":true,"service":"cellexia-booster"}`.
 
+## 4b. v6.2 — the 100KB Liquid blocker you reported: FIXED in-tree
+
+Your diagnosis was right on all three counts. What changed: (1) ~46KB of
+Liquid comments/indentation stripped (never rendered); (2) the duplicated
+engine config you suspected was deduped where safe (the az delivery island
+keeps a deliberately standalone copy — required so the Amazon delivery line
+works when the classic widget's PDP surface is off; it carries no "live"
+field so it can never activate the classic widgets); (3) most widget
+template markup moved from Liquid into the JS assets (no Liquid cap there),
+each migration machine-proven byte-equivalent against the pre-diet baseline
+by scratch prover tooling. RESULT: total Liquid is now 91,934 bytes — 10.5KB
+under Shopify's 102,400 cap. Rendered output for buyers is equivalent (the
+diet also FIXED a v6.1 latent bug: a stray reference that silently killed
+the entire PDP proof stack). A build-time tripwire now fails any future
+change that pushes total Liquid over 95,000 bytes, so this cannot reach
+deployment again. Nothing to do on your side beyond the normal deploy.
+
 ## 5. What's in this update (context for the diff you'll see)
 
 The Delivery guarantee now covers ALL THREE surfaces under the one feature:
@@ -178,3 +195,26 @@ extension build) · the seven §0 fixes.
 - Rollback: redeploy the previous server build + previous extension version from
   the Partner Dashboard (extension versions are retained); `db push` changes are
   additive and safe to leave in place.
+
+## 7. v6.1 — Amazon-pattern widgets: one extra deploy step
+
+v6.1 adds a NEW app embed, **"Cellexia Amazon patterns"**, carrying the ten
+Amazon-pattern features' product-page surface (buy-box card, trust microcopy,
+compound FREE-delivery line, In-Stock line, bought-count, bestseller badge,
+Frequently bought together, Similar items). Like every embed it ships disabled:
+
+1. Deploy the extension (`npm run deploy`) as usual.
+2. In the theme editor open **App embeds** and enable **Cellexia Amazon
+   patterns** once, then save. (The existing "Cellexia PDP booster" and
+   "Cellexia cart booster" embeds stay as they are.)
+3. Turn individual az_* features on under **Features → Amazon patterns** —
+   everything is OFF by default and market-scopable, and nothing renders from
+   enabling the embed alone.
+
+Notes: while the trust-microcopy feature is effective it replaces the
+app-injected trust-badge strip on product pages — if you ever placed a trust
+badge block manually in the theme editor, remove that block yourself. The
+compound delivery line replaces the standard delivery estimate + dispatch
+countdown on product pages while effective; the cart features replace the
+ship-bar sentence and decorate the checkout button label, restoring the theme's
+own label when switched off.

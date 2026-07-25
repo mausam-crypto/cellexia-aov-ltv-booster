@@ -59,7 +59,10 @@ import type {
   ClinicalStudyInput,
   ClinicalStudyView,
   PdpFlagKey,
+  PdpFlagsPatch,
 } from "../services/pdp-content.server";
+import { getVariantsByIds } from "../services/products.server";
+import type { loader as variantsLoader } from "./app.api.variants";
 import {
   collectBoosterResourceGids,
   getTargetLocales,
@@ -106,6 +109,31 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     ]);
   const storePrefix = session.shop.replace(".myshopify.com", "");
 
+  // Hydrate the saved manual FBT selections with live variant data so the
+  // picker can show titles instead of raw handles (max 4 ids — cheap).
+  const fbtManual = boosters.flags.fbtManual ?? [];
+  const fbtVariants =
+    fbtManual.length > 0
+      ? await getVariantsByIds(
+          admin,
+          fbtManual.map((item) => item.variantId),
+        ).catch(() => [])
+      : [];
+
+  // Bought-count staleness, computed SERVER-SIDE (a client Date.now() would
+  // hydrate differently). Same 45-day rule as the storefront honesty guard.
+  const setAt = boosters.flags.boughtCountSetAt ?? null;
+  const setAtMs = setAt ? Date.parse(setAt) : Number.NaN;
+  const boughtCountAgeDays = Number.isFinite(setAtMs)
+    ? Math.max(
+        0,
+        Math.round(
+          (Date.parse(new Date().toISOString().slice(0, 10)) - setAtMs) /
+            86_400_000,
+        ),
+      )
+    : null;
+
   return {
     boosters,
     // The DeepL key itself never leaves the server — booleans/counts only.
@@ -130,6 +158,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       ),
       derm_survey: resolveFeatureFlag(settings, "derm_survey"),
     },
+    amazonGlobalFlags: {
+      az_bought_count: resolveFeatureFlag(settings, "az_bought_count"),
+      az_bestseller_badge: resolveFeatureFlag(settings, "az_bestseller_badge"),
+      az_fbt: resolveFeatureFlag(settings, "az_fbt"),
+    },
+    fbtVariants,
+    boughtCountAgeDays,
     metaobjectsUrl: `https://admin.shopify.com/store/${storePrefix}/content/metaobjects`,
   };
 };
@@ -156,6 +191,7 @@ type ProductBoosterActionResult =
       summary: TranslateRunSummary | null;
     }
   | { intent: "save_flags"; ok: boolean; errors: string[] }
+  | { intent: "save_amazon"; ok: boolean; errors: string[] }
   | { intent: "save_clinical"; ok: boolean; errors: string[] }
   | { intent: "delete_clinical"; ok: boolean; errors: string[] }
   | { intent: "save_ba"; ok: boolean; errors: string[] }
@@ -444,6 +480,33 @@ export const action = async ({
       } as Partial<Record<PdpFlagKey, boolean>>);
       return { intent: "save_flags", ok: result.ok, errors: result.errors };
     }
+    case "save_amazon": {
+      const payload = parseJson(formData.get("payload"));
+      if (!isRecord(payload)) {
+        return {
+          intent: "save_amazon",
+          ok: false,
+          errors: ["Invalid form payload"],
+        };
+      }
+      // Only the three Amazon-data keys are forwarded, and each ONLY when
+      // present in the payload — savePdpFlags treats absent keys as
+      // untouched, so a bestseller-only edit never restamps the bought
+      // count's freshness date.
+      const patch: PdpFlagsPatch = {};
+      if ("boughtCount" in payload) {
+        patch.boughtCount = payload.boughtCount as number | null;
+      }
+      if ("bestsellerLabel" in payload) {
+        patch.bestsellerLabel =
+          payload.bestsellerLabel as PdpFlagsPatch["bestsellerLabel"];
+      }
+      if ("fbtManual" in payload) {
+        patch.fbtManual = payload.fbtManual as PdpFlagsPatch["fbtManual"];
+      }
+      const result = await savePdpFlags(admin, productGid, patch);
+      return { intent: "save_amazon", ok: result.ok, errors: result.errors };
+    }
     case "save_clinical": {
       const payload = parseJson(formData.get("payload"));
       if (!isRecord(payload)) {
@@ -542,6 +605,72 @@ const CONTAINER_SELECT_OPTIONS = [
   { label: "Pump", value: "pump" },
   { label: "Product", value: "product" },
 ];
+
+/**
+ * Client-safe literal mirrors of BOUGHT_COUNT_STALE_DAYS /
+ * MAX_FBT_MANUAL_ITEMS in services/pdp-content.server.ts — component code
+ * must not reference *.server modules; keep the pairs in sync.
+ */
+const AZ_STALE_DAYS = 45;
+const AZ_MAX_FBT_ITEMS = 3;
+
+interface FbtItemState {
+  variantId: string;
+  handle: string;
+  /** Display-only product title (hydrated when available, else the handle). */
+  label: string;
+}
+
+interface AmazonEditState {
+  boughtCount: string;
+  rank: string;
+  category: string;
+  fbt: FbtItemState[];
+}
+
+/** Payload-relevant projection so display labels never make the card dirty. */
+function amazonProjection(state: AmazonEditState) {
+  return {
+    boughtCount: state.boughtCount.trim(),
+    rank: state.rank.trim(),
+    category: state.category.trim(),
+    fbt: state.fbt.map((item) => item.variantId),
+  };
+}
+
+interface AmazonEditErrors {
+  boughtCountError?: string;
+  bestsellerError?: string;
+}
+
+function validateAmazonEdit(state: AmazonEditState): AmazonEditErrors {
+  const errors: AmazonEditErrors = {};
+  const count = state.boughtCount.trim();
+  if (count !== "") {
+    const parsed = Number(count);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 10_000_000) {
+      errors.boughtCountError = "Whole number (0 clears)";
+    }
+  }
+  const rank = state.rank.trim();
+  const category = state.category.trim();
+  if (rank !== "" || category !== "") {
+    const parsedRank = Number(rank);
+    if (
+      rank === "" ||
+      !Number.isInteger(parsedRank) ||
+      parsedRank < 1 ||
+      parsedRank > 99
+    ) {
+      errors.bestsellerError = "Rank must be 1–99";
+    } else if (category === "") {
+      errors.bestsellerError = "Category required with a rank";
+    } else if (category.length > 60) {
+      errors.bestsellerError = "Category is limited to 60 characters";
+    }
+  }
+  return errors;
+}
 
 function clinicalToState(view: ClinicalStudyView | null): ClinicalFormState {
   if (!view) {
@@ -1279,6 +1408,9 @@ export default function ProductBoosterDetailPage() {
     guaranteeDays,
     guaranteeContainer,
     globalFlags,
+    amazonGlobalFlags,
+    fbtVariants,
+    boughtCountAgeDays,
     metaobjectsUrl,
   } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
@@ -1287,6 +1419,7 @@ export default function ProductBoosterDetailPage() {
   const baFetcher = useFetcher<typeof action>();
   const batchFetcher = useFetcher<typeof action>();
   const flagsFetcher = useFetcher<typeof action>();
+  const amazonFetcher = useFetcher<typeof action>();
   const translateFetcher = useFetcher<typeof action>();
 
   // ---------------------- auto-translation plumbing -----------------------
@@ -1617,6 +1750,114 @@ export default function ProductBoosterDetailPage() {
       { method: "post" },
     );
   };
+
+  // ------- Amazon data (v6.1: bought count, bestseller, FBT override) ------
+  const initialAmazon = useMemo<AmazonEditState>(
+    () => ({
+      boughtCount:
+        boosters.flags.boughtCount === undefined
+          ? ""
+          : String(boosters.flags.boughtCount),
+      rank:
+        boosters.flags.bestsellerLabel === undefined
+          ? ""
+          : String(boosters.flags.bestsellerLabel.rank),
+      category: boosters.flags.bestsellerLabel?.category ?? "",
+      fbt: (boosters.flags.fbtManual ?? []).map((item) => ({
+        variantId: item.variantId,
+        handle: item.handle,
+        label:
+          fbtVariants.find((variant) => variant.id === item.variantId)
+            ?.productTitle ?? item.handle,
+      })),
+    }),
+    [boosters, fbtVariants],
+  );
+  const [amazonState, setAmazonState] = useState<AmazonEditState>(
+    initialAmazon,
+  );
+  const amazonDirty =
+    JSON.stringify(amazonProjection(amazonState)) !==
+    JSON.stringify(amazonProjection(initialAmazon));
+  const amazonDirtyRef = useRef(amazonDirty);
+  amazonDirtyRef.current = amazonDirty;
+  // Adopt fresh loader data whenever the card has no unsaved edits — after a
+  // successful save the local edits EQUAL the new initial, so this also
+  // clears the dirty state (and picks up the freshly stamped set-date).
+  useEffect(() => {
+    if (!amazonDirtyRef.current) setAmazonState(initialAmazon);
+  }, [initialAmazon]);
+
+  useEffect(() => {
+    const data = amazonFetcher.data;
+    if (!data || data.intent !== "save_amazon") return;
+    shopify.toast.show(
+      data.ok
+        ? "Amazon data saved"
+        : (data.errors[0] ?? "Could not save the Amazon data"),
+      { isError: !data.ok },
+    );
+  }, [amazonFetcher.data, shopify]);
+
+  const amazonErrors = validateAmazonEdit(amazonState);
+  const amazonHasErrors =
+    amazonErrors.boughtCountError !== undefined ||
+    amazonErrors.bestsellerError !== undefined;
+
+  const saveAmazon = () => {
+    // Only CHANGED groups go in the payload — an unchanged bought count is
+    // never re-sent, so its freshness date is never restamped accidentally.
+    const payload: Record<string, unknown> = {};
+    if (amazonState.boughtCount.trim() !== initialAmazon.boughtCount.trim()) {
+      const trimmed = amazonState.boughtCount.trim();
+      payload.boughtCount = trimmed === "" ? null : Number(trimmed);
+    }
+    if (
+      amazonState.rank.trim() !== initialAmazon.rank.trim() ||
+      amazonState.category.trim() !== initialAmazon.category.trim()
+    ) {
+      payload.bestsellerLabel =
+        amazonState.rank.trim() === "" && amazonState.category.trim() === ""
+          ? null
+          : {
+              rank: Number(amazonState.rank.trim()),
+              category: amazonState.category.trim(),
+            };
+    }
+    if (
+      JSON.stringify(amazonState.fbt.map((item) => item.variantId)) !==
+      JSON.stringify(initialAmazon.fbt.map((item) => item.variantId))
+    ) {
+      payload.fbtManual = amazonState.fbt.map((item) => ({
+        variantId: item.variantId,
+        handle: item.handle,
+      }));
+    }
+    amazonFetcher.submit(
+      { intent: "save_amazon", payload: JSON.stringify(payload) },
+      { method: "post" },
+    );
+  };
+
+  // FBT variant search (same resource route as the cart cross-sell picker).
+  const fbtSearch = useFetcher<typeof variantsLoader>();
+  const loadFbtVariants = fbtSearch.load;
+  const [fbtQuery, setFbtQuery] = useState("");
+  const lastFbtQueryRef = useRef("");
+  useEffect(() => {
+    const trimmed = fbtQuery.trim();
+    if (trimmed === "" || trimmed === lastFbtQueryRef.current) return;
+    const handle = setTimeout(() => {
+      lastFbtQueryRef.current = trimmed;
+      loadFbtVariants(`/app/api/variants?q=${encodeURIComponent(trimmed)}`);
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [fbtQuery, loadFbtVariants]);
+  const fbtSearchResults = fbtSearch.data?.variants ?? [];
+
+  const boughtCountStale =
+    boosters.flags.boughtCount !== undefined &&
+    (boughtCountAgeDays === null || boughtCountAgeDays > AZ_STALE_DAYS);
 
   if (!boosters.product) {
     return (
@@ -2789,6 +3030,218 @@ export default function ProductBoosterDetailPage() {
                     }
                   >
                     Save batch transparency
+                  </Button>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+
+            {/* ---------------- Amazon data (v6.1) ------------------------- */}
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack gap="200" blockAlign="center" wrap>
+                  <Text as="h2" variant="headingMd">
+                    Amazon data
+                  </Text>
+                  <Badge
+                    tone={
+                      amazonGlobalFlags.az_bought_count ||
+                      amazonGlobalFlags.az_bestseller_badge ||
+                      amazonGlobalFlags.az_fbt
+                        ? "success"
+                        : "attention"
+                    }
+                  >
+                    {amazonGlobalFlags.az_bought_count ||
+                    amazonGlobalFlags.az_bestseller_badge ||
+                    amazonGlobalFlags.az_fbt
+                      ? "Pattern switches on"
+                      : "Pattern switches off"}
+                  </Badge>
+                </InlineStack>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Per-product data for the Amazon-pattern widgets: the
+                  “bought in past month” count, the bestseller badge and the
+                  manual “Frequently bought together” list. The count and
+                  badge NEVER render without a value you set here; the
+                  count's set-date is stamped automatically on save and
+                  counts older than {AZ_STALE_DAYS} days are hidden on the
+                  storefront until refreshed. Global switches live on the
+                  Amazon patterns page.
+                </Text>
+                {boosters.flags.boughtCountSetAt ? (
+                  <InlineStack gap="200" blockAlign="center" wrap>
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      Bought count set on {boosters.flags.boughtCountSetAt}
+                      {boughtCountAgeDays !== null
+                        ? ` (${boughtCountAgeDays} day${boughtCountAgeDays === 1 ? "" : "s"} ago)`
+                        : ""}
+                    </Text>
+                    {boughtCountStale ? (
+                      <Badge tone="attention">
+                        {`Stale (>${AZ_STALE_DAYS} days) — hidden on the storefront`}
+                      </Badge>
+                    ) : null}
+                  </InlineStack>
+                ) : null}
+                <InlineStack gap="300" blockAlign="start" wrap>
+                  <Box width="180px">
+                    <TextField
+                      label="Bought last month"
+                      value={amazonState.boughtCount}
+                      onChange={(boughtCount) =>
+                        setAmazonState((previous) => ({
+                          ...previous,
+                          boughtCount,
+                        }))
+                      }
+                      error={amazonErrors.boughtCountError}
+                      placeholder="e.g. 2000"
+                      helpText="Empty or 0 hides it"
+                      autoComplete="off"
+                    />
+                  </Box>
+                  <Box width="120px">
+                    <TextField
+                      label="Bestseller rank"
+                      value={amazonState.rank}
+                      onChange={(rank) =>
+                        setAmazonState((previous) => ({ ...previous, rank }))
+                      }
+                      placeholder="1"
+                      autoComplete="off"
+                    />
+                  </Box>
+                  <Box width="260px">
+                    <TextField
+                      label="Bestseller category"
+                      value={amazonState.category}
+                      onChange={(category) =>
+                        setAmazonState((previous) => ({
+                          ...previous,
+                          category,
+                        }))
+                      }
+                      error={amazonErrors.bestsellerError}
+                      placeholder="Anti-aging"
+                      maxLength={60}
+                      helpText="Rendered as entered — translate via Translate & Adapt"
+                      autoComplete="off"
+                    />
+                  </Box>
+                </InlineStack>
+                <Divider />
+                <Text as="h3" variant="headingSm">
+                  Frequently bought together — manual override
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Hand-pick up to {AZ_MAX_FBT_ITEMS} products shown with this
+                  one; leave empty for automatic complementary
+                  recommendations.
+                </Text>
+                {amazonState.fbt.length === 0 ? (
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    No manual items — automatic recommendations.
+                  </Text>
+                ) : (
+                  <BlockStack gap="100">
+                    {amazonState.fbt.map((item) => (
+                      <InlineStack
+                        key={item.variantId}
+                        gap="200"
+                        blockAlign="center"
+                      >
+                        <Text as="span" variant="bodySm">
+                          {item.label}
+                        </Text>
+                        <Button
+                          variant="plain"
+                          tone="critical"
+                          onClick={() =>
+                            setAmazonState((previous) => ({
+                              ...previous,
+                              fbt: previous.fbt.filter(
+                                (other) => other.variantId !== item.variantId,
+                              ),
+                            }))
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </InlineStack>
+                    ))}
+                  </BlockStack>
+                )}
+                <Box maxWidth="360px">
+                  <TextField
+                    label="Add a product"
+                    labelHidden
+                    placeholder="Search products to add"
+                    value={fbtQuery}
+                    onChange={setFbtQuery}
+                    autoComplete="off"
+                  />
+                </Box>
+                {fbtQuery.trim() !== "" ? (
+                  <BlockStack gap="100">
+                    {fbtSearchResults.slice(0, 6).map((variant) => {
+                      const already = amazonState.fbt.some(
+                        (item) => item.variantId === variant.id,
+                      );
+                      const full =
+                        amazonState.fbt.length >= AZ_MAX_FBT_ITEMS;
+                      return (
+                        <InlineStack
+                          key={variant.id}
+                          gap="200"
+                          blockAlign="center"
+                        >
+                          <Button
+                            variant="plain"
+                            disabled={already || full}
+                            onClick={() =>
+                              setAmazonState((previous) => ({
+                                ...previous,
+                                fbt: [
+                                  ...previous.fbt,
+                                  {
+                                    variantId: variant.id,
+                                    handle: variant.productHandle,
+                                    label: variant.productTitle,
+                                  },
+                                ],
+                              }))
+                            }
+                          >
+                            {already ? "Added" : full ? "List full" : "Add"}
+                          </Button>
+                          <Text as="span" variant="bodySm">
+                            {variant.productTitle}
+                            {variant.title !== "Default Title"
+                              ? ` — ${variant.title}`
+                              : ""}
+                          </Text>
+                        </InlineStack>
+                      );
+                    })}
+                    {fbtSearch.state === "idle" &&
+                    fbtSearchResults.length === 0 ? (
+                      <Text as="p" tone="subdued" variant="bodySm">
+                        No matches.
+                      </Text>
+                    ) : null}
+                  </BlockStack>
+                ) : null}
+                <InlineStack gap="200">
+                  <Button
+                    variant="primary"
+                    onClick={saveAmazon}
+                    disabled={!amazonDirty || amazonHasErrors}
+                    loading={amazonFetcher.state !== "idle"}
+                  >
+                    Save Amazon data
+                  </Button>
+                  <Button variant="plain" url="/app/features/amazon">
+                    Amazon patterns settings
                   </Button>
                 </InlineStack>
               </BlockStack>

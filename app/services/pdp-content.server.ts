@@ -74,13 +74,55 @@ export function isPdpContainer(value: unknown): value is PdpContainer {
   );
 }
 
+/** Merchant-entered "#{rank} Bestseller · {category}" data (az_bestseller_badge).
+ *  The badge NEVER renders without both fields — no fabricated claims. */
+export interface BestsellerLabel {
+  /** 1..99 — the "#1" part. */
+  rank: number;
+  /** Rendered exactly as entered (translatable later via T&A), <= 60 chars. */
+  category: string;
+}
+
+/** One manual "Frequently bought together" item (az_fbt override). Same
+ *  variantId+handle shape as cartCrossSell items so Liquid can render live
+ *  product data via all_products. */
+export interface FbtManualItem {
+  variantId: string;
+  handle: string;
+}
+
+/** Max manual FBT items per product — matches the storefront template
+ *  cap (amazon-booster.liquid renders at most 3 companion rows) and the
+ *  Amazon pattern of a 3-product bundle; the admin advertises the same
+ *  limit so nothing a merchant saves is silently truncated. */
+export const MAX_FBT_MANUAL_ITEMS = 3;
+
+/** A merchant-entered bought count older than this many days is STALE: the
+ *  admin warns and the storefront widget hides the number rather than
+ *  showing an outdated claim (honesty guard, az_bought_count). */
+export const BOUGHT_COUNT_STALE_DAYS = 45;
+
+const BOUGHT_COUNT_MAX = 10_000_000;
+
 /**
  * The five boolean opt-in/out flags plus the optional per-product container
- * override for the empty-bottle guarantee. `container` absent = inherit the
- * global emptyBottleGuarantee.container.
+ * override for the empty-bottle guarantee (`container` absent = inherit the
+ * global emptyBottleGuarantee.container) and the v6.1 Amazon-pattern data:
+ *
+ *   - boughtCount / boughtCountSetAt — "{n}+ bought in past month". The date
+ *     is stamped server-side whenever the count is saved; the widget hides
+ *     counts older than BOUGHT_COUNT_STALE_DAYS.
+ *   - bestsellerLabel — "#{rank} Bestseller · {category}"; absent = no badge.
+ *   - fbtManual — manual "Frequently bought together" list; absent/empty =
+ *     automatic complementary recommendations.
  */
 export type PdpFlags = Record<PdpFlagKey, boolean> & {
   container?: PdpContainer;
+  boughtCount?: number;
+  /** YYYY-MM-DD (UTC) date the count was last saved. */
+  boughtCountSetAt?: string;
+  bestsellerLabel?: BestsellerLabel;
+  fbtManual?: FbtManualItem[];
 };
 
 export interface ProductSummary {
@@ -253,10 +295,23 @@ export interface SaveBeforeAftersResult {
 /**
  * Patch shape accepted by savePdpFlags: any subset of the five boolean flags,
  * plus `container` — a valid enum value sets the per-product override, `null`
- * clears it (inherit the global default), anything else is ignored.
+ * clears it (inherit the global default), anything else is ignored — plus the
+ * v6.1 Amazon-pattern fields:
+ *
+ *   - boughtCount: int >= 1 sets the count AND stamps boughtCountSetAt to
+ *     today (server-side, so freshness can never be forged); 0 or null clears
+ *     both. Callers must include the field ONLY when the merchant actually
+ *     edited it — re-sending an unchanged value re-attests it as current.
+ *   - bestsellerLabel: {rank 1..99, category 1..60 chars} sets, null clears.
+ *   - fbtManual: array sets (invalid entries dropped, deduped, max
+ *     MAX_FBT_MANUAL_ITEMS); an empty/all-invalid array or null clears
+ *     (= automatic recommendations).
  */
 export type PdpFlagsPatch = Partial<Record<PdpFlagKey, boolean>> & {
   container?: PdpContainer | null;
+  boughtCount?: number | null;
+  bestsellerLabel?: BestsellerLabel | null;
+  fbtManual?: FbtManualItem[] | null;
 };
 
 export interface SavePdpFlagsResult {
@@ -447,6 +502,67 @@ function parseGidList(value: string | null | undefined): string[] {
   }
 }
 
+const VARIANT_GID_PATTERN = /^gid:\/\/shopify\/ProductVariant\/\d+$/;
+/** Same product-handle shape the settings sanitizer accepts for cross-sell. */
+const HANDLE_PATTERN = /^[a-z0-9][a-z0-9-_]{0,254}$/;
+
+/** int >= 1 (capped) or null — the shape a stored/patched boughtCount must have. */
+function cleanBoughtCount(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= BOUGHT_COUNT_MAX
+    ? value
+    : null;
+}
+
+/** Valid {rank, category} or null. Category is trimmed and length-capped. */
+function cleanBestsellerLabel(value: unknown): BestsellerLabel | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  const rank = raw.rank;
+  const category =
+    typeof raw.category === "string" ? raw.category.trim().slice(0, 60) : "";
+  if (
+    typeof rank !== "number" ||
+    !Number.isInteger(rank) ||
+    rank < 1 ||
+    rank > 99 ||
+    category === ""
+  ) {
+    return null;
+  }
+  return { rank, category };
+}
+
+/** Valid, deduped, capped manual FBT list ([] when nothing valid). */
+function cleanFbtManual(value: unknown): FbtManualItem[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const items: FbtManualItem[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      continue;
+    }
+    const raw = entry as Record<string, unknown>;
+    if (
+      typeof raw.variantId !== "string" ||
+      !VARIANT_GID_PATTERN.test(raw.variantId) ||
+      typeof raw.handle !== "string" ||
+      !HANDLE_PATTERN.test(raw.handle) ||
+      seen.has(raw.variantId)
+    ) {
+      continue;
+    }
+    seen.add(raw.variantId);
+    items.push({ variantId: raw.variantId, handle: raw.handle });
+    if (items.length >= MAX_FBT_MANUAL_ITEMS) break;
+  }
+  return items;
+}
+
 function parseFlags(value: string | null | undefined): PdpFlags {
   let parsed: unknown = null;
   if (value) {
@@ -468,6 +584,22 @@ function parseFlags(value: string | null | undefined): PdpFlags {
   if (isPdpContainer(source.container)) {
     flags.container = source.container;
   }
+  // v6.1 Amazon-pattern per-product data — every field is optional and any
+  // malformed value is treated as absent (the storefront then renders
+  // nothing for that widget: fail closed, never fabricate).
+  const boughtCount = cleanBoughtCount(source.boughtCount);
+  if (boughtCount !== null) flags.boughtCount = boughtCount;
+  if (
+    typeof source.boughtCountSetAt === "string" &&
+    DATE_PATTERN.test(source.boughtCountSetAt) &&
+    !Number.isNaN(Date.parse(source.boughtCountSetAt))
+  ) {
+    flags.boughtCountSetAt = source.boughtCountSetAt;
+  }
+  const bestseller = cleanBestsellerLabel(source.bestsellerLabel);
+  if (bestseller !== null) flags.bestsellerLabel = bestseller;
+  const fbtManual = cleanFbtManual(source.fbtManual);
+  if (fbtManual.length > 0) flags.fbtManual = fbtManual;
   return flags;
 }
 
@@ -1679,6 +1811,42 @@ export async function savePdpFlags(
       delete next.container;
     }
     // Any other value: ignored, current override (if any) is kept.
+  }
+  // v6.1 Amazon-pattern fields. Each is touched ONLY when its key is present
+  // in the patch (partial saves never clobber the other fields).
+  if (flags && "boughtCount" in flags) {
+    const count = cleanBoughtCount(flags.boughtCount);
+    if (count !== null) {
+      next.boughtCount = count;
+      // Stamped server-side so the freshness date can never be forged; the
+      // widget hides counts older than BOUGHT_COUNT_STALE_DAYS.
+      next.boughtCountSetAt = new Date().toISOString().slice(0, 10);
+    } else if (flags.boughtCount === null || flags.boughtCount === 0) {
+      delete next.boughtCount;
+      delete next.boughtCountSetAt;
+    }
+    // Any other value (NaN, negative, fraction): ignored, current kept.
+  }
+  if (flags && "bestsellerLabel" in flags) {
+    const label = cleanBestsellerLabel(flags.bestsellerLabel);
+    if (label !== null) {
+      next.bestsellerLabel = label;
+    } else if (flags.bestsellerLabel === null) {
+      delete next.bestsellerLabel;
+    }
+    // Malformed non-null objects: ignored, current label (if any) is kept.
+  }
+  if (flags && "fbtManual" in flags) {
+    if (flags.fbtManual === null || Array.isArray(flags.fbtManual)) {
+      const items = cleanFbtManual(flags.fbtManual);
+      if (items.length > 0) {
+        next.fbtManual = items;
+      } else {
+        // null, [] or an all-invalid list = back to automatic
+        // recommendations (no stored override).
+        delete next.fbtManual;
+      }
+    }
   }
 
   const errors = await setProductMetafield(

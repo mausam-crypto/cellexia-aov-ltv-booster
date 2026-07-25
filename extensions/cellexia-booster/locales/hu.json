@@ -160,5 +160,31 @@
     "box_sub": "…különben visszatérítjük a pénzed, vagy ingyen küldünk egy csereterméket.",
     "badge": "Kézbesítési garancia",
     "tooltip": "Kézbesítés legkésőbb: {{ date }} – különben visszatérítjük a pénzed, vagy ingyen küldünk egy csereterméket."
+  },
+  "amazon": {
+    "in_stock": "Készleten",
+    "free_delivery": "INGYENES szállítás",
+    "over_threshold": "{{ amount }} feletti rendelés esetén",
+    "add_more": "Tegyél a kosárba még {{ amount }} értékben az INGYENES szállításhoz.",
+    "qualifies": "A rendelésed jogosult az INGYENES szállításra.",
+    "order_within": "Rendelj {{ hours }} óra {{ minutes }} percen belül",
+    "ships_from": "Feladás helye: {{ country }}",
+    "secure": "Biztonságos tranzakció",
+    "free_returns": "INGYENES visszaküldés",
+    "bought_count": "{{ n }}+ vásárlás az elmúlt hónapban",
+    "bestseller": "{{ rank }}. számú bestseller",
+    "fbt_title": "Gyakran együtt vásárolt termékek",
+    "fbt_this_item": "Ez a termék:",
+    "fbt_total": "Teljes ár:",
+    "fbt_add": {
+      "one": "Tedd a kosárba",
+      "other": "Tedd mind a {{ count }} terméket a kosárba"
+    },
+    "fbt_add_both": "Tedd mindkettőt a kosárba",
+    "similar_title": "Hasonló termékek",
+    "cta_count": {
+      "one": "Tovább a pénztárhoz ({{ count }} termék)",
+      "other": "Tovább a pénztárhoz ({{ count }} termék)"
+    }
   }
 }

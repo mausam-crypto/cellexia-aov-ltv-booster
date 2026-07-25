@@ -164,5 +164,35 @@
     "box_sub": "…albo zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt.",
     "badge": "Gwarancja dostawy",
     "tooltip": "Dostawa najpóźniej: {{ date }}. W przeciwnym razie zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt."
+  },
+  "amazon": {
+    "in_stock": "Dostępny",
+    "free_delivery": "DARMOWA dostawa",
+    "over_threshold": "przy zamówieniach od {{ amount }}",
+    "add_more": "Dodaj jeszcze {{ amount }}, aby otrzymać DARMOWĄ dostawę.",
+    "qualifies": "Twoje zamówienie kwalifikuje się do DARMOWEJ dostawy.",
+    "order_within": "Zamów w ciągu {{ hours }} godz. {{ minutes }} min",
+    "ships_from": "Wysyłka z: {{ country }}",
+    "secure": "Bezpieczna transakcja",
+    "free_returns": "DARMOWE zwroty",
+    "bought_count": "{{ n }}+ zakupionych w ostatnim miesiącu",
+    "bestseller": "Bestseller nr {{ rank }}",
+    "fbt_title": "Często kupowane razem",
+    "fbt_this_item": "Ten produkt:",
+    "fbt_total": "Łączna cena:",
+    "fbt_add": {
+      "one": "Dodaj do koszyka",
+      "few": "Dodaj wszystkie {{ count }} do koszyka",
+      "many": "Dodaj wszystkie {{ count }} do koszyka",
+      "other": "Dodaj wszystkie {{ count }} do koszyka"
+    },
+    "fbt_add_both": "Dodaj oba do koszyka",
+    "similar_title": "Podobne produkty",
+    "cta_count": {
+      "one": "Przejdź do kasy ({{ count }} produkt)",
+      "few": "Przejdź do kasy ({{ count }} produkty)",
+      "many": "Przejdź do kasy ({{ count }} produktów)",
+      "other": "Przejdź do kasy ({{ count }} produktu)"
+    }
   }
 }

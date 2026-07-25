@@ -976,8 +976,17 @@ function hashCanonical(
           on: snapshot.cartSubFlags[field],
         }))
       : [],
-    sections: sortedKeys.flatMap((key) => {
+    sections: sortedKeys.flatMap((key): { field: string; on: boolean | null }[] => {
       const raw = FEATURE_RAW_FIELD[key];
+      // amazon.* raw flags (v6.1) ride in the same array: their field names
+      // (buyBox, fbt, …) cannot collide with section fields, and experiments
+      // without az_* keys produce byte-identical canonical objects to the
+      // pre-v6.1 composition — no fabricated drift for running experiments.
+      if (raw?.kind === "amazon") {
+        return [
+          { field: raw.field, on: snapshot.amazonFlags?.[raw.field] ?? null },
+        ];
+      }
       return raw?.kind === "section"
         ? [{ field: raw.field, on: snapshot.sectionEnabled[raw.field] }]
         : [];

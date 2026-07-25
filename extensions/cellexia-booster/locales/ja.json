@@ -158,5 +158,30 @@
     "box_sub": "万一遅れた場合は、返金または無料で代替品をお送りします。",
     "badge": "お届け保証",
     "tooltip": "{{ date }}までにお届けします。万一遅れた場合は、返金または無料で代替品をお送りします。"
+  },
+  "amazon": {
+    "in_stock": "在庫あり",
+    "free_delivery": "無料配達",
+    "over_threshold": "{{ amount }}以上のご注文の場合",
+    "add_more": "あと{{ amount }}追加で送料無料になります。",
+    "qualifies": "ご注文は送料無料の対象です。",
+    "order_within": "{{ hours }}時間{{ minutes }}分以内にご注文ください",
+    "ships_from": "{{ country }}から発送",
+    "secure": "安全な取引",
+    "free_returns": "無料返品",
+    "bought_count": "過去1か月で{{ n }}点以上購入されました",
+    "bestseller": "ベストセラー{{ rank }}位",
+    "fbt_title": "よく一緒に購入されている商品",
+    "fbt_this_item": "この商品:",
+    "fbt_total": "合計金額:",
+    "fbt_add": {
+      "one": "カートに入れる",
+      "other": "{{ count }}点すべてをカートに入れる"
+    },
+    "fbt_add_both": "2点ともカートに入れる",
+    "similar_title": "類似商品",
+    "cta_count": {
+      "other": "レジに進む（{{ count }}点の商品）"
+    }
   }
 }
