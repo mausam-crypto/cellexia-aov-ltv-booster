@@ -2424,60 +2424,156 @@
     return li;
   }
 
+  // FBT <-> similar-items coordination (v6.3): FBT resolves FIRST and
+  // publishes the product identities its rows consumed; the similar row
+  // awaits them so the page never shows the identical product twice
+  // back-to-back. The promise NEVER rejects and every fail-closed path
+  // (feature off, manual with no usable rows, fetch missing, network
+  // failure) resolves empty sets so similar is never blocked. Module
+  // scope only — no new globals.
+  var azFbtPicksPromise = null;
+
+  function azFbtEmptyPicks() {
+    return { ids: {}, handles: {}, variantIds: {} };
+  }
+
+  function azFbtPicks() {
+    return azFbtPicksPromise || Promise.resolve(azFbtEmptyPicks());
+  }
+
+  function azFbtCollect(products, p, picks, seen) {
+    // Shared complementary/related pick filter: dedupe by product id AND
+    // handle (`seen` persists across the two fetches so the related
+    // fill can never repeat a complementary pick), never the current
+    // product or the protection product, title required — capped at the
+    // shipped row limit (2 rec rows + the "This item:" row).
+    for (var i = 0; i < products.length && picks.length < 2; i++) {
+      var pr = products[i];
+      if (!pr || typeof pr.handle !== 'string' || !pr.handle) continue;
+      if (pr.handle === p.handle || pr.handle === AZ_PROTECTION) continue;
+      if (pr.id != null && p.id != null && String(pr.id) === String(p.id)) continue;
+      if (seen[pr.handle]) continue;
+      if (pr.id != null && seen['#' + String(pr.id)]) continue;
+      var title = typeof pr.title === 'string' ? pr.title : '';
+      if (!title) continue;
+      seen[pr.handle] = true;
+      if (pr.id != null) seen['#' + String(pr.id)] = true;
+      picks.push({
+        handle: pr.handle,
+        productId: pr.id != null ? String(pr.id) : '',
+        title: title,
+        image: azRecImage(pr)
+      });
+    }
+  }
+
+  function azFbtEnrich(picks) {
+    // Availability gate: presentment-correct price + first available
+    // variant via the app proxy; unavailable/unknown picks drop silently.
+    if (!picks.length) return Promise.resolve([]);
+    return azFetchHandleData(picks.map(function (pick) { return pick.handle; })).then(function (byHandle) {
+      var rows = [];
+      picks.forEach(function (pick) {
+        var variant = azFirstAvailableVariant(byHandle[pick.handle]);
+        if (!variant) return;
+        rows.push({
+          variantId: variant.id,
+          priceCents: variant.price,
+          title: pick.title,
+          image: pick.image,
+          handle: pick.handle,
+          productId: pick.productId
+        });
+      });
+      return rows;
+    });
+  }
+
   function azMountFbt() {
     try {
       if (document.querySelector('.cx-az-fbt')) return; // idempotent
       var node = azTpl('az_fbt');
       if (!node) return;
       if (node.getAttribute('data-cx-az-mode') === 'manual') {
+        // Manual list takes ABSOLUTE precedence — no fetches, no auto
+        // fallback. The payload rows only carry variant identity, so
+        // that is what similar-items gets to dedupe against.
+        try {
+          if (typeof Promise !== 'undefined') {
+            var mUsed = azFbtEmptyPicks();
+            var mRows = azFbtRows(node);
+            for (var m = 0; m < mRows.length; m++) {
+              if (mRows[m].getAttribute('data-cx-this')) continue;
+              var mvid = mRows[m].getAttribute('data-variant-id');
+              if (mvid) mUsed.variantIds[String(mvid)] = true;
+            }
+            azFbtPicksPromise = Promise.resolve(mUsed);
+          }
+        } catch (e0) { /* similar simply skips the dedupe */ }
         azFbtFinish(node);
         return;
       }
       // Auto: Shopify complementary recommendations for THIS product,
       // enriched through the app proxy — the cart cross-sell's API
-      // family. Zero usable items = no section.
+      // family. Complementary is EMPTY on stores without Search &
+      // Discovery curation, so it falls back to intent=related exactly
+      // like the v4.9 cart cross-sell; both empty = no section.
       if (!window.fetch) return;
       var p = azProductData();
       if (!p || p.id == null) return;
-      azFetchRecs(p.id, 'complementary')
+      var seen = {};
+      var used = azFbtEmptyPicks();
+      azFbtPicksPromise = azFetchRecs(p.id, 'complementary')
         .then(function (products) {
           var picks = [];
-          var seen = {};
-          for (var i = 0; i < products.length && picks.length < 2; i++) {
-            var pr = products[i];
-            if (!pr || typeof pr.handle !== 'string' || !pr.handle) continue;
-            if (pr.handle === p.handle || pr.handle === AZ_PROTECTION) continue;
-            if (seen[pr.handle]) continue;
-            var title = typeof pr.title === 'string' ? pr.title : '';
-            if (!title) continue;
-            seen[pr.handle] = true;
-            picks.push({ handle: pr.handle, title: title, image: azRecImage(pr) });
-          }
-          if (!picks.length) return null;
-          return azFetchHandleData(picks.map(function (pick) { return pick.handle; })).then(function (byHandle) {
-            var rows = [];
-            picks.forEach(function (pick) {
-              var variant = azFirstAvailableVariant(byHandle[pick.handle]);
-              if (!variant) return;
-              rows.push({
-                variantId: variant.id,
-                priceCents: variant.price,
-                title: pick.title,
-                image: pick.image
-              });
-            });
-            return rows;
+          azFbtCollect(products, p, picks, seen);
+          return azFbtEnrich(picks);
+        })
+        .then(function (rows) {
+          if (rows.length >= 1) return rows;
+          // Zero USABLE complementary items (empty payload, or every
+          // candidate filtered/unavailable): fetch related and fill.
+          // `seen` already holds the complementary picks, so the fill
+          // is deduped by product id against them.
+          return azFetchRecs(p.id, 'related').then(function (products) {
+            var picks = [];
+            azFbtCollect(products, p, picks, seen);
+            return azFbtEnrich(picks);
           });
         })
         .then(function (rows) {
-          if (!rows || !rows.length) return;
-          var list = node.querySelector('[data-cx-az-fbt-rows]');
-          if (!list) return;
-          for (var i = 0; i < rows.length; i++) list.appendChild(azFbtRowEl(rows[i]));
-          azFbtFinish(node);
+          var list = rows.length ? node.querySelector('[data-cx-az-fbt-rows]') : null;
+          if (list) {
+            for (var i = 0; i < rows.length; i++) {
+              list.appendChild(azFbtRowEl(rows[i]));
+              used.handles[rows[i].handle] = true;
+              if (rows[i].productId) used.ids[rows[i].productId] = true;
+              if (rows[i].variantId != null) used.variantIds[String(rows[i].variantId)] = true;
+            }
+            azFbtFinish(node);
+          }
+          return used;
         })
-        .catch(function () { /* fail closed: no section */ });
+        .catch(function () { return used; }); // fail closed: no section
     } catch (e) { /* never break the theme */ }
+  }
+
+  function azSimilarOverlaps(pick, entry, used) {
+    // True when this similar-items candidate is already one of the FBT
+    // rows: product id or handle match (auto FBT picks), else any
+    // variant-id match (manual FBT rows only carry variant identity;
+    // `entry` is the pick's app-proxy product record, so ANY of its
+    // variants matching a manual row means the same product).
+    if (!used) return false;
+    if (used.handles && used.handles[pick.handle] === true) return true;
+    if (used.ids && pick.productId && used.ids[pick.productId] === true) return true;
+    if (used.variantIds && entry && Array.isArray(entry.variants)) {
+      for (var i = 0; i < entry.variants.length; i++) {
+        var v = entry.variants[i];
+        if (v && v.id != null && used.variantIds[String(v.id)] === true) return true;
+      }
+    }
+    return false;
   }
 
   function azMountSimilar() {
@@ -2488,34 +2584,46 @@
       if (!window.fetch) return;
       var p = azProductData();
       if (!p || p.id == null) return;
-      azFetchRecs(p.id, 'related')
-        .then(function (products) {
-          var picks = [];
-          var seen = {};
-          for (var i = 0; i < products.length && picks.length < 6; i++) {
-            var pr = products[i];
-            if (!pr || typeof pr.handle !== 'string' || !pr.handle) continue;
-            if (pr.handle === p.handle || pr.handle === AZ_PROTECTION) continue;
-            if (seen[pr.handle]) continue;
-            var title = typeof pr.title === 'string' ? pr.title : '';
-            if (!title) continue;
-            seen[pr.handle] = true;
-            picks.push({
-              handle: pr.handle,
-              title: title,
-              image: azRecImage(pr),
-              url: typeof pr.url === 'string' && pr.url.charAt(0) === '/' ? pr.url : '/products/' + pr.handle
+      // FBT resolves FIRST (its promise never rejects — every FBT
+      // fail-closed path resolves empty sets) and similar consumes its
+      // picks, so the two sections never repeat a product.
+      azFbtPicks()
+        .then(function (used) {
+          return azFetchRecs(p.id, 'related').then(function (products) {
+            var picks = [];
+            var seen = {};
+            for (var i = 0; i < products.length && picks.length < 6; i++) {
+              var pr = products[i];
+              if (!pr || typeof pr.handle !== 'string' || !pr.handle) continue;
+              if (pr.handle === p.handle || pr.handle === AZ_PROTECTION) continue;
+              if (seen[pr.handle]) continue;
+              var title = typeof pr.title === 'string' ? pr.title : '';
+              if (!title) continue;
+              seen[pr.handle] = true;
+              picks.push({
+                handle: pr.handle,
+                productId: pr.id != null ? String(pr.id) : '',
+                title: title,
+                image: azRecImage(pr),
+                url: typeof pr.url === 'string' && pr.url.charAt(0) === '/' ? pr.url : '/products/' + pr.handle
+              });
+            }
+            if (!picks.length) return null;
+            return azFetchHandleData(picks.map(function (pick) { return pick.handle; })).then(function (byHandle) {
+              var cards = [];
+              var overlap = [];
+              picks.forEach(function (pick) {
+                var entry = byHandle[pick.handle];
+                var variant = azFirstAvailableVariant(entry);
+                if (!variant) return;
+                var card = { pick: pick, priceCents: variant.price };
+                if (azSimilarOverlaps(pick, entry, used)) overlap.push(card);
+                else cards.push(card);
+              });
+              // Dedupe across the two sections — but a row with the
+              // overlap beats an empty row (availability > purity).
+              return cards.length ? cards : overlap;
             });
-          }
-          if (!picks.length) return null;
-          return azFetchHandleData(picks.map(function (pick) { return pick.handle; })).then(function (byHandle) {
-            var cards = [];
-            picks.forEach(function (pick) {
-              var variant = azFirstAvailableVariant(byHandle[pick.handle]);
-              if (!variant) return;
-              cards.push({ pick: pick, priceCents: variant.price });
-            });
-            return cards;
           });
         })
         .then(function (cards) {

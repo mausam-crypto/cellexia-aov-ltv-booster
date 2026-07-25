@@ -72,6 +72,63 @@ body.customer--b2b .cx-sub-remove {
   background: #f4f4f4;
 }
 
+/* ----------------------- az-pattern cart threshold sentence (v6.1) */
+/* az_cart_free_line — declarative sentence at the very top of the
+   booster root: qualified state in the logistics good-news green the
+   pattern research measured (#0B7B3C family, tuned to sit beside the
+   Cellexia palette), unqualified state in brand ink with the amount
+   emphasized. 14px regular per spec; flex + gap (RTL-safe, no physical
+   margins). While it renders, the shipbar below keeps only its bar. */
+
+.cx-azfree {
+  margin-block-end: 10px;
+}
+
+.cx-azfree__line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.cx-azfree__line[hidden] {
+  display: none;
+}
+
+.cx-azfree__line--qualified {
+  color: #0b7b3c;
+}
+
+.cx-azfree__line--qualified svg {
+  flex: 0 0 auto;
+  margin-block-start: 3px;
+}
+
+.cx-azfree__line--unqualified {
+  color: #1d1d1b;
+}
+
+.cx-azfree__amount {
+  font-weight: 700;
+}
+
+/* live cart measurement: the missing amount carries the price-accent
+   red (#B12704 family) inside the unqualified sentence. */
+.cx-azfree--unqualified .cx-azfree__amount {
+  color: #b12704;
+}
+
+/* az_cta_count (v6.1) — the checkout-button decoration is a TEXT swap
+   only (button styling stays 100% theme); the original label is parked
+   alive-but-hidden inside the button for verbatim restore. Belt and
+   braces for UAs without default [hidden] handling inside <a>. */
+
+.cx-azcta-original[hidden] {
+  display: none !important;
+}
+
 /* ---------------------------------------------------------- free-ship bar */
 
 .cx-shipbar {
@@ -2129,5 +2186,481 @@ body.customer--b2b .cx-sub-remove {
 @media (prefers-reduced-motion: reduce) {
   .cx-dispatch__dot {
     animation: none;
+  }
+}
+
+/* ------------------------------------------ az-pattern widgets (v6.1) */
+/* v6.3: full anatomy per the live-measured pattern spec — flag badge,
+   FBT strip/rows/total, horizontal similar row, delivery/stock/microcopy
+   internals. Conventions, not trade dress: no brand words, no smile
+   mark, CTA buttons keep Cellexia styling (no yellow or orange pills);
+   ink #1d1d1b stands in for the pattern's #0F1111 so text sits beside
+   brand blue #b1cded. Logical properties throughout for the ar RTL
+   locale; 320px-safe; no animation (nothing to reduce for
+   prefers-reduced-motion beyond the passive horizontal scroller).
+   COVERAGE CONTRACT: every cx-az* class emitted on EITHER channel —
+   the JS builders or block/snippet Liquid class attributes — has a
+   deliberate rule below or an annotated inherit entry in the v4
+   harness's class-coverage section — orphans fail the build. */
+
+/* --- buy-box decision card (az_buy_box) --- */
+
+.cx-az-buybox {
+  background: #ffffff;
+  border: 1px solid #d5d9d9;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.cx-az-buybox .pdp__price {
+  margin-block: 0 12px;
+}
+
+.cx-az-buybox .pdp__options {
+  margin-block: 12px;
+}
+
+/* --- bestseller flag (az_bestseller_badge) --- */
+/* Notched flag per the live-measured anatomy (#C45500 family, white 11px
+   bold, 3px radius on the leading edge, notch cut into the trailing
+   edge via clip-path — falls back to a plain rectangle flag where
+   clip-path is unsupported). Sits above the title, inline, never
+   full-width; the category suffix rides inline as plain gray text. */
+
+.cx-az-bestseller {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-block: 0 8px;
+}
+
+.cx-az-bestseller__pill {
+  display: inline-block;
+  background: #c45500;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.3px;
+  /* measured flag metrics: 2px block, 6px leading, 5px trailing + the
+     6px notch depth = 11px inline-end; ~15px tall at 11px/1 text. */
+  padding: 2px 5px;
+  padding-inline-start: 6px;
+  padding-inline-end: 11px;
+  border-start-start-radius: 3px;
+  border-end-start-radius: 3px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 6px) 50%, 100% 100%, 0 100%);
+  white-space: nowrap;
+}
+
+/* clip-path polygons are physical: mirror the notch for RTL pages. */
+[dir="rtl"] .cx-az-bestseller__pill {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 6px 50%);
+}
+
+.cx-az-bestseller__cat {
+  font-size: 12px;
+  color: #565959;
+  min-width: 0;
+}
+
+/* --- bought count (az_bought_count) --- */
+
+.cx-az-bought {
+  font-size: 12px;
+  line-height: 16px;
+  color: #1d1d1b;
+  margin-block: 6px 0;
+}
+
+.cx-az-bought__n {
+  font-weight: 700;
+}
+
+/* --- compound delivery line (az_delivery_line) --- */
+
+.cx-az-delivery {
+  font-size: 14px;
+  line-height: 1.45;
+  color: #1d1d1b;
+  margin-block-start: 10px;
+}
+
+/* Buy-box form per the measured spec: "FREE delivery" clause and the
+   over-threshold clause regular weight; ONLY the date bolds. */
+.cx-az-delivery__line {
+  font-weight: 400;
+}
+
+.cx-az-delivery__date {
+  font-weight: 700;
+}
+
+.cx-az-delivery__countdown {
+  display: block;
+  margin-block-start: 2px;
+  font-weight: 700;
+  color: #067d62;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- stock line (az_stock_line) --- */
+
+.cx-az-stock {
+  margin-block-start: 10px;
+}
+
+.cx-az-stock__instock {
+  /* 18px regular green on its own line — the measured live size. */
+  display: block;
+  font-size: 18px;
+  line-height: 1.3;
+  color: #0b7b3c;
+}
+
+.cx-az-stock__ships {
+  display: block;
+  margin-block-start: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: #565959;
+}
+
+/* --- microcopy rows (az_microcopy) --- */
+
+.cx-az-micro {
+  margin-block-start: 10px;
+}
+
+.cx-az-micro__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: #565959;
+  margin-block-start: 6px;
+}
+
+.cx-az-micro__row .cx-icon {
+  flex: 0 0 auto;
+  color: #565959;
+}
+
+/* label/value pair per the measured anatomy: label gray, VALUE in ink
+   ("Ships from Germany" — only "Germany" is data). The all-gray
+   "Secure transaction" row has no value slot and stays gray. */
+.cx-az-micro__row [data-cx-az-ships-slot] {
+  color: #1d1d1b;
+}
+
+.cx-az-micro__row--returns {
+  display: block;
+}
+
+.cx-az-micro__reveal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: #565959;
+  cursor: pointer;
+  text-align: start;
+}
+
+.cx-az-micro__reveal:hover,
+.cx-az-micro__reveal:focus-visible {
+  color: #1d1d1b;
+}
+
+.cx-az-micro__reveal[aria-expanded="true"] {
+  color: #1d1d1b;
+}
+
+.cx-az-micro__panel {
+  margin-block-start: 4px;
+  margin-inline-start: 19px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #565959;
+}
+
+/* --- shared PDP sections wrap (FBT + similar items) --- */
+
+.cx-az-sections {
+  margin-block: 30px;
+}
+
+/* --- frequently bought together (az_fbt) --- */
+
+.cx-az-fbt {
+  border: 1px solid #d5d9d9;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+  margin-block-end: 20px;
+}
+
+.cx-az-fbt__title {
+  margin-block: 0 12px;
+  /* spec heading anatomy restated so it holds on themes without the
+     heading--four utility the builder also attaches. */
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* strictly single-row per the measured strip — never wraps (a wrapped
+   strip orphans a "+" glyph); overflow scrolls like the similar row. */
+.cx-az-fbt__strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+  margin-block-end: 12px;
+  padding-block-end: 4px;
+}
+
+.cx-az-fbt__strip::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cx-az-fbt__strip::-webkit-scrollbar-thumb {
+  background: #d5d9d9;
+  border-radius: 3px;
+}
+
+.cx-az-fbt__strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 125px hairline-bordered thumbs joined by 28px gray "+" glyphs — the
+   measured strip anatomy. White ground so product shots read cleanly. */
+.cx-az-fbt__thumb {
+  width: 125px;
+  height: 125px;
+  object-fit: contain;
+  background: #ffffff;
+  border: 1px solid #d5d9d9;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.cx-az-fbt__plus {
+  font-size: 28px;
+  line-height: 1;
+  color: #565959;
+  flex: 0 0 auto;
+}
+
+/* rows <ul> ships with the theme's list-reset; restated here so the
+   anatomy holds on themes without that utility. */
+.cx-az-fbt__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* price flows inline after the title fragment per the measured row
+   anatomy — not a justified right-edge column. */
+.cx-az-fbt__row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #1d1d1b;
+  padding-block: 5px;
+}
+
+.cx-az-fbt__label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.cx-az-fbt__check {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  accent-color: #1d1d1b;
+  transform: translateY(2px);
+}
+
+.cx-az-fbt__check[disabled] {
+  /* the locked "This item:" row stays visually first-class */
+  opacity: 1;
+}
+
+/* title fragment must be shrinkable inside the flex label so long
+   titles wrap instead of pushing the price off-row. */
+.cx-az-fbt__text {
+  min-width: 0;
+}
+
+.cx-az-fbt__this {
+  font-weight: 700;
+}
+
+.cx-az-fbt__price {
+  flex: 0 0 auto;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cx-az-fbt__summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-block-start: 10px;
+  font-size: 14px;
+}
+
+/* "Total price:" 14px label + 17px bold ink amount per spec. */
+.cx-az-fbt__total-label {
+  font-size: 14px;
+}
+
+.cx-az-fbt__total {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1d1d1b;
+}
+
+.cx-az-fbt__add {
+  margin-block-start: 12px;
+  width: 100%;
+}
+
+.cx-az-fbt__add[disabled] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+@media (min-width: 600px) {
+  .cx-az-fbt__add {
+    width: auto;
+  }
+}
+
+/* --- similar items (az_similar_items) --- */
+/* Horizontal scroll row of compact cards — NEVER a vertical stack at
+   any width: the list is a non-wrapping flex row, cards keep a fixed
+   flex-basis, overflow scrolls inside the row with a subtle scrollbar
+   and gentle snap points. */
+
+.cx-az-similar {
+  min-width: 0;
+}
+
+.cx-az-similar__title {
+  margin-block: 0 12px;
+  /* spec heading anatomy restated so it holds on themes without the
+     heading--four utility the builder also attaches. */
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.cx-az-similar__scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  padding-block-end: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+.cx-az-similar__scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cx-az-similar__scroll::-webkit-scrollbar-thumb {
+  background: #d5d9d9;
+  border-radius: 3px;
+}
+
+.cx-az-similar__scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cx-az-similar__list {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cx-az-similar__card {
+  flex: 0 0 auto;
+  width: 150px;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
+.cx-az-similar__link {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #1d1d1b;
+  text-decoration: none;
+}
+
+.cx-az-similar__img {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  background: #ffffff;
+  border: 1px solid #d5d9d9;
+  border-radius: 4px;
+}
+
+.cx-az-similar__name {
+  font-size: 13px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* clamp fallback for engines without -webkit-line-clamp */
+  max-height: 2.7em;
+}
+
+.cx-az-similar__price {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+@media (max-width: 380px) {
+  .cx-az-fbt__thumb {
+    width: 84px;
+    height: 84px;
+  }
+
+  /* rows stack cleanly at 320px: price drops under the label */
+  .cx-az-fbt__row {
+    flex-wrap: wrap;
+  }
+
+  .cx-az-similar__card,
+  .cx-az-similar__img {
+    width: 128px;
+  }
+
+  .cx-az-similar__img {
+    height: 128px;
   }
 }
