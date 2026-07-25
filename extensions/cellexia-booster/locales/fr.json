@@ -181,7 +181,7 @@
       "other": "Ajouter les {{ count }} au panier"
     },
     "fbt_add_both": "Ajouter les deux au panier",
-    "similar_title": "Articles similaires",
+    "similar_title": "Vous aimerez peut-être aussi",
     "cta_count": {
       "one": "Passer la commande ({{ count }} article)",
       "other": "Passer la commande ({{ count }} articles)"

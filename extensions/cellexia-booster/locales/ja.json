@@ -179,7 +179,7 @@
       "other": "{{ count }}点すべてをカートに入れる"
     },
     "fbt_add_both": "2点ともカートに入れる",
-    "similar_title": "類似商品",
+    "similar_title": "こちらもおすすめ",
     "cta_count": {
       "other": "レジに進む（{{ count }}点の商品）"
     }

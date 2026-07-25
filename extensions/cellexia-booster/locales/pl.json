@@ -187,7 +187,7 @@
       "other": "Dodaj wszystkie {{ count }} do koszyka"
     },
     "fbt_add_both": "Dodaj oba do koszyka",
-    "similar_title": "Podobne produkty",
+    "similar_title": "Może Ci się również spodobać",
     "cta_count": {
       "one": "Przejdź do kasy ({{ count }} produkt)",
       "few": "Przejdź do kasy ({{ count }} produkty)",

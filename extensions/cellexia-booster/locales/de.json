@@ -181,7 +181,7 @@
       "other": "Alle {{ count }} in den Warenkorb"
     },
     "fbt_add_both": "Beide in den Warenkorb",
-    "similar_title": "Ähnliche Artikel",
+    "similar_title": "Das könnte Ihnen auch gefallen",
     "cta_count": {
       "one": "Zur Kasse gehen ({{ count }} Artikel)",
       "other": "Zur Kasse gehen ({{ count }} Artikel)"

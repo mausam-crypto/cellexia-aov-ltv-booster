@@ -181,7 +181,7 @@
       "other": "Lisää kaikki {{ count }} ostoskoriin"
     },
     "fbt_add_both": "Lisää molemmat ostoskoriin",
-    "similar_title": "Samankaltaisia tuotteita",
+    "similar_title": "Saatat pitää myös näistä",
     "cta_count": {
       "one": "Siirry kassalle ({{ count }} tuote)",
       "other": "Siirry kassalle ({{ count }} tuotetta)"

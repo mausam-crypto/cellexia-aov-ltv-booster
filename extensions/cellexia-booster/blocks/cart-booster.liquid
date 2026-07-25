@@ -22,6 +22,7 @@
 {%- assign cx_draft_delivery = false -%}
 {%- assign cx_draft_azfree = false -%}
 {%- assign cx_draft_azcta = false -%}
+{%- assign cx_draft_azbadge = false -%}
 {%- if cx_prev_armed -%}
 {%- liquid
 assign cx_prev_flags = cx_prev.draftFlags
@@ -58,6 +59,11 @@ endif
 if cx_prev_flags.az_cta_count == true
 assign cx_draft_azcta = true
 endif
+if cfg.amazon.bestsellerOnCards != false
+if cx_prev_flags.az_bestseller_badge == true or cfg.amazon.bestsellerBadge == true
+assign cx_draft_azbadge = true
+endif
+endif
 if cfg.cartUpsell.enabled == true and cfg.cartUpsell.showTrustRow != false
 assign cx_draft_trustrow = true
 endif
@@ -79,7 +85,7 @@ endif
 -%}
 {%- endif -%}
 {%- assign cx_cart_draft_any = false -%}
-{%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow or cx_draft_crosssell or cx_draft_dispatch or cx_draft_delivery or cx_draft_azfree or cx_draft_azcta -%}
+{%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow or cx_draft_crosssell or cx_draft_dispatch or cx_draft_delivery or cx_draft_azfree or cx_draft_azcta or cx_draft_azbadge -%}
 {%- assign cx_cart_draft_any = true -%}
 {%- endif -%}
 <script>
@@ -103,7 +109,7 @@ window.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content
 } catch (e) {}
 })();
 </script>
-{%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_de.enabled == true or cfg.amazon.cartFreeLine == true or cfg.amazon.ctaCount == true or cx_cart_draft_any -%}
+{%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_de.enabled == true or cfg.amazon.cartFreeLine == true or cfg.amazon.ctaCount == true or cfg.amazon.bestsellerBadge == true or cx_cart_draft_any -%}
 {%- liquid
 assign threshold = cfg.global.freeShippingThreshold | default: 150
 assign cx_fs = cfg.freeShipping.byMarket[cx_market]
@@ -208,6 +214,17 @@ if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
 assign cx_eff_azcta = true
 endif
 endif
+assign cx_azbadge_setting = false
+assign cx_eff_azbadge = false
+if cfg.amazon.bestsellerOnCards != false
+assign cx_scope = cfg.marketScopes.az_bestseller_badge
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_azbadge_setting = true
+if cfg.amazon.bestsellerBadge == true
+assign cx_eff_azbadge = true
+endif
+endif
+endif
 -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
 <script type="application/json" id="cx-cart-config">
@@ -229,6 +246,7 @@ endif
 },
 "market": {{ cx_market | json }},
 "pageLocale": {{ request.locale.iso_code | json }},
+"badgeCards": {"setting": {{ cx_azbadge_setting }}, "live": {{ cx_eff_azbadge }}},
 "effective": {
 "dispatch": {{ cx_eff_dispatch }},
 "delivery": {{ cx_eff_delivery }},
@@ -288,6 +306,7 @@ endif
 "dispatch.within_minutes": {{ 'dispatch.within_minutes' | t: minutes: '@@MINUTES@@' | json }},
 "badges.secure_checkout": {{ 'badges.secure_checkout' | t | json }},
 "badges.money_back": {{ 'badges.money_back' | t: days: guarantee_days | json }},
+"amazon.bestseller": {{ 'amazon.bestseller' | t: rank: '@@RANK@@' | json }},
 "amazon.qualifies": {{ 'amazon.qualifies' | t | json }},
 "amazon.add_more": {{ 'amazon.add_more' | t: amount: '@@AMOUNT@@' | json }},
 "amazon.cta_count.zero": {{ 'amazon.cta_count.zero' | t: count: '@@COUNT@@' | json }},

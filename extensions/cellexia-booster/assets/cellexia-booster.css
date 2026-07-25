@@ -2205,19 +2205,71 @@ body.customer--b2b .cx-sub-remove {
 
 /* --- buy-box decision card (az_buy_box) --- */
 
-.cx-az-buybox {
+/* The mount host is the theme's own .pdp__grey — its authored rule
+   .pdp__info .pdp__grey { padding:20px; background:#f4f4f4 } is
+   (0,2,0), so the card chrome is restated at the paired specificity
+   too or the theme's grey panel padding/background would win live. */
+.cx-az-buybox,
+.pdp__grey.cx-az-buybox {
   background: #ffffff;
   border: 1px solid #d5d9d9;
   border-radius: 8px;
   padding: 16px;
 }
 
+/* v6.3.1 merchant-feedback compaction: the pattern's buy box is DENSE
+   (~6-10px between rows). The theme's own elements keep their large
+   authored spacing once moved inside the card — notably
+   .pdp__info .pdp__price { padding:15px 0; margin-bottom:10px } (the
+   measured ~60-80px price→delivery gap) and
+   .pdp__info .pdp__grey .stock-msg { margin-top:15px } — so every
+   direct row is normalized here, scoped to the card only. Our asset
+   loads after the theme bundle, so equal-specificity ties resolve to
+   these rules; stock-msg needs the .pdp__grey pairing to reach the
+   theme rule's (0,3,0). Logical properties keep it RTL-safe; physical
+   theme margins are overridden via the same logical property group. */
+
 .cx-az-buybox .pdp__price {
-  margin-block: 0 12px;
+  padding-block: 0;
+  margin-block: 0 6px;
 }
 
 .cx-az-buybox .pdp__options {
-  margin-block: 12px;
+  margin-block: 8px 0;
+}
+
+.cx-az-buybox .pdp__options .option__wrap {
+  padding-block: 2px;
+}
+
+.cx-az-buybox .pdp__options .option__wrap label {
+  margin-block-end: 4px;
+}
+
+.cx-az-buybox .cx-az-delivery,
+.cx-az-buybox .cx-dispatch--pdp,
+.cx-az-buybox .cx-delivery,
+.cx-az-buybox .cx-az-stock,
+.cx-az-buybox .cx-az-micro {
+  margin-block-start: 8px;
+}
+
+.pdp__grey.cx-az-buybox .stock-msg {
+  margin-block-start: 8px;
+}
+
+.cx-az-buybox .pdp__actions--flex {
+  padding-block: 0;
+  margin-block-start: 8px;
+}
+
+.cx-az-buybox .pdp__recharge {
+  padding-block: 0 8px;
+}
+
+.cx-az-buybox .cx-pdp-badges {
+  margin-block-start: 10px;
+  padding-block-start: 10px;
 }
 
 /* --- bestseller flag (az_bestseller_badge) --- */
@@ -2642,6 +2694,87 @@ body.customer--b2b .cx-sub-remove {
 .cx-az-similar__price {
   font-size: 14px;
   font-weight: 700;
+}
+
+/* --- bestseller card flags (badge-everywhere, v6.4) --- */
+/* Compact variants of the PDP bestseller flag for product CARDS: the
+   overlay version sits over the card image's inline-start top corner
+   (theme cards site-wide via cellexia-cart.js + the app's own similar
+   cards); the inline version rides inside the dense FBT text rows.
+   Same #C45500 notched-flag anatomy as .cx-az-bestseller__pill, scaled
+   to 10px. pointer-events off: the flag is chrome — clicks/hovers pass
+   through to the theme's own card link underneath. */
+
+.cx-az-cardflag {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  max-width: 100%;
+  pointer-events: none;
+}
+
+.cx-az-cardflag--overlay {
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline-start: 6px;
+  z-index: 2;
+}
+
+.cx-az-cardflag--inline {
+  flex-direction: row;
+  vertical-align: baseline;
+  margin-inline-start: 6px;
+}
+
+.cx-az-cardflag__pill {
+  display: inline-block;
+  background: #c45500;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.3px;
+  /* the PDP pill's measured metrics scaled down: 2px block pad, 5px
+     leading, 4px trailing + the 6px notch depth = 10px inline-end. */
+  padding: 2px 4px;
+  padding-inline-start: 5px;
+  padding-inline-end: 10px;
+  border-start-start-radius: 3px;
+  border-end-start-radius: 3px;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 6px) 50%, 100% 100%, 0 100%);
+  white-space: nowrap;
+}
+
+/* clip-path polygons are physical: mirror the notch for RTL pages. */
+[dir="rtl"] .cx-az-cardflag__pill {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 6px 50%);
+}
+
+/* localized category beneath the pill — truncated, softly backed so it
+   stays readable over any card image. */
+.cx-az-cardflag__cat {
+  font-size: 10px;
+  line-height: 1.2;
+  color: #565959;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 2px;
+  padding: 1px 4px;
+  /* v6.4.1: 14ch ellipsized almost every realistic category (German and
+     French nearly always) — 20ch keeps one line while staying inside the
+     narrowest theme card; .cx-az-cardflag's max-width:100% still clamps
+     it to the image box. */
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* overlay host for the app's own similar cards (theme card containers
+   get position:relative from the decorator itself, and only when the
+   computed position is static). */
+.cx-az-similar__link {
+  position: relative;
 }
 
 @media (max-width: 380px) {

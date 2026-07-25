@@ -181,7 +181,7 @@
       "other": "Legg alle {{ count }} i handlekurven"
     },
     "fbt_add_both": "Legg begge i handlekurven",
-    "similar_title": "Lignende varer",
+    "similar_title": "Du vil kanskje også like",
     "cta_count": {
       "one": "Gå til kassen ({{ count }} vare)",
       "other": "Gå til kassen ({{ count }} varer)"

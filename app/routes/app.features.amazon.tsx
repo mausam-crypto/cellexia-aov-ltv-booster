@@ -36,13 +36,22 @@ import {
 } from "../models/settings.server";
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import { listMarkets } from "../services/markets.server";
+import { ensurePdpDefinitions } from "../services/metaobjects.server";
 import {
   BOUGHT_COUNT_STALE_DAYS,
+  getProductBoosters,
   listProductsWithBoosterStatus,
   savePdpFlags,
   type FbtManualItem,
   type PdpFlagsPatch,
 } from "../services/pdp-content.server";
+import {
+  collectAllowedMetafieldGids,
+  collectBoosterResourceGids,
+  getTargetLocales,
+  getTranslationConfig,
+  translateResources,
+} from "../services/translation.server";
 import type { loader as variantsLoader } from "./app.api.variants";
 
 /**
@@ -179,7 +188,7 @@ const AZ_FEATURE_COPY: AzFeatureCardCopy[] = [
     key: "az_bestseller_badge",
     title: "Bestseller badge",
     toggleLabel: "Enable the bestseller badge",
-    how: "The pattern: a small dark pill left-anchored above the title — “#1 Bestseller · Anti-aging” — rank and category set per product below. It never renders without merchant-entered data. The category renders exactly as entered (translate it later via Translate & Adapt if needed).",
+    how: "The pattern: a small dark pill left-anchored above the title — “#1 Bestseller · Anti-aging” — rank and category set per product below. It never renders without merchant-entered data. The category is stored as a translatable metafield and served per storefront language automatically — auto-translated on save when DeepL is connected (Languages page), or per row via the Translate button below.",
     replaces: null,
   },
   {
@@ -279,15 +288,42 @@ interface AmazonProductRow {
   fbtManual: FbtManualItem[];
 }
 
+/**
+ * Shops whose PDP metaobject/metafield definitions were verified this server
+ * lifetime (same pattern as app.products.tsx). The bestseller-category
+ * metafield MUST be definition-backed before Shopify exposes it as a
+ * translatable resource — and this page is the v6.4 primary write path
+ * (bulk-table save + auto/one-click translate), so on an upgraded install
+ * a merchant who lands here first would otherwise write categories that
+ * the DeepL run silently skips until some Products page ran the ensure.
+ */
+const ensuredShops = new Set<string>();
+
+async function ensureDefinitionsOnce(
+  shop: string,
+  admin: Parameters<typeof ensurePdpDefinitions>[0],
+): Promise<string[]> {
+  if (ensuredShops.has(shop)) return [];
+  const ensured = await ensurePdpDefinitions(admin);
+  if (ensured.ok) ensuredShops.add(shop);
+  return ensured.errors;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const url = new URL(request.url);
   const q = url.searchParams.get("q") ?? "";
-  const [settings, markets, productList] = await Promise.all([
-    getSettings(session.shop),
-    listMarkets(admin).catch(() => []),
-    listProductsWithBoosterStatus(admin, q),
-  ]);
+  // Sequential on purpose: definitions must exist before the product list
+  // reads metafield-backed categories on a fresh install.
+  const definitionErrors = await ensureDefinitionsOnce(session.shop, admin);
+  const [settings, markets, productList, translationConfig, targetLocales] =
+    await Promise.all([
+      getSettings(session.shop),
+      listMarkets(admin).catch(() => []),
+      listProductsWithBoosterStatus(admin, q),
+      getTranslationConfig(session.shop),
+      getTargetLocales(admin),
+    ]);
 
   // Staleness is computed SERVER-SIDE so the rendered text is deterministic
   // (a client Date.now() would hydrate differently).
@@ -330,7 +366,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ) as Record<AzKey, { mode: "all" | "selected"; markets: string[] }>,
     markets,
     products,
-    productErrors: productList.ok ? [] : productList.errors,
+    productErrors: [
+      ...definitionErrors,
+      ...(productList.ok ? [] : productList.errors),
+    ],
+    // The DeepL key itself never leaves the server — booleans/counts only.
+    translation: {
+      configured: translationConfig.configured,
+      autoOnSave: translationConfig.autoOnSave,
+      targetCount: targetLocales.targets.length,
+    },
   };
 };
 
@@ -341,6 +386,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 type AmazonActionData =
   | { intent: "save_settings"; ok: boolean; syncErrors: string[] }
   | { intent: "save_product"; ok: boolean; errors: string[]; productId: string }
+  | {
+      /** v6.4: per-product DeepL run for the bestseller-category metafield
+       *  (and any booster content) — same intent name as the product editor. */
+      intent: "translate_boosters";
+      ok: boolean;
+      errors: string[];
+      productId: string;
+      /** Locales that completed ("done"). */
+      doneCount: number;
+      /** Locales that failed, "locale: message" style. */
+      localeErrors: string[];
+    }
   | { intent: "unknown"; ok: false; errors: string[] };
 
 /**
@@ -501,12 +558,61 @@ export const action = async ({
     if ("fbtManual" in raw) {
       patch.fbtManual = raw.fbtManual as PdpFlagsPatch["fbtManual"];
     }
+    // Definition-backed metafields only are translatable — make sure the
+    // bestseller-category definition exists before the category write, even
+    // when this server never rendered the loader (best-effort, cached).
+    await ensureDefinitionsOnce(session.shop, admin);
     const result = await savePdpFlags(admin, productId, patch);
     return {
       intent: "save_product",
       ok: result.ok,
       errors: result.errors,
       productId,
+    };
+  }
+
+  if (intent === "translate_boosters") {
+    const productId = String(formData.get("productId") ?? "");
+    const failure = (errors: string[]): AmazonActionData => ({
+      intent: "translate_boosters",
+      ok: false,
+      errors,
+      productId,
+      doneCount: 0,
+      localeErrors: [],
+    });
+    const config = await getTranslationConfig(session.shop);
+    if (!config.configured) {
+      return failure([
+        "Connect a DeepL API key on the Languages page to enable auto-translation.",
+      ]);
+    }
+    // Same guarantee for the translate run itself: without the definition,
+    // translatableResourcesByIds returns no "value" content for the
+    // category metafield and the run would silently skip it.
+    await ensureDefinitionsOnce(session.shop, admin);
+    const boosters = await getProductBoosters(admin, productId);
+    if (!boosters.ok) return failure(boosters.errors);
+    const targets = await getTargetLocales(admin);
+    if (targets.errors.length) return failure(targets.errors);
+    const summary = await translateResources(
+      admin,
+      config.apiKey,
+      collectBoosterResourceGids(boosters),
+      targets.targets,
+      // Scoped admission: ONLY the bestseller-category metafield's "value"
+      // key may translate — no other metafield ever joins the run.
+      { metafieldValueGids: collectAllowedMetafieldGids(boosters) },
+    );
+    return {
+      intent: "translate_boosters",
+      ok: summary.ok,
+      errors: summary.errors,
+      productId,
+      doneCount: summary.locales.filter((l) => l.status === "done").length,
+      localeErrors: summary.locales
+        .filter((l) => l.status === "error")
+        .map((l) => `${l.locale}: ${l.error ?? "failed"}`),
     };
   }
 
@@ -535,6 +641,10 @@ interface AmazonFormState {
   /** az_microcopy "Ships from" fallback label for unmapped buyer countries
    *  ("" = the row hides for them). */
   shipsFromDefault: string;
+  /** az_bestseller_badge sub-flag (v6.4): also flag this product's cards
+   *  site-wide (collections/home/search + the app's own recommendation
+   *  rows). */
+  bestsellerOnCards: boolean;
   scopes: Record<AzKey, ScopeState>;
 }
 
@@ -557,6 +667,7 @@ interface LoaderShape {
     shipsFromByCountry: Record<string, string>;
     defaultWarehouse: string;
     shipsFromDefault: string;
+    bestsellerOnCards: boolean;
   } & Record<AzFlagField, boolean>;
   scopes: Record<AzKey, { mode: "all" | "selected"; markets: string[] }>;
 }
@@ -571,6 +682,7 @@ function initialFormState(data: LoaderShape): AmazonFormState {
       .map(([buyer, warehouse], index) => ({ id: index, buyer, warehouse })),
     defaultWarehouse: data.amazon.defaultWarehouse,
     shipsFromDefault: data.amazon.shipsFromDefault ?? "",
+    bestsellerOnCards: data.amazon.bestsellerOnCards !== false,
     scopes: Object.fromEntries(
       AZ_KEYS.map((key) => [key, toScopeState(data.scopes[key])]),
     ) as Record<AzKey, ScopeState>,
@@ -587,6 +699,7 @@ function serializeForCompare(state: AmazonFormState): string {
       .sort((a, b) => a[0].localeCompare(b[0])),
     defaultWarehouse: state.defaultWarehouse,
     shipsFromDefault: state.shipsFromDefault.trim(),
+    bestsellerOnCards: state.bestsellerOnCards,
     scopes: Object.fromEntries(
       AZ_KEYS.map((key) => [key, toScopePatch(state.scopes[key])]),
     ),
@@ -665,6 +778,7 @@ export default function AmazonFeaturesPage() {
     markets,
     products,
     productErrors,
+    translation,
   } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const shopify = useAppBridge();
@@ -736,6 +850,7 @@ export default function AmazonFeaturesPage() {
         shipsFromByCountry,
         defaultWarehouse: state.defaultWarehouse,
         shipsFromDefault: state.shipsFromDefault.trim(),
+        bestsellerOnCards: state.bestsellerOnCards,
       },
       marketScopes: Object.fromEntries(
         AZ_KEYS.map((key) => [key, toScopePatch(state.scopes[key])]),
@@ -757,6 +872,41 @@ export default function AmazonFeaturesPage() {
       ? String(productFetcher.formData.get("productId") ?? "")
       : null;
 
+  // v6.4: per-row translate runs (bestseller-category metafield + boosters).
+  const translateFetcher = useFetcher<typeof action>();
+  const pendingTranslateId =
+    translateFetcher.state !== "idle" && translateFetcher.formData
+      ? String(translateFetcher.formData.get("productId") ?? "")
+      : null;
+  const canTranslate =
+    translation.configured && translation.targetCount > 0;
+  const runRowTranslate = (productId: string) => {
+    if (translateFetcher.state !== "idle") return;
+    translateFetcher.submit(
+      { intent: "translate_boosters", productId },
+      { method: "post" },
+    );
+  };
+  /** True when the LAST submitted row save SET a bestseller label — only
+   *  that makes the save worth an autoOnSave translate run. */
+  const rowSaveSetLabelRef = useRef(false);
+  const translateSeenRef = useRef<unknown>(null);
+
+  useEffect(() => {
+    const data = translateFetcher.data;
+    if (!data || data.intent !== "translate_boosters") return;
+    if (data === translateSeenRef.current) return;
+    translateSeenRef.current = data;
+    shopify.toast.show(
+      data.ok
+        ? `Category translated into ${data.doneCount} ${data.doneCount === 1 ? "language" : "languages"}`
+        : (data.errors[0] ??
+            data.localeErrors[0] ??
+            "Translation did not complete"),
+      { isError: !data.ok },
+    );
+  }, [translateFetcher.data, shopify]);
+
   useEffect(() => {
     const data = productFetcher.data;
     if (!data || data.intent !== "save_product") return;
@@ -769,12 +919,25 @@ export default function AmazonFeaturesPage() {
         delete next[data.productId];
         return next;
       });
+      // autoOnSave hook (v6.4): a saved bestseller label puts its category
+      // in the translatable metafield — fire the same per-product translate
+      // run the product editor uses. Cleared labels / count-only edits
+      // never spend a run.
+      if (
+        rowSaveSetLabelRef.current &&
+        translation.autoOnSave &&
+        canTranslate
+      ) {
+        rowSaveSetLabelRef.current = false;
+        runRowTranslate(data.productId);
+      }
     } else {
       shopify.toast.show(
         data.errors[0] ?? "Could not save the product data",
         { isError: true },
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productFetcher.data, shopify]);
 
   const initialRows = useMemo(() => {
@@ -812,6 +975,10 @@ export default function AmazonFeaturesPage() {
     if (JSON.stringify(row.fbt) !== JSON.stringify(before.fbt)) {
       payload.fbtManual = row.fbt;
     }
+    // Feeds the autoOnSave hook: only a SET label (rank + category) makes
+    // this save worth an auto-translate run of the category metafield.
+    rowSaveSetLabelRef.current =
+      payload.bestsellerLabel !== undefined && payload.bestsellerLabel !== null;
     const formData = new FormData();
     formData.set("intent", "save_product");
     formData.set("productId", product.id);
@@ -976,6 +1143,23 @@ export default function AmazonFeaturesPage() {
                     </Text>
                   ) : null}
 
+                  {feature.key === "az_bestseller_badge" ? (
+                    <BlockStack gap="300">
+                      <Divider />
+                      <Checkbox
+                        label="Also show the flag on product cards site-wide"
+                        checked={state.bestsellerOnCards}
+                        onChange={(bestsellerOnCards) =>
+                          setState((previous) => ({
+                            ...previous,
+                            bestsellerOnCards,
+                          }))
+                        }
+                        helpText="Adds a compact corner flag to a flagged product's cards everywhere it is referenced — collection pages, the home page, search results and this app's own recommendation rows. Uses the same per-product rank and category below (category shown in the page language); products without badge data never show a flag."
+                      />
+                    </BlockStack>
+                  ) : null}
+
                   {feature.key === "az_microcopy" ? (
                     <BlockStack gap="300">
                       <Divider />
@@ -1134,6 +1318,16 @@ export default function AmazonFeaturesPage() {
                 same number again re-attests it for a new month. These
                 fields are also editable per product under Product boosters.
               </Text>
+              <Text as="p" tone="subdued" variant="bodySm">
+                The bestseller category is stored as a translatable
+                metafield and served in each storefront language
+                automatically.{" "}
+                {translation.configured
+                  ? translation.autoOnSave
+                    ? "Auto-translation is ON: saving a row translates the category into all published shop languages; the Translate button re-runs it any time."
+                    : "Auto-translate on save is off — use the per-row Translate button after editing."
+                  : "Connect a free DeepL key on the Languages page for one-click translation, or translate it in Translate & Adapt."}
+              </Text>
               {productErrors.length > 0 ? (
                 <Banner tone="critical" title="Could not load products">
                   {productErrors.map((error) => (
@@ -1273,6 +1467,21 @@ export default function AmazonFeaturesPage() {
                             loading={pendingProductId === product.id}
                           >
                             Save
+                          </Button>
+                          <Button
+                            onClick={() => runRowTranslate(product.id)}
+                            disabled={
+                              !canTranslate ||
+                              // Translate what is SAVED — a dirty row would
+                              // silently translate the old category.
+                              rowDirty ||
+                              product.bestsellerCategory.trim() === "" ||
+                              (translateFetcher.state !== "idle" &&
+                                pendingTranslateId !== product.id)
+                            }
+                            loading={pendingTranslateId === product.id}
+                          >
+                            Translate
                           </Button>
                         </InlineStack>
                       </Box>

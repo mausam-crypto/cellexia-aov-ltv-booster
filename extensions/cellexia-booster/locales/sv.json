@@ -181,7 +181,7 @@
       "other": "Lägg alla {{ count }} i varukorgen"
     },
     "fbt_add_both": "Lägg båda i varukorgen",
-    "similar_title": "Liknande artiklar",
+    "similar_title": "Du kanske också gillar",
     "cta_count": {
       "one": "Gå till kassan ({{ count }} artikel)",
       "other": "Gå till kassan ({{ count }} artiklar)"

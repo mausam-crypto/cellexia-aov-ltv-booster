@@ -181,7 +181,7 @@
       "other": "Tedd mind a {{ count }} terméket a kosárba"
     },
     "fbt_add_both": "Tedd mindkettőt a kosárba",
-    "similar_title": "Hasonló termékek",
+    "similar_title": "Ezek is tetszhetnek neked",
     "cta_count": {
       "one": "Tovább a pénztárhoz ({{ count }} termék)",
       "other": "Tovább a pénztárhoz ({{ count }} termék)"

@@ -21,6 +21,10 @@
  *   INCI ingredient names, batch codes, dates, URLs) are NEVER machine
  *   translated — mangling a license number or an INCI name would damage
  *   exactly the credibility these widgets exist to build.
+ * - v6.4: ONE metafield joins the run — the product's TRANSLATABLE
+ *   cellexia.bestseller_category (its content key is "value"), admitted per
+ *   exact GID via shouldTranslateMetafieldValue. No other metafield is ever
+ *   sent, and the metaobject "value" field (study-result numbers) stays out.
  * - Fail closed and report per language: an unsupported language or a
  *   failed DeepL call never blocks the other languages.
  */
@@ -337,9 +341,9 @@ const URL_VALUE = /^https?:\/\//i;
 const ISO_DATE_VALUE = /^\d{4}-\d{2}-\d{2}/;
 const HAS_LETTERS = /\p{L}/u;
 
-/** Allowlisted key AND a value that actually contains language. */
-export function shouldTranslateField(key: string, value: string): boolean {
-  if (!TRANSLATABLE_FIELD_KEYS.has(key)) return false;
+/** Value guards shared by every admission path: real language only (no
+ *  empties, URLs, ISO dates or letter-less strings ever reach DeepL). */
+function valueLooksTranslatable(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed === "") return false;
   if (URL_VALUE.test(trimmed)) return false;
@@ -348,7 +352,35 @@ export function shouldTranslateField(key: string, value: string): boolean {
   return true;
 }
 
-/** Every booster metaobject GID attached to a product (parents + leaves). */
+/** Allowlisted key AND a value that actually contains language. */
+export function shouldTranslateField(key: string, value: string): boolean {
+  if (!TRANSLATABLE_FIELD_KEYS.has(key)) return false;
+  return valueLooksTranslatable(value);
+}
+
+/**
+ * v6.4 metafield admission — deliberately NARROW. A metafield's translatable
+ * content key is always "value", but "value" is NOT in
+ * TRANSLATABLE_FIELD_KEYS (the cellexia_study_result metaobject has a
+ * numeric "value" field that must never be sent). Instead, callers pass the
+ * exact metafield GIDs whose "value" may translate (today: only the
+ * product's cellexia.bestseller_category), and admission requires BOTH the
+ * resource id to be in that allowlist AND the key to be exactly "value".
+ * No other metafield — whatever its content — is ever admitted.
+ */
+export function shouldTranslateMetafieldValue(
+  resourceId: string,
+  key: string,
+  value: string,
+  allowedMetafieldGids: ReadonlySet<string>,
+): boolean {
+  if (key !== "value") return false;
+  if (!allowedMetafieldGids.has(resourceId)) return false;
+  return valueLooksTranslatable(value);
+}
+
+/** Every booster metaobject GID attached to a product (parents + leaves),
+ *  plus the bestseller-category metafield GID when the product has one. */
 export function collectBoosterResourceGids(
   boosters: ProductBoostersResult,
 ): string[] {
@@ -363,7 +395,25 @@ export function collectBoosterResourceGids(
     for (const ing of boosters.batchTransparency.ingredients) gids.push(ing.id);
     for (const coa of boosters.batchTransparency.certificates) gids.push(coa.id);
   }
+  if (boosters.bestsellerCategoryMetafieldId) {
+    gids.push(boosters.bestsellerCategoryMetafieldId);
+  }
   return gids.filter((gid) => typeof gid === "string" && gid.startsWith("gid://"));
+}
+
+/** The metafield GIDs in `boosters` whose "value" key may join a translate
+ *  run — the allowlist for shouldTranslateMetafieldValue. */
+export function collectAllowedMetafieldGids(
+  boosters: ProductBoostersResult,
+): Set<string> {
+  const gids = new Set<string>();
+  if (
+    typeof boosters.bestsellerCategoryMetafieldId === "string" &&
+    boosters.bestsellerCategoryMetafieldId.startsWith("gid://")
+  ) {
+    gids.add(boosters.bestsellerCategoryMetafieldId);
+  }
+  return gids;
 }
 
 // ---------------------------------------------------------------------------
@@ -515,13 +565,20 @@ export interface TranslateRunSummary {
  * changed (Shopify marks the old translation `outdated`). Identical source
  * strings are deduplicated per run, and each language succeeds or fails
  * independently.
+ *
+ * `options.metafieldValueGids` (v6.4) — the EXACT metafield GIDs whose
+ * translatable "value" key may join this run (today: only
+ * cellexia.bestseller_category). Metafields outside this allowlist — and
+ * every metaobject "value" field — are never admitted.
  */
 export async function translateResources(
   admin: AdminGraphqlClient,
   apiKey: string,
   resourceGids: string[],
   targetLocales: string[],
+  options?: { metafieldValueGids?: Iterable<string> },
 ): Promise<TranslateRunSummary> {
+  const allowedMetafieldGids = new Set(options?.metafieldValueGids ?? []);
   const summary: TranslateRunSummary = {
     ok: false,
     errors: [],
@@ -568,9 +625,21 @@ export async function translateResources(
   const fields: WorkField[] = [];
   let sourceLocale: string | null = null;
   for (const node of nodes) {
+    // Metafield resources go through the NARROW per-GID "value" admission;
+    // metaobject resources keep the field-key allowlist. A node in the
+    // allowlist set can only be a metafield we collected ourselves.
+    const isAllowedMetafield = allowedMetafieldGids.has(node.resourceId);
     for (const content of node.translatableContent ?? []) {
       if (!content.digest || typeof content.value !== "string") continue;
-      if (!shouldTranslateField(content.key, content.value)) continue;
+      const admitted = isAllowedMetafield
+        ? shouldTranslateMetafieldValue(
+            node.resourceId,
+            content.key,
+            content.value,
+            allowedMetafieldGids,
+          )
+        : shouldTranslateField(content.key, content.value);
+      if (!admitted) continue;
       sourceLocale = sourceLocale ?? content.locale;
       fields.push({
         resourceId: node.resourceId,

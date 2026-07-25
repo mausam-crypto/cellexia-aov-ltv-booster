@@ -64,6 +64,7 @@ import type {
 import { getVariantsByIds } from "../services/products.server";
 import type { loader as variantsLoader } from "./app.api.variants";
 import {
+  collectAllowedMetafieldGids,
   collectBoosterResourceGids,
   getTargetLocales,
   getTranslationConfig,
@@ -445,6 +446,9 @@ export const action = async ({
         config.apiKey,
         gids,
         targets.targets,
+        // Scoped admission: ONLY the bestseller-category metafield's "value"
+        // key may translate — no other metafield ever joins the run.
+        { metafieldValueGids: collectAllowedMetafieldGids(boosters) },
       );
       return {
         intent: "translate_boosters",
@@ -1455,11 +1459,17 @@ export default function ProductBoosterDetailPage() {
   // Auto-fire after every successful content save (never after deletes —
   // a removed metaobject takes its translations with it). Each fetcher's
   // last-handled result is tracked by identity so one save = one run.
+  // v6.4: an Amazon-data save joins the candidates too, but ONLY when it
+  // actually SET a bestseller label — the category metafield is the sole
+  // translatable piece of that card, so a bought-count edit or a cleared
+  // label never spends a run.
+  const amazonSaveSetLabelRef = useRef(false);
   const autoSeenRef = useRef<{
     clinical: unknown;
     ba: unknown;
     batch: unknown;
-  }>({ clinical: null, ba: null, batch: null });
+    amazon: unknown;
+  }>({ clinical: null, ba: null, batch: null, amazon: null });
   useEffect(() => {
     const candidates = [
       { slot: "clinical" as const, data: clinicalFetcher.data, intent: "save_clinical" },
@@ -1471,6 +1481,17 @@ export default function ProductBoosterDetailPage() {
       if (!data || data === autoSeenRef.current[slot]) continue;
       autoSeenRef.current[slot] = data;
       if (data.intent === intent && data.ok) fire = true;
+    }
+    const amazonData = amazonFetcher.data;
+    if (amazonData && amazonData !== autoSeenRef.current.amazon) {
+      autoSeenRef.current.amazon = amazonData;
+      if (
+        amazonData.intent === "save_amazon" &&
+        amazonData.ok &&
+        amazonSaveSetLabelRef.current
+      ) {
+        fire = true;
+      }
     }
     if (
       fire &&
@@ -1484,6 +1505,7 @@ export default function ProductBoosterDetailPage() {
     clinicalFetcher.data,
     baFetcher.data,
     batchFetcher.data,
+    amazonFetcher.data,
     translation.configured,
     translation.autoOnSave,
     translation.targetCount,
@@ -1833,6 +1855,10 @@ export default function ProductBoosterDetailPage() {
         handle: item.handle,
       }));
     }
+    // Feeds the autoOnSave hook: only a SET label (rank + category) makes
+    // this save worth an auto-translate run of the category metafield.
+    amazonSaveSetLabelRef.current =
+      payload.bestsellerLabel !== undefined && payload.bestsellerLabel !== null;
     amazonFetcher.submit(
       { intent: "save_amazon", payload: JSON.stringify(payload) },
       { method: "post" },
@@ -3124,7 +3150,7 @@ export default function ProductBoosterDetailPage() {
                       error={amazonErrors.bestsellerError}
                       placeholder="Anti-aging"
                       maxLength={60}
-                      helpText="Rendered as entered — translate via Translate & Adapt"
+                      helpText="Stored as a translatable metafield — auto-translated on save when DeepL is connected (see the Translations card)"
                       autoComplete="off"
                     />
                   </Box>

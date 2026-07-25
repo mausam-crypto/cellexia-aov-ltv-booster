@@ -19,13 +19,29 @@ import { authenticate } from "../shopify.server";
  * sellingPlanGroups: [{id, name, plans: [{id, name, valueType, value}]}] } } }
  *
  * Optional ?handles=a,b,c adds a "productsByHandle" map (all_products, max 20)
- * for future use; the cart map is always included.
+ * used by the az similar-items/FBT enrichment and the site-wide bestseller
+ * card decorator; the cart map is always included.
+ *
+ * v6.4: every productsByHandle entry additionally carries
+ *   "bestseller": {rank, category} | null
+ * — rank from the pdp_flags JSON metafield (bestsellerLabel.rank), category
+ * METAFIELD-FIRST from product.metafields.cellexia.bestseller_category
+ * (single_line_text_field, a TRANSLATABLE resource Shopify serves LOCALIZED
+ * for the requesting storefront language automatically) with the legacy
+ * pdp_flags bestsellerLabel.category as fallback. null unless BOTH a rank>0
+ * and a nonblank category exist (the storefront honesty gate).
  */
 
 const sanitizeHandle = (handle: string) =>
   handle.toLowerCase().replace(/[^a-z0-9-_]/g, "");
 
-const PRODUCT_BODY_LIQUID = (accessor: string) => `{
+/** Per-product bestseller flag data (v6.4, handles mode only — see the
+ *  contract note above). Rendered through Liquid, so the metafield value
+ *  arrives already localized for the request's storefront language. */
+const BESTSELLER_LIQUID = (accessor: string) => `,
+        "bestseller": {%- assign cx_bs_flags = ${accessor}.metafields.cellexia.pdp_flags.value -%}{%- assign cx_bs_rank = cx_bs_flags.bestsellerLabel.rank | default: 0 -%}{%- assign cx_bs_cat = ${accessor}.metafields.cellexia.bestseller_category.value | default: cx_bs_flags.bestsellerLabel.category | default: '' -%}{%- if cx_bs_rank > 0 and cx_bs_cat != blank -%}{"rank": {{ cx_bs_rank }}, "category": {{ cx_bs_cat | json }}}{%- else -%}null{%- endif -%}`;
+
+const PRODUCT_BODY_LIQUID = (accessor: string, withBestseller = false) => `{
         "variants": [
           {%- for variant in ${accessor}.variants -%}
             {"id": {{ variant.id | json }}, "option1": {{ variant.option1 | json }}, "price": {{ variant.price | json }}, "compare_at_price": {{ variant.compare_at_price | default: 'null' }}, "available": {{ variant.available | json }}, "position": {{ forloop.index }}, "planAllocations": [
@@ -43,7 +59,7 @@ const PRODUCT_BODY_LIQUID = (accessor: string) => `{
               {%- endfor -%}
             ]}{%- unless forloop.last -%},{%- endunless -%}
           {%- endfor -%}
-        ]
+        ]${withBestseller ? BESTSELLER_LIQUID(accessor) : ""}
       }`;
 
 const CART_PRODUCTS_LIQUID = `"products": {
@@ -65,7 +81,7 @@ const handlesLiquid = (handles: string[]) => {
   const entries = handles
     .map((handle) => {
       const accessor = `all_products['${handle}']`;
-      return `"${handle}": {% if ${accessor}.id %}${PRODUCT_BODY_LIQUID(accessor)}{% else %}null{% endif %}`;
+      return `"${handle}": {% if ${accessor}.id %}${PRODUCT_BODY_LIQUID(accessor, true)}{% else %}null{% endif %}`;
     })
     .join(",\n    ");
   return `,

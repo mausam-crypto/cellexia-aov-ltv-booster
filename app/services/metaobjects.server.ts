@@ -5,7 +5,7 @@
  *
  *  1. ensurePdpDefinitions — idempotently creates the six Cellexia metaobject
  *     definitions (translatable + publishable, storefront PUBLIC_READ) and the
- *     four PRODUCT metafield definitions in the "cellexia" namespace. Safe to
+ *     five PRODUCT metafield definitions in the "cellexia" namespace. Safe to
  *     call from any loader on every request; it only issues create mutations
  *     for definitions that are missing.
  *
@@ -48,12 +48,17 @@ export const PDP_METAOBJECT_TYPES = {
   batchTransparency: "cellexia_batch_transparency",
 } as const;
 
-/** FROZEN product metafield keys in the "cellexia" namespace (SPEC v3). */
+/** FROZEN product metafield keys in the "cellexia" namespace (SPEC v3).
+ *  bestseller_category (v6.4): the az bestseller badge category lives in its
+ *  own single_line_text_field metafield — a TRANSLATABLE Shopify resource,
+ *  unlike the pdp_flags JSON blob — so storefront Liquid serves it localized
+ *  automatically and the v5.2 DeepL pipeline can register translations. */
 export const PDP_METAFIELD_KEYS = {
   clinicalStudy: "clinical_study",
   beforeAfters: "before_afters",
   batchTransparency: "batch_transparency",
   pdpFlags: "pdp_flags",
+  bestsellerCategory: "bestseller_category",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -218,7 +223,7 @@ export interface EnsurePdpDefinitionsResult {
 }
 
 /**
- * Idempotently creates the six PDP metaobject definitions plus the four
+ * Idempotently creates the six PDP metaobject definitions plus the five
  * PRODUCT metafield definitions. Leaf definitions (study result, ingredient,
  * CoA) are created before the parents whose list.metaobject_reference fields
  * validate against their definition ids. Losing a creation race to a
@@ -494,6 +499,20 @@ export async function ensurePdpDefinitions(
               ],
             }
           : null,
+    },
+    {
+      key: PDP_METAFIELD_KEYS.bestsellerCategory,
+      build: () => ({
+        name: "Bestseller category",
+        namespace: CELLEXIA_NAMESPACE,
+        key: PDP_METAFIELD_KEYS.bestsellerCategory,
+        description:
+          "Category shown in the Cellexia bestseller badge (“#1 Bestseller · {category}”). Translatable per language.",
+        type: "single_line_text_field",
+        ownerType: "PRODUCT",
+        pin: true,
+        access: DEFINITION_ACCESS,
+      }),
     },
     {
       key: PDP_METAFIELD_KEYS.pdpFlags,

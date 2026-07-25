@@ -25,7 +25,7 @@ endif
 endif
 assign az_best = cx_pdp_flags.bestsellerLabel
 assign az_best_rank = az_best.rank | default: 0
-assign az_best_cat = az_best.category | default: ''
+assign az_best_cat = product.metafields.cellexia.bestseller_category.value | default: az_best.category | default: ''
 assign az_best_ok = false
 if az_best_rank > 0 and az_best_cat != blank
 assign az_best_ok = true
@@ -212,6 +212,23 @@ assign az_need_ships = false
 if az_any_stock or az_any_micro
 assign az_need_ships = true
 endif
+assign az_cards_setting = false
+if cfg.amazon.bestsellerOnCards != false and block.settings.show_az_bestseller_badge
+assign cx_scope = cfg.marketScopes.az_bestseller_badge
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign az_cards_setting = true
+endif
+endif
+assign az_eff_cards = false
+if az_cards_setting and cfg.amazon.bestsellerBadge == true
+assign az_eff_cards = true
+endif
+assign az_cards_any = false
+if az_cards_setting
+if az_any_fbt or az_any_similar
+assign az_cards_any = true
+endif
+endif
 -%}
 {%- if az_any -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
@@ -242,6 +259,9 @@ endif
 {%- if az_any_best %}
 "bestCat": {{ az_best_cat | json }},
 {%- endif %}
+{%- if az_cards_any %}
+"badgeCards": {"setting": true, "live": {{ az_eff_cards }}},
+{%- endif %}
 {%- if az_any_fbt %}
 "fbt": {"mode": {% if az_fbt_manual.size > 0 %}"manual"{% else %}"auto"{% endif %}, "title": {{ product.title | json }}, "priceFmt": {{ product.selected_or_first_available_variant.price | money | json }}{% if product.featured_image %}, "img": {{ product.featured_image | image_url: width: 250 | json }}{% endif %}, "rows": [
 {%- assign az_fbt_first = true -%}
@@ -265,7 +285,9 @@ endif
 {%- endunless -%}
 {%- unless az_fbt_first -%},{%- endunless -%}
 {%- assign az_fbt_first = false -%}
-{"id": {{ az_variant.id | append: '' | json }}, "price": {{ az_variant.price | json }}, "priceFmt": {{ az_variant.price | money | json }}, "title": {{ az_row_title | json }}{% if az_img %}, "img": {{ az_img | image_url: width: 250 | json }}{% endif %}}
+{%- assign az_bs_rank = az_p.metafields.cellexia.pdp_flags.value.bestsellerLabel.rank | default: 0 -%}
+{%- assign az_bs_cat = az_p.metafields.cellexia.bestseller_category.value | default: az_p.metafields.cellexia.pdp_flags.value.bestsellerLabel.category | default: '' -%}
+{"id": {{ az_variant.id | append: '' | json }}, "price": {{ az_variant.price | json }}, "priceFmt": {{ az_variant.price | money | json }}, "title": {{ az_row_title | json }}, "bRank": {{ az_bs_rank }}, "bCat": {{ az_bs_cat | json }}{% if az_img %}, "img": {{ az_img | image_url: width: 250 | json }}{% endif %}}
 {%- endif -%}
 {%- endif -%}
 {%- endfor -%}
@@ -307,6 +329,9 @@ endif
 ,"amazon.fbt_add_both": {{ 'amazon.fbt_add_both' | t | json }}
 ,"amazon.fbt_this_item": {{ 'amazon.fbt_this_item' | t | json }}
 {%- endif %}
+{%- if az_cards_any %}
+,"amazon.bestseller_tpl": {{ 'amazon.bestseller' | t: rank: '@@RANK@@' | json }}
+{%- endif %}
 {%- if az_any_similar %}
 ,"amazon.similar_title": {{ 'amazon.similar_title' | t | json }}
 {%- endif %}
@@ -331,5 +356,5 @@ endif
 {%- endif -%}
 {%- endif -%}
 {% schema %}
-{"name":"Cellexia Amazon patterns","target":"body","settings":[{"type":"paragraph","content":"Enable this embed once; each widget also needs its feature switched ON in the Cellexia app (all are OFF by default)."},{"type":"checkbox","id":"show_az_buy_box","label":"Show the buy-box decision card","default":true},{"type":"checkbox","id":"show_az_microcopy","label":"Show trust microcopy under the add-to-cart button","default":true,"info":"Replaces the app's trust-badge strip on product pages. A trust block placed manually in the theme editor must be removed yourself."},{"type":"checkbox","id":"show_az_delivery_line","label":"Show the compound FREE-delivery line","default":true,"info":"Replaces the standard delivery estimate and dispatch countdown on product pages."},{"type":"checkbox","id":"show_az_stock_line","label":"Show the In-Stock line","default":true,"info":"Replaces the theme's stock message; renders only when the selected variant is really available."},{"type":"checkbox","id":"show_az_bought_count","label":"Show the bought-in-past-month count","default":true,"info":"Renders only when a per-product count was entered in the app within the last 45 days."},{"type":"checkbox","id":"show_az_bestseller_badge","label":"Show the bestseller badge","default":true,"info":"Renders only with a per-product rank and category from the app. The category renders as entered (translate it via Translate & Adapt)."},{"type":"checkbox","id":"show_az_fbt","label":"Show Frequently bought together","default":true,"info":"Uses Shopify's complementary recommendations unless a manual list is set per product in the app."},{"type":"checkbox","id":"show_az_similar_items","label":"Show the Similar items row","default":true}]}
+{"name":"Cellexia Amazon patterns","target":"body","settings":[{"type":"paragraph","content":"Enable this embed once; each widget also needs its feature switched ON in the Cellexia app (all are OFF by default)."},{"type":"checkbox","id":"show_az_buy_box","label":"Show the buy-box decision card","default":true},{"type":"checkbox","id":"show_az_microcopy","label":"Show trust microcopy under the add-to-cart button","default":true,"info":"Replaces the app's trust-badge strip on product pages. A trust block placed manually in the theme editor must be removed yourself."},{"type":"checkbox","id":"show_az_delivery_line","label":"Show the compound FREE-delivery line","default":true,"info":"Replaces the standard delivery estimate and dispatch countdown on product pages."},{"type":"checkbox","id":"show_az_stock_line","label":"Show the In-Stock line","default":true,"info":"Replaces the theme's stock message; renders only when the selected variant is really available."},{"type":"checkbox","id":"show_az_bought_count","label":"Show the bought-in-past-month count","default":true,"info":"Renders only when a per-product count was entered in the app within the last 45 days."},{"type":"checkbox","id":"show_az_bestseller_badge","label":"Show the bestseller badge","default":true,"info":"Renders only with a per-product rank and category from the app. The category is a translatable metafield served per language."},{"type":"checkbox","id":"show_az_fbt","label":"Show Frequently bought together","default":true,"info":"Uses Shopify's complementary recommendations unless a manual list is set per product in the app."},{"type":"checkbox","id":"show_az_similar_items","label":"Show the Similar items row","default":true}]}
 {% endschema %}

@@ -2598,6 +2598,321 @@
     } catch (e) { /* never break the theme */ }
   }
 
+  // ------------------------------------------- az bestseller card flags
+  //
+  // v6.4 badge-everywhere: THEME product cards (collections, home,
+  // search, related sliders — this file loads SITE-WIDE via the cart
+  // embed) get a compact corner-overlay variant of the PDP bestseller
+  // flag whenever their product carries badge data. Contract:
+  //  - gate: cfg.badgeCards {setting, live} is precomputed by Liquid
+  //    (amazon.bestsellerOnCards setting + az_bestseller_badge market
+  //    scope; live additionally requires the az_bestseller_badge master).
+  //    Verified preview follows the featureOn() convention on the
+  //    az_bestseller_badge flag; the merchant's setting still binds.
+  //    Fail closed on every miss.
+  //  - data: network capped at TWO app-proxy calls per page — one
+  //    initial batched cart-data?handles= request (the proxy caps a
+  //    batch at 20) plus at most ONE follow-up batch for handles a
+  //    later client-side render (Boost PFS filter/sort/pagination,
+  //    slick clones) introduced that the merged map has never seen.
+  //    Each entry's "bestseller" field is rank + the LOCALIZED category
+  //    (the proxy renders through Liquid, so Shopify serves the
+  //    translatable category metafield in the page language).
+  //    sessionStorage cache keyed by page locale + a hash of the handle
+  //    batch, 10-minute TTL — cache hits never touch the network.
+  //  - v6.4.1 re-scan: the Sleepify collection grid is Boost PFS
+  //    territory (client-side re-render on load and on every filter
+  //    action) and home carousels are slick-cloned, so a one-shot scan
+  //    either decorates nodes Boost immediately throws away or never
+  //    sees the rendered cards at all. A debounced document-level
+  //    childList observer re-runs scan+decorate from the merged map;
+  //    the data-cx-cardflag marks keep every re-entry idempotent.
+  //  - v6.4.1 coexistence: a card already carrying the theme's own
+  //    .product__tag pill (or a populated .badges overlay) is skipped
+  //    outright — the two badges occupy the same image corner and the
+  //    theme pill paints on top (z-index 3 vs 2).
+  //  - beacon-free BY CONTRACT (decoration, not a tracked widget: no
+  //    track() call on any path) and NEVER in checkout — theme app
+  //    embeds cannot run there, and the explicit guard keeps that true
+  //    even if this asset were ever included by hand.
+  //  - dynamic values land via textContent only; any unusable string,
+  //    missing datum or failed fetch writes NOTHING to the DOM.
+
+  var cardFlagsBooted = false;
+  var cardFlagMap = null;     // merged handle -> {rank,category}|null verdicts
+  var cardFlagPending = {};   // handles owned by an in-flight fetch
+  var cardFlagFetches = 0;    // network calls spent (cache hits are free)
+  var CARD_FLAG_FETCH_MAX = 2; // initial batch + one follow-up, per page
+
+  function badgeCardsOn() {
+    var bc = cfg.badgeCards;
+    if (!bc || typeof bc !== 'object' || bc.setting !== true) return false;
+    if (PREVIEW) {
+      return PREVIEW.live.az_bestseller_badge === true || PREVIEW.flags.az_bestseller_badge === true;
+    }
+    return bc.live === true;
+  }
+
+  function cardFlagInCheckout() {
+    try {
+      if (window.Shopify && window.Shopify.Checkout) return true;
+      var path = window.location && typeof window.location.pathname === 'string' ? window.location.pathname : '';
+      if (path.indexOf('/checkout') !== -1) return true;
+    } catch (e) { /* noop */ }
+    return false;
+  }
+
+  function cardFlagHandle(href) {
+    // /products/<handle> extraction — locale prefixes (/fr/products/x),
+    // collection-scoped urls (/collections/y/products/x) and trailing
+    // query/fragment/variant segments all tolerated.
+    if (typeof href !== 'string' || !href) return '';
+    var path = href.split('#')[0].split('?')[0];
+    var m = /\/products\/([A-Za-z0-9_-]+)/.exec(path);
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  // Sleepify card containers (docs/theme-integration.md + the theme
+  // sources): `.product--default .product__image` is the standard card
+  // image block (collections, home sliders, search, related);
+  // `.boost-pfs-filter-product-item-image` is the Boost PFS filtered
+  // collection grid. Anything else: graceful no-op. Our own widgets
+  // never render these theme classes, so they cannot double-flag.
+  var CARD_FLAG_CONTAINERS = '.product--default .product__image, .boost-pfs-filter-product-item-image';
+
+  function cardFlagAnchors() {
+    var out = [];
+    var boxes;
+    try { boxes = document.querySelectorAll(CARD_FLAG_CONTAINERS); } catch (e) { return out; }
+    for (var i = 0; i < boxes.length; i++) {
+      var box = boxes[i];
+      try {
+        if (box.getAttribute('data-cx-cardflag') !== null) continue; // idempotent
+        var link = box.querySelector('a[href*="/products/"]');
+        if (!link) continue;
+        var handle = cardFlagHandle(link.getAttribute('href'));
+        if (!handle) continue;
+        out.push({ box: box, handle: handle });
+      } catch (e2) { /* skip this card, never break the loop */ }
+    }
+    return out;
+  }
+
+  function cardFlagHash(str) {
+    // djb2 (unsigned) — tiny and stable; the locale rides the key
+    // verbatim, the hash only compresses the handle batch.
+    var h = 5381;
+    for (var i = 0; i < str.length; i++) h = (h * 33 + str.charCodeAt(i)) >>> 0;
+    return String(h);
+  }
+
+  function cardFlagCacheKey(handles) {
+    var locale = typeof cfg.pageLocale === 'string' ? cfg.pageLocale : '';
+    return 'cx_az_cardflags:' + locale + ':' + cardFlagHash(handles.slice().sort().join(','));
+  }
+
+  function cardFlagCacheGet(key) {
+    try {
+      var store = window.sessionStorage;
+      if (!store) return null;
+      var raw = store.getItem(key);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || typeof parsed.t !== 'number') return null;
+      if (Date.now() - parsed.t > 600000) return null; // 10-minute TTL
+      return parsed.map && typeof parsed.map === 'object' ? parsed.map : null;
+    } catch (e) { return null; }
+  }
+
+  function cardFlagCachePut(key, map) {
+    try {
+      var store = window.sessionStorage;
+      if (store) store.setItem(key, JSON.stringify({ t: Date.now(), map: map }));
+    } catch (e) { /* quota/private mode: the cache is best-effort */ }
+  }
+
+  function cardFlagFetch(handles) {
+    return fetchJSON(routeRoot() + 'apps/cellexia/cart-data?handles=' + encodeURIComponent(handles.join(',')), { headers: { Accept: 'application/json' } })
+      .then(function (data) {
+        var by = data && data.productsByHandle && typeof data.productsByHandle === 'object' ? data.productsByHandle : {};
+        var map = {};
+        // Every REQUESTED handle gets a verdict (null = no badge) so an
+        // unknown product converges to the "0" mark instead of being
+        // re-asked on every later pass.
+        for (var i = 0; i < handles.length; i++) map[handles[i]] = null;
+        Object.keys(by).forEach(function (handle) {
+          var entry = by[handle];
+          var b = entry && entry.bestseller;
+          map[handle] = b && typeof b === 'object' && typeof b.rank === 'number' && b.rank > 0 &&
+            typeof b.category === 'string' && b.category
+            ? { rank: b.rank, category: b.category }
+            : null;
+        });
+        return map;
+      });
+  }
+
+  function buildCardFlag(badge) {
+    // Compact overlay flag: localized "#N Bestseller" pill + the (already
+    // localized) category riding beneath it. textContent only.
+    if (!azStr('amazon.bestseller')) return null;
+    var txt = t('amazon.bestseller', { rank: badge.rank });
+    if (!txt || typeof txt !== 'string') return null;
+    var root = el('span', 'cx-az-cardflag cx-az-cardflag--overlay');
+    root.appendChild(el('span', 'cx-az-cardflag__pill', txt));
+    root.appendChild(el('span', 'cx-az-cardflag__cat', badge.category));
+    return root;
+  }
+
+  function decorateCardFlags(anchors, map) {
+    for (var i = 0; i < anchors.length; i++) {
+      var anchor = anchors[i];
+      try {
+        if (anchor.box.getAttribute('data-cx-cardflag') !== null) continue; // re-entry safety
+        // v6.4.1: the theme's own corner badge wins. Sleepify puts
+        // .product__tag at the same image corner (top/left 15px,
+        // z-index 3 — above our overlay's 2) and the merchant actively
+        // uses it, so stacking the two renders a mangled double flag.
+        // A populated .badges overlay counts too; the (always-present)
+        // EMPTY .badges container does not.
+        var themeTag = anchor.box.querySelector('.product__tag');
+        if (!themeTag) {
+          var themeBadges = anchor.box.querySelector('.badges');
+          if (themeBadges && themeBadges.children && themeBadges.children.length) themeTag = themeBadges;
+        }
+        if (themeTag) { anchor.box.setAttribute('data-cx-cardflag', '0'); continue; }
+        var badge = map && Object.prototype.hasOwnProperty.call(map, anchor.handle) ? map[anchor.handle] : null;
+        if (!badge) { anchor.box.setAttribute('data-cx-cardflag', '0'); continue; }
+        var node = buildCardFlag(badge);
+        if (!node) { anchor.box.setAttribute('data-cx-cardflag', '0'); continue; }
+        try {
+          // the overlay needs a positioned ancestor; the theme's image
+          // block usually is one already (its own badges overlay too).
+          if (typeof window.getComputedStyle === 'function') {
+            var st = window.getComputedStyle(anchor.box);
+            if (st && st.position === 'static') anchor.box.style.position = 'relative';
+          }
+        } catch (e0) { /* best-effort */ }
+        anchor.box.appendChild(node);
+        anchor.box.setAttribute('data-cx-cardflag', '1');
+      } catch (e) { /* skip this card */ }
+    }
+  }
+
+  function cardFlagKnown(handle) {
+    return cardFlagMap !== null && Object.prototype.hasOwnProperty.call(cardFlagMap, handle);
+  }
+
+  function mergeCardFlagMap(map) {
+    if (!map || typeof map !== 'object') return;
+    if (cardFlagMap === null) cardFlagMap = {};
+    for (var k in map) {
+      if (Object.prototype.hasOwnProperty.call(map, k)) cardFlagMap[k] = map[k];
+    }
+  }
+
+  function cardFlagPass(decorateOnly) {
+    // One pass = scan the CURRENT DOM (never captured nodes — Boost PFS
+    // may have replaced the grid since any earlier scan), decorate every
+    // anchor whose verdict the merged map already holds, then — unless
+    // decorateOnly — resolve the still-unknown handles: per-batch
+    // sessionStorage cache first, one budgeted network fetch otherwise.
+    var anchors = cardFlagAnchors();
+    if (!anchors.length) return;
+    var known = [];
+    var unknown = [];
+    var seen = {};
+    for (var i = 0; i < anchors.length; i++) {
+      var anchor = anchors[i];
+      if (cardFlagKnown(anchor.handle)) { known.push(anchor); continue; }
+      if (cardFlagPending[anchor.handle]) continue; // an in-flight fetch owns it
+      if (!seen[anchor.handle]) { seen[anchor.handle] = true; unknown.push(anchor.handle); }
+    }
+    if (known.length) decorateCardFlags(known, cardFlagMap);
+    if (decorateOnly || !unknown.length) return;
+    var handles = unknown.slice(0, 20); // the proxy's own batch cap
+    var key = cardFlagCacheKey(handles);
+    var cached = cardFlagCacheGet(key);
+    if (cached) {
+      mergeCardFlagMap(cached);
+      cardFlagPass(true); // decorate-only recursion: no fetch, no loop
+      return;
+    }
+    if (cardFlagFetches >= CARD_FLAG_FETCH_MAX) return; // budget spent — leave untouched
+    cardFlagFetches++;
+    var j;
+    for (j = 0; j < handles.length; j++) cardFlagPending[handles[j]] = true;
+    cardFlagFetch(handles)
+      .then(function (map) {
+        cardFlagCachePut(key, map);
+        mergeCardFlagMap(map);
+        for (var j2 = 0; j2 < handles.length; j2++) delete cardFlagPending[handles[j2]];
+        // Fresh re-scan at resolve time: if Boost re-rendered while the
+        // request was in flight, the captured anchors are detached — the
+        // new scan decorates the LIVE cards from the merged map.
+        cardFlagPass(true);
+      })
+      .catch(function () {
+        // fail closed: cards stay untouched (the budget slot stays spent).
+        for (var j3 = 0; j3 < handles.length; j3++) delete cardFlagPending[handles[j3]];
+      });
+  }
+
+  function setupCardFlagObserver() {
+    // Boost PFS re-renders the collection grid client-side (skeletons ->
+    // cards on load, full grid swap on every filter/sort/pagination) and
+    // slick clones carousel cards after boot — a debounced document-level
+    // childList observer re-runs the pass so decorations survive. The
+    // data-cx-cardflag marks make every re-entry idempotent, and passes
+    // beyond the network budget decorate purely from the merged map.
+    if (typeof MutationObserver !== 'function') return;
+    if (!document.body) return;
+    var timer = null;
+    var observer = new MutationObserver(function (records) {
+      // Skip wakeups our own decoration caused: batches whose added
+      // elements are all cx-az-cardflag nodes need no re-scan.
+      var relevant = false;
+      try {
+        for (var i = 0; i < records.length && !relevant; i++) {
+          var added = records[i].addedNodes;
+          if (!added) continue;
+          for (var j = 0; j < added.length; j++) {
+            var node = added[j];
+            if (!node || node.nodeType !== 1) continue;
+            var cls = typeof node.className === 'string' ? node.className : '';
+            if (cls.indexOf('cx-az-cardflag') !== -1) continue;
+            relevant = true;
+            break;
+          }
+        }
+      } catch (e) { relevant = true; }
+      if (!relevant) return;
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(function () {
+        timer = null;
+        try { cardFlagPass(false); } catch (e2) { /* never break the theme */ }
+      }, 250);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function initCardFlags() {
+    // Boot once per page: gates first (fail closed, zero DOM writes on any
+    // miss), then an initial pass, then the re-scan observer. Network is
+    // capped at CARD_FLAG_FETCH_MAX batched proxy calls per page; every
+    // later re-render decorates from the in-memory/sessionStorage map.
+    try {
+      if (cardFlagsBooted) return;
+      cardFlagsBooted = true;
+      if (!badgeCardsOn() || cardFlagInCheckout()) return;
+      if (!window.fetch || typeof Promise === 'undefined') return;
+      if (!azStr('amazon.bestseller')) return; // unusable flag string
+      cardFlagMap = {};
+      cardFlagPass(false);
+      setupCardFlagObserver();
+    } catch (e) { /* never break the theme */ }
+  }
+
   function renderAll() {
     try {
       var drawerRoot = ensureDrawerRoot();
@@ -2810,6 +3125,12 @@
   function init() {
     window.CellexiaBooster = window.CellexiaBooster || {};
     window.CellexiaBooster.__cartInit = true;
+    // v6.4: the site-wide bestseller card decorator runs STANDALONE —
+    // before (and independent of) the cart-runtime bail below, so a
+    // badge-only configuration never boots the cart machinery (no cart
+    // fetch, no observers) and a cart-only configuration never scans
+    // cards. Beacon-free, self-gated, fail closed.
+    initCardFlags();
     // FINDINGS 9+12: the block can render for draft-only reasons (armed
     // preview, live master off) or with every cart widget scoped out of
     // this market. Real visitors then have zero live widgets — skip the

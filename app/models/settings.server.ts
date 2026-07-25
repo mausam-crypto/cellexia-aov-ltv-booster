@@ -456,6 +456,15 @@ export interface BoosterSettings {
     boughtCount: boolean;
     /** az_bestseller_badge — "#{rank} Bestseller · {category}" pill (per-product merchant data). */
     bestsellerBadge: boolean;
+    /**
+     * az_bestseller_badge sub-flag (v6.4): also decorate PRODUCT CARDS
+     * site-wide — theme cards on collections/home/search (via the cart
+     * embed's decorator) and the app's own similar-items/FBT rows — with
+     * a compact flag when that product has badge data. Gated by the same
+     * az_bestseller_badge feature + market scope; default ON so enabling
+     * the badge covers every product reference at once.
+     */
+    bestsellerOnCards: boolean;
     /** az_fbt — "Frequently bought together" block on the PDP. */
     fbt: boolean;
     /** az_similar_items — horizontal related-items card row under FBT. */
@@ -651,6 +660,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     stockLine: false,
     boughtCount: false,
     bestsellerBadge: false,
+    bestsellerOnCards: true,
     fbt: false,
     similarItems: false,
     cartFreeLine: false,
@@ -1206,6 +1216,13 @@ export function sanitizeSettings(
       if (typeof az[field] !== "boolean") {
         az[field] = DEFAULT_SETTINGS.amazon[field];
       }
+    }
+    // bestsellerOnCards is a SUB-flag of az_bestseller_badge (not a
+    // FeatureKey, so it stays out of AMAZON_FLAG_FIELDS/flip snapshots):
+    // anything non-boolean falls back to the default (ON — the badge
+    // feature master still gates every card flag).
+    if (typeof az.bestsellerOnCards !== "boolean") {
+      az.bestsellerOnCards = DEFAULT_SETTINGS.amazon.bestsellerOnCards;
     }
     // shipsFromByCountry is a DYNAMIC_RECORD_KEYS record (replaced wholesale
     // by the merge) — keep only ISO2 -> ISO2 entries, uppercased.

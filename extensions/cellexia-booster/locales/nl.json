@@ -181,7 +181,7 @@
       "other": "Voeg alle {{ count }} toe aan winkelwagen"
     },
     "fbt_add_both": "Voeg beide toe aan winkelwagen",
-    "similar_title": "Vergelijkbare artikelen",
+    "similar_title": "Misschien vind je dit ook leuk",
     "cta_count": {
       "one": "Doorgaan naar afrekenen ({{ count }} artikel)",
       "other": "Doorgaan naar afrekenen ({{ count }} artikelen)"

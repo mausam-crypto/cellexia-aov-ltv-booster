@@ -184,7 +184,7 @@
       "other": "Adaugă toate cele {{ count }} în coș"
     },
     "fbt_add_both": "Adaugă-le pe amândouă în coș",
-    "similar_title": "Produse similare",
+    "similar_title": "Ți-ar putea plăcea și acestea",
     "cta_count": {
       "one": "Finalizează comanda ({{ count }} produs)",
       "few": "Finalizează comanda ({{ count }} produse)",

@@ -181,7 +181,7 @@
       "other": "Add all {{ count }} to cart"
     },
     "fbt_add_both": "Add both to cart",
-    "similar_title": "Similar items",
+    "similar_title": "You Might Also Like",
     "cta_count": {
       "one": "Proceed to checkout ({{ count }} item)",
       "other": "Proceed to checkout ({{ count }} items)"

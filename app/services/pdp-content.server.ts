@@ -1,7 +1,7 @@
 /**
  * Per-product PDP booster content (SPEC v3).
  *
- * Reads and writes the four "cellexia" product metafields and the metaobjects
+ * Reads and writes the five "cellexia" product metafields and the metaobjects
  * they reference:
  *
  *   - clinical_study      metaobject_reference       -> cellexia_clinical_study
@@ -11,6 +11,9 @@
  *                         (nested cellexia_ingredient + cellexia_coa lists)
  *   - pdp_flags           json                       -> per-product opt-in/out
  *                         (+ optional "container" override for the guarantee)
+ *   - bestseller_category single_line_text_field     -> TRANSLATABLE canonical
+ *                         home of the bestseller badge category (v6.4);
+ *                         pdp_flags keeps rank + a legacy category fallback
  *
  * Saves are diff-based upserts: nested metaobjects with a known id are
  * updated, new ones are created, and metaobjects dropped from the incoming
@@ -75,11 +78,19 @@ export function isPdpContainer(value: unknown): value is PdpContainer {
 }
 
 /** Merchant-entered "#{rank} Bestseller · {category}" data (az_bestseller_badge).
- *  The badge NEVER renders without both fields — no fabricated claims. */
+ *  The badge NEVER renders without both fields — no fabricated claims.
+ *
+ *  v6.4: the category's CANONICAL home is the dedicated TRANSLATABLE
+ *  cellexia.bestseller_category product metafield (single_line_text_field).
+ *  The rank stays in pdp_flags; the category copy inside pdp_flags is kept
+ *  as a legacy fallback (and refreshed on every save) so already-entered
+ *  data and older storefront reads never lose the merchant's entry. Views
+ *  resolve the category METAFIELD-FIRST. */
 export interface BestsellerLabel {
   /** 1..99 — the "#1" part. */
   rank: number;
-  /** Rendered exactly as entered (translatable later via T&A), <= 60 chars. */
+  /** Metafield-first resolved category (auto-translated per language on the
+   *  storefront once translations are registered), <= 60 chars. */
   category: string;
 }
 
@@ -205,6 +216,12 @@ export interface ProductBoostersResult {
   beforeAfters: BeforeAfterView[];
   batchTransparency: BatchTransparencyView | null;
   flags: PdpFlags;
+  /**
+   * GID of the cellexia.bestseller_category product metafield when one is
+   * set (null otherwise). Joins the per-product DeepL translate run — it is
+   * the ONLY metafield whose "value" key the translation service admits.
+   */
+  bestsellerCategoryMetafieldId: string | null;
 }
 
 export interface StudyResultInput {
@@ -607,6 +624,27 @@ function defaultFlags(): PdpFlags {
   return parseFlags(null);
 }
 
+/**
+ * Metafield-first category resolution (v6.4): a non-empty
+ * cellexia.bestseller_category value overrides the legacy category copy in
+ * pdp_flags (kept as fallback for already-entered data). The rank still
+ * comes from pdp_flags — without a rank there is no badge, so a stray
+ * metafield alone never fabricates one.
+ */
+function applyBestsellerCategoryOverride(
+  flags: PdpFlags,
+  metafieldValue: string | null | undefined,
+): PdpFlags {
+  const category =
+    typeof metafieldValue === "string"
+      ? metafieldValue.trim().slice(0, 60)
+      : "";
+  if (category !== "" && flags.bestsellerLabel) {
+    flags.bestsellerLabel = { ...flags.bestsellerLabel, category };
+  }
+  return flags;
+}
+
 const METAFIELDS_SET_MUTATION = `#graphql
   mutation cellexiaPdpMetafieldsSet($metafields: [MetafieldsSetInput!]!) {
     metafieldsSet(metafields: $metafields) {
@@ -839,6 +877,7 @@ const PRODUCT_BOOSTERS_QUERY = `#graphql
         }
       }
       pdpFlags: metafield(namespace: "cellexia", key: "pdp_flags") { value }
+      bestsellerCategory: metafield(namespace: "cellexia", key: "bestseller_category") { id value }
     }
   }
 `;
@@ -896,6 +935,7 @@ interface ProductBoostersData {
         | null;
     } | null;
     pdpFlags: { value: string } | null;
+    bestsellerCategory: { id: string; value: string } | null;
   } | null;
 }
 
@@ -939,6 +979,7 @@ export async function getProductBoosters(
     beforeAfters: [],
     batchTransparency: null,
     flags: defaultFlags(),
+    bestsellerCategoryMetafieldId: null,
   };
   if (!PRODUCT_GID_PATTERN.test(productGid)) {
     return { ok: false, errors: ["Invalid product id"], ...empty };
@@ -1062,7 +1103,11 @@ export async function getProductBoosters(
     clinicalStudy,
     beforeAfters,
     batchTransparency,
-    flags: parseFlags(product.pdpFlags?.value),
+    flags: applyBestsellerCategoryOverride(
+      parseFlags(product.pdpFlags?.value),
+      product.bestsellerCategory?.value,
+    ),
+    bestsellerCategoryMetafieldId: product.bestsellerCategory?.id ?? null,
   };
 }
 
@@ -1766,9 +1811,20 @@ const PDP_FLAGS_STATE_QUERY = `#graphql
         id
         value
       }
+      bestsellerCategory: metafield(namespace: "cellexia", key: "bestseller_category") {
+        id
+      }
     }
   }
 `;
+
+interface PdpFlagsStateData {
+  product: {
+    id: string;
+    metafield: { id: string; value: string } | null;
+    bestsellerCategory: { id: string } | null;
+  } | null;
+}
 
 /**
  * Merges the given flags over the product's current pdp_flags and writes the
@@ -1786,7 +1842,7 @@ export async function savePdpFlags(
     return { ok: false, errors: ["Invalid product id"], flags: defaultFlags() };
   }
 
-  const state = await adminRequest<MetafieldValueStateData>(
+  const state = await adminRequest<PdpFlagsStateData>(
     admin,
     PDP_FLAGS_STATE_QUERY,
     { id: productGid },
@@ -1827,12 +1883,22 @@ export async function savePdpFlags(
     }
     // Any other value (NaN, negative, fraction): ignored, current kept.
   }
+  // v6.4: the category's canonical home is the TRANSLATABLE
+  // cellexia.bestseller_category metafield; the copy kept inside pdp_flags
+  // is the legacy fallback (refreshed on every save so it never goes stale
+  // for older readers). "set" writes the metafield after the flags JSON,
+  // "clear" deletes it — a failed companion write surfaces as an error but
+  // the fallback keeps the storefront coherent either way.
+  let categoryWrite: { mode: "set"; value: string } | { mode: "clear" } | null =
+    null;
   if (flags && "bestsellerLabel" in flags) {
     const label = cleanBestsellerLabel(flags.bestsellerLabel);
     if (label !== null) {
       next.bestsellerLabel = label;
+      categoryWrite = { mode: "set", value: label.category };
     } else if (flags.bestsellerLabel === null) {
       delete next.bestsellerLabel;
+      categoryWrite = { mode: "clear" };
     }
     // Malformed non-null objects: ignored, current label (if any) is kept.
   }
@@ -1856,6 +1922,32 @@ export async function savePdpFlags(
     "json",
     JSON.stringify(next),
   );
+  // Companion write only after the flags JSON persisted — on a "set" failure
+  // the untouched metafield keeps serving the previous (still-translated)
+  // category rather than a half-updated pair.
+  if (errors.length === 0 && categoryWrite !== null) {
+    if (categoryWrite.mode === "set") {
+      errors.push(
+        ...(await setProductMetafield(
+          admin,
+          productGid,
+          PDP_METAFIELD_KEYS.bestsellerCategory,
+          "single_line_text_field",
+          categoryWrite.value,
+        )),
+      );
+    } else if (state.data.product.bestsellerCategory) {
+      // Delete only when a metafield actually exists — clearing a
+      // legacy-only label must not fail on a metafield that was never set.
+      errors.push(
+        ...(await deleteProductMetafield(
+          admin,
+          productGid,
+          PDP_METAFIELD_KEYS.bestsellerCategory,
+        )),
+      );
+    }
+  }
   return { ok: errors.length === 0, errors, flags: next };
 }
 
@@ -2037,6 +2129,7 @@ const LIST_PRODUCTS_QUERY = `#graphql
         beforeAfters: metafield(namespace: "cellexia", key: "before_afters") { value }
         batchTransparency: metafield(namespace: "cellexia", key: "batch_transparency") { id }
         pdpFlags: metafield(namespace: "cellexia", key: "pdp_flags") { value }
+        bestsellerCategory: metafield(namespace: "cellexia", key: "bestseller_category") { value }
       }
     }
   }
@@ -2054,6 +2147,7 @@ interface ListProductsData {
       beforeAfters: { value: string } | null;
       batchTransparency: { id: string } | null;
       pdpFlags: { value: string } | null;
+      bestsellerCategory: { value: string } | null;
     }[];
   } | null;
 }
@@ -2101,7 +2195,10 @@ export async function listProductsWithBoosterStatus(
         clinical_study: Boolean(node.clinicalStudy?.id),
         verified_before_after: parseGidList(node.beforeAfters?.value).length,
         batch_transparency: Boolean(node.batchTransparency?.id),
-        flags: parseFlags(node.pdpFlags?.value),
+        flags: applyBestsellerCategoryOverride(
+          parseFlags(node.pdpFlags?.value),
+          node.bestsellerCategory?.value,
+        ),
       },
     }),
   );

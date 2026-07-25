@@ -181,7 +181,7 @@
       "other": "Añadir los {{ count }} a la cesta"
     },
     "fbt_add_both": "Añadir los dos a la cesta",
-    "similar_title": "Productos similares",
+    "similar_title": "También te puede gustar",
     "cta_count": {
       "one": "Tramitar el pedido ({{ count }} producto)",
       "other": "Tramitar el pedido ({{ count }} productos)"

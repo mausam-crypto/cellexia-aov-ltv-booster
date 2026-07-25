@@ -1709,6 +1709,23 @@
     return !!(AZ_CFG && AZ_CFG.effective && AZ_CFG.effective[key] === true);
   }
 
+  function azCardsOn() {
+    // v6.4 mini-flag gate for the app's OWN similar/FBT cards. Liquid
+    // emits badgeCards ONLY when the bestsellerOnCards setting + embed
+    // checkbox + market scope all hold (setting:true) with the live
+    // az_bestseller_badge master baked into .live — deliberately WITHOUT
+    // the current product's own badge-data gate (each card's flag keys on
+    // that card's product data). Preview follows the azOn() convention on
+    // the feature flag; the setting gate still binds (a preview never
+    // un-hides a merchant-disabled surface). Fail closed on any miss.
+    var bc = AZ_CFG && AZ_CFG.badgeCards;
+    if (!bc || typeof bc !== 'object' || bc.setting !== true) return false;
+    if (PREVIEW) {
+      return PREVIEW.live.az_bestseller_badge === true || PREVIEW.flags.az_bestseller_badge === true;
+    }
+    return bc.live === true;
+  }
+
   function azT(key, params) {
     // Sentinel-param substitution over the az strings map — the exact
     // dispatchT/deliveryT convention ('' on a miss so callers fail
@@ -2414,6 +2431,10 @@
     var text = document.createElement('span');
     text.className = 'cx-az-fbt__text';
     text.textContent = row.title;
+    if (row.badge && azCardsOn()) {
+      var flag = azBuildRowFlag(row.badge.rank);
+      if (flag) text.appendChild(flag);
+    }
     label.appendChild(input);
     label.appendChild(text);
     var price = document.createElement('span');
@@ -2474,7 +2495,8 @@
     return azFetchHandleData(picks.map(function (pick) { return pick.handle; })).then(function (byHandle) {
       var rows = [];
       picks.forEach(function (pick) {
-        var variant = azFirstAvailableVariant(byHandle[pick.handle]);
+        var entry = byHandle[pick.handle];
+        var variant = azFirstAvailableVariant(entry);
         if (!variant) return;
         rows.push({
           variantId: variant.id,
@@ -2482,7 +2504,8 @@
           title: pick.title,
           image: pick.image,
           handle: pick.handle,
-          productId: pick.productId
+          productId: pick.productId,
+          badge: azCardBadge(entry)
         });
       });
       return rows;
@@ -2510,6 +2533,7 @@
             azFbtPicksPromise = Promise.resolve(mUsed);
           }
         } catch (e0) { /* similar simply skips the dedupe */ }
+        azFbtDecorateManual(node);
         azFbtFinish(node);
         return;
       }
@@ -2616,7 +2640,7 @@
                 var entry = byHandle[pick.handle];
                 var variant = azFirstAvailableVariant(entry);
                 if (!variant) return;
-                var card = { pick: pick, priceCents: variant.price };
+                var card = { pick: pick, priceCents: variant.price, badge: azCardBadge(entry) };
                 if (azSimilarOverlaps(pick, entry, used)) overlap.push(card);
                 else cards.push(card);
               });
@@ -2655,6 +2679,10 @@
             price.className = 'cx-az-similar__price';
             price.textContent = azMoney(card.priceCents);
             a.appendChild(price);
+            if (card.badge && azCardsOn()) {
+              var flag = azBuildCardFlag(card.badge.rank, card.badge.category);
+              if (flag) a.insertBefore(flag, a.firstChild);
+            }
             li.appendChild(a);
             list.appendChild(li);
           }
@@ -2908,6 +2936,81 @@
     root.appendChild(cat);
     cxSp(root);
     return root;
+  }
+
+  // v6.4 badge-everywhere: compact variants of the bestseller flag for
+  // product CARDS (the app's own similar-items/FBT rows here; theme cards
+  // site-wide get the byte-twin overlay from cellexia-cart.js). NOT part
+  // of a v6.2 template migration — these elements never existed in the
+  // Liquid templates; azCardsOn() + per-product badge data gate them.
+  // All dynamic values land via textContent.
+
+  function azBuildCardFlag(rank, category) {
+    // Overlay variant for image-corner placement (similar cards).
+    var txt = azT('amazon.bestseller_tpl', { rank: rank });
+    if (!txt) return null;
+    var root = cxEl('span', 'cx-az-cardflag cx-az-cardflag--overlay');
+    var pill = cxEl('span', 'cx-az-cardflag__pill');
+    pill.textContent = txt;
+    root.appendChild(pill);
+    var cat = typeof category === 'string' ? category : '';
+    if (cat) {
+      var catEl = cxEl('span', 'cx-az-cardflag__cat');
+      catEl.textContent = cat;
+      root.appendChild(catEl);
+    }
+    return root;
+  }
+
+  function azBuildRowFlag(rank) {
+    // Inline variant for the dense FBT text rows (pill only — the
+    // category still gates the flag upstream, honesty parity with the
+    // PDP badge, but the row has no room for the gray suffix).
+    var txt = azT('amazon.bestseller_tpl', { rank: rank });
+    if (!txt) return null;
+    var root = cxEl('span', 'cx-az-cardflag cx-az-cardflag--inline');
+    var pill = cxEl('span', 'cx-az-cardflag__pill');
+    pill.textContent = txt;
+    root.appendChild(pill);
+    return root;
+  }
+
+  function azCardBadge(entry) {
+    // {rank, category} from an app-proxy productsByHandle entry (v6.4
+    // payload — category arrives LOCALIZED, metafield-first server-side);
+    // null unless the honesty gate (rank>0 + nonblank category) holds.
+    var b = entry && entry.bestseller;
+    if (b && typeof b === 'object' && typeof b.rank === 'number' && b.rank > 0 &&
+        typeof b.category === 'string' && b.category) {
+      return { rank: b.rank, category: b.category };
+    }
+    return null;
+  }
+
+  function azFbtDecorateManual(node) {
+    // Manual FBT rows are azBuildFbt()-built from the Liquid payload —
+    // their badge data (bRank/bCat, category metafield-first) rides the
+    // same payload rows. Post-build decoration keeps the builder output
+    // byte-identical to the migrated v6.1 template (prover Tier-3).
+    try {
+      if (!azCardsOn()) return;
+      var f = AZ_CFG && AZ_CFG.fbt;
+      var rows = f && f.rows && f.rows.length ? f.rows : null;
+      if (!rows) return;
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        if (!r || typeof r !== 'object') continue;
+        var rank = Number(r.bRank);
+        var cat = typeof r.bCat === 'string' ? r.bCat : '';
+        if (!(rank > 0) || !cat) continue;
+        var li = node.querySelector('[data-variant-id="' + String(r.id) + '"]');
+        if (!li || li.getAttribute('data-cx-this')) continue;
+        var text = li.querySelector('.cx-az-fbt__text');
+        if (!text || text.querySelector('.cx-az-cardflag')) continue; // idempotent
+        var flag = azBuildRowFlag(rank);
+        if (flag) text.appendChild(flag);
+      }
+    } catch (e) { /* never break the theme */ }
   }
 
   function azBuildFbtRowLi(row, isThis) {

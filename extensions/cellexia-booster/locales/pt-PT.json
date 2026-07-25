@@ -181,7 +181,7 @@
       "other": "Adicionar os {{ count }} ao carrinho"
     },
     "fbt_add_both": "Adicionar os dois ao carrinho",
-    "similar_title": "Artigos semelhantes",
+    "similar_title": "Também poderá gostar",
     "cta_count": {
       "one": "Finalizar a encomenda ({{ count }} artigo)",
       "other": "Finalizar a encomenda ({{ count }} artigos)"

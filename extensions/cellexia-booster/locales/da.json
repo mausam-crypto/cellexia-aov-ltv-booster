@@ -181,7 +181,7 @@
       "other": "Læg alle {{ count }} i kurven"
     },
     "fbt_add_both": "Læg begge i kurven",
-    "similar_title": "Lignende varer",
+    "similar_title": "Du vil måske også synes om",
     "cta_count": {
       "one": "Gå til kassen ({{ count }} vare)",
       "other": "Gå til kassen ({{ count }} varer)"
