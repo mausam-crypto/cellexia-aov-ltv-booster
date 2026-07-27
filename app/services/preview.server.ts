@@ -707,13 +707,13 @@ export function featureReadiness(
   readiness.az_fbt = {
     ready: true,
     reason:
-      "Automatic complementary recommendations by default; per-product manual overrides on the Amazon patterns page. The cart cross-sell stays independent; a theme-native related-products section is a theme setting you can disable in the theme editor." +
+      "Automatic complementary recommendations by default; per-product manual overrides on the Amazon patterns page. The cart cross-sell stays independent; a theme-native related-products section is a theme setting you can disable in the theme editor. Placement (below the info tabs by default, or under the buy box) is a LIVE setting on the Amazon patterns page — the preview renders at the saved placement." +
       embedNote,
   };
   readiness.az_similar_items = {
     ready: true,
     reason:
-      "Automatic related-intent recommendations only — renders under “Frequently bought together” when both are on, or standalone." +
+      "Automatic related-intent recommendations only — renders under “Frequently bought together” when both share a placement, or standalone. Placement (below the info tabs by default, or under the buy box) is a LIVE setting on the Amazon patterns page — the preview renders at the saved placement." +
       embedNote,
   };
   readiness.az_cart_free_line = {

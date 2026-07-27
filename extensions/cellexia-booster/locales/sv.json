@@ -171,7 +171,10 @@
     "ships_from": "Skickas från {{ country }}",
     "secure": "Säker transaktion",
     "free_returns": "FRIA returer",
-    "bought_count": "{{ n }}+ köpta under den senaste månaden",
+    "bought_count": {
+      "one": "{{ n }}+ köpt under den senaste månaden",
+      "other": "{{ n }}+ köpta under den senaste månaden"
+    },
     "bestseller": "Bästsäljare nr {{ rank }}",
     "fbt_title": "Köps ofta tillsammans",
     "fbt_this_item": "Denna artikel:",

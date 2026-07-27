@@ -175,7 +175,12 @@
     "ships_from": "Wysyłka z: {{ country }}",
     "secure": "Bezpieczna transakcja",
     "free_returns": "DARMOWE zwroty",
-    "bought_count": "{{ n }}+ zakupionych w ostatnim miesiącu",
+    "bought_count": {
+      "one": "{{ n }}+ zakupiony w ostatnim miesiącu",
+      "few": "{{ n }}+ zakupione w ostatnim miesiącu",
+      "many": "{{ n }}+ zakupionych w ostatnim miesiącu",
+      "other": "{{ n }}+ zakupionych w ostatnim miesiącu"
+    },
     "bestseller": "Bestseller nr {{ rank }}",
     "fbt_title": "Często kupowane razem",
     "fbt_this_item": "Ten produkt:",

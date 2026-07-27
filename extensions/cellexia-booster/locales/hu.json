@@ -171,7 +171,10 @@
     "ships_from": "Feladás helye: {{ country }}",
     "secure": "Biztonságos tranzakció",
     "free_returns": "INGYENES visszaküldés",
-    "bought_count": "{{ n }}+ vásárlás az elmúlt hónapban",
+    "bought_count": {
+      "one": "{{ n }}+ vásárlás az elmúlt hónapban",
+      "other": "{{ n }}+ vásárlás az elmúlt hónapban"
+    },
     "bestseller": "{{ rank }}. számú bestseller",
     "fbt_title": "Gyakran együtt vásárolt termékek",
     "fbt_this_item": "Ez a termék:",

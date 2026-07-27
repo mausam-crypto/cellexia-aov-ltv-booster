@@ -169,7 +169,9 @@
     "ships_from": "{{ country }}から発送",
     "secure": "安全な取引",
     "free_returns": "無料返品",
-    "bought_count": "過去1か月で{{ n }}点以上購入されました",
+    "bought_count": {
+      "other": "過去1か月で{{ n }}点以上購入されました"
+    },
     "bestseller": "ベストセラー{{ rank }}位",
     "fbt_title": "よく一緒に購入されている商品",
     "fbt_this_item": "この商品:",

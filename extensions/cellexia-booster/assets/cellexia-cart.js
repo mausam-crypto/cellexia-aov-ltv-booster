@@ -2598,18 +2598,21 @@
     } catch (e) { /* never break the theme */ }
   }
 
-  // ------------------------------------------- az bestseller card flags
+  // -------------------------------------- az card flags + bought lines
   //
   // v6.4 badge-everywhere: THEME product cards (collections, home,
   // search, related sliders — this file loads SITE-WIDE via the cart
   // embed) get a compact corner-overlay variant of the PDP bestseller
-  // flag whenever their product carries badge data. Contract:
-  //  - gate: cfg.badgeCards {setting, live} is precomputed by Liquid
-  //    (amazon.bestsellerOnCards setting + az_bestseller_badge market
-  //    scope; live additionally requires the az_bestseller_badge master).
-  //    Verified preview follows the featureOn() convention on the
-  //    az_bestseller_badge flag; the merchant's setting still binds.
-  //    Fail closed on every miss.
+  // flag whenever their product carries badge data. v6.6 adds the
+  // second card element: a small "{n}+ bought in past month" line under
+  // the card's title/price info (az_bought_count on cards). Contract:
+  //  - gates: cfg.badgeCards / cfg.boughtCards {setting, live} are
+  //    precomputed by Liquid (amazon.bestsellerOnCards resp.
+  //    amazon.boughtOnCards setting + the feature's market scope; live
+  //    additionally requires the az_bestseller_badge resp.
+  //    az_bought_count master). Verified preview follows the featureOn()
+  //    convention on the same flag via the shared cardGateOn() helper;
+  //    the merchant's setting still binds. Fail closed on every miss.
   //  - data: network capped at TWO app-proxy calls per page — one
   //    initial batched cart-data?handles= request (the proxy caps a
   //    batch at 20) plus at most ONE follow-up batch for handles a
@@ -2627,10 +2630,14 @@
   //    sees the rendered cards at all. A debounced document-level
   //    childList observer re-runs scan+decorate from the merged map;
   //    the data-cx-cardflag marks keep every re-entry idempotent.
-  //  - v6.4.1 coexistence: a card already carrying the theme's own
-  //    .product__tag pill (or a populated .badges overlay) is skipped
-  //    outright — the two badges occupy the same image corner and the
-  //    theme pill paints on top (z-index 3 vs 2).
+  //  - v6.6 REPLACEMENT RULE (merchant directive, supersedes the v6.4.1
+  //    skip rule): when OUR flag renders on a card, the theme's own
+  //    .product__tag pill (or a POPULATED .badges overlay) is hidden in
+  //    the SAME pass via the cx-az-tagswap class — ours replaces theirs
+  //    while on. Never hidden without our flag inserted; cards without
+  //    badge data keep their theme tags untouched; with the gates off
+  //    nothing is written, so a page rendered gates-off never carries
+  //    the class.
   //  - beacon-free BY CONTRACT (decoration, not a tracked widget: no
   //    track() call on any path) and NEVER in checkout — theme app
   //    embeds cannot run there, and the explicit guard keeps that true
@@ -2644,13 +2651,24 @@
   var cardFlagFetches = 0;    // network calls spent (cache hits are free)
   var CARD_FLAG_FETCH_MAX = 2; // initial batch + one follow-up, per page
 
-  function badgeCardsOn() {
-    var bc = cfg.badgeCards;
-    if (!bc || typeof bc !== 'object' || bc.setting !== true) return false;
+  function cardGateOn(gate, featureKey) {
+    // Shared two-key card gate (v6.6 generalization of badgeCardsOn —
+    // badge behavior unchanged): the Liquid-precomputed {setting, live}
+    // pair + the standard verified-preview union on the feature flag.
+    // The merchant's on-cards setting binds in preview too.
+    if (!gate || typeof gate !== 'object' || gate.setting !== true) return false;
     if (PREVIEW) {
-      return PREVIEW.live.az_bestseller_badge === true || PREVIEW.flags.az_bestseller_badge === true;
+      return PREVIEW.live[featureKey] === true || PREVIEW.flags[featureKey] === true;
     }
-    return bc.live === true;
+    return gate.live === true;
+  }
+
+  function badgeCardsOn() {
+    return cardGateOn(cfg.badgeCards, 'az_bestseller_badge');
+  }
+
+  function boughtCardsOn() {
+    return cardGateOn(cfg.boughtCards, 'az_bought_count');
   }
 
   function cardFlagInCheckout() {
@@ -2708,7 +2726,9 @@
 
   function cardFlagCacheKey(handles) {
     var locale = typeof cfg.pageLocale === 'string' ? cfg.pageLocale : '';
-    return 'cx_az_cardflags:' + locale + ':' + cardFlagHash(handles.slice().sort().join(','));
+    // v6.6 bumped the map-entry shape ({badge, bought}) — the "2"
+    // segment retires v6.4 {rank, category} cache entries wholesale.
+    return 'cx_az_cardflags:2:' + locale + ':' + cardFlagHash(handles.slice().sort().join(','));
   }
 
   function cardFlagCacheGet(key) {
@@ -2736,17 +2756,24 @@
       .then(function (data) {
         var by = data && data.productsByHandle && typeof data.productsByHandle === 'object' ? data.productsByHandle : {};
         var map = {};
-        // Every REQUESTED handle gets a verdict (null = no badge) so an
-        // unknown product converges to the "0" mark instead of being
-        // re-asked on every later pass.
+        // Every REQUESTED handle gets a verdict (null = nothing to
+        // render) so an unknown product converges to the "0" mark
+        // instead of being re-asked on every later pass.
         for (var i = 0; i < handles.length; i++) map[handles[i]] = null;
         Object.keys(by).forEach(function (handle) {
           var entry = by[handle];
           var b = entry && entry.bestseller;
-          map[handle] = b && typeof b === 'object' && typeof b.rank === 'number' && b.rank > 0 &&
+          var badge = b && typeof b === 'object' && typeof b.rank === 'number' && b.rank > 0 &&
             typeof b.category === 'string' && b.category
             ? { rank: b.rank, category: b.category }
             : null;
+          // "bought" is present ONLY when the proxy's Liquid freshness
+          // gate passed (same 3 888 000 s epoch math as the PDP embed) —
+          // absent/invalid means no line, ever.
+          var bought = entry && typeof entry.bought === 'number' && isFinite(entry.bought) && entry.bought > 0
+            ? Math.floor(entry.bought)
+            : 0;
+          map[handle] = badge || bought > 0 ? { badge: badge, bought: bought } : null;
         });
         return map;
       });
@@ -2764,37 +2791,176 @@
     return root;
   }
 
+  function azPageLocale() {
+    // Cart-side shim so the azCompact TWIN below stays byte-identical to
+    // the cellexia-pdp.js original (which resolves its az config island
+    // the same way); this file's page locale rides the cart config.
+    return cfg && typeof cfg.pageLocale === 'string' && cfg.pageLocale ? cfg.pageLocale : '';
+  }
+
+  // v6.6 TWIN: azCompact is BYTE-IDENTICAL to cellexia-pdp.js#azCompact
+  // (twin convention — the harness compares the two blocks byte-for-byte;
+  // edit BOTH files or neither). It carries the da/fi/hu grouped-digit
+  // opt-out and the honesty pre-floor.
+  function azCompact(n) {
+    // "{n}+ bought" compact figure in the PAGE locale. The "+" claims
+    // AT LEAST the shown figure, so the value is floored to the
+    // compact precision before formatting (1 940 -> "1K", never "2K");
+    // roundingMode floor is passed for locales whose compact unit
+    // differs (ja 万) — older engines ignore the unknown option, and
+    // the pre-floor keeps the common Latin K/M case honest everywhere.
+    var anchor = n;
+    if (n >= 1000000) anchor = Math.floor(n / 1000000) * 1000000;
+    else if (n >= 1000) anchor = Math.floor(n / 1000) * 1000;
+    // Per-locale readability opt-out: the CLDR short-compact unit is
+    // cryptic/ambiguous in a trust claim for da ("2 t+" — t also means
+    // hours), fi ("2 t.+") and hu ("2 E+"), so below 10 000 those pages
+    // get plain grouped digits ("2 000+") instead; from 10 000 up the
+    // longer figure gives the unit enough context. Honesty unchanged —
+    // the anchor is already floored above.
+    var azLang = (azPageLocale() || '').split('-')[0].toLowerCase();
+    if ((azLang === 'da' || azLang === 'fi' || azLang === 'hu') && anchor < 10000) {
+      try {
+        var grouped = new Intl.NumberFormat(azPageLocale(), { maximumFractionDigits: 0 }).format(anchor);
+        if (typeof grouped === 'string' && grouped) return grouped;
+      } catch (e0) { /* fall through to compact */ }
+    }
+    try {
+      var opts = { notation: 'compact', maximumFractionDigits: 0, roundingMode: 'floor' };
+      var s = new Intl.NumberFormat(azPageLocale() || undefined, opts).format(anchor);
+      if (typeof s === 'string' && s) return s;
+    } catch (e) { /* fall through */ }
+    try {
+      var s2 = new Intl.NumberFormat(azPageLocale() || undefined, { notation: 'compact', maximumFractionDigits: 0 }).format(anchor);
+      if (typeof s2 === 'string' && s2) return s2;
+    } catch (e2) { /* fall through */ }
+    return String(anchor);
+  }
+
+  function cardBoughtLabel(n) {
+    // Bought line text: CLDR plural category in the PAGE language via
+    // Intl.PluralRules on the RAW count (azCtaLabel's exact ladder), the
+    // figure itself compacted by the azCompact twin. The Liquid config
+    // ships one string per category ("amazon.bought_count.<cat>",
+    // sentinel @@N@@); categories a language does not define arrive as
+    // "Translation missing" markers and azStr discards them. Without a
+    // usable "other" the line is unbuildable: null (fail closed).
+    if (!azStr('amazon.bought_count.other')) return null;
+    if (typeof n !== 'number' || !isFinite(n) || n <= 0) return null;
+    var locale = typeof cfg.pageLocale === 'string' && cfg.pageLocale ? cfg.pageLocale : undefined;
+    var cat = 'other';
+    try {
+      if (typeof Intl !== 'undefined' && typeof Intl.PluralRules === 'function') {
+        cat = new Intl.PluralRules(locale).select(n);
+      } else {
+        cat = n === 1 ? 'one' : 'other';
+      }
+    } catch (e) {
+      try { cat = new Intl.PluralRules().select(n); } catch (e2) { cat = n === 1 ? 'one' : 'other'; }
+    }
+    if (!azStr('amazon.bought_count.' + cat)) cat = 'other';
+    var compact = azCompact(n);
+    if (!compact || typeof compact !== 'string') return null;
+    return t('amazon.bought_count.' + cat, { n: compact });
+  }
+
+  function buildCardBought(n) {
+    var label = cardBoughtLabel(n);
+    if (!label || typeof label !== 'string') return null;
+    // Block line, textContent only — normal flow, no absolute
+    // positioning, so the card grid never shifts badly.
+    return el('p', 'cx-az-cardbought', label);
+  }
+
+  function swapThemeTag(box) {
+    // v6.6 replacement rule: OUR flag now owns the image corner, so the
+    // theme's own .product__tag pill (or a POPULATED .badges overlay —
+    // the always-present EMPTY .badges container is left alone) is
+    // hidden with the cx-az-tagswap class (CSS: display none). Called
+    // ONLY right after a flag insertion on the same card — a card whose
+    // flag did not render keeps its theme tag untouched, and gates-off
+    // pages never reach this code at all.
+    try {
+      var tag = box.querySelector('.product__tag');
+      if (!tag) {
+        var badges = box.querySelector('.badges');
+        if (badges && badges.children && badges.children.length) tag = badges;
+      }
+      if (tag && tag.classList) tag.classList.add('cx-az-tagswap');
+    } catch (e) { /* best-effort: worst case the two badges stack */ }
+  }
+
+  function insertCardBought(box, line) {
+    // Sleepify card anatomy (captured live collection markup):
+    // .product.product--default > .product__image (our anchor box) +
+    // .product__info (title/blurb/price/stars). The line lands at the
+    // END of .product__info — under the card's title/price; grids
+    // without that container (Boost PFS boxes, future themes) get it
+    // right after the image box instead. Returns true only when the
+    // line actually entered the DOM.
+    try {
+      var root = null;
+      var n = box;
+      for (var i = 0; i < 4 && n; i++) {
+        if (n.classList && n.classList.contains('product--default')) { root = n; break; }
+        n = n.parentNode;
+      }
+      var info = root ? root.querySelector('.product__info') : null;
+      if (info) {
+        info.appendChild(line);
+        return true;
+      }
+      if (box.parentNode) {
+        if (box.nextSibling) box.parentNode.insertBefore(line, box.nextSibling);
+        else box.parentNode.appendChild(line);
+        return true;
+      }
+    } catch (e) { /* fail closed */ }
+    return false;
+  }
+
   function decorateCardFlags(anchors, map) {
+    // v6.6: ONE pass decides BOTH card elements from the merged verdict
+    // ({badge, bought} | null). The bestseller flag applies the
+    // replacement rule (swapThemeTag in the SAME pass as the insertion,
+    // never without it — the v6.4.1 theme-tag SKIP is retired); the
+    // bought line rides under the card's product info. Re-passes stay
+    // idempotent via the data-cx-cardflag mark; a Boost grid re-render
+    // rebuilds cards from scratch, so a re-added theme tag is re-swapped
+    // exactly when our flag re-renders on the fresh node.
+    var wantBadge = badgeCardsOn() && !!azStr('amazon.bestseller');
+    var wantBought = boughtCardsOn() && !!azStr('amazon.bought_count.other');
+    if (!wantBadge && !wantBought) return;
     for (var i = 0; i < anchors.length; i++) {
       var anchor = anchors[i];
       try {
         if (anchor.box.getAttribute('data-cx-cardflag') !== null) continue; // re-entry safety
-        // v6.4.1: the theme's own corner badge wins. Sleepify puts
-        // .product__tag at the same image corner (top/left 15px,
-        // z-index 3 — above our overlay's 2) and the merchant actively
-        // uses it, so stacking the two renders a mangled double flag.
-        // A populated .badges overlay counts too; the (always-present)
-        // EMPTY .badges container does not.
-        var themeTag = anchor.box.querySelector('.product__tag');
-        if (!themeTag) {
-          var themeBadges = anchor.box.querySelector('.badges');
-          if (themeBadges && themeBadges.children && themeBadges.children.length) themeTag = themeBadges;
-        }
-        if (themeTag) { anchor.box.setAttribute('data-cx-cardflag', '0'); continue; }
-        var badge = map && Object.prototype.hasOwnProperty.call(map, anchor.handle) ? map[anchor.handle] : null;
-        if (!badge) { anchor.box.setAttribute('data-cx-cardflag', '0'); continue; }
-        var node = buildCardFlag(badge);
-        if (!node) { anchor.box.setAttribute('data-cx-cardflag', '0'); continue; }
-        try {
-          // the overlay needs a positioned ancestor; the theme's image
-          // block usually is one already (its own badges overlay too).
-          if (typeof window.getComputedStyle === 'function') {
-            var st = window.getComputedStyle(anchor.box);
-            if (st && st.position === 'static') anchor.box.style.position = 'relative';
+        var verdict = map && Object.prototype.hasOwnProperty.call(map, anchor.handle) ? map[anchor.handle] : null;
+        if (!verdict) { anchor.box.setAttribute('data-cx-cardflag', '0'); continue; }
+        var did = false;
+        if (wantBadge && verdict.badge) {
+          var node = buildCardFlag(verdict.badge);
+          if (node) {
+            try {
+              // the overlay needs a positioned ancestor; the theme's image
+              // block usually is one already (its own badges overlay too).
+              if (typeof window.getComputedStyle === 'function') {
+                var st = window.getComputedStyle(anchor.box);
+                if (st && st.position === 'static') anchor.box.style.position = 'relative';
+              }
+            } catch (e0) { /* best-effort */ }
+            anchor.box.appendChild(node);
+            did = true;
+            // replacement rule: hide the theme's pill ONLY now that our
+            // flag is actually in this card's DOM.
+            swapThemeTag(anchor.box);
           }
-        } catch (e0) { /* best-effort */ }
-        anchor.box.appendChild(node);
-        anchor.box.setAttribute('data-cx-cardflag', '1');
+        }
+        if (wantBought && verdict.bought > 0) {
+          var line = buildCardBought(verdict.bought);
+          if (line && insertCardBought(anchor.box, line)) did = true;
+        }
+        anchor.box.setAttribute('data-cx-cardflag', did ? '1' : '0');
       } catch (e) { /* skip this card */ }
     }
   }
@@ -2870,7 +3036,9 @@
     var timer = null;
     var observer = new MutationObserver(function (records) {
       // Skip wakeups our own decoration caused: batches whose added
-      // elements are all cx-az-cardflag nodes need no re-scan.
+      // elements are all our own card nodes (cx-az-cardflag overlays or
+      // cx-az-cardbought lines — the shared cx-az-card prefix) need no
+      // re-scan.
       var relevant = false;
       try {
         for (var i = 0; i < records.length && !relevant; i++) {
@@ -2880,7 +3048,7 @@
             var node = added[j];
             if (!node || node.nodeType !== 1) continue;
             var cls = typeof node.className === 'string' ? node.className : '';
-            if (cls.indexOf('cx-az-cardflag') !== -1) continue;
+            if (cls.indexOf('cx-az-card') !== -1) continue;
             relevant = true;
             break;
           }
@@ -2904,9 +3072,14 @@
     try {
       if (cardFlagsBooted) return;
       cardFlagsBooted = true;
-      if (!badgeCardsOn() || cardFlagInCheckout()) return;
+      if (cardFlagInCheckout()) return;
+      // v6.6: boot when EITHER card element is renderable — gate on AND
+      // usable strings per element (an element whose gate or strings
+      // fail simply never renders; both failing = zero DOM writes).
+      var wantBadge = badgeCardsOn() && !!azStr('amazon.bestseller');
+      var wantBought = boughtCardsOn() && !!azStr('amazon.bought_count.other');
+      if (!wantBadge && !wantBought) return;
       if (!window.fetch || typeof Promise === 'undefined') return;
-      if (!azStr('amazon.bestseller')) return; // unusable flag string
       cardFlagMap = {};
       cardFlagPass(false);
       setupCardFlagObserver();

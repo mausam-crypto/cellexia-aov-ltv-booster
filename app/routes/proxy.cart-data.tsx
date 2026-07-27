@@ -30,6 +30,13 @@ import { authenticate } from "../shopify.server";
  * for the requesting storefront language automatically) with the legacy
  * pdp_flags bestsellerLabel.category as fallback. null unless BOTH a rank>0
  * and a nonblank category exist (the storefront honesty gate).
+ *
+ * v6.6: a productsByHandle entry gains "bought": <int> ONLY when the
+ * per-product pdp_flags.boughtCount is > 0 AND boughtCountSetAt is within
+ * 45 days — the freshness is computed HERE in the rendered Liquid with the
+ * exact epoch math amazon-booster.liquid uses (age >= 0 and <= 3888000 s),
+ * so a stale or absent count simply OMITS the field and the card decorator
+ * can never render an outdated claim.
  */
 
 const sanitizeHandle = (handle: string) =>
@@ -39,7 +46,13 @@ const sanitizeHandle = (handle: string) =>
  *  contract note above). Rendered through Liquid, so the metafield value
  *  arrives already localized for the request's storefront language. */
 const BESTSELLER_LIQUID = (accessor: string) => `,
-        "bestseller": {%- assign cx_bs_flags = ${accessor}.metafields.cellexia.pdp_flags.value -%}{%- assign cx_bs_rank = cx_bs_flags.bestsellerLabel.rank | default: 0 -%}{%- assign cx_bs_cat = ${accessor}.metafields.cellexia.bestseller_category.value | default: cx_bs_flags.bestsellerLabel.category | default: '' -%}{%- if cx_bs_rank > 0 and cx_bs_cat != blank -%}{"rank": {{ cx_bs_rank }}, "category": {{ cx_bs_cat | json }}}{%- else -%}null{%- endif -%}`;
+        "bestseller": {%- assign cx_bs_flags = ${accessor}.metafields.cellexia.pdp_flags.value -%}{%- assign cx_bs_rank = cx_bs_flags.bestsellerLabel.rank | default: 0 -%}{%- assign cx_bs_cat = ${accessor}.metafields.cellexia.bestseller_category.value | default: cx_bs_flags.bestsellerLabel.category | default: '' -%}{%- if cx_bs_rank > 0 and cx_bs_cat != blank -%}{"rank": {{ cx_bs_rank }}, "category": {{ cx_bs_cat | json }}}{%- else -%}null{%- endif -%}${BOUGHT_LIQUID}`;
+
+/** v6.6 bought-count freshness, evaluated in the SAME Liquid render (reuses
+ *  the cx_bs_flags assign above): the exact amazon-booster.liquid epoch math
+ *  — '%s' epochs, age >= 0 and <= 3888000 (45 days). Fresh -> ", \"bought\": n";
+ *  stale/absent -> the field is omitted entirely (fail closed). */
+const BOUGHT_LIQUID = `{%- assign cx_bt_n = cx_bs_flags.boughtCount | default: 0 -%}{%- assign cx_bt_set = 0 -%}{%- if cx_bs_flags.boughtCountSetAt -%}{%- assign cx_bt_set = cx_bs_flags.boughtCountSetAt | date: '%s' | plus: 0 -%}{%- endif -%}{%- assign cx_bt_now = 'now' | date: '%s' | plus: 0 -%}{%- if cx_bt_n > 0 and cx_bt_set > 0 -%}{%- assign cx_bt_age = cx_bt_now | minus: cx_bt_set -%}{%- if cx_bt_age >= 0 and cx_bt_age <= 3888000 -%}, "bought": {{ cx_bt_n }}{%- endif -%}{%- endif -%}`;
 
 const PRODUCT_BODY_LIQUID = (accessor: string, withBestseller = false) => `{
         "variants": [

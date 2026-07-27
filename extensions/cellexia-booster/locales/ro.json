@@ -173,7 +173,11 @@
     "ships_from": "Expediat din {{ country }}",
     "secure": "Tranzacție securizată",
     "free_returns": "Retururi GRATUITE",
-    "bought_count": "{{ n }}+ cumpărate în ultima lună",
+    "bought_count": {
+      "one": "{{ n }}+ cumpărat în ultima lună",
+      "few": "{{ n }}+ cumpărate în ultima lună",
+      "other": "{{ n }}+ cumpărate în ultima lună"
+    },
     "bestseller": "Bestseller nr. {{ rank }}",
     "fbt_title": "Cumpărate frecvent împreună",
     "fbt_this_item": "Acest produs:",

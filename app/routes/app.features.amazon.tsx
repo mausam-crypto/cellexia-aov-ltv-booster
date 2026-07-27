@@ -448,6 +448,16 @@ function validateAmazonPatch(patch: DeepPartial<BoosterSettings>): string[] {
       "The default warehouse must be a two-letter ISO country code, or empty.",
     );
   }
+  // v6.5 placement enums — fail loud on anything the sanitizer would
+  // silently coerce (a UI bug must surface, not save a surprise default).
+  for (const field of ["fbtPlacement", "similarPlacement"] as const) {
+    const value = amazon[field];
+    if (value !== undefined && value !== "tabs_below" && value !== "buybox") {
+      errors.push(
+        `The ${field === "fbtPlacement" ? "Frequently-bought-together" : "similar-items"} placement must be “tabs_below” or “buybox”.`,
+      );
+    }
+  }
   if (
     amazon.shipsFromDefault !== undefined &&
     typeof amazon.shipsFromDefault !== "string"
@@ -634,6 +644,19 @@ interface WarehouseRowState {
   warehouse: string;
 }
 
+/** PDP placement for the FBT / similar-items sections (v6.5, client-safe
+ *  mirror of AMAZON_PLACEMENTS — the server sanitizes on save). */
+type AzPlacementValue = "tabs_below" | "buybox";
+
+const PLACEMENT_OPTIONS: { label: string; value: AzPlacementValue }[] = [
+  { label: "Below the info tabs (recommended)", value: "tabs_below" },
+  { label: "Under the buy box", value: "buybox" },
+];
+
+function toPlacement(value: unknown): AzPlacementValue {
+  return value === "buybox" ? "buybox" : "tabs_below";
+}
+
 interface AmazonFormState {
   flags: Record<AzKey, boolean>;
   warehouseRows: WarehouseRowState[];
@@ -645,6 +668,13 @@ interface AmazonFormState {
    *  site-wide (collections/home/search + the app's own recommendation
    *  rows). */
   bestsellerOnCards: boolean;
+  /** az_bought_count sub-flag (v6.6): also render the bought-in-past-month
+   *  line under a product's title/price on its cards site-wide (same
+   *  45-day freshness rule as the PDP line). */
+  boughtOnCards: boolean;
+  /** v6.5 per-widget PDP placement (az_fbt / az_similar_items cards). */
+  fbtPlacement: AzPlacementValue;
+  similarPlacement: AzPlacementValue;
   scopes: Record<AzKey, ScopeState>;
 }
 
@@ -668,6 +698,9 @@ interface LoaderShape {
     defaultWarehouse: string;
     shipsFromDefault: string;
     bestsellerOnCards: boolean;
+    boughtOnCards: boolean;
+    fbtPlacement: string;
+    similarPlacement: string;
   } & Record<AzFlagField, boolean>;
   scopes: Record<AzKey, { mode: "all" | "selected"; markets: string[] }>;
 }
@@ -683,6 +716,9 @@ function initialFormState(data: LoaderShape): AmazonFormState {
     defaultWarehouse: data.amazon.defaultWarehouse,
     shipsFromDefault: data.amazon.shipsFromDefault ?? "",
     bestsellerOnCards: data.amazon.bestsellerOnCards !== false,
+    boughtOnCards: data.amazon.boughtOnCards !== false,
+    fbtPlacement: toPlacement(data.amazon.fbtPlacement),
+    similarPlacement: toPlacement(data.amazon.similarPlacement),
     scopes: Object.fromEntries(
       AZ_KEYS.map((key) => [key, toScopeState(data.scopes[key])]),
     ) as Record<AzKey, ScopeState>,
@@ -700,6 +736,9 @@ function serializeForCompare(state: AmazonFormState): string {
     defaultWarehouse: state.defaultWarehouse,
     shipsFromDefault: state.shipsFromDefault.trim(),
     bestsellerOnCards: state.bestsellerOnCards,
+    boughtOnCards: state.boughtOnCards,
+    fbtPlacement: state.fbtPlacement,
+    similarPlacement: state.similarPlacement,
     scopes: Object.fromEntries(
       AZ_KEYS.map((key) => [key, toScopePatch(state.scopes[key])]),
     ),
@@ -851,6 +890,9 @@ export default function AmazonFeaturesPage() {
         defaultWarehouse: state.defaultWarehouse,
         shipsFromDefault: state.shipsFromDefault.trim(),
         bestsellerOnCards: state.bestsellerOnCards,
+        boughtOnCards: state.boughtOnCards,
+        fbtPlacement: state.fbtPlacement,
+        similarPlacement: state.similarPlacement,
       },
       marketScopes: Object.fromEntries(
         AZ_KEYS.map((key) => [key, toScopePatch(state.scopes[key])]),
@@ -1143,6 +1185,55 @@ export default function AmazonFeaturesPage() {
                     </Text>
                   ) : null}
 
+                  {feature.key === "az_fbt" ||
+                  feature.key === "az_similar_items" ? (
+                    <BlockStack gap="300">
+                      <Divider />
+                      <Box width="360px">
+                        <Select
+                          label="Placement"
+                          options={PLACEMENT_OPTIONS}
+                          value={
+                            feature.key === "az_fbt"
+                              ? state.fbtPlacement
+                              : state.similarPlacement
+                          }
+                          onChange={(value) =>
+                            setState((previous) =>
+                              feature.key === "az_fbt"
+                                ? {
+                                    ...previous,
+                                    fbtPlacement: toPlacement(value),
+                                  }
+                                : {
+                                    ...previous,
+                                    similarPlacement: toPlacement(value),
+                                  },
+                            )
+                          }
+                          helpText="“Below the info tabs” renders the section after the theme's overview/science/FAQ tabs box and above the “Create your ritual” section (recommended). “Under the buy box” is the classic spot right below the purchase area. Each section is placed independently; if a theme update removes the tabs section, the buy-box spot is used automatically. This is a live setting — storefront previews render at the saved placement."
+                        />
+                      </Box>
+                    </BlockStack>
+                  ) : null}
+
+                  {feature.key === "az_bought_count" ? (
+                    <BlockStack gap="300">
+                      <Divider />
+                      <Checkbox
+                        label="Also show the count on product cards site-wide"
+                        checked={state.boughtOnCards}
+                        onChange={(boughtOnCards) =>
+                          setState((previous) => ({
+                            ...previous,
+                            boughtOnCards,
+                          }))
+                        }
+                        helpText="Adds a small “{n}+ bought in past month” line under a product's title and price on its cards everywhere it is referenced — collection pages, the home page and search results. Uses the same per-product monthly counts below (compact notation in the page language); counts older than 45 days stay hidden automatically."
+                      />
+                    </BlockStack>
+                  ) : null}
+
                   {feature.key === "az_bestseller_badge" ? (
                     <BlockStack gap="300">
                       <Divider />
@@ -1155,7 +1246,7 @@ export default function AmazonFeaturesPage() {
                             bestsellerOnCards,
                           }))
                         }
-                        helpText="Adds a compact corner flag to a flagged product's cards everywhere it is referenced — collection pages, the home page, search results and this app's own recommendation rows. Uses the same per-product rank and category below (category shown in the page language); products without badge data never show a flag."
+                        helpText="Adds a compact corner flag to a flagged product's cards everywhere it is referenced — collection pages, the home page, search results and this app's own recommendation rows. Uses the same per-product rank and category below (category shown in the page language); products without badge data never show a flag. Note: while the flag shows on a card, the theme's own tag pill on that card (e.g. a manually-set “#1 Bestseller” or “Instant Results”) is hidden so badges never stack — it returns as soon as this is turned off."
                       />
                     </BlockStack>
                   ) : null}

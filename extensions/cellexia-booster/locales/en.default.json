@@ -171,7 +171,10 @@
     "ships_from": "Ships from {{ country }}",
     "secure": "Secure transaction",
     "free_returns": "FREE returns",
-    "bought_count": "{{ n }}+ bought in past month",
+    "bought_count": {
+      "one": "{{ n }}+ bought in past month",
+      "other": "{{ n }}+ bought in past month"
+    },
     "bestseller": "#{{ rank }} Bestseller",
     "fbt_title": "Frequently bought together",
     "fbt_this_item": "This item:",

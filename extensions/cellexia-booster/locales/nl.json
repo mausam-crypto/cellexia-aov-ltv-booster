@@ -171,7 +171,10 @@
     "ships_from": "Verzonden vanuit: {{ country }}",
     "secure": "Veilige transactie",
     "free_returns": "GRATIS retourneren",
-    "bought_count": "{{ n }}+ keer gekocht in de afgelopen maand",
+    "bought_count": {
+      "one": "{{ n }}+ keer gekocht in de afgelopen maand",
+      "other": "{{ n }}+ keer gekocht in de afgelopen maand"
+    },
     "bestseller": "Nr. {{ rank }} bestseller",
     "fbt_title": "Vaak samen gekocht",
     "fbt_this_item": "Dit artikel:",

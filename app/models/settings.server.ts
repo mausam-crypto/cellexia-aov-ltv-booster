@@ -132,6 +132,19 @@ export const AMAZON_FLAG_FIELDS = [
 ] as const;
 export type AmazonFlagField = (typeof AMAZON_FLAG_FIELDS)[number];
 
+/**
+ * PDP placement choices for the az_fbt / az_similar_items sections (v6.5).
+ * "tabs_below" = directly BELOW the theme's big info-tabs box (the Sleepify
+ * `.pdp__tabs` section: overview / science / benefits / compare / FAQs /
+ * guarantee) and ABOVE the "Create your ritual" theme section — the
+ * merchant-requested spot and the DEFAULT. "buybox" = the classic v6.1
+ * position under the buy area (above the proof stack). The storefront JS
+ * falls back to "buybox" when the tabs anchor is missing, so a theme
+ * update can never make the section vanish because of placement.
+ */
+export const AMAZON_PLACEMENTS = ["tabs_below", "buybox"] as const;
+export type AmazonPlacement = (typeof AMAZON_PLACEMENTS)[number];
+
 /** The five merchant-selectable derm-survey display formats (v5.8). */
 export const DERM_SURVEY_FORMATS = [
   "seal",
@@ -454,6 +467,16 @@ export interface BoosterSettings {
     stockLine: boolean;
     /** az_bought_count — "{n}+ bought in past month" (per-product merchant data). */
     boughtCount: boolean;
+    /**
+     * az_bought_count sub-flag (v6.6): also render the bought-in-past-month
+     * line on THEME product cards site-wide (collections/home/search, via
+     * the cart embed's decorator) under each card's title/price info.
+     * Gated by the same az_bought_count feature + market scope, and every
+     * count keeps the 45-day freshness rule (the proxy applies the exact
+     * PDP epoch math server-side; stale counts never reach a card).
+     * Default ON so enabling the bought count covers cards at once.
+     */
+    boughtOnCards: boolean;
     /** az_bestseller_badge — "#{rank} Bestseller · {category}" pill (per-product merchant data). */
     bestsellerBadge: boolean;
     /**
@@ -469,6 +492,16 @@ export interface BoosterSettings {
     fbt: boolean;
     /** az_similar_items — horizontal related-items card row under FBT. */
     similarItems: boolean;
+    /**
+     * Where the FBT section renders on the PDP (v6.5, merchant-set):
+     * "tabs_below" (default — below the theme's info-tabs box, above the
+     * "Create your ritual" section) or "buybox" (classic v6.1 spot under
+     * the buy area). Live setting — previews render at the saved value.
+     */
+    fbtPlacement: AmazonPlacement;
+    /** Where the similar-items row renders (same enum + default as
+     *  fbtPlacement; the two widgets are placed independently). */
+    similarPlacement: AmazonPlacement;
     /** az_cart_free_line — declarative free-shipping sentence atop the cart booster. */
     cartFreeLine: boolean;
     /** az_cta_count — "Proceed to checkout (N items)" decoration of the theme's button. */
@@ -659,10 +692,13 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     deliveryLine: false,
     stockLine: false,
     boughtCount: false,
+    boughtOnCards: true,
     bestsellerBadge: false,
     bestsellerOnCards: true,
     fbt: false,
     similarItems: false,
+    fbtPlacement: "tabs_below",
+    similarPlacement: "tabs_below",
     cartFreeLine: false,
     ctaCount: false,
     shipsFromByCountry: {},
@@ -1223,6 +1259,21 @@ export function sanitizeSettings(
     // feature master still gates every card flag).
     if (typeof az.bestsellerOnCards !== "boolean") {
       az.bestsellerOnCards = DEFAULT_SETTINGS.amazon.bestsellerOnCards;
+    }
+    // boughtOnCards is the same kind of SUB-flag for az_bought_count
+    // (v6.6, not a FeatureKey — stays out of AMAZON_FLAG_FIELDS/flip
+    // snapshots): anything non-boolean falls back to the default (ON —
+    // the bought-count feature master still gates every card line).
+    if (typeof az.boughtOnCards !== "boolean") {
+      az.boughtOnCards = DEFAULT_SETTINGS.amazon.boughtOnCards;
+    }
+    // v6.5 per-widget PDP placement enums — anything outside
+    // AMAZON_PLACEMENTS falls back to the default ("tabs_below", the
+    // merchant-requested spot). Sanitized independently per widget.
+    for (const field of ["fbtPlacement", "similarPlacement"] as const) {
+      if (!AMAZON_PLACEMENTS.includes(az[field] as AmazonPlacement)) {
+        az[field] = DEFAULT_SETTINGS.amazon[field];
+      }
     }
     // shipsFromByCountry is a DYNAMIC_RECORD_KEYS record (replaced wholesale
     // by the merge) — keep only ISO2 -> ISO2 entries, uppercased.

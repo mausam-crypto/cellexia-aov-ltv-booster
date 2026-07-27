@@ -171,7 +171,10 @@
     "ships_from": "Lähetysmaa: {{ country }}",
     "secure": "Turvallinen maksutapahtuma",
     "free_returns": "ILMAISET palautukset",
-    "bought_count": "{{ n }}+ ostettu viime kuun aikana",
+    "bought_count": {
+      "one": "{{ n }}+ ostettu viime kuun aikana",
+      "other": "{{ n }}+ ostettu viime kuun aikana"
+    },
     "bestseller": "Myydyin nro {{ rank }}",
     "fbt_title": "Ostetaan usein yhdessä",
     "fbt_this_item": "Tämä tuote:",

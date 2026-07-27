@@ -2770,6 +2770,27 @@ body.customer--b2b .cx-sub-remove {
   white-space: nowrap;
 }
 
+/* v6.6 replacement rule: the theme's own card pill (.product__tag, or a
+   populated .badges overlay) is hidden while OUR flag owns the corner.
+   The class is added by the decorator ONLY in the same pass that
+   inserted our flag — a fresh render with the gates off never carries
+   it, so the theme pill returns untouched. */
+.cx-az-tagswap {
+  display: none !important;
+}
+
+/* v6.6 bought-count card line: quiet block line under the card's
+   title/price info (graceful fallback: right after the image box).
+   Normal flow — no absolute positioning — so the grid never shifts;
+   same 12px anatomy as the PDP .cx-az-bought, secondary gray. */
+.cx-az-cardbought {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  color: #565959;
+  margin-block: 4px 0;
+}
+
 /* overlay host for the app's own similar cards (theme card containers
    get position:relative from the decorator itself, and only when the
    computed position is static). */

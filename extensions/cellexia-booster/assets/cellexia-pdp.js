@@ -2193,13 +2193,58 @@
 
   // ------------------------------------------- az_fbt + az_similar_items
 
-  function azSectionsContainer() {
-    var existing = document.querySelector('.cx-az-sections');
-    if (existing) return existing;
+  function azPlacement(key) {
+    // v6.5 merchant-set placement per widget ('fbt' / 'sim'), carried as
+    // single-letter codes in the Liquid config ("place":{"fbt":"t",...}):
+    // 't' = tabs_below (directly below the theme's info-tabs box — the
+    // default), 'b' = buybox (the classic v6.1 spot under the buy area).
+    // Missing/unknown codes (old metafield mirrors) = the default.
+    var c = azReadConfig();
+    var place = c && c.place;
+    return place && place[key] === 'b' ? 'buybox' : 'tabs_below';
+  }
+
+  function azFindSections(place) {
+    // Attribute compared in JS (not an attribute-value selector) so a
+    // shared location container is found across re-mounts.
+    var all = document.querySelectorAll('.cx-az-sections');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].getAttribute('data-cx-az-place') === place) return all[i];
+    }
+    return null;
+  }
+
+  function azNewSections(place) {
+    // Same container classes as the proof stack so the wrap tracks the
+    // PDP column (responsive max-widths + padding) at every breakpoint.
     var wrap = document.createElement('div');
-    // Same container classes + anchor chain as the proof stack, placed
-    // ABOVE it (FBT reads as part of the buy decision, proof below).
     wrap.className = 'cx-az-sections container container--md';
+    wrap.setAttribute('data-cx-az-place', place);
+    return wrap;
+  }
+
+  function azSectionsContainer(placement) {
+    // ONE container per resolved location; FBT and similar share it when
+    // their placements agree (azFbtFinish keeps FBT first inside it).
+    // "tabs_below": directly AFTER the theme's .pdp__tabs section (above
+    // the "Create your ritual" section). FALLBACK: no tabs anchor (or a
+    // failed insert) degrades to the buy-box placement — a placement
+    // setting must never cost the merchant the whole section.
+    if (placement === 'tabs_below') {
+      var tabs = document.querySelector('.pdp__tabs');
+      if (tabs && tabs.parentNode) {
+        var found = azFindSections('tabs_below');
+        if (found) return found;
+        var below = azNewSections('tabs_below');
+        if (insertAfter(below, tabs)) return below;
+      }
+    }
+    // "buybox" — the classic v6.1 anchor chain: ABOVE the proof stack
+    // (FBT reads as part of the buy decision, proof below), else before
+    // the tabs, else after the PDP hero section.
+    var existing = azFindSections('buybox');
+    if (existing) return existing;
+    var wrap = azNewSections('buybox');
     var stack = document.querySelector('.cx-proof-stack');
     if (stack && stack.parentNode) {
       try {
@@ -2207,10 +2252,10 @@
         return wrap;
       } catch (e) { /* fall through */ }
     }
-    var tabs = document.querySelector('.pdp__tabs');
-    if (tabs && tabs.parentNode) {
+    var tabs2 = document.querySelector('.pdp__tabs');
+    if (tabs2 && tabs2.parentNode) {
       try {
-        tabs.parentNode.insertBefore(wrap, tabs);
+        tabs2.parentNode.insertBefore(wrap, tabs2);
         return wrap;
       } catch (e) { /* fall through */ }
     }
@@ -2404,10 +2449,11 @@
         btn.addEventListener('click', function () { azFbtAdd(node); });
       }
       azFbtUpdate(node);
-      var host = azSectionsContainer();
+      var host = azSectionsContainer(azPlacement('fbt'));
       if (!host) return;
-      // FBT always precedes the similar-items row, whichever resolved
-      // first (similar is async too).
+      // FBT always precedes the similar-items row WITHIN a shared
+      // container, whichever resolved first (similar is async too);
+      // per-widget placements may put them in different containers.
       var similar = host.querySelector('.cx-az-similar');
       if (similar) host.insertBefore(node, similar);
       else host.appendChild(node);
@@ -2686,7 +2732,7 @@
             li.appendChild(a);
             list.appendChild(li);
           }
-          var host = azSectionsContainer();
+          var host = azSectionsContainer(azPlacement('sim'));
           if (!host) return;
           host.appendChild(node);
           track('az_similar_items');

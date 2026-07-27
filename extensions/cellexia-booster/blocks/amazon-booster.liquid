@@ -237,6 +237,7 @@ endif
 "pageLocale": {{ request.locale.iso_code | json }},
 "currency": {{ cart.currency.iso_code | json }},
 "country": {{ cx_country | json }},
+"place":{"fbt":{{ cfg.amazon.fbtPlacement | slice: 0 | json }},"sim":{{ cfg.amazon.similarPlacement | slice: 0 | json }}},
 {%- if az_need_product %}
 "product": {"id": {{ product.id | json }}, "handle": {{ product.handle | json }}, "url": {{ product.url | json }}, "selectedVariant": {{ product.selected_or_first_available_variant.id | append: '' | json }}, "variants": {
 {%- for az_v in product.variants -%}

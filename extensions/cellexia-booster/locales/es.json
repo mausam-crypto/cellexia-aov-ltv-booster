@@ -171,7 +171,11 @@
     "ships_from": "Enviado desde: {{ country }}",
     "secure": "Transacción segura",
     "free_returns": "Devoluciones GRATIS",
-    "bought_count": "{{ n }}+ comprados el mes pasado",
+    "bought_count": {
+      "one": "{{ n }}+ comprado el mes pasado",
+      "many": "{{ n }}+ comprados el mes pasado",
+      "other": "{{ n }}+ comprados el mes pasado"
+    },
     "bestseller": "N.º {{ rank }} más vendido",
     "fbt_title": "Comprados juntos habitualmente",
     "fbt_this_item": "Este producto:",

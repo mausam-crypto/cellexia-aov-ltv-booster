@@ -171,7 +171,11 @@
     "ships_from": "Spedito da: {{ country }}",
     "secure": "Transazione sicura",
     "free_returns": "Resi GRATUITI",
-    "bought_count": "{{ n }}+ acquistati nel mese scorso",
+    "bought_count": {
+      "one": "{{ n }}+ acquistato nel mese scorso",
+      "many": "{{ n }}+ acquistati nel mese scorso",
+      "other": "{{ n }}+ acquistati nel mese scorso"
+    },
     "bestseller": "N. {{ rank }} più venduto",
     "fbt_title": "Spesso comprati insieme",
     "fbt_this_item": "Questo articolo:",
