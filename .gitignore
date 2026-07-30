@@ -8,3 +8,6 @@ prisma/dev.sqlite
 prisma/dev.sqlite-journal
 *.local
 .DS_Store
+scripts/proofs/.generated
+validation/.generated
+validation/lib/.gen

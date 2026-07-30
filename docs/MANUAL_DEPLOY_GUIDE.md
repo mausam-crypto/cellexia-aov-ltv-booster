@@ -1,9 +1,10 @@
 # Manual deploy guide — Cellexia AOV & LTV Booster
 
-For when a new update ZIP arrives and no one is available to run it through
-Claude. Follow this in order. Every step here reflects a mistake this app's
-own update exports have actually made at least once — skipping a check
-doesn't mean it won't bite you, it means no one will catch it before it ships.
+For when a new update ZIP arrives and no automated assistant is available to
+run it through. Follow this in order. Every step here reflects a mistake
+this app's own update exports have actually made at least once — skipping a
+check doesn't mean it won't bite you, it means no one will catch it before
+it ships.
 
 ## 0. Where everything lives
 

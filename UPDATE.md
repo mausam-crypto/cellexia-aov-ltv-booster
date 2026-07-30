@@ -127,7 +127,41 @@ the entire PDP proof stack). A build-time tripwire now fails any future
 change that pushes total Liquid over 95,000 bytes, so this cannot reach
 deployment again. Nothing to do on your side beyond the normal deploy.
 
+## 4c. v6.7 — Liquid head-room build-out (no behavior change)
+
+All remaining widget markup moved from Liquid templates to the JS assets:
+the extension now contains ZERO <template> tags and totals 83,596 bytes of
+Liquid — 18.8KB under Shopify's 102,400 cap. Every migration is
+machine-proven byte-equivalent to the previous release (27 registered
+proofs); rendered output, preview behavior, translations and toggles are
+identical. Nothing to do on your side beyond the normal extensions deploy.
+
+## 4d. NEW: run the validation suite before every deploy
+
+The repo now ships its full validation suite at `validation/` (16 suites,
+~3,600 checks: equivalence prover vs a committed baseline, structural
+tripwires incl. the Shopify Liquid-budget guard, and engine/feature
+simulations that execute the real shipped code — all offline, ~3s):
+
+```bash
+npm run validate
+```
+
+Run it after `npm ci` and before deploying; a red scoreboard means stop.
+
 ## 5. What's in this update (context for the diff you'll see)
+
+v6.8 — the "In Stock + Ships from" booster is now TWO independently
+toggleable, independently market-targetable features (In-stock line /
+Ships-from line, each still replacing the theme's stock message while on):
+stores that had the combined feature enabled show ONLY the green "In Stock"
+line after this update until the new Ships-from feature is switched on in
+Features → Amazon patterns. The v6.8 machine proofs (settings derivation +
+31-key flip, az split case matrix vs the real PDP module) are now committed
+in the repo at scripts/proofs/ and run with `npm run proofs`; the analytics
+event allowlist also now accepts the nine beaconing az_* features, so
+Amazon-pattern impressions (dropped server-side since v6.1) start counting
+in Analytics from this release.
 
 The Delivery guarantee now covers ALL THREE surfaces under the one feature:
 product page, cart drawer (renders right under the dispatch countdown) and

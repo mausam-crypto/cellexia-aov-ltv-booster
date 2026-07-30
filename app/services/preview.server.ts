@@ -678,19 +678,33 @@ export function featureReadiness(
       "Replaces the standard delivery widget AND the PDP dispatch countdown line while on. Uses the same dispatch schedule and per-country delivery config as those features and stands alone: the Amazon embed ships that config itself, so this line renders even when the delivery estimate or dispatch countdown is switched off, hidden on product pages, or scoped to other markets. It still fails closed when the delivery settings are incomplete or the buyer's country is hidden for the delivery estimate. The free-shipping threshold clause follows the per-market thresholds." +
       embedNote,
   };
+  readiness.az_stock_line = {
+    ready: true,
+    reason:
+      "Replaces the theme's stock line while on. Honest by construction: “In Stock” renders only when the theme's real inventory data says available; low-stock states pass through untouched. The “Ships from {country}” row is its own feature (v6.8 split) with its own toggle and market targeting." +
+      embedNote,
+  };
   {
+    // v6.8: az_ships_from fails closed without a resolvable warehouse —
+    // no mapping AND no default warehouse means the line can never
+    // render, so the preview would show nothing (not-ready, honest).
     const mapped = Object.keys(settings.amazon.shipsFromByCountry ?? {}).length;
-    const shipsFrom = settings.amazon.defaultWarehouse
-      ? `“Ships from” uses ${mapped} country mapping${mapped === 1 ? "" : "s"} with a default warehouse fallback.`
-      : mapped > 0
-        ? `“Ships from” renders only for the ${mapped} mapped buyer countr${mapped === 1 ? "y" : "ies"} (no default warehouse set).`
-        : "No warehouse map configured yet — buyers see the green “In Stock” line only (“Ships from” stays hidden).";
-    readiness.az_stock_line = {
-      ready: true,
-      reason:
-        `Honest by construction: “In Stock” renders only when the theme's real inventory data says available; low-stock states pass through untouched. ${shipsFrom}` +
-        embedNote,
-    };
+    readiness.az_ships_from =
+      mapped === 0 && !settings.amazon.defaultWarehouse
+        ? {
+            ready: false,
+            reason:
+              "No warehouse mapping and no default warehouse configured — the “Ships from” line renders nothing (fail closed). Add at least one country mapping or a default warehouse on the Amazon patterns page.",
+          }
+        : {
+            ready: true,
+            reason:
+              `Replaces the theme's stock line while on (next to the “In Stock” line when that feature is also on). ${
+                settings.amazon.defaultWarehouse
+                  ? `Uses ${mapped} country mapping${mapped === 1 ? "" : "s"} with a default warehouse fallback.`
+                  : `Renders only for the ${mapped} mapped buyer countr${mapped === 1 ? "y" : "ies"} (no default warehouse set).`
+              }` + embedNote,
+          };
   }
   readiness.az_bought_count = {
     ready: true,

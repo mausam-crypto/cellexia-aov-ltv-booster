@@ -120,6 +120,7 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
       "az_microcopy",
       "az_delivery_line",
       "az_stock_line",
+      "az_ships_from",
       "az_bought_count",
       "az_bestseller_badge",
       "az_fbt",

@@ -72,6 +72,7 @@ export type FeatureKey =
   | "az_microcopy"
   | "az_delivery_line"
   | "az_stock_line"
+  | "az_ships_from"
   | "az_bought_count"
   | "az_bestseller_badge"
   | "az_fbt"
@@ -104,6 +105,7 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "az_microcopy",
   "az_delivery_line",
   "az_stock_line",
+  "az_ships_from",
   "az_bought_count",
   "az_bestseller_badge",
   "az_fbt",
@@ -113,16 +115,18 @@ export const FEATURE_KEYS: FeatureKey[] = [
 ];
 
 /**
- * The ten Amazon-pattern feature flags (v6.1), stored as sibling booleans in
- * the single `amazon` settings section — no shared master switch (each key
- * toggles independently, unlike the cart sub-features). The array order
- * mirrors FEATURE_KEYS' az_* order.
+ * The eleven Amazon-pattern feature flags (v6.1; +shipsFrom in v6.8, split
+ * out of stockLine), stored as sibling booleans in the single `amazon`
+ * settings section — no shared master switch (each key toggles
+ * independently, unlike the cart sub-features). The array order mirrors
+ * FEATURE_KEYS' az_* order.
  */
 export const AMAZON_FLAG_FIELDS = [
   "buyBox",
   "microcopy",
   "deliveryLine",
   "stockLine",
+  "shipsFrom",
   "boughtCount",
   "bestsellerBadge",
   "fbt",
@@ -449,7 +453,8 @@ export interface BoosterSettings {
     byCountry: Record<string, DeliveryCountryOverride>;
   };
   /**
-   * Amazon-pattern features (v6.1) — ten independent flags plus the
+   * Amazon-pattern features (v6.1; eleven flags since the v6.8
+   * stock/ships-from split) — independent flags plus the
    * language-neutral "Ships from" warehouse config. We model Amazon's
    * PATTERNS (layout, ordering, color conventions, microcopy structure),
    * never their brand: the storefront templates must not render the words
@@ -463,8 +468,18 @@ export interface BoosterSettings {
     microcopy: boolean;
     /** az_delivery_line — "FREE delivery {date} on orders over {threshold}" + countdown clause. */
     deliveryLine: boolean;
-    /** az_stock_line — green "In Stock" + "Ships from {country}" (replaces the theme's .stock-msg while on). */
+    /** az_stock_line — the green "In Stock" line ONLY (v6.8 split; replaces
+     *  the theme's .stock-msg while effective in the buyer's market). */
     stockLine: boolean;
+    /**
+     * az_ships_from (v6.8, split out of az_stock_line) — the adjacent
+     * "Ships from {country}" line, rendered from the warehouse map below
+     * via Intl.DisplayNames. Independently toggleable + market-scoped:
+     * either line ALONE replaces the theme's .stock-msg while effective;
+     * when both are effective both lines render (the pre-split look).
+     * Fails closed when no warehouse resolves for the buyer.
+     */
+    shipsFrom: boolean;
     /** az_bought_count — "{n}+ bought in past month" (per-product merchant data). */
     boughtCount: boolean;
     /**
@@ -508,8 +523,10 @@ export interface BoosterSettings {
     ctaCount: boolean;
     /**
      * Buyer country ISO2 -> warehouse country ISO2 for the "Ships from" row
-     * (e.g. CH -> CH, NL -> NL). The warehouse country NAME renders in the
-     * page language via Intl.DisplayNames — no locale strings needed.
+     * (e.g. CH -> CH, NL -> NL) — feeds the az_ships_from line AND the
+     * az_microcopy "Ships from" row (shared on purpose). The warehouse
+     * country NAME renders in the page language via Intl.DisplayNames — no
+     * locale strings needed.
      * Dynamic record: replaced wholesale on save (see DYNAMIC_RECORD_KEYS).
      */
     shipsFromByCountry: Record<string, string>;
@@ -691,6 +708,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     microcopy: false,
     deliveryLine: false,
     stockLine: false,
+    shipsFrom: false,
     boughtCount: false,
     boughtOnCards: true,
     bestsellerBadge: false,
@@ -1540,10 +1558,18 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     siblings: [],
   },
   az_stock_line: {
-    label: "In-stock + ships-from line",
+    label: "In-stock line",
     get: (s) => s.amazon.stockLine,
     set: (s, on) => {
       s.amazon.stockLine = on;
+    },
+    siblings: [],
+  },
+  az_ships_from: {
+    label: "Ships from",
+    get: (s) => s.amazon.shipsFrom,
+    set: (s, on) => {
+      s.amazon.shipsFrom = on;
     },
     siblings: [],
   },
@@ -1689,6 +1715,7 @@ export const FEATURE_RAW_FIELD: Record<
   az_microcopy: { kind: "amazon", field: "microcopy" },
   az_delivery_line: { kind: "amazon", field: "deliveryLine" },
   az_stock_line: { kind: "amazon", field: "stockLine" },
+  az_ships_from: { kind: "amazon", field: "shipsFrom" },
   az_bought_count: { kind: "amazon", field: "boughtCount" },
   az_bestseller_badge: { kind: "amazon", field: "bestsellerBadge" },
   az_fbt: { kind: "amazon", field: "fbt" },
@@ -1711,8 +1738,9 @@ export interface FlagsSnapshot {
   cartMaster: boolean;
   cartSubFlags: Record<CartSubFlagField, boolean>;
   sectionEnabled: Record<StandaloneSectionField, boolean>;
-  /** The ten amazon.* flags (v6.1). Optional: snapshots persisted by older
-   *  app versions predate the section — restores skip what is absent. */
+  /** The amazon.* feature flags (v6.1; +shipsFrom v6.8). Optional: snapshots
+   *  persisted by older app versions predate the section — restores skip
+   *  what is absent (a pre-v6.8 snapshot simply never touches shipsFrom). */
   amazonFlags?: Record<AmazonFlagField, boolean>;
   marketScopes: Record<FeatureKey, MarketScope>;
 }

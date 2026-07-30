@@ -7,7 +7,9 @@
   "exclude": [
     "extensions",
     "build",
-    "node_modules"
+    "node_modules",
+    "scripts/proofs",
+    "validation"
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],

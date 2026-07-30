@@ -55,12 +55,13 @@ import {
 import type { loader as variantsLoader } from "./app.api.variants";
 
 /**
- * Amazon patterns hub (v6.1) — one page for all ten az_* features:
+ * Amazon patterns hub (v6.1) — one page for all eleven az_* features:
  *
  *   - per-feature cards (toggle + a short "how the pattern works" note +
  *     what the feature REPLACES while effective + a Preview deep link),
- *   - the az_stock_line warehouse map (buyer ISO2 -> warehouse ISO2 +
- *     default warehouse),
+ *   - the az_ships_from warehouse map (buyer ISO2 -> warehouse ISO2 +
+ *     default warehouse; v6.8 — the map moved with the split-out
+ *     Ships-from feature),
  *   - the "Amazon data" bulk table: per-product bought count (set date is
  *     auto-stamped server-side on save; >45-day-old counts are flagged
  *     stale and hidden by the storefront), bestseller rank/category and the
@@ -93,13 +94,14 @@ const ISO2_PATTERN = /^[A-Z]{2}$/;
 const STALE_DAYS = 45;
 const MAX_FBT_ITEMS = 3;
 
-/** The ten Amazon-pattern feature keys in canonical order (client-safe
+/** The eleven Amazon-pattern feature keys in canonical order (client-safe
  *  literal — the component must not import the server-only settings model). */
 const AZ_KEYS = [
   "az_buy_box",
   "az_microcopy",
   "az_delivery_line",
   "az_stock_line",
+  "az_ships_from",
   "az_bought_count",
   "az_bestseller_badge",
   "az_fbt",
@@ -116,6 +118,7 @@ const AZ_FLAG_FIELD: Record<AzKey, AzFlagField> = {
   az_microcopy: "microcopy",
   az_delivery_line: "deliveryLine",
   az_stock_line: "stockLine",
+  az_ships_from: "shipsFrom",
   az_bought_count: "boughtCount",
   az_bestseller_badge: "bestsellerBadge",
   az_fbt: "fbt",
@@ -128,6 +131,7 @@ type AzFlagField =
   | "microcopy"
   | "deliveryLine"
   | "stockLine"
+  | "shipsFrom"
   | "boughtCount"
   | "bestsellerBadge"
   | "fbt"
@@ -171,11 +175,19 @@ const AZ_FEATURE_COPY: AzFeatureCardCopy[] = [
   },
   {
     key: "az_stock_line",
-    title: "In-stock + ships-from line",
+    title: "In-stock line",
     toggleLabel: "Enable the in-stock line",
-    how: "The pattern: a green “In Stock” line above the quantity control, plus a small separate “Ships from {country}” row when the buyer's country maps to a local warehouse. Honest by construction: it renders only when the theme's real inventory data says available; low-stock states pass through untouched.",
+    how: "The pattern: a green “In Stock” line above the quantity control. Honest by construction: it renders only when the theme's real inventory data says available; low-stock states pass through untouched. The “Ships from {country}” row is its own feature below — turn both on for the combined marketplace look.",
     replaces:
-      "Hides the theme's own stock message and inserts this line while on; the original is restored the moment the feature is off.",
+      "Replaces the theme's stock line while on — the theme message is hidden and this line renders in its place (alongside the Ships-from line when that feature is also on); the original is restored the moment the feature is off.",
+  },
+  {
+    key: "az_ships_from",
+    title: "Ships-from line",
+    toggleLabel: "Enable the ships-from line",
+    how: "The pattern: a small “Ships from {country}” row next to the In-Stock line (or standalone when that feature is off), from the warehouse map below — the country name is translated automatically into the page language. No warehouse mapping and no default warehouse = no line (fail closed). Toggle and market targeting are independent of the In-Stock line, so you can e.g. run both globally but show Ships-from only in selected markets.",
+    replaces:
+      "Replaces the theme's stock line while on — even without the In-Stock line, this row renders in the theme message's place; the original is restored the moment the feature is off.",
   },
   {
     key: "az_bought_count",
@@ -1266,13 +1278,13 @@ export default function AmazonFeaturesPage() {
                           }
                           maxLength={80}
                           autoComplete="off"
-                          helpText="Shown in the microcopy “Ships from …” row when the buyer's country has no warehouse mapping and no default warehouse is set (see the map under the in-stock line feature). Leave empty to hide the row for unmapped buyers. Plain text, rendered as entered in every language."
+                          helpText="Shown in the microcopy “Ships from …” row when the buyer's country has no warehouse mapping and no default warehouse is set (see the map under the Ships-from line feature). Leave empty to hide the row for unmapped buyers. Plain text, rendered as entered in every language. The standalone Ships-from line never uses this label — it needs a real country."
                         />
                       </Box>
                     </BlockStack>
                   ) : null}
 
-                  {feature.key === "az_stock_line" ? (
+                  {feature.key === "az_ships_from" ? (
                     <BlockStack gap="300">
                       <Divider />
                       <Text as="h3" variant="headingSm">
@@ -1280,11 +1292,11 @@ export default function AmazonFeaturesPage() {
                       </Text>
                       <Text as="p" tone="subdued" variant="bodySm">
                         Buyers in a mapped country see “Ships from
-                        {" {country}"}” next to the stock line (the country
-                        name is translated automatically into the page
-                        language). Unmapped buyers fall back to the default
-                        warehouse — or see no “Ships from” row when none is
-                        set. This map also feeds the trust microcopy rows.
+                        {" {country}"}” (the country name is translated
+                        automatically into the page language). Unmapped
+                        buyers fall back to the default warehouse — or see
+                        no “Ships from” line when none is set. This map
+                        also feeds the trust microcopy rows.
                       </Text>
                       {state.warehouseRows.map((row, index) => (
                         <InlineStack

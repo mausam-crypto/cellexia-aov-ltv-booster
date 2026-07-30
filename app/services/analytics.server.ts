@@ -37,6 +37,21 @@ const ALLOWED_FEATURES = new Set([
   // Delivery estimate + guarantee (v5.9) — impression beacons from the PDP
   // widget (all four formats share the key).
   "delivery_estimate",
+  // Amazon-pattern boosters (v6.1, split v6.8) — the nine az_* widgets that
+  // send impression/click beacons from cellexia-pdp.js. These keys were
+  // missing since v6.1, so every az impression was silently dropped here;
+  // added in v6.8 alongside the stock/ships split. az_cart_free_line and
+  // az_cta_count are intentionally absent: they decorate existing theme
+  // elements and send no beacons.
+  "az_buy_box",
+  "az_microcopy",
+  "az_delivery_line",
+  "az_stock_line",
+  "az_ships_from",
+  "az_bought_count",
+  "az_bestseller_badge",
+  "az_fbt",
+  "az_similar_items",
   // Site-wide session beacon (one per browser session) — powers the
   // experiment tracker's conversion-rate denominator.
   "site",

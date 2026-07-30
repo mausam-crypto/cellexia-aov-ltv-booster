@@ -1,0 +1,4 @@
+{
+  "_doc": "Equivalence-prover allowlist. Every entry acknowledges an INTENDED divergence between the current tree and validation/baselines/v68. Entries require file (repo-relative), reason, and wave (e.g. v6.9). The prover fails on any un-allowlisted diff and on any stale entry whose file no longer diverges.",
+  "entries": []
+}

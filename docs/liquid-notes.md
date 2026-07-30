@@ -355,8 +355,9 @@ _Source: `extensions/cellexia-booster/blocks/amazon-booster.liquid`_
 
 ```
 Cellexia Booster — Amazon-pattern PDP app embed (target: body). v6.1.
-Carries the EIGHT Amazon-pattern product-page widgets (az_buy_box,
-az_microcopy, az_delivery_line, az_stock_line, az_bought_count,
+Carries the NINE Amazon-pattern product-page widgets (az_buy_box,
+az_microcopy, az_delivery_line, az_stock_line, az_ships_from — the
+v6.8 split-out "Ships from {country}" line — az_bought_count,
 az_bestseller_badge, az_fbt, az_similar_items) as hidden, fully
 translated <template> fragments plus a config JSON; all behavior lives
 in assets/cellexia-pdp.js (the az module in the same IIFE as the
@@ -403,8 +404,12 @@ sessions see the swap):
   widget AND the PDP dispatch_countdown line while effective;
 - az_microcopy suppresses the app-injected PDP trust-badges strip
   (a theme-editor-placed trust block must be removed manually);
-- az_stock_line hides the theme's own .stock-msg and restores it on
-  unavailability / preview exit;
+- az_stock_line (green "In Stock") and az_ships_from ("Ships from
+  {country}", v6.8 split — own toggle + own market scope) EACH hide
+  the theme's own .stock-msg while effective (either alone, or both
+  for the combined pre-split look) and restore it on unavailability /
+  preview exit; az_ships_from fails closed without a resolvable
+  warehouse;
 - az_cta_count / az_cart_free_line replacements live in the cart
   surface, not here.
 
@@ -413,7 +418,7 @@ paths EQUAL the BoosterSettings paths, the classic cfg.cartUpsell /
 cfg.trustBadges convention; syncSettingsToMetafields serializes the
 settings object as-is):
   cfg.amazon.buyBox, cfg.amazon.microcopy, cfg.amazon.deliveryLine,
-  cfg.amazon.stockLine, cfg.amazon.boughtCount,
+  cfg.amazon.stockLine, cfg.amazon.shipsFrom (v6.8), cfg.amazon.boughtCount,
   cfg.amazon.bestsellerBadge, cfg.amazon.fbt, cfg.amazon.similarItems
   (independent booleans, all default OFF); cfg.amazon.shipsFromByCountry
   Record<buyerISO2, warehouseISO2> + cfg.amazon.defaultWarehouse +
