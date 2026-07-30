@@ -1,4 +1,10 @@
 {
   "_doc": "Equivalence-prover allowlist. Every entry acknowledges an INTENDED divergence between the current tree and validation/baselines/v68. Entries require file (repo-relative), reason, and wave (e.g. v6.9). The prover fails on any un-allowlisted diff and on any stale entry whose file no longer diverges.",
-  "entries": []
+  "entries": [
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+      "reason": "v6.8.1 microcopy fixes: (1) the micro ships-from row now YIELDS when the dedicated az_ships_from line is effective (azShipsAllowed() gate) so the buy box never says Ships-from twice; (2) label resolution unchanged otherwise. Companion CSS guard .cx-az-micro__row[hidden]{display:none!important} fixes the display:flex-defeats-[hidden] bare-truck-icon bug (CSS is outside baseline scope).",
+      "wave": "v6.8.1"
+    }
+  ]
 }

@@ -3051,9 +3051,15 @@
       if (!anchor) return;
       // Ships-from row: warehouse country name in the page language,
       // falling back to the merchant-set default label; no label, no row.
-      var label = azWarehouseName();
-      if (!label && AZ_CFG && AZ_CFG.shipsFrom && typeof AZ_CFG.shipsFrom.defaultLabel === 'string') {
-        label = AZ_CFG.shipsFrom.defaultLabel.replace(/^\s+|\s+$/g, '');
+      // v6.8.1: when the dedicated az_ships_from line is effective it OWNS
+      // "Ships from" — the microcopy row yields so the buy box never says
+      // it twice.
+      var label = '';
+      if (!azShipsAllowed()) {
+        label = azWarehouseName();
+        if (!label && AZ_CFG && AZ_CFG.shipsFrom && typeof AZ_CFG.shipsFrom.defaultLabel === 'string') {
+          label = AZ_CFG.shipsFrom.defaultLabel.replace(/^\s+|\s+$/g, '');
+        }
       }
       if (label) {
         var row = node.querySelector('[data-cx-az-micro-ships]');

@@ -403,6 +403,22 @@ if (failures > 0) {
   console.error(`\n${failures}/${checks} CHECKS FAILED`);
   process.exit(1);
 }
+// ---------------------------------------------------- v6.8.1 micro dedupe
+// The microcopy ships-from row must YIELD to the dedicated az_ships_from
+// line (never two "Ships from" in one buy box), and must stay hidden when
+// no label resolves (the CSS [hidden] guard covers the display:flex trap).
+{
+  const src = SRC;
+  ok(/var label = '';\s*\n\s*if \(!azShipsAllowed\(\)\) \{/.test(src),
+    'v6.8.1: micro ships row gated behind !azShipsAllowed() (dedupe vs the dedicated line)');
+  ok(src.includes("if (row && slot && line) {") &&
+    src.indexOf("row.removeAttribute('hidden')") > src.indexOf("if (row && slot && line) {"),
+    'v6.8.1: micro row still fail-closed (populate+unhide only with a resolved label and line)');
+  const css = fs.readFileSync(path.join(path.dirname(SRC_PATH), 'cellexia-booster.css'), 'utf8');
+  ok(/\.cx-az-micro__row\[hidden\]\s*\{[^}]*display:\s*none\s*!important;/.test(css),
+    'v6.8.1: CSS guard .cx-az-micro__row[hidden] { display: none !important; } present');
+}
+
 console.log(`ALL ${checks} CHECKS PASSED (v6.8 az stock/ships split sim vs the real cellexia-pdp.js module)`);
 
 // ------------------------------------------------------------ mutation tests

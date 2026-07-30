@@ -2385,6 +2385,13 @@ body.customer--b2b .cx-sub-remove {
   margin-block-start: 10px;
 }
 
+/* v6.8.1: the row class's display:flex would defeat the [hidden]
+   attribute (UA display:none loses to author rules) — the ships row
+   relies on [hidden] until its label resolves, so guard it explicitly. */
+.cx-az-micro__row[hidden] {
+  display: none !important;
+}
+
 .cx-az-micro__row {
   display: flex;
   align-items: center;
