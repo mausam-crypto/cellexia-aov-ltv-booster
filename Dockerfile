@@ -16,6 +16,13 @@ RUN npm remove @shopify/cli
 
 COPY . .
 
+# Regenerate the Prisma Client against the production (Postgres) schema at
+# build time too — not just at container boot via docker-start's
+# setup:production. Belt and suspenders: if a host ever serves a cached
+# image/layer without re-running CMD's generate step, the client baked into
+# this image is still current with schema.production.prisma's models.
+RUN npx prisma generate --schema=./prisma/schema.production.prisma
+
 RUN npm run build
 
 CMD ["npm", "run", "docker-start"]
