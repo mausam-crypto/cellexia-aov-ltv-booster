@@ -18,6 +18,7 @@ import {
   DropZone,
   InlineStack,
   Layout,
+  Link,
   Page,
   Select,
   Spinner,
@@ -43,12 +44,14 @@ import {
 import {
   deleteBatchTransparency,
   deleteClinicalStudy,
+  deleteProductSurvey,
   getProductBoosters,
   isPdpContainer,
   saveBatchTransparency,
   saveBeforeAfters,
   saveClinicalStudy,
   savePdpFlags,
+  saveProductSurvey,
   PDP_FLAG_KEYS,
 } from "../services/pdp-content.server";
 import type {
@@ -60,6 +63,8 @@ import type {
   ClinicalStudyView,
   PdpFlagKey,
   PdpFlagsPatch,
+  ProductSurveyInput,
+  ProductSurveyView,
 } from "../services/pdp-content.server";
 import { getVariantsByIds } from "../services/products.server";
 import type { loader as variantsLoader } from "./app.api.variants";
@@ -158,6 +163,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         "empty_bottle_guarantee",
       ),
       derm_survey: resolveFeatureFlag(settings, "derm_survey"),
+      press: resolveFeatureFlag(settings, "press"),
+      derm_endorsements: resolveFeatureFlag(settings, "derm_endorsements"),
     },
     amazonGlobalFlags: {
       az_bought_count: resolveFeatureFlag(settings, "az_bought_count"),
@@ -195,6 +202,8 @@ type ProductBoosterActionResult =
   | { intent: "save_amazon"; ok: boolean; errors: string[] }
   | { intent: "save_clinical"; ok: boolean; errors: string[] }
   | { intent: "delete_clinical"; ok: boolean; errors: string[] }
+  | { intent: "save_survey"; ok: boolean; errors: string[] }
+  | { intent: "delete_survey"; ok: boolean; errors: string[] }
   | { intent: "save_ba"; ok: boolean; errors: string[] }
   | { intent: "save_batch"; ok: boolean; errors: string[] }
   | { intent: "delete_batch"; ok: boolean; errors: string[] }
@@ -532,6 +541,27 @@ export const action = async ({
       const result = await deleteClinicalStudy(admin, productGid);
       return { intent: "delete_clinical", ok: result.ok, errors: result.errors };
     }
+    case "save_survey": {
+      const payload = parseJson(formData.get("payload"));
+      if (!isRecord(payload)) {
+        return {
+          intent: "save_survey",
+          ok: false,
+          errors: ["Invalid form payload"],
+        };
+      }
+      const result = await saveProductSurvey(
+        admin,
+        productGid,
+        payload as unknown as ProductSurveyInput,
+        parseKnownIds(formData.get("knownIds")),
+      );
+      return { intent: "save_survey", ok: result.ok, errors: result.errors };
+    }
+    case "delete_survey": {
+      const result = await deleteProductSurvey(admin, productGid);
+      return { intent: "delete_survey", ok: result.ok, errors: result.errors };
+    }
     case "save_ba": {
       const payload = parseJson(formData.get("payload"));
       if (!Array.isArray(payload)) {
@@ -584,6 +614,7 @@ interface StudyResultState {
 
 interface ClinicalFormState {
   title: string;
+  subject: string;
   concern: string;
   durationWeeks: string;
   sampleSize: string;
@@ -595,6 +626,7 @@ interface ClinicalFormState {
 }
 
 const MAX_RESULTS = 6;
+const MAX_OUTCOMES = 6;
 const MAX_BA_ENTRIES = 20;
 const MAX_INGREDIENTS = 60;
 const MAX_CERTIFICATES = 60;
@@ -680,6 +712,7 @@ function clinicalToState(view: ClinicalStudyView | null): ClinicalFormState {
   if (!view) {
     return {
       title: "",
+      subject: "",
       concern: "",
       durationWeeks: "",
       sampleSize: "",
@@ -692,6 +725,7 @@ function clinicalToState(view: ClinicalStudyView | null): ClinicalFormState {
   }
   return {
     title: view.title,
+    subject: view.subject,
     concern: view.concern,
     durationWeeks: view.durationWeeks === null ? "" : String(view.durationWeeks),
     sampleSize: view.sampleSize === null ? "" : String(view.sampleSize),
@@ -704,6 +738,79 @@ function clinicalToState(view: ClinicalStudyView | null): ClinicalFormState {
       value: result.value === null ? "" : String(result.value),
       suffix: result.suffix,
       label: result.label,
+    })),
+  };
+}
+
+interface SurveyOutcomeState {
+  key: string;
+  id: string | null;
+  statement: string;
+  yesCount: string;
+}
+
+interface SurveyFormState {
+  title: string;
+  sampleSize: string;
+  /** Empty string = no "would recommend" headline (null in the payload —
+   *  never a fabricated 0). */
+  recommendYes: string;
+  question: string;
+  intro: string;
+  methodology: string;
+  verifierName: string;
+  verificationUrl: string;
+  outcomes: SurveyOutcomeState[];
+}
+
+function surveyToState(view: ProductSurveyView | null): SurveyFormState {
+  if (!view) {
+    return {
+      title: "",
+      sampleSize: "",
+      recommendYes: "",
+      question: "",
+      intro: "",
+      methodology: "",
+      verifierName: "",
+      verificationUrl: "",
+      outcomes: [],
+    };
+  }
+  return {
+    title: view.title,
+    sampleSize: view.sampleSize === null ? "" : String(view.sampleSize),
+    recommendYes: view.recommendYes === null ? "" : String(view.recommendYes),
+    question: view.question,
+    intro: view.intro,
+    methodology: view.methodology,
+    verifierName: view.verifierName,
+    verificationUrl: view.verificationUrl,
+    outcomes: view.outcomes.map((outcome) => ({
+      key: outcome.id,
+      id: outcome.id,
+      statement: outcome.statement,
+      yesCount: outcome.yesCount === null ? "" : String(outcome.yesCount),
+    })),
+  };
+}
+
+/** Payload-relevant projection so client row keys never make the card look
+ *  dirty. */
+function surveyProjection(state: SurveyFormState) {
+  return {
+    title: state.title,
+    sampleSize: state.sampleSize,
+    recommendYes: state.recommendYes,
+    question: state.question,
+    intro: state.intro,
+    methodology: state.methodology,
+    verifierName: state.verifierName,
+    verificationUrl: state.verificationUrl,
+    outcomes: state.outcomes.map((outcome) => ({
+      id: outcome.id,
+      statement: outcome.statement,
+      yesCount: outcome.yesCount,
     })),
   };
 }
@@ -913,6 +1020,11 @@ function isStaleResult(
 function clinicalKnownIds(view: ClinicalStudyView | null): string[] {
   if (!view) return [];
   return [view.id, ...view.results.map((result) => result.id)];
+}
+
+function surveyKnownIds(view: ProductSurveyView | null): string[] {
+  if (!view) return [];
+  return [view.id, ...view.outcomes.map((outcome) => outcome.id)];
 }
 
 function baKnownIds(views: BeforeAfterView[]): string[] {
@@ -1420,6 +1532,7 @@ export default function ProductBoosterDetailPage() {
   const shopify = useAppBridge();
 
   const clinicalFetcher = useFetcher<typeof action>();
+  const surveyFetcher = useFetcher<typeof action>();
   const baFetcher = useFetcher<typeof action>();
   const batchFetcher = useFetcher<typeof action>();
   const flagsFetcher = useFetcher<typeof action>();
@@ -1466,13 +1579,15 @@ export default function ProductBoosterDetailPage() {
   const amazonSaveSetLabelRef = useRef(false);
   const autoSeenRef = useRef<{
     clinical: unknown;
+    survey: unknown;
     ba: unknown;
     batch: unknown;
     amazon: unknown;
-  }>({ clinical: null, ba: null, batch: null, amazon: null });
+  }>({ clinical: null, survey: null, ba: null, batch: null, amazon: null });
   useEffect(() => {
     const candidates = [
       { slot: "clinical" as const, data: clinicalFetcher.data, intent: "save_clinical" },
+      { slot: "survey" as const, data: surveyFetcher.data, intent: "save_survey" },
       { slot: "ba" as const, data: baFetcher.data, intent: "save_ba" },
       { slot: "batch" as const, data: batchFetcher.data, intent: "save_batch" },
     ];
@@ -1503,6 +1618,7 @@ export default function ProductBoosterDetailPage() {
     }
   }, [
     clinicalFetcher.data,
+    surveyFetcher.data,
     baFetcher.data,
     batchFetcher.data,
     amazonFetcher.data,
@@ -1515,6 +1631,10 @@ export default function ProductBoosterDetailPage() {
     () => clinicalToState(boosters.clinicalStudy),
     [boosters],
   );
+  const initialSurvey = useMemo(
+    () => surveyToState(boosters.productSurvey),
+    [boosters],
+  );
   const initialBa = useMemo(() => baToState(boosters.beforeAfters), [boosters]);
   const initialBatch = useMemo(
     () => batchToState(boosters.batchTransparency),
@@ -1524,10 +1644,13 @@ export default function ProductBoosterDetailPage() {
   const [clinicalState, setClinicalState] = useState<ClinicalFormState>(
     initialClinical,
   );
+  const [surveyState, setSurveyState] = useState<SurveyFormState>(
+    initialSurvey,
+  );
   const [baEntries, setBaEntries] = useState<BaEntryState[]>(initialBa);
   const [batchState, setBatchState] = useState<BatchFormState>(initialBatch);
   const [confirmDelete, setConfirmDelete] = useState<
-    null | "clinical" | "batch"
+    null | "clinical" | "survey" | "batch"
   >(null);
 
   const keyCounterRef = useRef(0);
@@ -1538,6 +1661,9 @@ export default function ProductBoosterDetailPage() {
 
   const clinicalDirty =
     JSON.stringify(clinicalState) !== JSON.stringify(initialClinical);
+  const surveyDirty =
+    JSON.stringify(surveyProjection(surveyState)) !==
+    JSON.stringify(surveyProjection(initialSurvey));
   const baDirty =
     JSON.stringify(baProjection(baEntries)) !==
     JSON.stringify(baProjection(initialBa));
@@ -1545,9 +1671,15 @@ export default function ProductBoosterDetailPage() {
     JSON.stringify(batchProjection(batchState)) !==
     JSON.stringify(batchProjection(initialBatch));
 
-  const dirtyRef = useRef({ clinical: false, ba: false, batch: false });
+  const dirtyRef = useRef({
+    clinical: false,
+    survey: false,
+    ba: false,
+    batch: false,
+  });
   dirtyRef.current = {
     clinical: clinicalDirty,
+    survey: surveyDirty,
     ba: baDirty,
     batch: batchDirty,
   };
@@ -1558,6 +1690,7 @@ export default function ProductBoosterDetailPage() {
   const cardSavePendingRef = useRef(false);
   cardSavePendingRef.current =
     clinicalFetcher.state !== "idle" ||
+    surveyFetcher.state !== "idle" ||
     baFetcher.state !== "idle" ||
     batchFetcher.state !== "idle";
 
@@ -1566,6 +1699,9 @@ export default function ProductBoosterDetailPage() {
   const clinicalSeedIdsRef = useRef<string[]>(
     clinicalKnownIds(boosters.clinicalStudy),
   );
+  const surveySeedIdsRef = useRef<string[]>(
+    surveyKnownIds(boosters.productSurvey),
+  );
   const baSeedIdsRef = useRef<string[]>(baKnownIds(boosters.beforeAfters));
   const batchSeedIdsRef = useRef<string[]>(
     batchKnownIds(boosters.batchTransparency),
@@ -1573,18 +1709,28 @@ export default function ProductBoosterDetailPage() {
 
   /** Cards whose next loader-data arrival must reseed the form regardless of
    *  local edits (the stale-content Reload button). */
-  const forceAdoptRef = useRef({ clinical: false, ba: false, batch: false });
+  const forceAdoptRef = useRef({
+    clinical: false,
+    survey: false,
+    ba: false,
+    batch: false,
+  });
 
   const revalidator = useRevalidator();
   const [staleReloaded, setStaleReloaded] = useState<{
     clinical: unknown;
+    survey: unknown;
     ba: unknown;
     batch: unknown;
-  }>({ clinical: null, ba: null, batch: null });
+  }>({ clinical: null, survey: null, ba: null, batch: null });
 
   const adoptClinical = () => {
     clinicalSeedIdsRef.current = clinicalKnownIds(boosters.clinicalStudy);
     setClinicalState(initialClinical);
+  };
+  const adoptSurvey = () => {
+    surveySeedIdsRef.current = surveyKnownIds(boosters.productSurvey);
+    setSurveyState(initialSurvey);
   };
   const adoptBa = () => {
     baSeedIdsRef.current = baKnownIds(boosters.beforeAfters);
@@ -1611,6 +1757,17 @@ export default function ProductBoosterDetailPage() {
   }, [clinicalFetcher.state, clinicalFetcher.data]);
 
   useEffect(() => {
+    const data = surveyFetcher.data;
+    if (surveyFetcher.state !== "idle" || !data) return;
+    if (data.intent !== "save_survey" && data.intent !== "delete_survey") {
+      return;
+    }
+    if (data.ok === false) return;
+    adoptSurvey();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surveyFetcher.state, surveyFetcher.data]);
+
+  useEffect(() => {
     const data = baFetcher.data;
     if (baFetcher.state !== "idle" || !data) return;
     if (data.intent !== "save_ba") return;
@@ -1633,10 +1790,18 @@ export default function ProductBoosterDetailPage() {
   // flight. Forced adoptions (stale-content Reload) always reseed their card.
   useEffect(() => {
     const forced = forceAdoptRef.current;
-    forceAdoptRef.current = { clinical: false, ba: false, batch: false };
+    forceAdoptRef.current = {
+      clinical: false,
+      survey: false,
+      ba: false,
+      batch: false,
+    };
     const savePending = cardSavePendingRef.current;
     if (forced.clinical || (!savePending && !dirtyRef.current.clinical)) {
       adoptClinical();
+    }
+    if (forced.survey || (!savePending && !dirtyRef.current.survey)) {
+      adoptSurvey();
     }
     if (forced.ba || (!savePending && !dirtyRef.current.ba)) {
       adoptBa();
@@ -1647,13 +1812,15 @@ export default function ProductBoosterDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boosters]);
 
-  const reloadStaleCard = (card: "clinical" | "ba" | "batch") => {
+  const reloadStaleCard = (card: "clinical" | "survey" | "ba" | "batch") => {
     const data =
       card === "clinical"
         ? clinicalFetcher.data
-        : card === "ba"
-          ? baFetcher.data
-          : batchFetcher.data;
+        : card === "survey"
+          ? surveyFetcher.data
+          : card === "ba"
+            ? baFetcher.data
+            : batchFetcher.data;
     setStaleReloaded((previous) => ({ ...previous, [card]: data ?? null }));
     forceAdoptRef.current[card] = true;
     revalidator.revalidate();
@@ -1681,6 +1848,26 @@ export default function ProductBoosterDetailPage() {
       );
     }
   }, [clinicalFetcher.data, shopify]);
+
+  useEffect(() => {
+    const data = surveyFetcher.data;
+    if (!data) return;
+    if (data.intent === "save_survey") {
+      shopify.toast.show(
+        data.ok
+          ? "Dermatologist survey saved"
+          : "Could not save the dermatologist survey",
+        { isError: !data.ok },
+      );
+    } else if (data.intent === "delete_survey") {
+      shopify.toast.show(
+        data.ok
+          ? "Dermatologist survey removed"
+          : "Could not remove the survey",
+        { isError: !data.ok },
+      );
+    }
+  }, [surveyFetcher.data, shopify]);
 
   useEffect(() => {
     const data = baFetcher.data;
@@ -1930,11 +2117,16 @@ export default function ProductBoosterDetailPage() {
   ];
 
   const savingClinical = clinicalFetcher.state !== "idle";
+  const savingSurvey = surveyFetcher.state !== "idle";
   const savingBa = baFetcher.state !== "idle";
   const savingBatch = batchFetcher.state !== "idle";
   const clinicalPendingIntent =
     savingClinical && clinicalFetcher.formData
       ? clinicalFetcher.formData.get("intent")
+      : null;
+  const surveyPendingIntent =
+    savingSurvey && surveyFetcher.formData
+      ? surveyFetcher.formData.get("intent")
       : null;
   const batchPendingIntent =
     savingBatch && batchFetcher.formData
@@ -1970,6 +2162,16 @@ export default function ProductBoosterDetailPage() {
       results: previous.results.filter((_, i) => i !== index),
     }));
 
+  const moveResult = (index: number, direction: -1 | 1) =>
+    setClinicalState((previous) => {
+      const target = index + direction;
+      if (target < 0 || target >= previous.results.length) return previous;
+      const next = [...previous.results];
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved);
+      return { ...previous, results: next };
+    });
+
   const saveClinical = () => {
     const durationWeeks = parseNumericInput(clinicalState.durationWeeks);
     const sampleSize = parseNumericInput(clinicalState.sampleSize);
@@ -1985,6 +2187,7 @@ export default function ProductBoosterDetailPage() {
     }
     const payload = {
       title: clinicalState.title,
+      subject: clinicalState.subject,
       concern: clinicalState.concern,
       durationWeeks,
       sampleSize,
@@ -2032,6 +2235,153 @@ export default function ProductBoosterDetailPage() {
   const clinicalNumbersInvalid =
     Boolean(clinicalDurationError || clinicalSampleSizeError) ||
     clinicalState.results.some((result) => numericError(result.value));
+
+  // ---------------------------- survey (v7) --------------------------------
+  const surveyConfigured = Boolean(boosters.productSurvey);
+
+  const setSurveyField = (patch: Partial<SurveyFormState>) =>
+    setSurveyState((previous) => ({ ...previous, ...patch }));
+
+  const setOutcome = (index: number, patch: Partial<SurveyOutcomeState>) =>
+    setSurveyState((previous) => ({
+      ...previous,
+      outcomes: previous.outcomes.map((outcome, i) =>
+        i === index ? { ...outcome, ...patch } : outcome,
+      ),
+    }));
+
+  const addOutcome = () =>
+    setSurveyState((previous) => ({
+      ...previous,
+      outcomes: [
+        ...previous.outcomes,
+        { key: nextKey(), id: null, statement: "", yesCount: "" },
+      ],
+    }));
+
+  const removeOutcome = (index: number) =>
+    setSurveyState((previous) => ({
+      ...previous,
+      outcomes: previous.outcomes.filter((_, i) => i !== index),
+    }));
+
+  const moveOutcome = (index: number, direction: -1 | 1) =>
+    setSurveyState((previous) => {
+      const target = index + direction;
+      if (target < 0 || target >= previous.outcomes.length) return previous;
+      const next = [...previous.outcomes];
+      const [moved] = next.splice(index, 1);
+      next.splice(target, 0, moved);
+      return { ...previous, outcomes: next };
+    });
+
+  const saveSurvey = () => {
+    const sampleSize = parseNumericInput(surveyState.sampleSize);
+    // Blank = deliberately no "would recommend" headline — submitted as null,
+    // NEVER as a fabricated 0.
+    const recommendYes =
+      surveyState.recommendYes.trim() === ""
+        ? null
+        : parseNumericInput(surveyState.recommendYes);
+    const outcomeYesValues = surveyState.outcomes.map((outcome) =>
+      parseNumericInput(outcome.yesCount),
+    );
+    if (
+      sampleSize === null ||
+      (surveyState.recommendYes.trim() !== "" && recommendYes === null) ||
+      outcomeYesValues.some((value) => value === null)
+    ) {
+      return; // Save is disabled while invalid — never submit a fabricated 0.
+    }
+    const payload = {
+      title: surveyState.title,
+      sampleSize,
+      recommendYes,
+      question: surveyState.question,
+      intro: surveyState.intro,
+      methodology: surveyState.methodology,
+      verifierName: surveyState.verifierName,
+      verificationUrl: surveyState.verificationUrl.trim(),
+      outcomes: surveyState.outcomes.map((outcome, index) => ({
+        id: outcome.id,
+        statement: outcome.statement,
+        yesCount: outcomeYesValues[index] as number,
+      })),
+    };
+    surveyFetcher.submit(
+      {
+        intent: "save_survey",
+        payload: JSON.stringify(payload),
+        knownIds: JSON.stringify(surveySeedIdsRef.current),
+      },
+      { method: "post" },
+    );
+  };
+
+  const deleteSurvey = () => {
+    if (confirmDelete !== "survey") {
+      setConfirmDelete("survey");
+      return;
+    }
+    setConfirmDelete(null);
+    surveyFetcher.submit({ intent: "delete_survey" }, { method: "post" });
+  };
+
+  const surveySampleValue = parseNumericInput(surveyState.sampleSize);
+  const surveyRecommendValue = parseNumericInput(surveyState.recommendYes);
+  const surveySampleError = numericError(surveyState.sampleSize, {
+    integer: true,
+    min: 1,
+  });
+  // Optional field: only validate when something was entered; the server
+  // rejects a recommend count above the sample size, so mirror that here.
+  const surveyRecommendError =
+    surveyState.recommendYes.trim() === ""
+      ? undefined
+      : (numericError(surveyState.recommendYes, { integer: true, min: 0 }) ??
+        (surveySampleValue !== null &&
+        surveyRecommendValue !== null &&
+        surveyRecommendValue > surveySampleValue
+          ? "Cannot exceed the surveyed count"
+          : undefined));
+  const surveyUrlTrimmed = surveyState.verificationUrl.trim();
+  const surveyUrlInvalid =
+    surveyUrlTrimmed !== "" && !surveyUrlTrimmed.startsWith("https://");
+  const surveyStatementMissing = surveyState.outcomes.some(
+    (outcome) => outcome.statement.trim() === "",
+  );
+  const surveyNumbersInvalid =
+    Boolean(surveySampleError || surveyRecommendError) ||
+    surveyState.outcomes.some((outcome) =>
+      numericError(outcome.yesCount, { integer: true, min: 0 }),
+    );
+  // Storefront fail-closed mirror: the widget renders only with a sample size
+  // and at least one visible outcome (0 < agree <= sample) OR a valid
+  // recommend count. Out-of-range rows are dropped, never shown.
+  const surveyValidOutcomeCount = surveyState.outcomes.filter((outcome) => {
+    const yes = parseNumericInput(outcome.yesCount);
+    return (
+      surveySampleValue !== null &&
+      yes !== null &&
+      yes > 0 &&
+      yes <= surveySampleValue
+    );
+  }).length;
+  const surveyRecommendVisible =
+    surveySampleValue !== null &&
+    surveyRecommendValue !== null &&
+    surveyRecommendValue > 0 &&
+    surveyRecommendValue <= surveySampleValue;
+  const surveyWouldHide =
+    (surveyConfigured || surveyDirty) &&
+    surveyValidOutcomeCount === 0 &&
+    !surveyRecommendVisible;
+  const surveyRecommendPct = surveyRecommendVisible
+    ? Math.round(
+        ((surveyRecommendValue as number) / (surveySampleValue as number)) *
+          100,
+      )
+    : null;
 
   // ---------------------------- before/afters -----------------------------
   const setBaEntry = (index: number, patch: Partial<BaEntryState>) =>
@@ -2231,6 +2581,9 @@ export default function ProductBoosterDetailPage() {
   const clinicalStale =
     isStaleResult(clinicalFetcher.data, ["save_clinical"]) &&
     staleReloaded.clinical !== clinicalFetcher.data;
+  const surveyStale =
+    isStaleResult(surveyFetcher.data, ["save_survey"]) &&
+    staleReloaded.survey !== surveyFetcher.data;
   const baStale =
     isStaleResult(baFetcher.data, ["save_ba"]) &&
     staleReloaded.ba !== baFetcher.data;
@@ -2467,6 +2820,20 @@ export default function ProductBoosterDetailPage() {
                     />
                   </Box>
                 </InlineStack>
+                <TextField
+                  label="Study subject"
+                  value={clinicalState.subject}
+                  onChange={(subject) => setClinicalField({ subject })}
+                  disabled={savingClinical}
+                  helpText="Replaces the ENTIRE “Tested on … itself — the exact formula on this page.” line under the eyebrow, word for word. Leave empty for the built-in line with the product title. Plain language wins with skeptical shoppers."
+                  autoComplete="off"
+                />
+                <Text as="p" tone="subdued" variant="bodySm">
+                  The four fields below become small fact chips on the
+                  product page (“34 participants · 8-week study · …”). Each
+                  chip only appears when its field is filled — leave any that
+                  don’t apply empty and no chip shows.
+                </Text>
                 <InlineStack gap="300" wrap>
                   <Box width="170px">
                     <TextField
@@ -2479,6 +2846,7 @@ export default function ProductBoosterDetailPage() {
                       }
                       disabled={savingClinical}
                       error={clinicalDurationError}
+                      helpText="Empty = no chip."
                       autoComplete="off"
                     />
                   </Box>
@@ -2493,7 +2861,7 @@ export default function ProductBoosterDetailPage() {
                       }
                       disabled={savingClinical}
                       error={clinicalSampleSizeError}
-                      helpText="e.g. 112"
+                      helpText="e.g. 112. Empty = no chip."
                       autoComplete="off"
                     />
                   </Box>
@@ -2503,7 +2871,7 @@ export default function ProductBoosterDetailPage() {
                       value={clinicalState.labName}
                       onChange={(labName) => setClinicalField({ labName })}
                       disabled={savingClinical}
-                      helpText="The independent lab that ran the study."
+                      helpText="The independent lab that ran the study. Empty = no chip."
                       autoComplete="off"
                     />
                   </Box>
@@ -2517,7 +2885,7 @@ export default function ProductBoosterDetailPage() {
                         setClinicalField({ instruments })
                       }
                       disabled={savingClinical}
-                      helpText="Comma-separated, e.g. “corneometer, VISIA”."
+                      helpText="Shown to shoppers as “Measured with …” — plain words beat lab jargon (e.g. “skin-firmness meter” rather than a bare model number). Empty = no chip."
                       autoComplete="off"
                     />
                   </Box>
@@ -2545,7 +2913,9 @@ export default function ProductBoosterDetailPage() {
                   </Text>
                   <Text as="p" tone="subdued" variant="bodySm">
                     The first result renders as the huge headline number;
-                    the rest appear in the results grid. Up to {MAX_RESULTS}.
+                    the rest appear in the results grid. Move a result up or
+                    down to reorder — the first row is the headline stat.
+                    Up to {MAX_RESULTS}.
                   </Text>
                   {clinicalState.results.map((result, index) => (
                     <InlineStack
@@ -2586,13 +2956,33 @@ export default function ProductBoosterDetailPage() {
                           autoComplete="off"
                         />
                       </Box>
-                      <Button
-                        icon={DeleteIcon}
-                        tone="critical"
-                        accessibilityLabel={`Remove result ${index + 1}`}
-                        onClick={() => removeResult(index)}
-                        disabled={savingClinical}
-                      />
+                      <InlineStack gap="100">
+                        <Button
+                          size="slim"
+                          icon={ArrowUpIcon}
+                          accessibilityLabel={`Move result ${index + 1} up`}
+                          onClick={() => moveResult(index, -1)}
+                          disabled={savingClinical || index === 0}
+                        />
+                        <Button
+                          size="slim"
+                          icon={ArrowDownIcon}
+                          accessibilityLabel={`Move result ${index + 1} down`}
+                          onClick={() => moveResult(index, 1)}
+                          disabled={
+                            savingClinical ||
+                            index === clinicalState.results.length - 1
+                          }
+                        />
+                        <Button
+                          size="slim"
+                          icon={DeleteIcon}
+                          tone="critical"
+                          accessibilityLabel={`Remove result ${index + 1}`}
+                          onClick={() => removeResult(index)}
+                          disabled={savingClinical}
+                        />
+                      </InlineStack>
                     </InlineStack>
                   ))}
                   <InlineStack>
@@ -2671,6 +3061,18 @@ export default function ProductBoosterDetailPage() {
                     <Badge tone="attention">Global switch off</Badge>
                   ) : null}
                 </InlineStack>
+                <Banner tone="info">
+                  <Text as="p">
+                    Legacy content since v8 — these entries are no longer
+                    rendered on the product page directly. The Results gallery
+                    (Proof library) replaced the widget; use{" "}
+                    <Link url="/app/proof/results">
+                      Proof library → Import legacy before/afters
+                    </Link>{" "}
+                    to carry these entries over. They remain editable here as
+                    the import source.
+                  </Text>
+                </Banner>
                 <Text as="p" tone="subdued" variant="bodySm">
                   One verified before/after beats twenty unverified ones — use
                   unretouched images with real dates and a named verifier.
@@ -2709,8 +3111,8 @@ export default function ProductBoosterDetailPage() {
                   </Banner>
                 ) : null}
                 <Checkbox
-                  label="Show verified before/afters on this product"
-                  helpText="Per-product opt-out. The global switch, market scope and saved entries still gate the widget."
+                  label="Show the results gallery on this product"
+                  helpText="Per-product opt-out for the Results gallery block (the feature key these legacy entries shared). The global switch and market scope still apply."
                   checked={flagChecked("verified_before_after")}
                   onChange={(checked) =>
                     toggleFlag("verified_before_after", checked)
@@ -2732,14 +3134,16 @@ export default function ProductBoosterDetailPage() {
                 ))}
                 {baEntries.length === 0 ? (
                   <Text as="p" tone="subdued" variant="bodySm">
-                    No entries yet — add the first verified before/after.
+                    No legacy entries. New results are added directly under
+                    Proof library → Results.
                   </Text>
                 ) : null}
                 {initialBa.length > 0 && baEntries.length === 0 ? (
                   <Banner tone="warning">
                     <Text as="p">
-                      Saving now removes all published before/after entries for
-                      this product.
+                      Saving now deletes this product’s legacy before/after
+                      entries. Results already imported into the gallery are
+                      not affected.
                     </Text>
                   </Banner>
                 ) : null}
@@ -3273,12 +3677,12 @@ export default function ProductBoosterDetailPage() {
               </BlockStack>
             </Card>
 
-            {/* ---------------- Guarantee + survey (global content) -------- */}
+            {/* ---------------- Risk-free trial guarantee ------------------ */}
             <Card>
               <BlockStack gap="300">
                 <InlineStack gap="200" blockAlign="center">
                   <Text as="h2" variant="headingMd">
-                    Empty bottle guarantee
+                    Risk-free trial guarantee
                   </Text>
                   <Badge
                     tone={globalFlags.empty_bottle_guarantee ? "success" : "attention"}
@@ -3289,13 +3693,14 @@ export default function ProductBoosterDetailPage() {
                   </Badge>
                 </InlineStack>
                 <Text as="p" tone="subdued" variant="bodySm">
-                  “Use every last drop — take {guaranteeDays} days. If you
-                  don’t love your results, return the empty{" "}
+                  “Try it for {guaranteeDays} days, completely risk-free — if
+                  you don’t love your results, return the empty{" "}
                   {containerValue === "inherit"
                     ? guaranteeContainer
                     : containerValue}{" "}
                   for a full refund.” The panel needs no per-product content;
-                  copy and the day count are global.
+                  the day count is global and copy overrides live in the
+                  theme editor.
                 </Text>
                 <Checkbox
                   label="Show the guarantee panel on this product"
@@ -3323,32 +3728,377 @@ export default function ProductBoosterDetailPage() {
               </BlockStack>
             </Card>
 
+            {/* ---------------- Dermatologist survey (v7) ------------------ */}
             <Card>
               <BlockStack gap="300">
                 <InlineStack gap="200" blockAlign="center">
                   <Text as="h2" variant="headingMd">
                     Dermatologist survey
                   </Text>
-                  <Badge tone={globalFlags.derm_survey ? "success" : "attention"}>
-                    {globalFlags.derm_survey
-                      ? "Global switch on"
-                      : "Global switch off"}
+                  <Badge tone={surveyConfigured ? "success" : undefined}>
+                    {surveyConfigured ? "Configured" : "Not configured"}
                   </Badge>
+                  {!globalFlags.derm_survey ? (
+                    <Badge tone="attention">Global switch off</Badge>
+                  ) : null}
                 </InlineStack>
                 <Text as="p" tone="subdued" variant="bodySm">
-                  The survey widget shows on every product page using the
-                  global numbers and verifier — this product only opts in or
-                  out.
+                  Per-product outcomes survey — the statements dermatologists
+                  rated for this exact product. The widget stays hidden on
+                  this product until you save survey content here.
                 </Text>
+                {surveyStale ? (
+                  <Banner tone="warning" title="Content changed elsewhere">
+                    <BlockStack gap="200">
+                      <Text as="p">
+                        This content changed since you loaded the page (another
+                        tab or teammate). Reload to see the latest before
+                        saving.
+                      </Text>
+                      <InlineStack>
+                        <Button
+                          onClick={() => reloadStaleCard("survey")}
+                          loading={revalidator.state !== "idle"}
+                        >
+                          Reload
+                        </Button>
+                      </InlineStack>
+                    </BlockStack>
+                  </Banner>
+                ) : null}
+                {cardErrors(surveyFetcher.data, [
+                  "save_survey",
+                  "delete_survey",
+                ]).length > 0 ? (
+                  <Banner tone="critical" title="Dermatologist survey not saved">
+                    <BlockStack gap="100">
+                      {cardErrors(surveyFetcher.data, [
+                        "save_survey",
+                        "delete_survey",
+                      ]).map((error) => (
+                        <Text as="p" key={error}>
+                          {error}
+                        </Text>
+                      ))}
+                    </BlockStack>
+                  </Banner>
+                ) : null}
                 <Checkbox
                   label="Show the dermatologist survey on this product"
+                  helpText="Per-product opt-out. The global switch, market scope and saved survey content still gate the widget."
                   checked={flagChecked("derm_survey")}
                   onChange={(checked) => toggleFlag("derm_survey", checked)}
                   disabled={flagsFetcher.state !== "idle"}
                 />
-                <InlineStack>
+                <Divider />
+                <InlineStack gap="300" wrap>
+                  <Box minWidth="280px">
+                    <TextField
+                      label="Headline override"
+                      value={surveyState.title}
+                      onChange={(title) => setSurveyField({ title })}
+                      disabled={savingSurvey}
+                      helpText="Optional. Leave empty for the built-in “NN% would recommend” headline."
+                      autoComplete="off"
+                    />
+                  </Box>
+                  <Box width="200px">
+                    <TextField
+                      label="Dermatologists surveyed"
+                      type="number"
+                      min={1}
+                      value={surveyState.sampleSize}
+                      onChange={(sampleSize) => setSurveyField({ sampleSize })}
+                      disabled={savingSurvey}
+                      error={surveySampleError}
+                      helpText="For this product, e.g. 34"
+                      autoComplete="off"
+                    />
+                  </Box>
+                  <Box width="200px">
+                    <TextField
+                      label="Would recommend (Yes)"
+                      type="number"
+                      min={0}
+                      value={surveyState.recommendYes}
+                      onChange={(recommendYes) =>
+                        setSurveyField({ recommendYes })
+                      }
+                      disabled={savingSurvey}
+                      error={surveyRecommendError}
+                      helpText={
+                        surveyRecommendPct !== null
+                          ? `Headline: “${surveyRecommendPct}% would recommend”`
+                          : "Optional — empty means no percentage headline"
+                      }
+                      autoComplete="off"
+                    />
+                  </Box>
+                </InlineStack>
+                <TextField
+                  label="Exact question asked"
+                  value={surveyState.question}
+                  onChange={(question) => setSurveyField({ question })}
+                  disabled={savingSurvey}
+                  helpText="Optional — quoted verbatim in the widget. Only publish the question the dermatologists were actually asked."
+                  autoComplete="off"
+                />
+                <TextField
+                  label="Outcomes intro override"
+                  value={surveyState.intro}
+                  onChange={(intro) => setSurveyField({ intro })}
+                  disabled={savingSurvey}
+                  helpText="Optional. Leave empty for the built-in intro line with the product title."
+                  autoComplete="off"
+                />
+
+                <BlockStack gap="200">
+                  <Text as="h3" variant="headingSm">
+                    Outcomes
+                  </Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    The outcome statements the dermatologists rated, each with
+                    how many agreed. Rows render as bars in saved order — a
+                    row only shows when its agree count is between 1 and the
+                    surveyed count (the widget never shows inconsistent
+                    numbers). Up to {MAX_OUTCOMES}.
+                  </Text>
+                  {surveyState.outcomes.map((outcome, index) => {
+                    const yes = parseNumericInput(outcome.yesCount);
+                    const rowVisible =
+                      surveySampleValue !== null &&
+                      yes !== null &&
+                      yes > 0 &&
+                      yes <= surveySampleValue;
+                    return (
+                      <InlineStack
+                        key={outcome.key}
+                        gap="200"
+                        blockAlign="end"
+                        wrap
+                      >
+                        <Box minWidth="260px">
+                          <TextField
+                            label="Outcome statement"
+                            value={outcome.statement}
+                            onChange={(statement) =>
+                              setOutcome(index, { statement })
+                            }
+                            disabled={savingSurvey}
+                            error={
+                              outcome.statement.trim() === ""
+                                ? "Required"
+                                : undefined
+                            }
+                            helpText="e.g. “Visibly firmer skin after 8 weeks of use”"
+                            autoComplete="off"
+                          />
+                        </Box>
+                        <Box width="130px">
+                          <TextField
+                            label="Agreed"
+                            type="number"
+                            min={0}
+                            value={outcome.yesCount}
+                            onChange={(yesCount) =>
+                              setOutcome(index, { yesCount })
+                            }
+                            disabled={savingSurvey}
+                            error={numericError(outcome.yesCount, {
+                              integer: true,
+                              min: 0,
+                            })}
+                            autoComplete="off"
+                          />
+                        </Box>
+                        <Box paddingBlockEnd="100">
+                          <Badge tone={rowVisible ? undefined : "attention"}>
+                            {rowVisible
+                              ? `${Math.round(
+                                  ((yes as number) /
+                                    (surveySampleValue as number)) *
+                                    100,
+                                )}%`
+                              : "Hidden"}
+                          </Badge>
+                        </Box>
+                        <InlineStack gap="100">
+                          <Button
+                            size="slim"
+                            icon={ArrowUpIcon}
+                            accessibilityLabel={`Move outcome ${index + 1} up`}
+                            onClick={() => moveOutcome(index, -1)}
+                            disabled={savingSurvey || index === 0}
+                          />
+                          <Button
+                            size="slim"
+                            icon={ArrowDownIcon}
+                            accessibilityLabel={`Move outcome ${index + 1} down`}
+                            onClick={() => moveOutcome(index, 1)}
+                            disabled={
+                              savingSurvey ||
+                              index === surveyState.outcomes.length - 1
+                            }
+                          />
+                          <Button
+                            size="slim"
+                            icon={DeleteIcon}
+                            tone="critical"
+                            accessibilityLabel={`Remove outcome ${index + 1}`}
+                            onClick={() => removeOutcome(index)}
+                            disabled={savingSurvey}
+                          />
+                        </InlineStack>
+                      </InlineStack>
+                    );
+                  })}
+                  <InlineStack>
+                    <Button
+                      onClick={addOutcome}
+                      disabled={
+                        savingSurvey ||
+                        surveyState.outcomes.length >= MAX_OUTCOMES
+                      }
+                    >
+                      Add outcome
+                    </Button>
+                  </InlineStack>
+                </BlockStack>
+
+                {surveyWouldHide ? (
+                  <Banner
+                    tone="warning"
+                    title="The survey would be hidden on this product"
+                  >
+                    <Text as="p">
+                      The widget fails closed: it needs the surveyed count
+                      plus at least one visible outcome or a valid
+                      would-recommend count. Until then it renders nothing —
+                      it never shows inconsistent data.
+                    </Text>
+                  </Banner>
+                ) : null}
+
+                <TextField
+                  label="“How the survey was conducted” override"
+                  value={surveyState.methodology}
+                  onChange={(methodology) => setSurveyField({ methodology })}
+                  multiline={6}
+                  disabled={savingSurvey}
+                  helpText="Optional per-product disclosure — overrides the global text from the survey defaults page. The placeholders {{ total }}, {{ yes }} and {{ percent }} track this product’s numbers; lines using {{ yes }} or {{ percent }} appear only when a Would-recommend count is set."
+                  autoComplete="off"
+                />
+                <InlineStack gap="300" wrap>
+                  <Box minWidth="260px">
+                    <TextField
+                      label="Verifier name"
+                      value={surveyState.verifierName}
+                      onChange={(verifierName) =>
+                        setSurveyField({ verifierName })
+                      }
+                      disabled={savingSurvey}
+                      helpText="Optional — overrides the global default verifier for this product. Never machine-translated."
+                      autoComplete="off"
+                    />
+                  </Box>
+                  <Box minWidth="280px">
+                    <TextField
+                      label="Verification URL"
+                      value={surveyState.verificationUrl}
+                      onChange={(verificationUrl) =>
+                        setSurveyField({ verificationUrl })
+                      }
+                      placeholder="https://…"
+                      disabled={savingSurvey}
+                      error={
+                        surveyUrlInvalid
+                          ? "Must start with https:// (or leave empty)"
+                          : undefined
+                      }
+                      helpText="Optional — overrides the global verification link for this product."
+                      autoComplete="off"
+                    />
+                  </Box>
+                </InlineStack>
+
+                <InlineStack gap="200" align="space-between" blockAlign="center">
                   <Button variant="plain" url="/app/features/survey">
-                    Survey settings &amp; preview
+                    Survey defaults &amp; master switch
+                  </Button>
+                  <InlineStack gap="200">
+                    {surveyConfigured ? (
+                      <Button
+                        tone="critical"
+                        variant="secondary"
+                        onClick={deleteSurvey}
+                        loading={surveyPendingIntent === "delete_survey"}
+                        disabled={savingSurvey}
+                      >
+                        {confirmDelete === "survey"
+                          ? "Click again to remove"
+                          : "Remove survey"}
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="primary"
+                      onClick={saveSurvey}
+                      loading={surveyPendingIntent === "save_survey"}
+                      disabled={
+                        savingSurvey ||
+                        !surveyDirty ||
+                        surveyUrlInvalid ||
+                        surveyStatementMissing ||
+                        surveyNumbersInvalid
+                      }
+                    >
+                      Save dermatologist survey
+                    </Button>
+                  </InlineStack>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+
+            {/* ---------------- Brand proof on this product (v8) ----------- */}
+            <Card>
+              <BlockStack gap="300">
+                <InlineStack gap="200" blockAlign="center" wrap>
+                  <Text as="h2" variant="headingMd">
+                    Brand proof on this product
+                  </Text>
+                  {!globalFlags.press ? (
+                    <Badge tone="attention">Press global switch off</Badge>
+                  ) : null}
+                  {!globalFlags.derm_endorsements ? (
+                    <Badge tone="attention">
+                      Endorsements global switch off
+                    </Badge>
+                  ) : null}
+                </InlineStack>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Press quotes and dermatologist endorsements come from your
+                  shop-wide Proof library and show on every product page
+                  (entries tagged to this product appear first). These
+                  switches only opt this product out.
+                </Text>
+                <Checkbox
+                  label="Show “As seen in the press” on this product"
+                  helpText="Brand-level module — shown on every product unless switched off here. Entries are managed under Proof library."
+                  checked={flagChecked("press")}
+                  onChange={(checked) => toggleFlag("press", checked)}
+                  disabled={flagsFetcher.state !== "idle"}
+                />
+                <Checkbox
+                  label="Show dermatologist endorsements on this product"
+                  helpText="Brand-level module — shown on every product unless switched off here. Entries are managed under Proof library."
+                  checked={flagChecked("derm_endorsements")}
+                  onChange={(checked) =>
+                    toggleFlag("derm_endorsements", checked)
+                  }
+                  disabled={flagsFetcher.state !== "idle"}
+                />
+                <InlineStack>
+                  <Button variant="plain" url="/app/proof">
+                    Manage entries under Proof library
                   </Button>
                 </InlineStack>
               </BlockStack>

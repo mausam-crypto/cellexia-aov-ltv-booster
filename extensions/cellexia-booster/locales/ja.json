@@ -73,13 +73,14 @@
   },
   "study": {
     "eyebrow": "独立した臨床試験",
-    "methodology": "n = {{ n }}名の被験者 · {{ weeks }}の試験 · {{ lab }}",
+    "subject": "試験対象は{{ product }}そのもの — このページの製品と同一の処方です。",
     "weeks_count": {
       "other": "{{ count }}週間"
     },
-    "instruments": "機器による測定：{{ methods }}",
+    "fact_participants": "被験者{{ n }}名",
+    "instruments": "{{ methods }}で測定",
     "view_study": "試験概要を見る",
-    "footnote_default": "皮膚科医の管理下で測定された結果です。効果には個人差があります。"
+    "footnote_default": "皮膚科医の立ち会いのもとで測定した結果であり、自己申告ではありません。効果には個人差があります。"
   },
   "ba": {
     "eyebrow": "検証済みの結果",
@@ -110,7 +111,7 @@
     "container_tube": "チューブ",
     "container_pump": "ポンプボトル",
     "container_product": "容器",
-    "title": "最後の一滴までお使いください",
+    "title": "まずは{{ days }}、一切のリスクなくお試しください",
     "body": "{{ days }}、じっくりお試しください。結果にご満足いただけなければ、空の{{ container }}をご返送いただくだけで全額返金いたします。",
     "days_count": {
       "other": "{{ count }}日間"
@@ -129,23 +130,58 @@
   },
   "survey": {
     "eyebrow": "皮膚科医対象の独立調査",
-    "title_pct": "の皮膚科専門医がCellexiaを推奨すると回答",
-    "count": "調査対象の皮膚科医{{ total }}名中{{ yes }}名",
+    "rec_line": "の皮膚科医（調査対象{{ total }}名）が{{ product }}を推奨すると回答",
+    "outcomes_intro": "{{ product }}を検証した皮膚科医は、実際に観察した効果を次のように評価しました：",
+    "outcome_agree": "@@TOTAL@@名中@@YES@@名が同意",
+    "more_outcomes": "+ 他@@N@@件の効果",
     "how": "調査の実施方法",
     "methodology_p1": "2026年5月、独立系の化粧品調査会社が、米国、英国、フランス、ドイツ、イタリア、スペインの免許を持つ皮膚科医{{ total }}名を対象に調査を実施しました。",
     "methodology_p2": "各皮膚科医は、Cellexiaの全製品を受け取り、少なくとも5名の患者を対象に少なくとも8週間試用した上で、製品ラインナップ、成分情報、想定される使用目的、裏付けとなる臨床エビデンスを含む、Cellexiaに関する詳細な資料を確認しました。その上で、次の質問がなされました。",
     "methodology_p3": "「確認した情報と患者の使用経験に基づき、目に見えるエイジングサインへのスキンケアを求める適切な患者にCellexiaを推奨しますか？」",
     "methodology_p4": "{{ total }}名全員が質問に回答し、{{ yes }}名が「はい」を選択しました（回答者の{{ percent }}%）。",
     "methodology_p5": "本調査はCellexiaの依頼を受け、独立した形で実施されました。回答者の募集、回答の収集および分析は調査会社が行いました。Cellexiaは参加者の選定や個々の回答の変更には一切関与していません。",
-    "report_title": "調査結果",
-    "report_surveyed": "調査対象の皮膚科医",
-    "report_yes": "「はい」と回答",
-    "report_recommend": "Cellexiaを推奨",
-    "question_intro": "免許を持つ皮膚科医{{ total }}名に、次の質問をしました。",
-    "question_result": "{{ yes }}名が「はい」と回答——回答者の{{ percent }}%にあたります。",
-    "dot_legend": "1つの点は、調査対象の皮膚科医1名を表します。",
     "verified_badge": "第三者機関による検証済み",
     "verified_by": "調査は{{ name }}により検証済み"
+  },
+  "press": {
+    "eyebrow": "メディア掲載",
+    "read_article": "記事を読む"
+  },
+  "endo": {
+    "eyebrow": "皮膚科医による推薦",
+    "count_headline": {
+      "other": "{{ n }}名の皮膚科医が推薦"
+    },
+    "shown_of": "@@TOTAL@@名中@@SHOWN@@名を表示",
+    "show_more": "もっと見る",
+    "read_full": "全文を読む"
+  },
+  "results": {
+    "banner_verified": "Cellexiaのお客様{{ count }}名（購入確認済み）の結果をご覧ください。",
+    "banner_all": "Cellexiaのお客様{{ count }}名の結果をご覧ください。",
+    "filter_concern": "肌悩み",
+    "filter_age": "年齢",
+    "filter_skin": "肌タイプ",
+    "filter_duration": "使用期間",
+    "skin_dry": "乾燥肌",
+    "skin_oily": "脂性肌",
+    "skin_combination": "混合肌",
+    "skin_sensitive": "敏感肌",
+    "skin_normal": "普通肌",
+    "duration_lt8": "8週間未満",
+    "duration_8to12": "8〜12週間",
+    "duration_gt12": "12週間超",
+    "age_years": "{{ range }}歳",
+    "verified_badge": "購入確認済み",
+    "lab_badge": "臨床試験結果",
+    "video_badge": "動画",
+    "weeks_of_use": "@@N@@週間使用",
+    "before": "使用前",
+    "after": "使用後",
+    "show_more": "もっと見る",
+    "empty": "この絞り込み条件に一致する結果はまだありません。",
+    "close": "閉じる",
+    "clear_filters": "絞り込みを解除"
   },
   "delivery": {
     "line": "{{ date }}までにお届け",

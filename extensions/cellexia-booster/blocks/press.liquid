@@ -1,0 +1,39 @@
+{%- liquid
+assign cfg = app.metafields.cellexia.config.value
+assign cx_market = localization.market.handle | default: ''
+assign cx_on = false
+if cfg.press.enabled == true
+assign cx_scope = cfg.marketScopes.press
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_on = true
+endif
+endif
+assign cx_ctx = 'brand'
+assign cx_pid = 0
+assign cx_ok = true
+if request.page_type == 'product'
+assign cx_ctx = 'product'
+assign cx_pid = product.id
+if product.metafields.cellexia.pdp_flags.value.press == false
+assign cx_ok = false
+assign cx_on = false
+endif
+endif
+assign cx_draft = false
+if cfg.preview.armed == true and cx_ok
+if cfg.preview.draftFlags.press == true or cfg.press.enabled == true
+assign cx_draft = true
+endif
+endif
+-%}
+{%- if cx_on or cx_draft -%}
+{{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+<script type="application/json" id="cx-press-config" data-cx-market="{{ cx_market | escape }}">
+{"live":{{cx_on}}{% if cfg.press.density == "ultra" %}, "cm": 2{% elsif cfg.press.density == "compact" %}, "cm": 1{% endif %},"ctx":{{cx_ctx|json}},"pid":{{cx_pid}},"str":{"eyebrow":{{'press.eyebrow'|t|json}},"aria":{{'press.eyebrow'|t|json}},"read":{{'press.read_article'|t|json}}}}
+</script>
+<div data-cx-mount="press" {{ block.shopify_attributes }}></div>
+<script src="{{ 'cellexia-proof.js' | asset_url }}" defer></script>
+{%- endif -%}
+{% schema %}
+{"name":"Cellexia press","target":"section","settings":[]}
+{% endschema %}

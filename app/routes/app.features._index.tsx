@@ -1,11 +1,19 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import {
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  useSubmit,
+} from "@remix-run/react";
 import {
   Badge,
+  Banner,
   BlockStack,
   Box,
   Button,
   Card,
+  Checkbox,
+  ChoiceList,
   Divider,
   InlineStack,
   Layout,
@@ -19,9 +27,14 @@ import {
   FEATURE_KEYS,
   getSettings,
   resolveFeatureFlag,
+  saveSettings,
+  type BoosterSettings,
+  type DeepPartial,
   type FeatureKey,
+  type ProofDensity,
 } from "../models/settings.server";
 import { getPreviewState } from "../services/preview.server";
+import { syncSettingsToMetafields } from "../services/metafields.server";
 
 /**
  * Features hub (SPEC v4 §C): all 19 features as cards grouped by surface,
@@ -47,10 +60,12 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   checkout_protection: "/app/features/checkout",
   checkout_trust: "/app/features/checkout",
   clinical_study: "/app/products",
-  verified_before_after: "/app/products",
+  verified_before_after: "/app/proof/results",
   batch_transparency: "/app/products",
   empty_bottle_guarantee: "/app/products",
-  derm_survey: "/app/features/survey",
+  derm_survey: "/app/products",
+  press: "/app/proof",
+  derm_endorsements: "/app/proof",
   cart_cross_sell: "/app/features/cart",
   dispatch_countdown: "/app/features/dispatch",
   delivery_estimate: "/app/features/delivery",
@@ -96,6 +111,8 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
       "batch_transparency",
       "empty_bottle_guarantee",
       "derm_survey",
+      "press",
+      "derm_endorsements",
       "delivery_estimate",
     ],
   },
@@ -132,6 +149,104 @@ interface FeatureCardData {
   reach: string;
   draft: boolean;
   configureUrl: string;
+}
+
+/**
+ * The "Display density" card (SPEC v8 §3c + the v8.2/v8.3 merchant asks):
+ * one compact-mode toggle per v7 PDP widget (two densities — checkbox) and
+ * one THREE-density picker per v8 proof-library widget (full | compact |
+ * ultra — ChoiceList, v8.3). These are LIVE display-density settings (the
+ * v6.5 placement precedent — no draft/preview plumbing): saving flips the
+ * live widget for real visitors immediately. `feature` is only the
+ * pending-spinner discriminator, mirroring app.products.tsx's toggle
+ * convention (kept per-widget).
+ */
+const DENSITY_TOGGLES: {
+  feature: string;
+  label: string;
+  description: string;
+  isOn: (density: DensityState) => boolean;
+  buildPatch: (compact: boolean) => DeepPartial<BoosterSettings>;
+}[] = [
+  {
+    feature: "density_survey",
+    label: "Dermatologist survey — compact",
+    description:
+      "Compact mode — the same survey proof in a fraction of the height; outcomes beyond the first sit behind a “more outcomes” disclosure.",
+    isOn: (density) => density.survey,
+    buildPatch: (compact) => ({ dermSurvey: { compact } }),
+  },
+  {
+    feature: "density_study",
+    label: "Clinical study — compact",
+    description:
+      "Compact mode — the same study data in a fraction of the height; the hero number moves inline and stats become one wrapping row.",
+    isOn: (density) => density.study,
+    buildPatch: (compact) => ({ clinicalStudy: { compact } }),
+  },
+  {
+    feature: "density_guarantee",
+    label: "Risk-free trial guarantee — compact",
+    description:
+      "Compact mode — the same guarantee as one slim band; the full guarantee points stay in the “Guarantee check” modal.",
+    isOn: (density) => density.guarantee,
+    buildPatch: (compact) => ({ emptyBottleGuarantee: { compact } }),
+  },
+];
+
+/** Client-safe literal mirror of settings.server's PROOF_DENSITIES (the
+ *  SURVEY_FORMAT_OPTIONS convention — route client code must not import
+ *  .server module VALUES; the server enum stays authoritative in
+ *  sanitizeSettings). */
+const DENSITY_VALUES = ["full", "compact", "ultra"] as const;
+
+/**
+ * v8.3: the three proof-library widgets each get a full | compact | ultra
+ * picker. Patches write { <section>: { density } } — the v8.2 legacy
+ * `compact` booleans are never written by the UI anymore (sanitize keeps
+ * coercing them for stored-JSON back-compat).
+ */
+const DENSITY_PICKERS: {
+  feature: string;
+  label: string;
+  /** The v8.2 ultra wording, verbatim — shown under the Ultra choice. */
+  ultraDescription: string;
+  value: (density: DensityState) => ProofDensity;
+  buildPatch: (density: ProofDensity) => DeepPartial<BoosterSettings>;
+}[] = [
+  {
+    feature: "density_press",
+    label: "As seen in the press",
+    ultraDescription:
+      "Same proof, a fraction of the height — one collapsed row of logos; the quote appears on logo tap.",
+    value: (density) => density.press,
+    buildPatch: (density) => ({ press: { density } }),
+  },
+  {
+    feature: "density_endorsements",
+    label: "Dermatologist endorsements",
+    ultraDescription:
+      "Same proof, a fraction of the height — a one-line count headline over a swipeable card rail.",
+    value: (density) => density.endorsements,
+    buildPatch: (density) => ({ dermEndorsements: { density } }),
+  },
+  {
+    feature: "density_results",
+    label: "Results gallery",
+    ultraDescription:
+      "Same proof, a fraction of the height — a slimmer banner, one scrollable filter row and the swipeable card rail on desktop too.",
+    value: (density) => density.results,
+    buildPatch: (density) => ({ beforeAfter: { density } }),
+  },
+];
+
+interface DensityState {
+  survey: boolean;
+  study: boolean;
+  guarantee: boolean;
+  press: ProofDensity;
+  endorsements: ProofDensity;
+  results: ProofDensity;
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -172,7 +287,56 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }),
   ) as Record<FeatureKey, FeatureCardData>;
 
-  return { features, previewArmed };
+  const density: DensityState = {
+    survey: settings.dermSurvey.compact,
+    study: settings.clinicalStudy.compact,
+    guarantee: settings.emptyBottleGuarantee.compact,
+    press: settings.press.density,
+    endorsements: settings.dermEndorsements.density,
+    results: settings.beforeAfter.density,
+  };
+
+  return { features, previewArmed, density };
+};
+
+/**
+ * Settings-patch action for the Display density card — the same
+ * formData(`feature`, `patch`) convention as app.products.tsx (patch = JSON
+ * DeepPartial<BoosterSettings>; saveSettings sanitizes, then the storefront
+ * metafields are re-synced; sync failures are reported but never lose the
+ * save).
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session, admin } = await authenticate.admin(request);
+  const formData = await request.formData();
+  const rawPatch = formData.get("patch");
+  if (typeof rawPatch !== "string" || rawPatch.trim() === "") {
+    return { ok: false, syncErrors: ["Missing settings payload."] };
+  }
+  let patch: DeepPartial<BoosterSettings>;
+  try {
+    const parsed: unknown = JSON.parse(rawPatch);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return { ok: false, syncErrors: ["Settings payload must be an object."] };
+    }
+    patch = parsed as DeepPartial<BoosterSettings>;
+  } catch {
+    return { ok: false, syncErrors: ["Settings payload was not valid JSON."] };
+  }
+  const next = await saveSettings(session.shop, patch);
+  try {
+    const sync = await syncSettingsToMetafields(admin, next);
+    return { ok: true, syncErrors: sync.errors };
+  } catch (error) {
+    return {
+      ok: true,
+      syncErrors: [
+        error instanceof Error
+          ? error.message
+          : "Could not sync settings to storefront metafields.",
+      ],
+    };
+  }
 };
 
 function FeatureRow({ feature }: { feature: FeatureCardData }) {
@@ -215,7 +379,38 @@ function FeatureRow({ feature }: { feature: FeatureCardData }) {
 }
 
 export default function FeaturesHub() {
-  const { features, previewArmed } = useLoaderData<typeof loader>();
+  const { features, previewArmed, density } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
+  const submit = useSubmit();
+  const navigation = useNavigation();
+
+  const pendingFeature =
+    navigation.state !== "idle" && navigation.formData
+      ? navigation.formData.get("feature")
+      : null;
+  const densitySaving = pendingFeature !== null;
+
+  const toggleDensity = (
+    toggle: (typeof DENSITY_TOGGLES)[number],
+    compact: boolean,
+  ) => {
+    const formData = new FormData();
+    formData.set("feature", toggle.feature);
+    formData.set("patch", JSON.stringify(toggle.buildPatch(compact)));
+    submit(formData, { method: "post" });
+  };
+
+  const pickDensity = (
+    picker: (typeof DENSITY_PICKERS)[number],
+    selected: string[],
+  ) => {
+    const value = selected[0];
+    if (!DENSITY_VALUES.includes(value as ProofDensity)) return;
+    const formData = new FormData();
+    formData.set("feature", picker.feature);
+    formData.set("patch", JSON.stringify(picker.buildPatch(value as ProofDensity)));
+    submit(formData, { method: "post" });
+  };
 
   // v5.4 safety net (same contract as the Preview Center picker): a
   // FeatureKey missing from the GROUPS literal still renders, in an
@@ -248,6 +443,27 @@ export default function FeaturesHub() {
     >
       <TitleBar title="Features" />
       <Layout>
+        {actionData && actionData.syncErrors.length > 0 ? (
+          <Layout.Section>
+            <Banner
+              tone={actionData.ok ? "warning" : "critical"}
+              title={
+                actionData.ok
+                  ? "Saved, but the storefront sync reported errors"
+                  : "Settings could not be saved"
+              }
+            >
+              <BlockStack gap="100">
+                {actionData.syncErrors.map((error) => (
+                  <Text as="p" key={error}>
+                    {error}
+                  </Text>
+                ))}
+              </BlockStack>
+            </Banner>
+          </Layout.Section>
+        ) : null}
+
         {previewArmed ? (
           <Layout.Section>
             <Card>
@@ -284,6 +500,64 @@ export default function FeaturesHub() {
             </Card>
           </Layout.Section>
         ))}
+
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="300">
+              <BlockStack gap="100">
+                <Text as="h2" variant="headingMd">
+                  Display density
+                </Text>
+                <Text as="p" tone="subdued">
+                  Compact modes for the tallest proof widgets — on mobile and
+                  desktop. The proof-library widgets offer three density
+                  levels. These are live settings — a change applies to real
+                  visitors as soon as it saves (nothing else about the widgets
+                  changes).
+                </Text>
+              </BlockStack>
+              {DENSITY_TOGGLES.map((toggle) => (
+                <Checkbox
+                  key={toggle.feature}
+                  label={toggle.label}
+                  helpText={toggle.description}
+                  checked={toggle.isOn(density)}
+                  disabled={densitySaving}
+                  onChange={(checked) => toggleDensity(toggle, checked)}
+                />
+              ))}
+              {DENSITY_PICKERS.map((picker) => (
+                <ChoiceList
+                  key={picker.feature}
+                  title={picker.label}
+                  choices={[
+                    {
+                      label: "Full",
+                      value: "full",
+                      helpText: "The original full-height layout.",
+                      disabled: densitySaving,
+                    },
+                    {
+                      label: "Compact",
+                      value: "compact",
+                      helpText:
+                        "Quote and details visible at a fraction of the height.",
+                      disabled: densitySaving,
+                    },
+                    {
+                      label: "Ultra compact",
+                      value: "ultra",
+                      helpText: picker.ultraDescription,
+                      disabled: densitySaving,
+                    },
+                  ]}
+                  selected={[picker.value(density)]}
+                  onChange={(selected) => pickDensity(picker, selected)}
+                />
+              ))}
+            </BlockStack>
+          </Card>
+        </Layout.Section>
 
         <Layout.Section>
           <Card>

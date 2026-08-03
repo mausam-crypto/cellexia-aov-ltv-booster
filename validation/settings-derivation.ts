@@ -1,5 +1,5 @@
 /**
- * Settings-derivation + 31-key flip proof (repo-resident port of the
+ * Settings-derivation + 33-key flip proof (repo-resident port of the
  * surviving scratchpad proof v68-settings-derivation-proof.ts — the rest
  * of that suite was wiped by OS tmp cleanup, which is why this file lives
  * in validation/ now).
@@ -7,7 +7,8 @@
  * Executes the REAL app/models/settings.server.ts (loaded live via
  * validation/lib/settings-loader.ts, prisma stubbed with a throwing proxy
  * — no mocks of the model itself) and proves:
- *   1. FEATURE_KEYS has 31 keys, az_ships_from right after az_stock_line;
+ *   1. FEATURE_KEYS has 33 keys (v8: press + derm_endorsements),
+ *      az_ships_from right after az_stock_line;
  *   2. AMAZON_FLAG_FIELDS carries shipsFrom in the FEATURE_KEYS az_* order;
  *   3. DEFAULT_SETTINGS.amazon.shipsFrom === false (safe-by-default) and
  *      defaultMarketScopes covers the new key (mode "all");
@@ -16,8 +17,8 @@
  *      .mode/.markets, plus the untouched shared warehouse paths);
  *   5. sanitize: non-boolean shipsFrom falls back to false; a boolean
  *      survives; marketScopes.az_ships_from selected-mode round-trips;
- *   6. FEATURE_DEFS get/set round-trip + FEATURE_RAW_FIELD arm for ALL 31
- *      keys (the flip-test 30 -> 31 tripwire);
+ *   6. FEATURE_DEFS get/set round-trip + FEATURE_RAW_FIELD arm for ALL 33
+ *      keys (the flip-test count tripwire, 31 -> 33 in v8);
  *   7. snapshotFlags/restoreFlags round-trips shipsFrom, and an older
  *      snapshot without amazonFlags leaves shipsFrom untouched;
  *   8. mergeSettings over a stored pre-v6.8 blob yields shipsFrom:false
@@ -55,13 +56,13 @@ function ok(cond: boolean, label: string) {
 const clone = <T,>(x: T): T => structuredClone(x);
 
 // --- 1. key inventory ------------------------------------------------------
-ok(FEATURE_KEYS.length === 31, `FEATURE_KEYS has 31 keys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 33, `FEATURE_KEYS has 33 keys (got ${FEATURE_KEYS.length})`);
 ok(FEATURE_KEYS.includes("az_ships_from"), "az_ships_from is a FeatureKey");
 ok(
   FEATURE_KEYS.indexOf("az_ships_from") === FEATURE_KEYS.indexOf("az_stock_line") + 1,
   "az_ships_from sits right after az_stock_line",
 );
-ok(new Set(FEATURE_KEYS).size === 31, "FEATURE_KEYS has no duplicates");
+ok(new Set(FEATURE_KEYS).size === 33, "FEATURE_KEYS has no duplicates");
 
 // --- 2. amazon flag fields mirror the az_* order ---------------------------
 const azKeys = FEATURE_KEYS.filter((k: string) => k.startsWith("az_"));
@@ -105,6 +106,8 @@ for (const path of [
   "amazon.shipsFromByCountry",
   "amazon.defaultWarehouse",
   "amazon.shipsFromDefault",
+  // v6.10: the ships member's lean format code source
+  "amazon.shipsFromFormat",
   "marketScopes.az_ships_from.mode",
   "marketScopes.az_ships_from.markets",
   "marketScopes.az_stock_line.mode",
@@ -124,6 +127,49 @@ for (const path of [
   on.amazon.shipsFrom = true;
   const cleaned = sanitizeSettings(on, DEFAULT_SETTINGS);
   ok(cleaned.amazon.shipsFrom === true, "sanitize: boolean shipsFrom survives");
+}
+// v6.10: the ships-from display format is a closed enum, sanitized to the
+// subtle default (the pre-v6.10 look) on anything out of range.
+{
+  ok(
+    Array.isArray(M.SHIPS_FROM_FORMATS) &&
+      M.SHIPS_FROM_FORMATS.join(",") === "subtle,prominent",
+    "SHIPS_FROM_FORMATS is the closed subtle/prominent enum",
+  );
+  ok(
+    DEFAULT_SETTINGS.amazon.shipsFromFormat === "subtle",
+    "amazon.shipsFromFormat defaults to subtle",
+  );
+  const dirty = clone(DEFAULT_SETTINGS) as any;
+  dirty.amazon.shipsFromFormat = "loud"; // out of enum
+  ok(
+    sanitizeSettings(dirty, DEFAULT_SETTINGS).amazon.shipsFromFormat ===
+      "subtle",
+    "sanitize: out-of-enum shipsFromFormat -> subtle",
+  );
+  const nonString = clone(DEFAULT_SETTINGS) as any;
+  nonString.amazon.shipsFromFormat = 7;
+  ok(
+    sanitizeSettings(nonString, DEFAULT_SETTINGS).amazon.shipsFromFormat ===
+      "subtle",
+    "sanitize: non-string shipsFromFormat -> subtle",
+  );
+  const prominent = clone(DEFAULT_SETTINGS);
+  prominent.amazon.shipsFromFormat = "prominent";
+  ok(
+    sanitizeSettings(prominent, DEFAULT_SETTINGS).amazon.shipsFromFormat ===
+      "prominent",
+    "sanitize: prominent survives",
+  );
+  // Back-compat: a stored pre-v6.10 blob (no shipsFromFormat) merges to
+  // the subtle default — existing stores keep today's look untouched.
+  const stored = clone(DEFAULT_SETTINGS) as any;
+  delete stored.amazon.shipsFromFormat;
+  ok(
+    mergeSettings(clone(DEFAULT_SETTINGS), stored).amazon.shipsFromFormat ===
+      "subtle",
+    "pre-v6.10 store merges to the subtle default",
+  );
 }
 {
   const scoped = clone(DEFAULT_SETTINGS);
@@ -154,7 +200,7 @@ for (const path of [
   );
 }
 
-// --- 6. the 31-key flip round-trip (rebuilt flip-test tripwire) -------------
+// --- 6. the 33-key flip round-trip (rebuilt flip-test tripwire) -------------
 for (const key of FEATURE_KEYS) {
   const s = clone(DEFAULT_SETTINGS);
   FEATURE_DEFS[key].set(s, true);
@@ -209,4 +255,4 @@ if (failures > 0) {
   console.error(`\n${failures}/${checks} CHECKS FAILED`);
   process.exit(1);
 }
-console.log(`ALL ${checks} CHECKS PASSED (settings derivation + 31-key flip proof)`);
+console.log(`ALL ${checks} CHECKS PASSED (settings derivation + 33-key flip proof)`);

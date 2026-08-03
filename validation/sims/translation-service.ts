@@ -258,6 +258,43 @@ async function main() {
     ok(!registered.some((r) => r.id === "gid://shopify/Metafield/888"),
       "non-allowlisted metafield never registered");
     ok(summary.locales.every((l) => l.status === "done"), "both locales report done");
+    ok(log.every((l) => l.body === null || l.body.tag_handling === undefined),
+      "placeholder-free batches stay in plain-text mode (no tag_handling)");
+  }
+
+  // --- v7: {{ token }} placeholders survive DeepL verbatim -----------------------
+  // The per-product survey methodology invites {{ total }}/{{ yes }}/{{ percent }};
+  // the storefront substitution matches the exact English token words, so a
+  // translated batch must protect them via ignored XML tags and restore them.
+  {
+    const log = installDeepl();
+    const { admin, registered } = mockAdmin([
+      {
+        resourceId: "gid://shopify/Metaobject/9", // product survey parent
+        content: [
+          {
+            key: "methodology",
+            value: "In May, {{ total }} dermatologists were surveyed & {{ yes }} agreed ({{ percent }}%).",
+            digest: "d9",
+            locale: "en",
+          },
+        ],
+      },
+    ]);
+    const summary = await translateResources(admin, "key", ["gid://shopify/Metaobject/9"], ["fr"]);
+    ok(summary.ok === true && summary.fieldCount === 1, "methodology field admitted to the run");
+    const call = log.find((l) => l.body?.target_lang === "FR");
+    ok(call?.body?.tag_handling === "xml" && call?.body?.ignore_tags === "cx",
+      "placeholder batch switches to XML mode with the cx ignore tag");
+    const sent = ((call?.body?.text ?? []) as string[])[0] ?? "";
+    ok(sent.includes("<cx>{{ total }}</cx>") && sent.includes("<cx>{{ percent }}</cx>"),
+      "each placeholder is wrapped in an ignored <cx> tag");
+    ok(sent.includes("surveyed &amp;") && !sent.includes("surveyed & "),
+      "surrounding prose is XML-escaped in protected batches");
+    const reg = registered.find((r) => r.id === "gid://shopify/Metaobject/9");
+    const value = reg?.translations[0]?.value ?? "";
+    ok(value === "[FR] In May, {{ total }} dermatologists were surveyed & {{ yes }} agreed ({{ percent }}%).",
+      "registered translation carries the placeholders VERBATIM, unwrapped and unescaped");
   }
 
   // --- incremental: current kept (manual edits preserved), outdated redone -------

@@ -42,6 +42,7 @@ import {
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import { listMarkets, type MarketSummary } from "../services/markets.server";
 import { listProductsWithBoosterStatus } from "../services/pdp-content.server";
+import { getProofCounts } from "../services/proof.server";
 import {
   getSettingsWith,
   listGuardedExperiments,
@@ -106,6 +107,8 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
       "batch_transparency",
       "empty_bottle_guarantee",
       "derm_survey",
+      "press",
+      "derm_endorsements",
       "delivery_estimate",
     ],
   },
@@ -159,29 +162,15 @@ const UNPREVIEWABLE_FEATURE_KEYS: ReadonlySet<FeatureKey> = new Set<FeatureKey>(
 /**
  * Where a merchant fixes a not-ready feature (client-safe literal map — the
  * component must not touch the server-only FEATURE_KEYS/FEATURE_DEFS). The
- * checkout features are configured on the Checkout features page; the three
+ * checkout features are configured on the Checkout features page; the four
  * PDP content widgets need per-product content under Product boosters.
  * Readiness reasons come from the loader (featureReadiness); this map only
  * supplies the destination link per not-ready-capable feature.
  */
 /**
- * The five derm-survey display formats with short mechanism labels
- * (client-safe literal mirror of DERM_SURVEY_FORMATS in the server-only
- * settings model — same pattern as ALL_FEATURE_KEYS; the arm action
- * validates against the canonical enum via sanitizeDraftConfig).
- */
-const SURVEY_FORMAT_OPTIONS: { label: string; value: string }[] = [
-  { label: "Proof seal — authority", value: "seal" },
-  { label: "Results panel — data transparency", value: "report" },
-  { label: "Verbatim question — the exact question asked", value: "question" },
-  { label: "Dot matrix — one dot per dermatologist", value: "tally" },
-  { label: "Single line — understated", value: "strip" },
-];
-
-/**
  * The four delivery-estimate widget formats with short mechanism labels
  * (client-safe literal mirror of DELIVERY_ESTIMATE_FORMATS in the
- * server-only settings model — same pattern as SURVEY_FORMAT_OPTIONS; the
+ * server-only settings model — same pattern as ALL_FEATURE_KEYS; the
  * arm action validates against the canonical enum via sanitizeDraftConfig).
  */
 const DELIVERY_FORMAT_OPTIONS: { label: string; value: string }[] = [
@@ -189,6 +178,21 @@ const DELIVERY_FORMAT_OPTIONS: { label: string; value: string }[] = [
   { label: "Date range — “Estimated delivery: … – …”", value: "range" },
   { label: "Timeline — Order → Ships → Delivered", value: "timeline" },
   { label: "Guarantee box — bordered promise card", value: "box" },
+];
+
+/**
+ * The two az_ships_from display styles with short mechanism labels (v6.10,
+ * client-safe literal mirror of SHIPS_FROM_FORMATS in the server-only
+ * settings model — same pattern as DELIVERY_FORMAT_OPTIONS; the arm action
+ * validates against the canonical enum via sanitizeDraftConfig).
+ */
+const SHIPS_FORMAT_OPTIONS: { label: string; value: string }[] = [
+  { label: "Subtle — quiet microline (current)", value: "subtle" },
+  {
+    label:
+      "Prominent — green local-shipping signal (recommended when fulfillment is local)",
+    value: "prominent",
+  },
 ];
 
 const NOT_READY_FIX_LINKS: Partial<
@@ -218,13 +222,28 @@ const NOT_READY_FIX_LINKS: Partial<
     url: "/app/products",
     label: "Add content under Product boosters",
   },
+  // v8: the results gallery's entries live in the proof library, so its
+  // not-ready fix points there (the legacy BA metaobjects only feed the
+  // one-time import) — same home as the two new proof-library features.
   verified_before_after: {
-    url: "/app/products",
-    label: "Add content under Product boosters",
+    url: "/app/proof",
+    label: "Add entries under Proof library",
   },
   batch_transparency: {
     url: "/app/products",
     label: "Add content under Product boosters",
+  },
+  derm_survey: {
+    url: "/app/products",
+    label: "Add content under Product boosters",
+  },
+  press: {
+    url: "/app/proof",
+    label: "Add entries under Proof library",
+  },
+  derm_endorsements: {
+    url: "/app/proof",
+    label: "Add entries under Proof library",
   },
 };
 
@@ -286,12 +305,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     ? (featureRaw as FeatureKey)
     : null;
 
-  const [settings, state, productList, runningExperiments] = await Promise.all([
-    getSettings(session.shop),
-    ensurePreviewState(session.shop),
-    listProductsWithBoosterStatus(admin, q),
-    listRunningExperiments(session.shop),
-  ]);
+  const [settings, state, productList, runningExperiments, proofCounts] =
+    await Promise.all([
+      getSettings(session.shop),
+      ensurePreviewState(session.shop),
+      listProductsWithBoosterStatus(admin, q),
+      listRunningExperiments(session.shop),
+      // Proof-library entry counts (press / endorsements / results) are
+      // best-effort: on error the readiness for those features degrades to
+      // its informational note instead of failing the whole page load.
+      getProofCounts(session.shop).catch(() => undefined),
+    ]);
   let markets: MarketSummary[] = [];
   let marketErrors: string[] = [];
   try {
@@ -308,18 +332,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     hasContent:
       product.boosters.clinical_study ||
       product.boosters.verified_before_after > 0 ||
-      product.boosters.batch_transparency,
+      product.boosters.batch_transparency ||
+      product.boosters.derm_survey,
   }));
 
-  // Content counts back featureReadiness for the three content widgets. They
-  // come from the SAME single products query as the picker (first 25). While
-  // a search narrows the list the counts stop representing the store, so we
-  // pass no counts (readiness degrades to "ready with note"), and when the
-  // page maxes out at 25 the counts are flagged as partial ("at least N").
+  // Content counts back featureReadiness for the per-product content
+  // widgets. They come from the SAME single products query as the picker
+  // (first 25). While a search narrows the list the counts stop representing
+  // the store, so we pass no counts (readiness degrades to "ready with
+  // note"), and when the page maxes out at 25 the counts are flagged as
+  // partial ("at least N"). The v8 proof-library counts (press /
+  // endorsements / results gallery) come from the app database instead and
+  // are exact — a product search never invalidates them.
   const searching = q.trim() !== "";
   const countsPartial = products.length >= 25;
-  const extras: FeatureReadinessExtras =
-    searching || !productList.ok
+  const extras: FeatureReadinessExtras = {
+    ...(searching || !productList.ok
       ? {}
       : {
           productsWithContent: {
@@ -332,8 +360,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             batch: productList.products.filter(
               (p) => p.boosters.batch_transparency,
             ).length,
+            survey: productList.products.filter(
+              (p) => p.boosters.derm_survey,
+            ).length,
           },
-        };
+        }),
+    ...(proofCounts ? { proofCounts } : {}),
+  };
   const readiness = featureReadiness(settings, extras);
 
   const features = Object.fromEntries(
@@ -409,14 +442,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       simulatedMarket: state.simulatedMarket,
       productHandle: state.productHandle,
     },
-    // The format saved on the Survey feature page — the Select's default, so
-    // "preview without touching anything" starts from what is really live.
-    liveSurveyFormat: settings.dermSurvey.format,
-    // Same contract for the delivery-estimate widget formats — one per
-    // surface (v6.0): product page, cart drawer, checkout.
+    // The formats saved on the Delivery guarantee page — each Select's
+    // default, so "preview without touching anything" starts from what is
+    // really live. One per surface (v6.0): product page, cart drawer,
+    // checkout.
     liveDeliveryFormat: settings.deliveryEstimate.format,
     liveDeliveryFormatCart: settings.deliveryEstimate.formatCart,
     liveDeliveryFormatCheckout: settings.deliveryEstimate.formatCheckout,
+    // Same contract for the az_ships_from display style (v6.10).
+    liveShipsFromFormat: settings.amazon.shipsFromFormat,
     defaultProductHandle,
     // The one sanctioned page-facing home of the raw token: the entry URL.
     entryUrl: state.armed
@@ -680,9 +714,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           delete draftFlags[key];
         }
       }
-      // Draft config overrides (currently just the survey format). Malformed
-      // payloads degrade to {} — armPreview's sanitizeDraftConfig is the
-      // authoritative enum validation.
+      // Draft config overrides (the three per-surface delivery-estimate
+      // formats + the ships-from style). Malformed payloads degrade to {} —
+      // armPreview's sanitizeDraftConfig is the authoritative enum
+      // validation.
       let draftConfig: unknown = {};
       try {
         draftConfig = JSON.parse(String(formData.get("draftConfig") ?? "{}"));
@@ -780,10 +815,10 @@ export default function PreviewCenter() {
     entryUrl,
     featureLocks,
     runningExperiments,
-    liveSurveyFormat,
     liveDeliveryFormat,
     liveDeliveryFormatCart,
     liveDeliveryFormatCheckout,
+    liveShipsFromFormat,
   } = data;
 
   // v5.4 safety net: a FeatureKey missing from the FEATURE_GROUPS literal
@@ -840,14 +875,9 @@ export default function PreviewCenter() {
   );
   const [productHandle, setProductHandle] = useState(defaultProductHandle);
   const [query, setQuery] = useState(q);
-  // Survey display format for the preview session: starts from the armed
-  // draft (when re-arming) or the format saved on the Survey feature page.
-  const [surveyFormat, setSurveyFormat] = useState<string>(
-    preview.draftConfig?.dermSurveyFormat ?? liveSurveyFormat,
-  );
   // Delivery-estimate widget formats for the preview session — one per
-  // surface (v6.0), same contract: each starts from the armed draft or the
-  // saved live format of ITS surface.
+  // surface (v6.0): each starts from the armed draft (when re-arming) or
+  // the saved live format of ITS surface.
   const [deliveryFormat, setDeliveryFormat] = useState<string>(
     preview.draftConfig?.deliveryFormat ?? liveDeliveryFormat,
   );
@@ -856,6 +886,11 @@ export default function PreviewCenter() {
   );
   const [deliveryFormatCheckout, setDeliveryFormatCheckout] = useState<string>(
     preview.draftConfig?.deliveryFormatCheckout ?? liveDeliveryFormatCheckout,
+  );
+  // az_ships_from display style for the preview session (v6.10) — same
+  // contract: starts from the armed draft or the saved live style.
+  const [shipsFromFormat, setShipsFromFormat] = useState<string>(
+    preview.draftConfig?.shipsFromFormat ?? liveShipsFromFormat,
   );
 
   // Debounced product search — reloads the loader with ?q= (same pattern as
@@ -1009,12 +1044,10 @@ export default function PreviewCenter() {
     formData.set(
       "draftConfig",
       JSON.stringify({
-        ...(checked.has("derm_survey")
-          ? { dermSurveyFormat: surveyFormat }
-          : {}),
         ...(checked.has("delivery_estimate")
           ? { deliveryFormat, deliveryFormatCart, deliveryFormatCheckout }
           : {}),
+        ...(checked.has("az_ships_from") ? { shipsFromFormat } : {}),
       }),
     );
     formData.set("simulatedMarket", simulatedMarket);
@@ -1301,23 +1334,6 @@ export default function PreviewCenter() {
                 onChange={setSimulatedMarket}
                 helpText="“Current / default” previews with no market simulation: features scoped to selected markets only will not show as live."
               />
-              {checked.has("derm_survey") ? (
-                <BlockStack gap="100">
-                  <Select
-                    label="Survey format"
-                    options={SURVEY_FORMAT_OPTIONS}
-                    value={surveyFormat}
-                    onChange={setSurveyFormat}
-                    helpText="How the dermatologist-survey widget presents the same numbers in this preview session."
-                  />
-                  <Text as="p" tone="subdued" variant="bodySm">
-                    Previewing a format never changes your live site — real
-                    visitors keep seeing the saved format. To adopt a format,
-                    save it on the{" "}
-                    <Link url="/app/features/survey">Survey feature page</Link>.
-                  </Text>
-                </BlockStack>
-              ) : null}
               {checked.has("delivery_estimate") ? (
                 <BlockStack gap="100">
                   <InlineStack gap="300" wrap>
@@ -1355,6 +1371,24 @@ export default function PreviewCenter() {
                     <Link url="/app/features/delivery">
                       Delivery guarantee page
                     </Link>
+                    .
+                  </Text>
+                </BlockStack>
+              ) : null}
+              {checked.has("az_ships_from") ? (
+                <BlockStack gap="100">
+                  <Select
+                    label="Ships-from style"
+                    options={SHIPS_FORMAT_OPTIONS}
+                    value={shipsFromFormat}
+                    onChange={setShipsFromFormat}
+                    helpText="How the “Ships from {country}” line presents itself in this preview session — the quiet gray microline or the prominent green local-shipping signal with the country in bold."
+                  />
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Previewing a style never changes your live site — real
+                    visitors keep seeing the saved style. To adopt a style,
+                    save it on the{" "}
+                    <Link url="/app/features/amazon">Amazon patterns page</Link>
                     .
                   </Text>
                 </BlockStack>

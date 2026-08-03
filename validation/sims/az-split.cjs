@@ -16,6 +16,21 @@
  * and restores the theme message; re-availability swaps back), per-line
  * impression beacons, and the per-market preview convention (azOn draft).
  *
+ * v6.10 adds the merchant-selectable ships-from DISPLAY FORMAT cases:
+ *   F1 default/explicit-subtle/invalid-code -> the byte-stable subtle
+ *      markup (no prominent modifier, plain composed textContent);
+ *   F2 prominent -> new .cx-az-stock__ships--prominent structure with the
+ *      country name in <strong> and the exact translated sentence
+ *      recomposed from the @@COUNTRY@@ sentinel split;
+ *   F3 leading-country locale (sentinel opens the sentence) still splits
+ *      correctly (empty prefix span collapses, <strong> leads);
+ *   F4 sentinel-less template falls back to the plain composed line;
+ *   F5 draft-format override: preview.sf wins ONLY in a VERIFIED preview
+ *      session (real visitors on an armed page keep the live style), and
+ *      an invalid draft code never demotes the live style;
+ * plus static cross-file pins for the v6.10 plumbing (Liquid lean codes,
+ * sanitize sites, Preview Center + admin Selects, CSS anatomy).
+ *
  * Stubs are minimal and documented: a tiny DOM (single-class selectors
  * only; unsupported selectors return null exactly like a no-match) and
  * decodeEntities = identity (no HTML entities in the sim strings).
@@ -75,11 +90,18 @@ const FNS = [
   "azVariantInfo",
   "azStockAllowed",
   "azShipsAllowed",
+  "azShipsFormat",
   "azStockSync",
   "azMountStock",
   "azBuildStock",
+  "cxIcon",
 ];
-const EXTRACTED = FNS.map(extractFn).join("\n\n");
+// cxIcon closes over the real CX_AZ_ICONS spec map (extracted too, via the
+// shared brace-balanced helper). The mini-DOM has no innerHTML, so cxIcon
+// degrades to an empty text node in the sim — the format checks assert the
+// text/structure around it, never the icon bytes.
+const { extractVar } = require("./lib/extract.cjs");
+const EXTRACTED = [extractVar(SRC, "CX_AZ_ICONS"), ...FNS.map(extractFn)].join("\n\n");
 
 // Static evidence pins (the coverage-tripwire style): the ships line root
 // must carry its own feature attribute, and the file must gate each line
@@ -90,6 +112,10 @@ const PINS = [
   ["stockAllowed on its own key", /azOn\('az_stock_line'\) && azTplPayload\('az_stock_line'\)/.test(SRC)],
   ["shipsAllowed on its own key", /azOn\('az_ships_from'\) && azTplPayload\('az_ships_from'\)/.test(SRC)],
   ["ships beacon", /track\('az_ships_from'\)/.test(SRC)],
+  // v6.10 format pins
+  ["prominent class emission", SRC.includes("'cx-az-stock__ships cx-az-stock__ships--prominent'")],
+  ["format decode fail-closed", SRC.includes("return f === 'p' ? 'p' : 's';")],
+  ["draft format behind PREVIEW gate", /if \(PREVIEW\) \{\n      var draft = AZ_CFG && AZ_CFG\.preview && typeof AZ_CFG\.preview\.sf === 'string' \? AZ_CFG\.preview\.sf : '';/.test(SRC)],
 ];
 
 // ------------------------------------------------------------------ mini-DOM
@@ -399,10 +425,109 @@ const CH_NAME = new Intl.DisplayNames(["en"], { type: "region" }).of("CH"); // "
   ok(page.document.querySelector(".cx-az-stock") === null, "G1 missing gated members = fail closed (embed-setting rule)");
 }
 
-if (failures > 0) {
-  console.error(`\n${failures}/${checks} CHECKS FAILED`);
-  process.exit(1);
+// --- v6.10 ships-from display formats ----------------------------------------
+{
+  // F1: default (member absent), explicit 's' and an invalid code all render
+  // the byte-stable subtle markup — the pre-v6.10 look, unchanged.
+  for (const [code, label] of [[undefined, "absent"], ["s", "explicit 's'"], ["x", "invalid 'x'"]]) {
+    const cfg = cfgFor(false, true, "CH");
+    if (code !== undefined) cfg.ships.f = code;
+    const { page } = runScenario(cfg);
+    const ships = page.document.querySelector(".cx-az-stock__ships");
+    ok(!!ships, `F1 subtle (${label}): ships line renders`);
+    ok(!!ships && ships.getAttribute("class") === "cx-az-stock__ships",
+      `F1 subtle (${label}): class unchanged (no prominent modifier)`);
+    ok(!!ships && ships.childNodes.length === 0 && ships.textContent === "Ships from " + CH_NAME,
+      `F1 subtle (${label}): plain composed textContent, no child structure`);
+  }
+
+  // F2: prominent structure — modifier class, truck-icon slot, the country
+  // name in <strong>, and the exact translated sentence recomposed from the
+  // @@COUNTRY@@ sentinel split.
+  {
+    const cfg = cfgFor(true, true, "CH");
+    cfg.ships.f = "p";
+    const { page, tracked } = runScenario(cfg);
+    const ships = page.document.querySelector(".cx-az-stock__ships");
+    ok(!!ships, "F2 prominent: ships line renders");
+    ok(!!ships && ships.getAttribute("class") === "cx-az-stock__ships cx-az-stock__ships--prominent",
+      "F2 prominent: modifier class present");
+    ok(!!ships && ships.getAttribute("data-cx-feature") === "az_ships_from",
+      "F2 prominent: line root keeps its az_ships_from marker");
+    const country = ships && ships.querySelector(".cx-az-stock__ships-country");
+    ok(!!country && country.tagName === "STRONG" && country.textContent === CH_NAME,
+      "F2 prominent: country bold via <strong> (" + CH_NAME + ")");
+    const text = ships && ships.querySelector(".cx-az-stock__ships-text");
+    ok(!!text && text.textContent === "Ships from " + CH_NAME,
+      "F2 prominent: prefix+country+suffix recompose the exact translated sentence");
+    ok(tracked.slice().sort().join(",") === "az_ships_from,az_stock_line",
+      "F2 prominent: per-line beacons unchanged");
+  }
+
+  // F3: leading-country locale — the sentinel OPENS the sentence; the split
+  // must stay correct (empty prefix span collapses, <strong> leads).
+  {
+    const cfg = cfgFor(false, true, "CH");
+    cfg.ships.f = "p";
+    cfg.strings["amazon.ships_from"] = "@@COUNTRY@@ ships your order";
+    const { page } = runScenario(cfg);
+    const ships = page.document.querySelector(".cx-az-stock__ships");
+    const text = ships && ships.querySelector(".cx-az-stock__ships-text");
+    ok(!!text && text.textContent === CH_NAME + " ships your order",
+      "F3 leading-country: composed sentence intact");
+    const country = text && text.querySelector(".cx-az-stock__ships-country");
+    ok(!!country && text.childNodes[0].textContent === "" && text.childNodes[1] === country,
+      "F3 leading-country: empty prefix span collapses, <strong> leads");
+  }
+
+  // F4: a template WITHOUT the sentinel (defensive: a translation that
+  // dropped the placeholder) falls back to the plain composed line —
+  // never a broken sentence, never a missing country claim in bold.
+  {
+    const cfg = cfgFor(false, true, "CH");
+    cfg.ships.f = "p";
+    cfg.strings["amazon.ships_from"] = "Ships locally";
+    const { page } = runScenario(cfg);
+    const ships = page.document.querySelector(".cx-az-stock__ships");
+    const text = ships && ships.querySelector(".cx-az-stock__ships-text");
+    ok(!!text && text.querySelector(".cx-az-stock__ships-country") === null && text.textContent === "Ships locally",
+      "F4 sentinel-less template: plain-line fallback (no <strong>, no crash)");
+  }
+
+  // F5: the Preview Center draft override (preview.sf lean code).
+  {
+    // F5a: VERIFIED preview session — the armed draft style wins over the
+    // live subtle setting.
+    const a0 = cfgFor(false, false);
+    a0.ships = { live: false, warehouse: "CH", f: "s" };
+    a0.strings["amazon.ships_from"] = BASE_STRINGS["amazon.ships_from"];
+    a0.preview = { armed: true, flags: { az_ships_from: true }, sf: "p" };
+    const a = runScenario(a0, { preview: { live: {}, flags: { az_ships_from: true }, market: "global" } });
+    const shipsA = a.page.document.querySelector(".cx-az-stock__ships");
+    ok(!!shipsA && shipsA.getAttribute("class") === "cx-az-stock__ships cx-az-stock__ships--prominent",
+      "F5a verified preview: draft 'p' overrides the live subtle style");
+    // F5b: REAL visitor on the same ARMED page (PREVIEW null — the preview
+    // member is emitted for everyone while armed): the draft code must
+    // never leak into what real visitors see.
+    const b0 = cfgFor(false, true, "CH");
+    b0.ships.f = "s";
+    b0.preview = { armed: true, flags: {}, sf: "p" };
+    const b = runScenario(b0);
+    const shipsB = b.page.document.querySelector(".cx-az-stock__ships");
+    ok(!!shipsB && shipsB.getAttribute("class") === "cx-az-stock__ships",
+      "F5b real visitor on an armed page: live subtle style, draft never leaks");
+    // F5c: an INVALID draft code inside a verified session never demotes
+    // the live style (closed-enum decode, fail closed to the live value).
+    const c0 = cfgFor(false, true, "CH");
+    c0.ships.f = "p";
+    c0.preview = { armed: true, flags: { az_ships_from: true }, sf: "z" };
+    const c = runScenario(c0, { preview: { live: {}, flags: { az_ships_from: true }, market: "global" } });
+    const shipsC = c.page.document.querySelector(".cx-az-stock__ships");
+    ok(!!shipsC && shipsC.getAttribute("class") === "cx-az-stock__ships cx-az-stock__ships--prominent",
+      "F5c invalid draft code: live prominent style kept");
+  }
 }
+
 // ---------------------------------------------------- v6.8.1 micro dedupe
 // The microcopy ships-from row must YIELD to the dedicated az_ships_from
 // line (never two "Ships from" in one buy box), and must stay hidden when
@@ -414,12 +539,59 @@ if (failures > 0) {
   ok(src.includes("if (row && slot && line) {") &&
     src.indexOf("row.removeAttribute('hidden')") > src.indexOf("if (row && slot && line) {"),
     'v6.8.1: micro row still fail-closed (populate+unhide only with a resolved label and line)');
-  const css = fs.readFileSync(path.join(path.dirname(SRC_PATH), 'cellexia-booster.css'), 'utf8');
+  // Always the REAL shipped CSS (SRC_PATH may point at a mutant JS copy in
+  // validation/.generated/mutants — the CSS is never the mutation target).
+  const css = fs.readFileSync(path.join(path.dirname(REAL_SRC), 'cellexia-booster.css'), 'utf8');
   ok(/\.cx-az-micro__row\[hidden\]\s*\{[^}]*display:\s*none\s*!important;/.test(css),
     'v6.8.1: CSS guard .cx-az-micro__row[hidden] { display: none !important; } present');
 }
 
-console.log(`ALL ${checks} CHECKS PASSED (v6.8 az stock/ships split sim vs the real cellexia-pdp.js module)`);
+// -------------------------------------------- v6.10 cross-file format pins
+// The plumbing that carries the merchant-selected/draft format end to end.
+// Static pins over the REAL repo files (never the mutant copy — these files
+// are not the mutation target).
+{
+  const REPO = path.join(__dirname, "..", "..");
+  const liquid = fs.readFileSync(
+    path.join(REPO, "extensions", "cellexia-booster", "blocks", "amazon-booster.liquid"), "utf8");
+  ok(liquid.includes(`"f": {{ cfg.amazon.shipsFromFormat | slice: 0 | json }}`),
+    "v6.10: Liquid ships member carries the lean format code (slice: 0)");
+  ok(liquid.includes(`"sf": {{ cx_prev.draftConfig.shipsFromFormat | slice: 0 | json }}`),
+    "v6.10: Liquid preview member carries the lean DRAFT format code");
+  const previewServer = fs.readFileSync(path.join(REPO, "app", "services", "preview.server.ts"), "utf8");
+  ok(previewServer.includes("SHIPS_FROM_FORMATS") &&
+    previewServer.includes("out.shipsFromFormat = shipsFromFormat as ShipsFromFormat;"),
+    "v6.10: sanitizeDraftConfig validates shipsFromFormat against the closed enum");
+  const metafields = fs.readFileSync(path.join(REPO, "app", "services", "metafields.server.ts"), "utf8");
+  ok(metafields.includes("SHIPS_FROM_FORMATS") &&
+    metafields.includes("draftConfig.shipsFromFormat = shipsFromFormat;"),
+    "v6.10: metafields mirror validates shipsFromFormat too (cycle-free duplicate)");
+  const previewRoute = fs.readFileSync(path.join(REPO, "app", "routes", "app.preview.tsx"), "utf8");
+  ok(previewRoute.includes(`checked.has("az_ships_from") ? { shipsFromFormat }`),
+    "v6.10: Preview Center arms shipsFromFormat only when az_ships_from is checked");
+  ok(previewRoute.includes(`label="Ships-from style"`),
+    "v6.10: Preview Center shows the Ships-from style Select");
+  const adminRoute = fs.readFileSync(path.join(REPO, "app", "routes", "app.features.amazon.tsx"), "utf8");
+  ok(adminRoute.includes("SHIPS_FORMAT_OPTIONS") &&
+    adminRoute.includes("shipsFromFormat: state.shipsFromFormat"),
+    "v6.10: admin Ships-from card saves the format via the settings patch");
+  const cssReal = fs.readFileSync(
+    path.join(REPO, "extensions", "cellexia-booster", "assets", "cellexia-booster.css"), "utf8");
+  ok(/\.cx-az-stock__ships--prominent\s*\{[^}]*color:\s*#0b7b3c/.test(cssReal),
+    "v6.10: prominent row styled in the logistics green (#0b7b3c)");
+  ok(/\.cx-az-stock__ships-country\s*\{[^}]*font-weight:\s*700/.test(cssReal),
+    "v6.10: country class bold 700 in CSS");
+  const idx = cssReal.indexOf(".cx-az-stock__ships--prominent");
+  const baseIdx = cssReal.indexOf(".cx-az-stock__ships {");
+  ok(baseIdx !== -1 && idx > baseIdx,
+    "v6.10: prominent rule AFTER the base ships rule (equal specificity — source order carries the override)");
+}
+
+if (failures > 0) {
+  console.error(`\n${failures}/${checks} CHECKS FAILED`);
+  process.exit(1);
+}
+console.log(`ALL ${checks} CHECKS PASSED (v6.8 az stock/ships split + v6.10 format sim vs the real cellexia-pdp.js module)`);
 
 // ------------------------------------------------------------ mutation tests
 if (!process.env.CX_SKIP_MUTANTS && SRC_PATH === REAL_SRC) {
@@ -449,6 +621,20 @@ if (!process.env.CX_SKIP_MUTANTS && SRC_PATH === REAL_SRC) {
       name: "m5-wrong-member",
       find: "var sh = AZ_CFG && AZ_CFG.ships;",
       replace: "var sh = AZ_CFG && AZ_CFG.shipsFrom;",
+    },
+    {
+      // v6.10: a decoder that ignores the merchant setting (always
+      // prominent) must be caught by the F1 subtle cases.
+      name: "m6-format-always-prominent",
+      find: "return f === 'p' ? 'p' : 's';",
+      replace: "return 'p';",
+    },
+    {
+      // v6.10: dropping the PREVIEW verification gate would leak the
+      // armed draft style to real visitors — F5b catches it.
+      name: "m7-draft-leak",
+      find: "if (PREVIEW) {\n      var draft = AZ_CFG && AZ_CFG.preview && typeof AZ_CFG.preview.sf === 'string' ? AZ_CFG.preview.sf : '';",
+      replace: "if (true) {\n      var draft = AZ_CFG && AZ_CFG.preview && typeof AZ_CFG.preview.sf === 'string' ? AZ_CFG.preview.sf : '';",
     },
   ];
   const bad = runMutants({ selfPath: __filename, srcPath: REAL_SRC, mutants: MUTANTS });

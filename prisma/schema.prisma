@@ -111,6 +111,80 @@ model PreviewState {
   updatedAt       DateTime  @updatedAt
 }
 
+// ---------------------------------------------------------------------------
+// v8 proof library (docs/SPEC-v8-proof-library.md §1). Hundreds/thousands of
+// entries ride these tables + the /apps/cellexia/proof app-proxy JSON endpoint
+// instead of Liquid JSON islands (byte budget) or metaobject list references
+// (caps). productGids: JSON string[]; [] = brand-level entry. Postgres deploys
+// apply this via `prisma db push` (see UPDATE.md v8 notes).
+// ---------------------------------------------------------------------------
+
+model PressItem {
+  id          String   @id @default(cuid())
+  shop        String
+  status      String   @default("approved") // approved | hidden
+  featured    Boolean  @default(false)
+  sortWeight  Int      @default(0)
+  publication String                        // e.g. "Vogue"
+  logoUrl     String?                       // Shopify Files CDN url
+  quote       String                        // the large quote
+  articleUrl  String?
+  productGids String   @default("[]")       // JSON string[]; [] = brand-level
+  // JSON string[] of market handles; [] = every market. v8.1: each market
+  // can carry its own publications (a French visitor sees the French press).
+  marketHandles String @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop, status, featured, sortWeight])
+}
+
+model DermEndorsement {
+  id          String   @id @default(cuid())
+  shop        String
+  status      String   @default("approved")
+  featured    Boolean  @default(false)
+  sortWeight  Int      @default(0)
+  name        String                        // "Dr. Anna Weiss"
+  credentials String?                       // "MD, Board-certified dermatologist"
+  country     String?                       // ISO2
+  quote       String
+  imageUrl    String?                       // optional portrait
+  productGids String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop, status, featured, sortWeight])
+}
+
+model CustomerResult {
+  id            String   @id @default(cuid())
+  shop          String
+  status        String   @default("pending") // pending | approved | hidden
+  featured      Boolean  @default(false)
+  sortWeight    Int      @default(0)
+  source        String   @default("customer") // lab | customer
+  verified      Boolean  @default(false)      // verified purchase
+  beforeUrl     String?
+  afterUrl      String?
+  ageRange      String?  // "18-24" | "25-34" | "35-44" | "45-54" | "55-64" | "65+"
+  skinType      String?  // "dry" | "oily" | "combination" | "sensitive" | "normal"
+  concern       String?  // free-slug, e.g. "wrinkles", "firmness" (admin tags)
+  durationWeeks Int?
+  country       String?  // ISO2
+  testimonial   String?
+  videoUrl      String?
+  productGids   String   @default("[]")
+  // Source cellexia_before_after metaobject GID when this row was created by
+  // the legacy import — the unique constraint makes the import exactly-once.
+  legacyGid     String?  @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([shop, status, featured, sortWeight])
+  @@index([shop, status, concern])
+}
+
 // A sequential (never A/B) experiment: flip features for one market, then
 // compare an equal-length window against the immediately-preceding baseline.
 // See docs/SPEC-v2-markets-experiments.md.

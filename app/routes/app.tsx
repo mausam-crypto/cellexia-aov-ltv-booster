@@ -24,6 +24,7 @@ export default function App() {
         <Link to="/app/preview">Preview</Link>
         <Link to="/app/features">Features</Link>
         <Link to="/app/products">Product boosters</Link>
+        <Link to="/app/proof">Proof library</Link>
         <Link to="/app/markets">Markets</Link>
         <Link to="/app/experiments">Experiments</Link>
         <Link to="/app/analytics">Analytics</Link>

@@ -2,13 +2,13 @@ import crypto from "node:crypto";
 import prisma from "../db.server";
 import {
   DELIVERY_ESTIMATE_FORMATS,
-  DERM_SURVEY_FORMATS,
   FEATURE_KEYS,
+  SHIPS_FROM_FORMATS,
   getSettings,
   type BoosterSettings,
   type DeliveryEstimateFormat,
-  type DermSurveyFormat,
   type FeatureKey,
+  type ShipsFromFormat,
 } from "../models/settings.server";
 import {
   syncSettingsToMetafields,
@@ -47,19 +47,22 @@ interface AdminGraphqlClient {
 /**
  * Draft, preview-session-only configuration overrides (v5.8). Unlike
  * draftFlags (which feature is visible), draftConfig carries HOW a feature
- * renders in the preview session — the derm-survey display format and (v5.9)
- * the delivery-estimate widget format. Tokenless by construction (validated
- * against closed enums), so it is safe to mirror into the page-visible
- * Liquid config while armed.
+ * renders in the preview session — the delivery-estimate widget formats
+ * (v5.9/v6.0) and the az_ships_from style (v6.10). The v5.8 derm-survey
+ * format override retired in v7 (the survey renders one per-product
+ * outcomes format). Tokenless by construction (validated against closed
+ * enums), so it is safe to mirror into the page-visible Liquid config
+ * while armed.
  */
 export interface PreviewDraftConfig {
-  dermSurveyFormat?: DermSurveyFormat;
   /** Delivery-estimate widget format previewed on the PRODUCT PAGE. */
   deliveryFormat?: DeliveryEstimateFormat;
   /** Delivery-estimate widget format previewed in the CART DRAWER (v6.0). */
   deliveryFormatCart?: DeliveryEstimateFormat;
   /** Delivery-estimate widget format previewed in CHECKOUT (v6.0). */
   deliveryFormatCheckout?: DeliveryEstimateFormat;
+  /** az_ships_from display format previewed on the PRODUCT PAGE (v6.10). */
+  shipsFromFormat?: ShipsFromFormat;
 }
 
 /** Parsed, validated snapshot of a shop's PreviewState row. */
@@ -146,13 +149,6 @@ export function sanitizeDraftConfig(raw: unknown): PreviewDraftConfig {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return out;
   }
-  const format = (raw as Record<string, unknown>).dermSurveyFormat;
-  if (
-    typeof format === "string" &&
-    (DERM_SURVEY_FORMATS as readonly string[]).includes(format)
-  ) {
-    out.dermSurveyFormat = format as DermSurveyFormat;
-  }
   const deliveryFormat = (raw as Record<string, unknown>).deliveryFormat;
   if (
     typeof deliveryFormat === "string" &&
@@ -180,6 +176,13 @@ export function sanitizeDraftConfig(raw: unknown): PreviewDraftConfig {
   ) {
     out.deliveryFormatCheckout =
       deliveryFormatCheckout as DeliveryEstimateFormat;
+  }
+  const shipsFromFormat = (raw as Record<string, unknown>).shipsFromFormat;
+  if (
+    typeof shipsFromFormat === "string" &&
+    (SHIPS_FROM_FORMATS as readonly string[]).includes(shipsFromFormat)
+  ) {
+    out.shipsFromFormat = shipsFromFormat as ShipsFromFormat;
   }
   return out;
 }
@@ -425,6 +428,18 @@ export interface FeatureReadinessExtras {
     clinical: number;
     ba: number;
     batch: number;
+    survey: number;
+  };
+  /**
+   * v8 proof-library entry counts (approved rows only), when known. These
+   * feed the press band, the dermatologist-endorsement wall and the results
+   * gallery — content lives in the proof-library database, not per-product
+   * metaobjects, so their readiness points at /app/proof.
+   */
+  proofCounts?: {
+    press: number;
+    endorsements: number;
+    results: number;
   };
 }
 
@@ -597,6 +612,35 @@ function contentReadiness(
 }
 
 /**
+ * v8 proof-library twin of contentReadiness — same honest three-state
+ * wording, but the entry content for these features lives in the
+ * proof-library database (not per-product metaobjects), so the fix-it
+ * pointer is "under Proof library" (/app/proof), never Product boosters.
+ */
+function proofReadiness(
+  count: number | undefined,
+  singularLabel: string,
+  pluralLabel: string,
+): FeatureReadiness {
+  if (count === undefined) {
+    return {
+      ready: true,
+      reason: `Shows the approved ${pluralLabel} from your Proof library — manage them under Proof library.`,
+    };
+  }
+  if (count <= 0) {
+    return {
+      ready: false,
+      reason: `No ${pluralLabel} yet — add them under Proof library.`,
+    };
+  }
+  return {
+    ready: true,
+    reason: `${count} approved ${count === 1 ? singularLabel : pluralLabel}.`,
+  };
+}
+
+/**
  * Per-feature preview readiness. "Not ready" never blocks draft-toggling —
  * the Preview Center shows the reason as a warning so the merchant knows why
  * a widget would render empty (or not at all) in the preview.
@@ -703,7 +747,8 @@ export function featureReadiness(
                 settings.amazon.defaultWarehouse
                   ? `Uses ${mapped} country mapping${mapped === 1 ? "" : "s"} with a default warehouse fallback.`
                   : `Renders only for the ${mapped} mapped buyer countr${mapped === 1 ? "y" : "ies"} (no default warehouse set).`
-              }` + embedNote,
+              } Renders in the saved display style — currently “${settings.amazon.shipsFromFormat}” (subtle = quiet gray microline, prominent = green local-shipping signal with the country in bold); the Preview Center can try either style without changing the live site.` +
+              embedNote,
           };
   }
   readiness.az_bought_count = {
@@ -741,13 +786,31 @@ export function featureReadiness(
       "Relabels the theme's cart checkout button with a live, plural-correct item count; the theme's original label is restored the moment the feature is turned off or the preview ends.",
   };
   readiness.clinical_study = contentReadiness(counts?.clinical, "clinical study");
-  readiness.verified_before_after = contentReadiness(
-    counts?.ba,
-    "before/after",
+  readiness.derm_survey = contentReadiness(
+    counts?.survey,
+    "dermatologist survey",
+  );
+  // v8: the results gallery replaced the per-product BA widget — its
+  // readiness is fed by proof-library CustomerResult counts, not the legacy
+  // BA metaobject count (which now only matters for the one-time import).
+  readiness.verified_before_after = proofReadiness(
+    extras.proofCounts?.results,
+    "customer result",
+    "customer results",
   );
   readiness.batch_transparency = contentReadiness(
     counts?.batch,
     "batch transparency",
+  );
+  readiness.press = proofReadiness(
+    extras.proofCounts?.press,
+    "press item",
+    "press items",
+  );
+  readiness.derm_endorsements = proofReadiness(
+    extras.proofCounts?.endorsements,
+    "dermatologist endorsement",
+    "dermatologist endorsements",
   );
   return readiness;
 }

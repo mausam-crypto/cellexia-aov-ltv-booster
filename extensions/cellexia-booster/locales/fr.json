@@ -73,14 +73,15 @@
   },
   "study": {
     "eyebrow": "Étude clinique indépendante",
-    "methodology": "n = {{ n }} participants · étude de {{ weeks }} · {{ lab }}",
+    "subject": "Étude réalisée directement sur {{ product }} — la formule exacte présentée sur cette page.",
     "weeks_count": {
       "one": "{{ count }} semaine",
       "other": "{{ count }} semaines"
     },
-    "instruments": "Mesures instrumentales : {{ methods }}",
+    "fact_participants": "{{ n }} participants",
+    "instruments": "Mesuré avec {{ methods }}",
     "view_study": "Consulter le résumé de l'étude",
-    "footnote_default": "Mesuré sous contrôle dermatologique. Les résultats individuels peuvent varier."
+    "footnote_default": "Mesuré sous la supervision de dermatologues, et non déclaré par les participants. Les résultats individuels peuvent varier."
   },
   "ba": {
     "eyebrow": "Résultats vérifiés",
@@ -111,7 +112,7 @@
     "container_tube": "tube",
     "container_pump": "flacon-pompe",
     "container_product": "produit",
-    "title": "Utilisez jusqu'à la dernière goutte",
+    "title": "Essayez-le pendant {{ days }}, sans aucun risque",
     "body": "Prenez {{ days }}. Si vous n'aimez pas vos résultats, renvoyez le {{ container }} vide pour un remboursement intégral.",
     "days_count": {
       "one": "{{ count }} jour",
@@ -131,23 +132,59 @@
   },
   "survey": {
     "eyebrow": "Enquête indépendante auprès de dermatologues",
-    "title_pct": "des dermatologues certifiés interrogés recommanderaient Cellexia",
-    "count": "{{ yes }} des {{ total }} dermatologues interrogés",
+    "rec_line": "des {{ total }} dermatologues interrogés recommanderaient {{ product }}",
+    "outcomes_intro": "Les dermatologues ayant examiné {{ product }} ont évalué les résultats observés :",
+    "outcome_agree": "D'accord : @@YES@@ sur @@TOTAL@@",
+    "more_outcomes": "+ @@N@@ autres résultats",
     "how": "Comment l'enquête a été menée",
     "methodology_p1": "En mai 2026, un cabinet d'études indépendant spécialisé en cosmétique a interrogé {{ total }} dermatologues diplômés aux États-Unis, au Royaume-Uni, en France, en Allemagne, en Italie et en Espagne.",
     "methodology_p2": "Chaque dermatologue a reçu l'ensemble des produits Cellexia, les a testés auprès d'au moins 5 patients pendant au moins 8 semaines, puis a examiné une présentation détaillée de Cellexia, comprenant la gamme de produits, les informations sur les ingrédients, les usages prévus et les données cliniques à l'appui. La question suivante leur a ensuite été posée :",
     "methodology_p3": "« Sur la base des informations examinées et de l'expérience de vos patients, recommanderiez-vous Cellexia à un patient approprié recherchant des soins contre les signes visibles de l'âge ? »",
     "methodology_p4": "L'ensemble des {{ total }} dermatologues a répondu à la question. {{ yes }} ont répondu « Oui », soit {{ percent }} % des répondants.",
     "methodology_p5": "L'enquête a été réalisée à la demande de Cellexia et menée de manière indépendante. Le recrutement des répondants ainsi que la collecte et l'analyse des réponses ont été assurés par le cabinet d'études. Cellexia n'a ni sélectionné les participants ni modifié les réponses individuelles.",
-    "report_title": "Résultats de l'enquête",
-    "report_surveyed": "Dermatologues interrogés",
-    "report_yes": "Ont répondu « Oui »",
-    "report_recommend": "Recommanderaient Cellexia",
-    "question_intro": "La question suivante a été posée à {{ total }} dermatologues diplômés :",
-    "question_result": "{{ yes }} ont répondu « Oui », soit {{ percent }} % des répondants.",
-    "dot_legend": "Chaque point représente un dermatologue interrogé.",
     "verified_badge": "Vérifié par un organisme tiers",
     "verified_by": "Enquête vérifiée par {{ name }}"
+  },
+  "press": {
+    "eyebrow": "Vu dans la presse",
+    "read_article": "Lire l'article"
+  },
+  "endo": {
+    "eyebrow": "Recommandations de dermatologues",
+    "count_headline": {
+      "one": "Recommandé par {{ n }} dermatologue",
+      "other": "Recommandé par {{ n }} dermatologues"
+    },
+    "shown_of": "Affichage de @@SHOWN@@ sur @@TOTAL@@",
+    "show_more": "Afficher plus",
+    "read_full": "Lire la recommandation complète"
+  },
+  "results": {
+    "banner_verified": "Découvrez les résultats de {{ count }} clients Cellexia vérifiés.",
+    "banner_all": "Découvrez les résultats de {{ count }} clients Cellexia.",
+    "filter_concern": "Préoccupation",
+    "filter_age": "Âge",
+    "filter_skin": "Type de peau",
+    "filter_duration": "Durée",
+    "skin_dry": "Sèche",
+    "skin_oily": "Grasse",
+    "skin_combination": "Mixte",
+    "skin_sensitive": "Sensible",
+    "skin_normal": "Normale",
+    "duration_lt8": "Moins de 8 semaines",
+    "duration_8to12": "8 à 12 semaines",
+    "duration_gt12": "Plus de 12 semaines",
+    "age_years": "{{ range }} ans",
+    "verified_badge": "Achat vérifié",
+    "lab_badge": "Résultat d'étude clinique",
+    "video_badge": "Vidéo",
+    "weeks_of_use": "@@N@@ semaines d'utilisation",
+    "before": "Avant",
+    "after": "Après",
+    "show_more": "Afficher plus",
+    "empty": "Aucun résultat ne correspond à ces filtres pour le moment.",
+    "close": "Fermer",
+    "clear_filters": "Effacer les filtres"
   },
   "delivery": {
     "line": "Recevez-le d'ici au {{ date }}",

@@ -470,6 +470,17 @@ function validateAmazonPatch(patch: DeepPartial<BoosterSettings>): string[] {
       );
     }
   }
+  // v6.10 ships-from display format — same fail-loud rule as the placement
+  // enums (a UI bug must surface, not save a surprise default).
+  if (
+    amazon.shipsFromFormat !== undefined &&
+    amazon.shipsFromFormat !== "subtle" &&
+    amazon.shipsFromFormat !== "prominent"
+  ) {
+    errors.push(
+      "The “Ships from” display style must be “subtle” or “prominent”.",
+    );
+  }
   if (
     amazon.shipsFromDefault !== undefined &&
     typeof amazon.shipsFromDefault !== "string"
@@ -669,6 +680,23 @@ function toPlacement(value: unknown): AzPlacementValue {
   return value === "buybox" ? "buybox" : "tabs_below";
 }
 
+/** az_ships_from display style (v6.10, client-safe mirror of
+ *  SHIPS_FROM_FORMATS — the server sanitizes on save). */
+type AzShipsFormatValue = "subtle" | "prominent";
+
+const SHIPS_FORMAT_OPTIONS: { label: string; value: AzShipsFormatValue }[] = [
+  { label: "Subtle — quiet microline (current)", value: "subtle" },
+  {
+    label:
+      "Prominent — green local-shipping signal (recommended when fulfillment is local)",
+    value: "prominent",
+  },
+];
+
+function toShipsFormat(value: unknown): AzShipsFormatValue {
+  return value === "prominent" ? "prominent" : "subtle";
+}
+
 interface AmazonFormState {
   flags: Record<AzKey, boolean>;
   warehouseRows: WarehouseRowState[];
@@ -687,6 +715,9 @@ interface AmazonFormState {
   /** v6.5 per-widget PDP placement (az_fbt / az_similar_items cards). */
   fbtPlacement: AzPlacementValue;
   similarPlacement: AzPlacementValue;
+  /** v6.10 az_ships_from display style (subtle microline vs the prominent
+   *  green local-shipping signal). */
+  shipsFromFormat: AzShipsFormatValue;
   scopes: Record<AzKey, ScopeState>;
 }
 
@@ -713,6 +744,7 @@ interface LoaderShape {
     boughtOnCards: boolean;
     fbtPlacement: string;
     similarPlacement: string;
+    shipsFromFormat: string;
   } & Record<AzFlagField, boolean>;
   scopes: Record<AzKey, { mode: "all" | "selected"; markets: string[] }>;
 }
@@ -731,6 +763,7 @@ function initialFormState(data: LoaderShape): AmazonFormState {
     boughtOnCards: data.amazon.boughtOnCards !== false,
     fbtPlacement: toPlacement(data.amazon.fbtPlacement),
     similarPlacement: toPlacement(data.amazon.similarPlacement),
+    shipsFromFormat: toShipsFormat(data.amazon.shipsFromFormat),
     scopes: Object.fromEntries(
       AZ_KEYS.map((key) => [key, toScopeState(data.scopes[key])]),
     ) as Record<AzKey, ScopeState>,
@@ -751,6 +784,7 @@ function serializeForCompare(state: AmazonFormState): string {
     boughtOnCards: state.boughtOnCards,
     fbtPlacement: state.fbtPlacement,
     similarPlacement: state.similarPlacement,
+    shipsFromFormat: state.shipsFromFormat,
     scopes: Object.fromEntries(
       AZ_KEYS.map((key) => [key, toScopePatch(state.scopes[key])]),
     ),
@@ -905,6 +939,7 @@ export default function AmazonFeaturesPage() {
         boughtOnCards: state.boughtOnCards,
         fbtPlacement: state.fbtPlacement,
         similarPlacement: state.similarPlacement,
+        shipsFromFormat: state.shipsFromFormat,
       },
       marketScopes: Object.fromEntries(
         AZ_KEYS.map((key) => [key, toScopePatch(state.scopes[key])]),
@@ -1287,6 +1322,20 @@ export default function AmazonFeaturesPage() {
                   {feature.key === "az_ships_from" ? (
                     <BlockStack gap="300">
                       <Divider />
+                      <Box width="360px">
+                        <Select
+                          label="Display style"
+                          options={SHIPS_FORMAT_OPTIONS}
+                          value={state.shipsFromFormat}
+                          onChange={(value) =>
+                            setState((previous) => ({
+                              ...previous,
+                              shipsFromFormat: toShipsFormat(value),
+                            }))
+                          }
+                          helpText="“Subtle” keeps the small gray microline next to the In-Stock line (the current look). “Prominent” renders a larger green line with a truck icon and the warehouse country in bold — the marketplace-style “ships locally” signal. Because this line only shows when a warehouse resolves for the buyer, the prominent style is recommended when your fulfillment really is local or nearby. The wording is identical in both styles and stays translated per language."
+                        />
+                      </Box>
                       <Text as="h3" variant="headingSm">
                         “Ships from” warehouse map
                       </Text>

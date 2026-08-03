@@ -73,14 +73,15 @@
   },
   "study": {
     "eyebrow": "Független klinikai vizsgálat",
-    "methodology": "n = {{ n }} résztvevő · {{ weeks }} · {{ lab }}",
+    "subject": "A vizsgálat magán a terméken ({{ product }}) történt — pontosan azon a formulán, amelyet ezen az oldalon látsz.",
     "weeks_count": {
       "one": "{{ count }} hetes vizsgálat",
       "other": "{{ count }} hetes vizsgálat"
     },
-    "instruments": "Műszeres mérés: {{ methods }}",
+    "fact_participants": "{{ n }} résztvevő",
+    "instruments": "{{ methods }} segítségével mérve",
     "view_study": "Nézd meg a vizsgálati összefoglalót",
-    "footnote_default": "Bőrgyógyászati ellenőrzés mellett mérve. Az egyéni eredmények eltérhetnek."
+    "footnote_default": "Bőrgyógyászok felügyelete mellett mérve, nem a résztvevők saját beszámolói alapján. Az egyéni eredmények eltérhetnek."
   },
   "ba": {
     "eyebrow": "Ellenőrzött eredmények",
@@ -111,7 +112,7 @@
     "container_tube": "tubus",
     "container_pump": "pumpás flakon",
     "container_product": "termék",
-    "title": "Használd el az utolsó cseppig",
+    "title": "{{ days }} kapsz, hogy kipróbáld — teljesen kockázatmentesen",
     "body": "Adj magadnak {{ days }}. Ha nem szereted az eredményeket, elég, ha az üres {{ container }} visszaér hozzánk, és a teljes árat visszatérítjük.",
     "days_count": {
       "one": "{{ count }} napot",
@@ -131,23 +132,59 @@
   },
   "survey": {
     "eyebrow": "Független bőrgyógyász-felmérés",
-    "title_pct": "a megkérdezett szakvizsgázott bőrgyógyászok ajánlanák a Cellexiát",
-    "count": "{{ yes }} a {{ total }} megkérdezett bőrgyógyász közül",
+    "rec_line": "a {{ total }} megkérdezett bőrgyógyász közül ajánlaná a terméket ({{ product }})",
+    "outcomes_intro": "A terméket ({{ product }}) megvizsgáló bőrgyógyászok így értékelték az általuk megfigyelt eredményeket:",
+    "outcome_agree": "@@TOTAL@@ közül @@YES@@ értett egyet",
+    "more_outcomes": "+ @@N@@ további eredmény",
     "how": "Hogyan készült a felmérés",
     "methodology_p1": "2026 májusában egy független kozmetikai kutatócég {{ total }} szakvizsgázott bőrgyógyászt kérdezett meg az Egyesült Államokban, az Egyesült Királyságban, Franciaországban, Németországban, Olaszországban és Spanyolországban.",
     "methodology_p2": "Minden bőrgyógyász megkapta az összes Cellexia-terméket, legalább 5 pácienssel legalább 8 héten át tesztelte őket, és áttekintett egy részletes ismertetőt a Cellexiáról, amely bemutatta a termékcsaládot, az összetevőkre vonatkozó információkat, a rendeltetésszerű felhasználást és az alátámasztó klinikai bizonyítékokat. Ezután a következő kérdést tették fel nekik:",
     "methodology_p3": "„A megismert információk és páciensei tapasztalatai alapján ajánlaná-e a Cellexiát olyan megfelelő páciensnek, aki a bőröregedés látható jelei ellen keres bőrápolást?”",
     "methodology_p4": "A kérdésre mind a {{ total }} bőrgyógyász válaszolt. {{ yes }} választotta az „Igen” választ, ami a válaszadók {{ percent }}%-a.",
     "methodology_p5": "A felmérés a Cellexia kérésére készült, lebonyolítása azonban függetlenül történt. A válaszadók toborzását, valamint a válaszok gyűjtését és elemzését a kutatócég végezte. A Cellexia nem választotta ki a résztvevőket, és nem módosított egyetlen választ sem.",
-    "report_title": "A felmérés eredményei",
-    "report_surveyed": "Megkérdezett bőrgyógyászok",
-    "report_yes": "„Igen” választ adott",
-    "report_recommend": "Ajánlaná a Cellexiát",
-    "question_intro": "{{ total }} szakvizsgázott bőrgyógyásznak tették fel a kérdést:",
-    "question_result": "{{ yes }} válaszolt „igen”-nel – a válaszadók {{ percent }}%-a.",
-    "dot_legend": "Minden pont egy megkérdezett bőrgyógyászt jelöl.",
     "verified_badge": "Harmadik fél által ellenőrizve",
     "verified_by": "A felmérést ellenőrizte: {{ name }}"
+  },
+  "press": {
+    "eyebrow": "Sajtómegjelenések",
+    "read_article": "Olvasd el a cikket"
+  },
+  "endo": {
+    "eyebrow": "Bőrgyógyászok ajánlásai",
+    "count_headline": {
+      "one": "{{ n }} bőrgyógyász ajánlja",
+      "other": "{{ n }} bőrgyógyász ajánlja"
+    },
+    "shown_of": "Megjelenítve: @@SHOWN@@ / @@TOTAL@@",
+    "show_more": "Továbbiak megjelenítése",
+    "read_full": "Olvasd el a teljes ajánlást"
+  },
+  "results": {
+    "banner_verified": "Nézd meg {{ count }} igazolt Cellexia-vásárló eredményeit.",
+    "banner_all": "Nézd meg {{ count }} Cellexia-vásárló eredményeit.",
+    "filter_concern": "Bőrprobléma",
+    "filter_age": "Életkor",
+    "filter_skin": "Bőrtípus",
+    "filter_duration": "Használati idő",
+    "skin_dry": "Száraz",
+    "skin_oily": "Zsíros",
+    "skin_combination": "Kombinált",
+    "skin_sensitive": "Érzékeny",
+    "skin_normal": "Normál",
+    "duration_lt8": "8 hétnél rövidebb",
+    "duration_8to12": "8–12 hét",
+    "duration_gt12": "12 hétnél hosszabb",
+    "age_years": "{{ range }} éves",
+    "verified_badge": "Igazolt vásárlás",
+    "lab_badge": "Klinikai vizsgálati eredmény",
+    "video_badge": "Videó",
+    "weeks_of_use": "@@N@@ hét használat",
+    "before": "Előtte",
+    "after": "Utána",
+    "show_more": "Továbbiak megjelenítése",
+    "empty": "Ezekkel a szűrőkkel még nincs megjeleníthető eredmény.",
+    "close": "Bezárás",
+    "clear_filters": "Szűrők törlése"
   },
   "delivery": {
     "line": "Kézhez kapod legkésőbb: {{ date }}",

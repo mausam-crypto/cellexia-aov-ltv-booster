@@ -12,6 +12,10 @@
  *  - innerHTML assignment stores the string verbatim (no parsing); the
  *    sims never inspect innerHTML-built children.
  *  - addEventListener stores listeners; tests fire them via _fire(type).
+ *  - v8 extensions for the proof-library sim (cellexia-proof.js): document
+ *    gains createElementNS (returns a plain El tagged with its namespace —
+ *    structure only, no real SVG semantics) and a static documentElement
+ *    {lang: "en"} for Intl-locale readers (pfPageLocale). Nothing else.
  */
 "use strict";
 
@@ -197,6 +201,15 @@ function makeDocument() {
     nodeType: 9,
     body,
     createElement(tag) { return new El(tag); },
+    // v8 (proof-library sim): namespace-tagged plain El — the extracted
+    // pfSvg only composes structure/attributes, never renders.
+    createElementNS(ns, tag) {
+      const el = new El(tag);
+      el._ns = String(ns);
+      return el;
+    },
+    // v8 (proof-library sim): static page language for pfPageLocale.
+    documentElement: { lang: "en" },
     createTextNode(s) { return textNode(s); },
     getElementById(id) {
       const walk = (node) => {

@@ -73,14 +73,15 @@
   },
   "study": {
     "eyebrow": "Oberoende klinisk studie",
-    "methodology": "n = {{ n }} deltagare · {{ weeks }} · {{ lab }}",
+    "subject": "Testad på just {{ product }} – exakt samma formel som på den här sidan.",
     "weeks_count": {
       "one": "{{ count }} veckas studie",
       "other": "{{ count }} veckors studie"
     },
-    "instruments": "Instrumentellt uppmätt: {{ methods }}",
+    "fact_participants": "{{ n }} deltagare",
+    "instruments": "Uppmätt med {{ methods }}",
     "view_study": "Se sammanfattning av studien",
-    "footnote_default": "Uppmätt under dermatologisk kontroll. Individuella resultat kan variera."
+    "footnote_default": "Uppmätt under överinseende av dermatologer, inte självrapporterat. Individuella resultat kan variera."
   },
   "ba": {
     "eyebrow": "Verifierade resultat",
@@ -111,7 +112,7 @@
     "container_tube": "tub",
     "container_pump": "pumpflaska",
     "container_product": "produkt",
-    "title": "Använd varenda droppe",
+    "title": "Prova i {{ days }} – helt riskfritt",
     "body": "Ta {{ days }} på dig. Om du inte älskar dina resultat kan du returnera din tomma {{ container }} och få hela beloppet återbetalat.",
     "days_count": {
       "one": "{{ count }} dag",
@@ -131,23 +132,59 @@
   },
   "survey": {
     "eyebrow": "Oberoende undersökning bland dermatologer",
-    "title_pct": "av de tillfrågade specialistläkarna i dermatologi skulle rekommendera Cellexia",
-    "count": "{{ yes }} av {{ total }} tillfrågade dermatologer",
+    "rec_line": "av {{ total }} tillfrågade dermatologer skulle rekommendera {{ product }}",
+    "outcomes_intro": "Dermatologer som granskade {{ product }} bedömde de resultat de observerade:",
+    "outcome_agree": "@@YES@@ av @@TOTAL@@ instämde",
+    "more_outcomes": "+ @@N@@ fler resultat",
     "how": "Så genomfördes undersökningen",
     "methodology_p1": "I maj 2026 genomförde ett oberoende undersökningsföretag inom kosmetik en enkät bland {{ total }} legitimerade dermatologer i USA, Storbritannien, Frankrike, Tyskland, Italien och Spanien.",
     "methodology_p2": "Varje dermatolog fick alla Cellexia-produkter, testade dem med minst 5 patienter i minst 8 veckor och gick igenom en detaljerad översikt av Cellexia, inklusive produktsortimentet, information om ingredienser, avsedda användningsområden och stödjande klinisk dokumentation. Därefter fick de frågan:",
     "methodology_p3": "”Skulle du, utifrån den granskade informationen och dina patienters erfarenheter, rekommendera Cellexia till en lämplig patient som söker hudvård mot synliga ålderstecken?”",
     "methodology_p4": "Samtliga {{ total }} dermatologer besvarade frågan. {{ yes }} svarade ”Ja”, vilket motsvarar {{ percent }} % av de svarande.",
     "methodology_p5": "Undersökningen genomfördes på begäran av Cellexia och utfördes oberoende. Undersökningsföretaget rekryterade respondenterna samt samlade in och analyserade svaren. Cellexia varken valde ut deltagare eller ändrade enskilda svar.",
-    "report_title": "Undersökningens resultat",
-    "report_surveyed": "Tillfrågade dermatologer",
-    "report_yes": "Svarade ”Ja”",
-    "report_recommend": "Skulle rekommendera Cellexia",
-    "question_intro": "{{ total }} legitimerade dermatologer fick frågan:",
-    "question_result": "{{ yes }} svarade ”Ja” – {{ percent }} % av de svarande.",
-    "dot_legend": "Varje punkt motsvarar en tillfrågad dermatolog.",
     "verified_badge": "Verifierad av tredje part",
     "verified_by": "Undersökningen är verifierad av {{ name }}"
+  },
+  "press": {
+    "eyebrow": "Uppmärksammad i pressen",
+    "read_article": "Läs artikeln"
+  },
+  "endo": {
+    "eyebrow": "Rekommendationer från dermatologer",
+    "count_headline": {
+      "one": "Rekommenderas av {{ n }} dermatolog",
+      "other": "Rekommenderas av {{ n }} dermatologer"
+    },
+    "shown_of": "Visar @@SHOWN@@ av @@TOTAL@@",
+    "show_more": "Visa fler",
+    "read_full": "Läs hela rekommendationen"
+  },
+  "results": {
+    "banner_verified": "Se resultat från {{ count }} verifierade Cellexia-kunder.",
+    "banner_all": "Se resultat från {{ count }} Cellexia-kunder.",
+    "filter_concern": "Hudproblem",
+    "filter_age": "Ålder",
+    "filter_skin": "Hudtyp",
+    "filter_duration": "Användningstid",
+    "skin_dry": "Torr",
+    "skin_oily": "Fet",
+    "skin_combination": "Blandhy",
+    "skin_sensitive": "Känslig",
+    "skin_normal": "Normal",
+    "duration_lt8": "Under 8 veckor",
+    "duration_8to12": "8–12 veckor",
+    "duration_gt12": "Över 12 veckor",
+    "age_years": "{{ range }} år",
+    "verified_badge": "Verifierat köp",
+    "lab_badge": "Resultat från klinisk studie",
+    "video_badge": "Video",
+    "weeks_of_use": "@@N@@ veckors användning",
+    "before": "Före",
+    "after": "Efter",
+    "show_more": "Visa fler",
+    "empty": "Inga resultat matchar de här filtren ännu.",
+    "close": "Stäng",
+    "clear_filters": "Rensa filter"
   },
   "delivery": {
     "line": "Leverans senast {{ date }}",

@@ -65,6 +65,8 @@ export type FeatureKey =
   | "batch_transparency"
   | "empty_bottle_guarantee"
   | "derm_survey"
+  | "press"
+  | "derm_endorsements"
   | "cart_cross_sell"
   | "dispatch_countdown"
   | "delivery_estimate"
@@ -98,6 +100,8 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "batch_transparency",
   "empty_bottle_guarantee",
   "derm_survey",
+  "press",
+  "derm_endorsements",
   "cart_cross_sell",
   "dispatch_countdown",
   "delivery_estimate",
@@ -149,7 +153,24 @@ export type AmazonFlagField = (typeof AMAZON_FLAG_FIELDS)[number];
 export const AMAZON_PLACEMENTS = ["tabs_below", "buybox"] as const;
 export type AmazonPlacement = (typeof AMAZON_PLACEMENTS)[number];
 
-/** The five merchant-selectable derm-survey display formats (v5.8). */
+/**
+ * Display formats for the az_ships_from line (v6.10, merchant-set).
+ * "subtle" (default — the pre-v6.10 look): the small gray microline next to
+ * the In-Stock line. "prominent": a 15px logistics-green row with a truck
+ * icon and the country name in bold — the Amazon-style local-fulfillment
+ * signal, recommended when shipping really is local/nearby (the line only
+ * renders when a warehouse resolves, so it is a conversion driver there).
+ * Both formats render the same translated sentence; only presentation
+ * changes. Sanitized against this closed enum (anything else -> "subtle").
+ */
+export const SHIPS_FROM_FORMATS = ["subtle", "prominent"] as const;
+export type ShipsFromFormat = (typeof SHIPS_FROM_FORMATS)[number];
+
+/** The five merchant-selectable derm-survey display formats (v5.8).
+ *  v7-LEGACY: the storefront renders a single outcomes-forward per-product
+ *  format and no longer reads `dermSurvey.format` — the enum and its
+ *  sanitize fallback stay only so stored settings JSON keeps
+ *  round-tripping. */
 export const DERM_SURVEY_FORMATS = [
   "seal",
   "report",
@@ -158,6 +179,20 @@ export const DERM_SURVEY_FORMATS = [
   "strip",
 ] as const;
 export type DermSurveyFormat = (typeof DERM_SURVEY_FORMATS)[number];
+
+/**
+ * Display densities for the three v8 proof-library widgets (v8.3,
+ * merchant-set, closed enum): "full" (default — the original full-height
+ * layout), "compact" (the middle tier — quote and details visible at a
+ * fraction of the height) and "ultra" (the v8.2 ultra-compact look —
+ * one collapsed row, details on tap). LIVE display-density settings
+ * (the v6.5 placement precedent — no draft/preview plumbing). Sanitize
+ * coerces non-enum values from the v8.2-legacy `compact` boolean:
+ * compact === true → "ultra", anything else → "full" — a shop that
+ * enabled ultra-compact on v8.2 keeps ultra behavior.
+ */
+export const PROOF_DENSITIES = ["full", "compact", "ultra"] as const;
+export type ProofDensity = (typeof PROOF_DENSITIES)[number];
 
 /** The four merchant-selectable delivery-estimate widget formats (v5.9). */
 export const DELIVERY_ESTIMATE_FORMATS = [
@@ -337,9 +372,25 @@ export interface BoosterSettings {
    */
   clinicalStudy: {
     enabled: boolean;
+    /** v8 compact mode — the same study proof in a fraction of the height.
+     *  LIVE display-density setting (merchant-set, no draft/preview plumbing
+     *  — the v6.5 placement-setting precedent): flipping it changes the live
+     *  widget immediately. */
+    compact: boolean;
   };
   beforeAfter: {
     enabled: boolean;
+    /** v8.2-LEGACY (like dermSurvey.format): the old ultra-compact boolean.
+     *  Kept in shape/defaults/sanitize only so stored settings JSON keeps
+     *  round-tripping — no UI writes it anymore; `density` (v8.3) is the
+     *  live control, and sanitize derives a missing/invalid density from
+     *  this flag (true → "ultra"). */
+    compact: boolean;
+    /** Results-gallery display density (LIVE setting, v8.3): "full" |
+     *  "compact" (full-size banner + wrapping chip row + the card rail on
+     *  both breakpoints, ~460px) | "ultra" (the v8.2 look: slim one-line
+     *  banner, one scrollable chip row, 240px rail). */
+    density: ProofDensity;
   };
   batchTransparency: {
     enabled: boolean;
@@ -353,6 +404,11 @@ export interface BoosterSettings {
      * {{ container }}"). Per-product override via pdp_flags.container.
      */
     container: "bottle" | "jar" | "tube" | "pump" | "product";
+    /** v8 compact mode — the same guarantee as a single slim band instead of
+     *  the full ink panel (the modal keeps the full points). LIVE
+     *  display-density setting (merchant-set, no draft/preview plumbing —
+     *  the v6.5 placement-setting precedent). */
+    compact: boolean;
   };
   dermSurvey: {
     enabled: boolean;
@@ -360,23 +416,77 @@ export interface BoosterSettings {
      *  back-compat; the v5.7 widget no longer displays this ratio. */
     recommend: number;
     outOf: number;
-    /** Survey sample size (total dermatologists surveyed), e.g. 270. */
+    /** v7-LEGACY: shop-global sample size (total dermatologists surveyed),
+     *  e.g. 270. Kept for stored-JSON back-compat only — the v7 storefront
+     *  reads per-product numbers from the cellexia_product_survey
+     *  metaobject instead. */
     sampleSize: number;
-    /** Dermatologists who answered "Yes" (of `sampleSize`), e.g. 248.
-     *  Percent shown in the proof seal = round(yesCount / sampleSize * 100).
-     *  NOT clamped against sampleSize here — the storefront fails closed
-     *  (renders nothing) on inconsistent numbers and the admin warns. */
+    /** v7-LEGACY: dermatologists who answered "Yes" (of `sampleSize`),
+     *  e.g. 248. Same back-compat-only status as `sampleSize` — the v7
+     *  widget renders per-product outcome counts, never this number. */
     yesCount: number;
-    /** Merchant-written methodology text shown in the "How the survey was
-     *  conducted" disclosure. "" = the built-in translated explanation. */
+    /** Shop-global DEFAULT methodology text shown in the "How the survey
+     *  was conducted" disclosure. "" = the built-in translated explanation.
+     *  v7: the per-product metaobject's `methodology` field overrides this
+     *  per product when set. v6.11: the tokens {{ total }}, {{ yes }} and
+     *  {{ percent }} are substituted with the live survey numbers by the
+     *  storefront JS, so a merchant-edited copy of the built-in text keeps
+     *  tracking the numbers. */
     methodology: string;
-    /** Third party that verified the survey (shown on the badge). */
+    /** Shop-global DEFAULT verifier (shown on the badge); the per-product
+     *  metaobject's `verifier_name` field overrides it per product. */
     verifierName: string;
+    /** Shop-global DEFAULT verification link; the per-product metaobject's
+     *  `verification_url` field overrides it per product. */
     verificationUrl: string;
-    /** Merchant-selected display format (v5.8). All five formats share the
-     *  same data, disclosure and fail-closed rules — they differ only in
-     *  presentation mechanism. */
+    /** v7-LEGACY: merchant-selected display format (v5.8). The v7 widget
+     *  has exactly one outcomes-forward format; this field (with its enum
+     *  and sanitize fallback) is kept only so stored settings JSON keeps
+     *  round-tripping. */
     format: DermSurveyFormat;
+    /** v8 compact mode — the same survey proof in a fraction of the height
+     *  (top outcome inline, the rest behind a disclosure). LIVE
+     *  display-density setting (merchant-set, no draft/preview plumbing —
+     *  the v6.5 placement-setting precedent). */
+    compact: boolean;
+  };
+  /**
+   * "As seen in the press" band (v8). Entry content (publications, quotes,
+   * logos) lives in the proof-library database (PressItem rows, served via
+   * the app proxy) — this section carries only the master flag.
+   */
+  press: {
+    enabled: boolean;
+    /** v8.2-LEGACY (like dermSurvey.format): the old ultra-compact boolean.
+     *  Kept in shape/defaults/sanitize only so stored settings JSON keeps
+     *  round-tripping — no UI writes it anymore; `density` (v8.3) is the
+     *  live control, and sanitize derives a missing/invalid density from
+     *  this flag (true → "ultra"). */
+    compact: boolean;
+    /** Press-band display density (LIVE setting, v8.3): "full" |
+     *  "compact" (one-row eyebrow + logo strip with the quote ALWAYS
+     *  visible below it, ~130px) | "ultra" (the v8.2 look: one collapsed
+     *  row, quote reveals on logo tap). */
+    density: ProofDensity;
+  };
+  /**
+   * Dermatologist endorsement wall (v8). Entry content lives in the
+   * proof-library database (DermEndorsement rows, served via the app proxy)
+   * — this section carries only the master flag.
+   */
+  dermEndorsements: {
+    enabled: boolean;
+    /** v8.2-LEGACY (like dermSurvey.format): the old ultra-compact boolean.
+     *  Kept in shape/defaults/sanitize only so stored settings JSON keeps
+     *  round-tripping — no UI writes it anymore; `density` (v8.3) is the
+     *  live control, and sanitize derives a missing/invalid density from
+     *  this flag (true → "ultra"). */
+    compact: boolean;
+    /** Endorsement-wall display density (LIVE setting, v8.3): "full" |
+     *  "compact" (count headline + inline shown-of over a 280px-card rail,
+     *  two-line quotes, ~250px) | "ultra" (the v8.2 look: one composed
+     *  head line over a 240px rail). */
+    density: ProofDensity;
   };
   /**
    * Dispatch countdown ("Order within 2h 14m for same-day dispatch").
@@ -517,6 +627,13 @@ export interface BoosterSettings {
     /** Where the similar-items row renders (same enum + default as
      *  fbtPlacement; the two widgets are placed independently). */
     similarPlacement: AmazonPlacement;
+    /**
+     * How the az_ships_from line renders (v6.10, merchant-set): "subtle"
+     * (default — the quiet gray microline) or "prominent" (green
+     * local-shipping signal with truck icon + bold country). Live setting
+     * with a Preview Center draft override (draftConfig.shipsFromFormat).
+     */
+    shipsFromFormat: ShipsFromFormat;
     /** az_cart_free_line — declarative free-shipping sentence atop the cart booster. */
     cartFreeLine: boolean;
     /** az_cta_count — "Proceed to checkout (N items)" decoration of the theme's button. */
@@ -656,9 +773,12 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   },
   clinicalStudy: {
     enabled: false,
+    compact: false,
   },
   beforeAfter: {
     enabled: false,
+    compact: false,
+    density: "full",
   },
   batchTransparency: {
     enabled: false,
@@ -667,6 +787,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     enabled: false,
     days: 60,
     container: "jar",
+    compact: false,
   },
   dermSurvey: {
     enabled: false,
@@ -678,6 +799,17 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     verifierName: "",
     verificationUrl: "",
     format: "seal",
+    compact: false,
+  },
+  press: {
+    enabled: false,
+    compact: false,
+    density: "full",
+  },
+  dermEndorsements: {
+    enabled: false,
+    compact: false,
+    density: "full",
   },
   dispatch: {
     enabled: false,
@@ -717,6 +849,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     similarItems: false,
     fbtPlacement: "tabs_below",
     similarPlacement: "tabs_below",
+    shipsFromFormat: "subtle",
     cartFreeLine: false,
     ctaCount: false,
     shipsFromByCountry: {},
@@ -783,6 +916,32 @@ export function mergeSettings<T>(defaults: T, patch: unknown): T {
     }
   }
   return out as T;
+}
+
+/**
+ * v8.3 load-path back-compat twin of the sanitize coercion: mergeSettings
+ * fills a MISSING key from the defaults, so stored JSON that predates the
+ * density enum (v8.2 and earlier) merges to density "full" — silently
+ * dropping the ultra-compact look for shops whose only signal is the
+ * legacy `compact: true` boolean. When the RAW stored JSON carries no
+ * valid density for a proof-library section, derive it from the legacy
+ * boolean — compact === true → "ultra", else "full" (the exact sanitize
+ * rule, applied where old JSON actually surfaces). The next save persists
+ * the derived value, after which this is a no-op.
+ */
+export function coerceLegacyProofDensities(
+  settings: BoosterSettings,
+  raw: unknown,
+): BoosterSettings {
+  if (!isPlainObject(raw)) return settings;
+  const sections = ["press", "dermEndorsements", "beforeAfter"] as const;
+  for (const key of sections) {
+    const rawSection = (raw as Record<string, unknown>)[key];
+    const stored = isPlainObject(rawSection) ? rawSection.density : undefined;
+    if (PROOF_DENSITIES.includes(stored as ProofDensity)) continue;
+    settings[key].density = settings[key].compact === true ? "ultra" : "full";
+  }
+  return settings;
 }
 
 /** Badge keys the theme extension can render (see trustBadges.items docs). */
@@ -1201,6 +1360,48 @@ export function sanitizeSettings(
       DEFAULT_SETTINGS.emptyBottleGuarantee.days,
     ),
   );
+  // v8 compact display-density flags — anything non-boolean falls back to
+  // the safe default (full-height widgets).
+  if (typeof next.clinicalStudy.compact !== "boolean") {
+    next.clinicalStudy.compact = DEFAULT_SETTINGS.clinicalStudy.compact;
+  }
+  if (typeof next.emptyBottleGuarantee.compact !== "boolean") {
+    next.emptyBottleGuarantee.compact =
+      DEFAULT_SETTINGS.emptyBottleGuarantee.compact;
+  }
+  if (typeof next.dermSurvey.compact !== "boolean") {
+    next.dermSurvey.compact = DEFAULT_SETTINGS.dermSurvey.compact;
+  }
+  // v8.2-LEGACY ultra-compact flags for the three proof-library widgets —
+  // same typeof-boolean discipline as the v8 trio above. Kept ONLY for
+  // stored-JSON back-compat + the density coercion below; no UI writes
+  // them anymore.
+  if (typeof next.press.compact !== "boolean") {
+    next.press.compact = DEFAULT_SETTINGS.press.compact;
+  }
+  if (typeof next.dermEndorsements.compact !== "boolean") {
+    next.dermEndorsements.compact = DEFAULT_SETTINGS.dermEndorsements.compact;
+  }
+  if (typeof next.beforeAfter.compact !== "boolean") {
+    next.beforeAfter.compact = DEFAULT_SETTINGS.beforeAfter.compact;
+  }
+  // v8.3 proof-library display densities — closed enum with BACK-COMPAT
+  // COERCION: a missing/invalid density is derived from the (already
+  // sanitized) v8.2 legacy boolean, so a shop that enabled ultra-compact
+  // on v8.2 keeps ultra behavior the moment v8.3 deploys.
+  if (!PROOF_DENSITIES.includes(next.press.density as ProofDensity)) {
+    next.press.density = next.press.compact === true ? "ultra" : "full";
+  }
+  if (
+    !PROOF_DENSITIES.includes(next.dermEndorsements.density as ProofDensity)
+  ) {
+    next.dermEndorsements.density =
+      next.dermEndorsements.compact === true ? "ultra" : "full";
+  }
+  if (!PROOF_DENSITIES.includes(next.beforeAfter.density as ProofDensity)) {
+    next.beforeAfter.density =
+      next.beforeAfter.compact === true ? "ultra" : "full";
+  }
   next.dermSurvey.outOf = Math.round(
     clampNumber(next.dermSurvey.outOf, 1, 100, DEFAULT_SETTINGS.dermSurvey.outOf),
   );
@@ -1292,6 +1493,11 @@ export function sanitizeSettings(
       if (!AMAZON_PLACEMENTS.includes(az[field] as AmazonPlacement)) {
         az[field] = DEFAULT_SETTINGS.amazon[field];
       }
+    }
+    // v6.10 ships-from display format — anything outside SHIPS_FROM_FORMATS
+    // falls back to the default ("subtle", the pre-v6.10 look).
+    if (!SHIPS_FROM_FORMATS.includes(az.shipsFromFormat as ShipsFromFormat)) {
+      az.shipsFromFormat = DEFAULT_SETTINGS.amazon.shipsFromFormat;
     }
     // shipsFromByCountry is a DYNAMIC_RECORD_KEYS record (replaced wholesale
     // by the merge) — keep only ISO2 -> ISO2 entries, uppercased.
@@ -1494,7 +1700,7 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     siblings: [],
   },
   empty_bottle_guarantee: {
-    label: "Empty bottle guarantee",
+    label: "Risk-free trial guarantee",
     get: (s) => s.emptyBottleGuarantee.enabled,
     set: (s, on) => {
       s.emptyBottleGuarantee.enabled = on;
@@ -1506,6 +1712,22 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     get: (s) => s.dermSurvey.enabled,
     set: (s, on) => {
       s.dermSurvey.enabled = on;
+    },
+    siblings: [],
+  },
+  press: {
+    label: "As seen in the press",
+    get: (s) => s.press.enabled,
+    set: (s, on) => {
+      s.press.enabled = on;
+    },
+    siblings: [],
+  },
+  derm_endorsements: {
+    label: "Dermatologist endorsements",
+    get: (s) => s.dermEndorsements.enabled,
+    set: (s, on) => {
+      s.dermEndorsements.enabled = on;
     },
     siblings: [],
   },
@@ -1674,6 +1896,8 @@ export const STANDALONE_SECTION_FIELDS = [
   "batchTransparency",
   "emptyBottleGuarantee",
   "dermSurvey",
+  "press",
+  "dermEndorsements",
   "cartCrossSell",
   "dispatch",
   "deliveryEstimate",
@@ -1708,6 +1932,8 @@ export const FEATURE_RAW_FIELD: Record<
   batch_transparency: { kind: "section", field: "batchTransparency" },
   empty_bottle_guarantee: { kind: "section", field: "emptyBottleGuarantee" },
   derm_survey: { kind: "section", field: "dermSurvey" },
+  press: { kind: "section", field: "press" },
+  derm_endorsements: { kind: "section", field: "dermEndorsements" },
   cart_cross_sell: { kind: "section", field: "cartCrossSell" },
   dispatch_countdown: { kind: "section", field: "dispatch" },
   delivery_estimate: { kind: "section", field: "deliveryEstimate" },
@@ -1904,7 +2130,11 @@ export async function getSettings(shop: string): Promise<BoosterSettings> {
   const row = await prisma.shopSettings.findUnique({ where: { shop } });
   if (!row) return structuredClone(DEFAULT_SETTINGS);
   try {
-    return mergeSettings(structuredClone(DEFAULT_SETTINGS), JSON.parse(row.data));
+    const raw: unknown = JSON.parse(row.data);
+    return coerceLegacyProofDensities(
+      mergeSettings(structuredClone(DEFAULT_SETTINGS), raw),
+      raw,
+    );
   } catch {
     return structuredClone(DEFAULT_SETTINGS);
   }

@@ -73,14 +73,15 @@
   },
   "study": {
     "eyebrow": "Riippumaton kliininen tutkimus",
-    "methodology": "n = {{ n }} osallistujaa · {{ weeks }} · {{ lab }}",
+    "subject": "Tutkimuksen kohteena oli juuri {{ product }} — täsmälleen sama koostumus kuin tällä sivulla.",
     "weeks_count": {
       "one": "{{ count }} viikon tutkimus",
       "other": "{{ count }} viikon tutkimus"
     },
-    "instruments": "Laitemittaukset: {{ methods }}",
+    "fact_participants": "{{ n }} osallistujaa",
+    "instruments": "Mitattu laitteilla: {{ methods }}",
     "view_study": "Katso tutkimuksen tiivistelmä",
-    "footnote_default": "Mittaukset tehty dermatologin valvonnassa. Yksilölliset tulokset voivat vaihdella."
+    "footnote_default": "Mittaukset on tehty ihotautilääkärien valvonnassa, eivätkä ne perustu osallistujien omiin arvioihin. Yksilölliset tulokset voivat vaihdella."
   },
   "ba": {
     "eyebrow": "Varmennetut tulokset",
@@ -111,7 +112,7 @@
     "container_tube": "tuubi",
     "container_pump": "pumppupullo",
     "container_product": "tuote",
-    "title": "Käytä viimeistä pisaraa myöten",
+    "title": "Kokeile {{ days }} — täysin riskittä",
     "body": "Ota {{ days }} aikaa. Jos et rakastu tuloksiin, palauta tyhjä {{ container }} ja saat täyden hyvityksen.",
     "days_count": {
       "one": "{{ count }} päivä",
@@ -131,23 +132,59 @@
   },
   "survey": {
     "eyebrow": "Riippumaton ihotautilääkärikysely",
-    "title_pct": "kyselyyn vastanneista laillistetuista ihotautilääkäreistä suosittelisi Cellexiaa",
-    "count": "{{ yes }} / {{ total }} kyselyyn osallistunutta ihotautilääkäriä",
+    "rec_line": "{{ total }} kyselyyn vastanneesta ihotautilääkäristä suosittelisi tuotetta {{ product }}",
+    "outcomes_intro": "Tuotteeseen {{ product }} perehtyneet ihotautilääkärit arvioivat havaitsemiaan tuloksia:",
+    "outcome_agree": "Samaa mieltä: @@YES@@ / @@TOTAL@@",
+    "more_outcomes": "+ @@N@@ muuta tulosta",
     "how": "Näin kysely toteutettiin",
     "methodology_p1": "Toukokuussa 2026 riippumaton kosmetiikka-alan tutkimusyritys teki kyselyn {{ total }} laillistetulle ihotautilääkärille Yhdysvalloissa, Yhdistyneessä kuningaskunnassa, Ranskassa, Saksassa, Italiassa ja Espanjassa.",
     "methodology_p2": "Jokainen ihotautilääkäri sai kaikki Cellexia-tuotteet, testasi niitä vähintään 5 potilaalla vähintään 8 viikon ajan ja tutustui yksityiskohtaiseen yleiskatsaukseen Cellexiasta, mukaan lukien tuotevalikoima, ainesosatiedot, käyttötarkoitukset ja tukeva kliininen näyttö. Tämän jälkeen heiltä kysyttiin:",
     "methodology_p3": "”Suosittelisitko tarkastellun tiedon ja potilaidesi kokemusten perusteella Cellexiaa sopivalle potilaalle, joka etsii ihonhoitoa näkyviin ikääntymisen merkkeihin?”",
     "methodology_p4": "Kaikki {{ total }} ihotautilääkäriä vastasivat kysymykseen. Heistä {{ yes }} valitsi vaihtoehdon ”Kyllä”, mikä on {{ percent }} % vastaajista.",
     "methodology_p5": "Kysely toteutettiin Cellexian pyynnöstä ja riippumattomasti. Tutkimusyritys rekrytoi vastaajat sekä keräsi ja analysoi vastaukset. Cellexia ei valinnut osallistujia eikä muuttanut yksittäisiä vastauksia.",
-    "report_title": "Kyselyn tulokset",
-    "report_surveyed": "Kyselyyn osallistuneet ihotautilääkärit",
-    "report_yes": "Vastasivat ”Kyllä”",
-    "report_recommend": "Suosittelisi Cellexiaa",
-    "question_intro": "{{ total }} laillistetulta ihotautilääkäriltä kysyttiin:",
-    "question_result": "{{ yes }} vastasi ”Kyllä” – {{ percent }} % vastaajista.",
-    "dot_legend": "Jokainen piste vastaa yhtä kyselyyn osallistunutta ihotautilääkäriä.",
     "verified_badge": "Kolmannen osapuolen varmentama",
     "verified_by": "Kyselyn on varmentanut {{ name }}"
+  },
+  "press": {
+    "eyebrow": "Esillä mediassa",
+    "read_article": "Lue artikkeli"
+  },
+  "endo": {
+    "eyebrow": "Ihotautilääkärien suositukset",
+    "count_headline": {
+      "one": "{{ n }} ihotautilääkäri suosittelee",
+      "other": "{{ n }} ihotautilääkäriä suosittelee"
+    },
+    "shown_of": "Näytetään @@SHOWN@@ / @@TOTAL@@",
+    "show_more": "Näytä lisää",
+    "read_full": "Lue koko suositus"
+  },
+  "results": {
+    "banner_verified": "Katso {{ count }} vahvistetun Cellexia-asiakkaan tulokset.",
+    "banner_all": "Katso {{ count }} Cellexia-asiakkaan tulokset.",
+    "filter_concern": "Ihohuoli",
+    "filter_age": "Ikä",
+    "filter_skin": "Ihotyyppi",
+    "filter_duration": "Käyttöaika",
+    "skin_dry": "Kuiva",
+    "skin_oily": "Rasvoittuva",
+    "skin_combination": "Sekaiho",
+    "skin_sensitive": "Herkkä",
+    "skin_normal": "Normaali",
+    "duration_lt8": "Alle 8 viikkoa",
+    "duration_8to12": "8–12 viikkoa",
+    "duration_gt12": "Yli 12 viikkoa",
+    "age_years": "{{ range }} vuotta",
+    "verified_badge": "Vahvistettu ostos",
+    "lab_badge": "Kliinisen tutkimuksen tulos",
+    "video_badge": "Video",
+    "weeks_of_use": "@@N@@ viikon käyttö",
+    "before": "Ennen",
+    "after": "Jälkeen",
+    "show_more": "Näytä lisää",
+    "empty": "Näillä suodattimilla ei löytynyt vielä tuloksia.",
+    "close": "Sulje",
+    "clear_filters": "Tyhjennä suodattimet"
   },
   "delivery": {
     "line": "Perillä viimeistään: {{ date }}",

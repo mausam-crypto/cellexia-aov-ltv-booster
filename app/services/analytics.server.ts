@@ -30,6 +30,11 @@ const ALLOWED_FEATURES = new Set([
   "batch_transparency",
   "empty_bottle_guarantee",
   "derm_survey",
+  // Proof library (v8) — impression/click beacons from the press band,
+  // dermatologist-endorsement wall and results gallery (the gallery reuses
+  // the existing verified_before_after key).
+  "press",
+  "derm_endorsements",
   // Cart drawer cross-sell (v4.8) — impression/click/add_to_cart beacons.
   "cart_cross_sell",
   // Dispatch countdown (v5.0) — impression beacons from the PDP/cart widget.

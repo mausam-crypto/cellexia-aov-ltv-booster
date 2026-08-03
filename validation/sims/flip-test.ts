@@ -1,9 +1,9 @@
 /**
- * Flip-test — the 31-FeatureKey flip / scope / snapshot / selective-restore
+ * Flip-test — the 33-FeatureKey flip / scope / snapshot / selective-restore
  * tripwire, executed against the REAL app/models/settings.server.ts
  * (imported directly — the prisma client is constructed but never queried).
  *
- * Per key (all 31):
+ * Per key (all 33):
  *  - FEATURE_DEFS get/set round-trip surfaces through resolveFeatureFlag;
  *  - FEATURE_RAW_FIELD arm exists and its raw field is the one the def
  *    actually flips;
@@ -23,7 +23,9 @@ import {
   FEATURE_KEYS,
   FEATURE_RAW_FIELD,
   applyFlipForMarket,
+  coerceLegacyProofDensities,
   isFeatureOnForMarket,
+  mergeSettings,
   resolveFeatureFlag,
   restoreFlags,
   restoreFlagsSelective,
@@ -45,7 +47,7 @@ const clone = <T>(x: T): T => structuredClone(x);
 const MARKETS = ["ch", "eu", "us"];
 
 // --- inventory ---------------------------------------------------------------
-ok(FEATURE_KEYS.length === 31, `31 FeatureKeys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 33, `33 FeatureKeys (got ${FEATURE_KEYS.length})`);
 ok(new Set(FEATURE_KEYS).size === FEATURE_KEYS.length, "no duplicate keys");
 ok(AMAZON_FLAG_FIELDS.length === FEATURE_KEYS.filter((k) => k.startsWith("az_")).length,
   "one amazon flag field per az_* key");
@@ -221,8 +223,43 @@ for (const key of FEATURE_KEYS) {
     "snapshot captures a scope for every key");
 }
 
+// --- v8.3 legacy-density coercion: the REAL getSettings load-path composition --
+// A stored v8.2 blob (compact boolean, NO density key) must load as ultra —
+// mergeSettings fills the missing key from DEFAULT_SETTINGS ("full"), so the
+// coercion helper MUST run after it, exactly as getSettings composes them.
+{
+  const loadAs = (raw: unknown): BoosterSettings =>
+    coerceLegacyProofDensities(
+      mergeSettings(structuredClone(DEFAULT_SETTINGS), raw),
+      raw,
+    );
+
+  const v82Blob = { press: { enabled: true, compact: true } };
+  ok(loadAs(v82Blob).press.density === "ultra",
+    "coercion: v8.2 blob (compact:true, no density) loads as ultra");
+  ok(loadAs(v82Blob).dermEndorsements.density === "full",
+    "coercion: untouched sections load as full");
+
+  const explicit = {
+    press: { compact: true, density: "compact" },
+    beforeAfter: { compact: true, density: "full" },
+  };
+  ok(loadAs(explicit).press.density === "compact",
+    "coercion: explicit stored density beats the legacy boolean");
+  ok(loadAs(explicit).beforeAfter.density === "full",
+    "coercion: explicit 'full' survives a stale compact:true boolean");
+
+  const garbage = { dermEndorsements: { compact: true, density: "banana" } };
+  ok(loadAs(garbage).dermEndorsements.density === "ultra",
+    "coercion: invalid stored density re-derives from the boolean");
+
+  ok(loadAs({}).press.density === "full" &&
+     loadAs({}).beforeAfter.density === "full",
+    "coercion: fresh shop (empty blob) loads every widget as full");
+}
+
 if (failures > 0) {
   console.error(`\n${failures}/${checks} CHECKS FAILED`);
   process.exit(1);
 }
-console.log(`ALL ${checks} CHECKS PASSED (31-key flip/scope/snapshot/selective-restore vs the real settings.server.ts)`);
+console.log(`ALL ${checks} CHECKS PASSED (33-key flip/scope/snapshot/selective-restore vs the real settings.server.ts)`);

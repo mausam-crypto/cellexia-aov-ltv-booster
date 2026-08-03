@@ -5,6 +5,101 @@
       "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
       "reason": "v6.8.1 microcopy fixes: (1) the micro ships-from row now YIELDS when the dedicated az_ships_from line is effective (azShipsAllowed() gate) so the buy box never says Ships-from twice; (2) label resolution unchanged otherwise. Companion CSS guard .cx-az-micro__row[hidden]{display:none!important} fixes the display:flex-defeats-[hidden] bare-truck-icon bug (CSS is outside baseline scope).",
       "wave": "v6.8.1"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+      "reason": "v6.10 merchant-selectable ships-from display format: azShipsFormat() decodes the lean 's'/'p' code from the gated ships member (draft override preview.sf only inside a VERIFIED preview session, fail-closed to subtle); azBuildStock gains a shipsName param and a prominent branch (.cx-az-stock__ships--prominent: truck icon + @@COUNTRY@@ sentinel split into prefix/<strong>country</strong>/suffix, textContent-only, sentinel-less fallback to the plain composed line); azMountStock hoists the warehouse name. Subtle path markup byte-identical to v6.8. Pinned by sims/az-split.cjs F1-F5 + mutants m6/m7.",
+      "wave": "v6.10"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+      "reason": "v6.11 survey methodology full-text editability: surveyBuildPanel's merchant branch substitutes the built-in text's live-number tokens ({{ total }}/{{ yes }}/{{ percent }}, flexible inner whitespace) with the cfg.survey numbers before the textContent write, so a merchant-edited copy of the built-in explanation keeps tracking the survey numbers. Fail-safe 0 on non-finite numbers; sink stays textContent-only. Pinned by sims/survey-methodology.cjs M1-M7 + mutants m1-m4 and harness section-5 v6.11 pins.",
+      "wave": "v6.11"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+      "reason": "v7 per-product proof wave: survey gates + island rewritten per-product (cellexia.product_survey metaobject read, content-presence gate, per-product outcome rows + methodology/verifier fallbacks, legacy sampleSize/yesCount/format reads and the draft surveyFormat preview member removed); study island gains sub/pn/pw/pl/pi members (m1/m2 composition retired) + str.sub/str.fn; bottle title now interpolates the pluralized days label and body/point_1..3 gain theme-block overrides (+4 schema settings). Pinned by harness section-5 v7 block + sims/survey-methodology.cjs.",
+      "wave": "v7"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+      "reason": "v7 per-product proof wave: five-format survey machinery (SURVEY_FORMATS, surveyBuildFormat, buildSurveyDots, cfg.preview.surveyFormat) replaced by one zero-arg outcomes-forward surveyBuildSection (derived row percents, decorative bar fills, @@YES@@/@@TOTAL@@ sentinel labels, fail-closed row/total/rec validation); surveyBuildPanel keeps v6.11 token substitution with per-product numbers (total=sample size, yes=rec); study builder gains the always-on subject line + protocol fact chips and drops m1/m2 paragraphs. Pinned by sims/survey-methodology.cjs (59 checks, 7 mutants) + harness v7 block.",
+      "wave": "v7"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
+      "reason": "v6.10 ships-from format plumbing: the gated ships member gains the lean live format code (\"f\": cfg.amazon.shipsFromFormat | slice: 0, the v6.5 place-code convention) and the armed preview member gains the lean draft code (\"sf\": cx_prev.draftConfig.shipsFromFormat | slice: 0, tokenless closed enum). No gate or emission-structure changes.",
+      "wave": "v6.10"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+      "reason": "v8 proof library + compact modes: the #cx-ba-config island emission is DELETED (the PDP before/after widget retires — the standalone results-gallery block replaces it; the show_ba/cx_bas reads are kept because they still feed the outer emission gate and cx_draft_any), and the survey/study/bottle islands gain lean LIVE compact members ('\"cm\": 1' under cfg.dermSurvey.compact / cfg.clinicalStudy.compact / cfg.emptyBottleGuarantee.compact == true strict gates) plus the compact-gated surveyStrings.more_outcomes key. Pinned by harness section-5 v8 block + sims/survey-methodology.cjs C-series.",
+      "wave": "v8"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+      "reason": "v8 compact modes + BA retirement: surveyBuildSection grows the compact branch (top-line first-valid-row inline, '+ N more outcomes' disclosure over the surveyBuildOutcomes list, bindSurveyMore toggle, stale-island degrade ships the list visible), studyBuildSection gains the cx-study--compact modifier (same DOM), bottleBuildNode the slim-band branch (points stay in the untouched modal); the ba* builders + PROOF_ORDER ba row + dispatch branch are deleted (the verified_before_after EVIDENCE marker moves to cellexia-proof.js); boot()'s verified branch sets window.CellexiaBooster.__preview = true for the proof asset's beacon/draft contract. Pinned by sims/survey-methodology.cjs (C-series + mutants m11/m12) + harness v8 block.",
+      "wave": "v8"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/press.liquid",
+      "reason": "v8 NEW block: 'As seen in the press' — config-emission-only island #cx-press-config {live, ctx, pid, str} under cfg.press.enabled == true + marketScopes.press + product-page cx_pdp_flags.press opt-out, with the additive armed-draft twin gate; rendering lives entirely in cellexia-proof.js off the proxy API. Pinned by harness (EVIDENCE press row, section-1 floor, v8 block) + sims/proof-gallery.cjs.",
+      "wave": "v8"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/derm-endorsements.liquid",
+      "reason": "v8 NEW block: dermatologist endorsement wall — config-emission-only island #cx-endo-config {live, ctx, pid, str incl. CLDR one/other count_headline + shown_of sentinels} under cfg.dermEndorsements.enabled == true + marketScopes.derm_endorsements + cx_pdp_flags.derm_endorsements opt-out, additive draft twin; wall/pagination/monogram rendering in cellexia-proof.js. Pinned by harness (EVIDENCE derm_endorsements row, v8 block) + sims/proof-gallery.cjs.",
+      "wave": "v8"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/results-gallery.liquid",
+      "reason": "v8 NEW block replacing the retired PDP before/after widget: #cx-results-config island (~25 str keys: banners, filter/facet labels, badges, sentinels) under the UNCHANGED cfg.beforeAfter.enabled / marketScopes.verified_before_after / cx_pdp_flags.verified_before_after keys; the browsable, filterable gallery is rendered by cellexia-proof.js from the proxy API (pid → product-prioritised). Pinned by harness (re-pointed verified_before_after EVIDENCE, v8 block) + sims/proof-gallery.cjs.",
+      "wave": "v8"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+      "reason": "v8 NEW shared asset: ES5 IIFE with pf-prefixed helper twins (zero name overlap with the pdp sim extraction surface), proofFetch (8s timeout, one retry, cb(null) fail-closed), the press band / endorsement wall / results gallery renderers + filter drawer + lightbox, ZERO innerHTML anywhere (SVG via createElementNS, entity decode via a bounded replace chain), every URL through the pfHttps gate, beacons suppressed via window.CellexiaBooster.__preview OR sessionStorage cx_preview_token. Carries the moved verified_before_after EVIDENCE marker plus the press/derm_endorsements markers. Pinned by harness (EVIDENCE, class coverage, zero-innerHTML escape discipline) + sims/proof-gallery.cjs (29-function extraction, 6 mutants).",
+      "wave": "v8"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/press.liquid",
+      "reason": "v8.2 ultra-compact density: the island gains the lean LIVE compact member ('{% if cfg.press.compact == true %}, \"cm\": 1{% endif %}' immediately after \"live\" — byte-for-byte the pdp-island convention). No other emission/gate change. Pinned by harness v8.2 block (cm literal + sanitize anchor + emission default) + sims/proof-gallery.cjs U-series.",
+      "wave": "v8.2"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/derm-endorsements.liquid",
+      "reason": "v8.2 ultra-compact density: the island gains the lean LIVE compact member off cfg.dermEndorsements.compact ('\"cm\": 1', the pdp-island convention). No other emission/gate change. Pinned by harness v8.2 block + sims/proof-gallery.cjs U-series (composed head row, rail append).",
+      "wave": "v8.2"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/results-gallery.liquid",
+      "reason": "v8.2 ultra-compact density: the island gains the lean LIVE compact member off cfg.beforeAfter.compact ('\"cm\": 1', the pdp-island convention). No other emission/gate change. Pinned by harness v8.2 block + sims/proof-gallery.cjs U-series (root-modifier-only case).",
+      "wave": "v8.2"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+      "reason": "v8.2 ultra-compact branches (cm-guarded, textContent-only, same DOM): pressBuildSection collapses to one row (quote starts [hidden]; bindLogo tap reveals + rotates, a second tap on the ACTIVE logo re-hides + clears aria-pressed); endoBuildSection composes ONE <p> head row (count · shown_of, per-part degrade, re-composed by setProgress after Show more appends into the same wall); resultsBuildSection emits only the cx-results--compact root modifier (CSS leverage). cm-absent paths byte-identical to v8. Pinned by sims/proof-gallery.cjs U/V series + mutants m7/m8/m9 and the harness class-coverage self-test (--compact trio).",
+      "wave": "v8.2"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/press.liquid",
+      "reason": "v8.3 three-tier density: the v8.2 boolean-gated compact member is replaced by the lean two-code emission off the new enum ('{% if cfg.press.density == \"ultra\" %}, \"cm\": 2{% elsif cfg.press.density == \"compact\" %}, \"cm\": 1{% endif %}'; full emits nothing). No other emission/gate change. Pinned by the harness v8.3 block (island literal + enum/coercion anchors) + sims/proof-gallery.cjs U1/C1/C2.",
+      "wave": "v8.3"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/derm-endorsements.liquid",
+      "reason": "v8.3 three-tier density: the island emits the two-code cm member off cfg.dermEndorsements.density (ultra -> 2, compact -> 1, full -> absent), replacing the v8.2 boolean gate. No other emission/gate change. Pinned by the harness v8.3 block + sims/proof-gallery.cjs U3/C3/C4.",
+      "wave": "v8.3"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/results-gallery.liquid",
+      "reason": "v8.3 three-tier density: the island emits the two-code cm member off cfg.beforeAfter.density (ultra -> 2, compact -> 1, full -> absent), replacing the v8.2 boolean gate. No other emission/gate change. Pinned by the harness v8.3 block + sims/proof-gallery.cjs U7/C5.",
+      "wave": "v8.3"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+      "reason": "v8.3 COMPACT middle tier: each of the three builders resolves density ONCE (var ultra = conf.cm === 2; var compact = conf.cm === 1; strict === so strings/unknown codes fall back to full) and the v8.2 branches are repointed to cm 2 under RENAMED --ultra root modifiers (cx-press--ultra / cx-endo--ultra / cx-results--ultra); cm 1 now means the NEW compact tier (cx-press--compact: quote ALWAYS visible, rotation like full; cx-endo--compact: composed H2 head line with inline shown_of; cx-results--compact: root-modifier-only CSS leverage). Pinned by sims/proof-gallery.cjs U/C series + mutants m7/m8/m10 and the harness class-coverage self-test (--compact + --ultra trios).",
+      "wave": "v8.3"
     }
   ]
 }

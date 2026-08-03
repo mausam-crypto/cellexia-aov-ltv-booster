@@ -2,8 +2,8 @@
 /**
  * validation/sims/checkout-delivery-engine.ts — checkout delivery engine sim.
  *
- * Runs under `node --experimental-strip-types` (no tsx installed; same
- * recipe as scripts/proofs) and imports the REAL shipped module
+ * Runs under `node --experimental-strip-types` (the strip-types recipe the
+ * retired scripts/proofs runner pioneered) and imports the REAL shipped module
  * extensions/checkout-delivery/src/delivery-engine.ts — never a copy — with
  * REAL Intl and injected `now` Dates (the module takes the clock as a
  * parameter by design).

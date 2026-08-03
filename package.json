@@ -18,7 +18,7 @@
     "prisma": "prisma",
     "typecheck": "tsc --noEmit",
     "vite": "vite",
-    "proofs": "node scripts/proofs/run-proofs.mjs",
+    "proofs": "node validation/run-all.mjs",
     "validate": "node validation/run-all.mjs"
   },
   "engines": {

@@ -218,6 +218,35 @@ function deeplErrorForStatus(status: number): string {
   return `DeepL returned HTTP ${status}`;
 }
 
+/** Placeholders like {{ total }} / {{ yes }} / {{ percent }} inside booster
+ *  copy (the per-product survey methodology explicitly invites them) must
+ *  survive machine translation VERBATIM — the storefront substitution
+ *  matches the exact English token words. DeepL's preserve_formatting does
+ *  NOT protect free-text braces (they get translated, re-spaced or
+ *  reordered like ordinary words), so any slice carrying placeholders is
+ *  sent in XML mode with each placeholder wrapped in an ignored <cx> tag
+ *  (all other content XML-escaped), then unwrapped after translation. */
+const HAS_PLACEHOLDER = /\{\{\s*[a-z_]+\s*\}\}/i;
+const PLACEHOLDER_PATTERN = /\{\{\s*[a-z_]+\s*\}\}/gi;
+
+function xmlEscape(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function xmlUnescape(text: string): string {
+  return text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
+function protectPlaceholders(text: string): string {
+  // Escape first, then wrap — the placeholders themselves contain no
+  // XML-special characters, so wrapping after escaping is loss-free.
+  return xmlEscape(text).replace(PLACEHOLDER_PATTERN, (m) => `<cx>${m}</cx>`);
+}
+
+function unprotectPlaceholders(text: string): string {
+  return xmlUnescape(text.replace(/<\/?cx>/g, ""));
+}
+
 async function deeplTranslateBatch(
   apiKey: string,
   texts: string[],
@@ -228,16 +257,19 @@ async function deeplTranslateBatch(
   for (const slice of chunk(texts, DEEPL_TEXTS_PER_REQUEST)) {
     let lastError = "";
     let translated: string[] | null = null;
+    const protect = slice.some((text) => HAS_PLACEHOLDER.test(text));
+    const outbound = protect ? slice.map(protectPlaceholders) : slice;
     for (let attempt = 0; attempt < 2 && !translated; attempt += 1) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 1200));
       try {
         const response = await deeplFetch(apiKey, "/v2/translate", {
           method: "POST",
           body: JSON.stringify({
-            text: slice,
+            text: outbound,
             target_lang: targetLang,
             ...(sourceLang ? { source_lang: sourceLang } : {}),
             preserve_formatting: true,
+            ...(protect ? { tag_handling: "xml", ignore_tags: "cx" } : {}),
           }),
         });
         if (!response.ok) {
@@ -251,7 +283,9 @@ async function deeplTranslateBatch(
         const json = (await response.json()) as {
           translations?: { text: string }[];
         };
-        const batch = (json.translations ?? []).map((t) => t.text ?? "");
+        const batch = (json.translations ?? []).map((t) =>
+          protect ? unprotectPlaceholders(t.text ?? "") : (t.text ?? ""),
+        );
         if (batch.length !== slice.length) {
           lastError = "DeepL returned an unexpected number of translations";
           continue;
@@ -325,16 +359,19 @@ export async function verifyDeeplKey(apiKey: string): Promise<DeeplUsage> {
  * batch, dates, URLs, numbers) is deliberately left untranslated.
  */
 export const TRANSLATABLE_FIELD_KEYS = new Set([
-  "title", // clinical study title
+  "title", // clinical study title + survey headline override
   "concern", // clinical study concern
+  "subject", // clinical study "conducted on this product" line (v7)
   "instruments", // clinical study instruments description
   "footnote", // clinical study footnote
   "label", // study result label
   "suffix", // study result suffix (letter-less ones are skipped anyway)
-  "statement", // verified B/A verifier statement
+  "statement", // verified B/A verifier statement + survey outcome statement
   "form", // ingredient form ("encapsulated", ...)
   "note", // ingredient note
-  "intro", // batch transparency intro
+  "intro", // batch transparency intro + survey outcomes-intro override
+  "question", // product survey question asked (v7)
+  "methodology", // product survey per-product methodology override (v7)
 ]);
 
 const URL_VALUE = /^https?:\/\//i;
@@ -388,6 +425,12 @@ export function collectBoosterResourceGids(
   if (boosters.clinicalStudy) {
     gids.push(boosters.clinicalStudy.id);
     for (const result of boosters.clinicalStudy.results) gids.push(result.id);
+  }
+  if (boosters.productSurvey) {
+    gids.push(boosters.productSurvey.id);
+    for (const outcome of boosters.productSurvey.outcomes) {
+      gids.push(outcome.id);
+    }
   }
   for (const ba of boosters.beforeAfters) gids.push(ba.id);
   if (boosters.batchTransparency) {
@@ -589,7 +632,7 @@ export async function translateResources(
   };
   if (resourceGids.length === 0) {
     summary.errors.push(
-      "This product has no booster content yet — save a clinical study, before/after or batch section first.",
+      "This product has no booster content yet — save a clinical study, dermatologist survey, before/after or batch section first.",
     );
     return summary;
   }

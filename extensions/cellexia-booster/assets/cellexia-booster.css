@@ -943,7 +943,15 @@ body.customer--b2b .cx-sub-remove {
   text-underline-offset: 2px;
 }
 
-/* ------------------------------- dermatologist survey (v5.8, 5 formats) */
+/* The [hidden] guard (v6.8.1 lesson, recurred v8: the press "Read the
+   article" link toggles via the hidden attribute, which display:inline-flex
+   would otherwise defeat). Every [hidden]-managed element whose class sets
+   display needs this. */
+.cx-proof__link[hidden] {
+  display: none !important;
+}
+
+/* -------------------- dermatologist survey (v7, per-product outcomes) */
 
 .cx-survey {
   text-align: start;
@@ -1023,81 +1031,21 @@ body.customer--b2b .cx-sub-remove {
   font-style: italic;
 }
 
-.cx-survey__count {
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: #808080;
+/* v7 outcomes-forward composition — Gobold numerals carry the authority,
+   statements stay quiet, micro-labels quieter still. The rec headline
+   block (headnum) only renders when a valid "would recommend" count
+   exists; the outcome rows carry the section on their own otherwise. */
+
+.cx-survey__headnum {
+  margin-block-end: 4px;
 }
 
-/* format 1 — seal (authority): ring arc filled to the exact percent */
-
-.cx-survey--seal {
-  text-align: center;
-}
-
-.cx-survey__seal-row {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24px;
-}
-
-.cx-survey__seal-fig {
-  flex: 0 0 auto;
-  text-align: center;
-}
-
-.cx-survey__seal-wrap {
-  position: relative;
-  width: 150px;
-  height: 150px;
-  margin-inline: auto;
-}
-
-.cx-survey__ring {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-
-.cx-survey__ring-track,
-.cx-survey__ring-arc {
-  fill: none;
-  stroke-width: 7;
-}
-
-.cx-survey__ring-track {
-  stroke: #e9eef5;
-}
-
-.cx-survey__ring-arc {
-  stroke: #b1cded;
-  stroke-linecap: round;
-  stroke-dasharray: var(--cx-arc, 0px) 282.8px;
-  animation: cx-survey-arc 1.1s ease-out;
-}
-
-@keyframes cx-survey-arc {
-  from {
-    stroke-dasharray: 0px 282.8px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cx-survey__ring-arc {
-    animation: none;
-  }
-}
-
-.cx-survey__pct {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.cx-survey__rec-pct {
+  display: block;
+  margin-block-end: 6px;
   font-family: "Gobold", sans-serif;
   font-weight: 700;
-  font-size: 36px;
+  font-size: clamp(44px, 10vw, 56px);
   line-height: 1;
 }
 
@@ -1111,16 +1059,83 @@ body.customer--b2b .cx-sub-remove {
   text-transform: uppercase;
 }
 
-.cx-survey--seal .cx-survey__how-row {
-  justify-content: center;
+/* the exact question asked (per-product, optional) — quiet verbatim quote */
+.cx-survey__quote {
+  margin: 18px 0 0;
+  padding-inline-start: 16px;
+  border-inline-start: 3px solid #b1cded;
+  max-width: 640px;
+  font-size: 15px;
+  line-height: 1.55;
 }
 
-/* v5.8.3 — desktop is a CENTERED composition (merchant request): the
-   stacked, centered mobile layout reads best, so desktop refines it
-   (constrained measure, larger seal) instead of switching to the old
-   left-anchored side-by-side row. Long-form text (methodology panel,
-   report rows, the quoted question) stays start-aligned for readability
-   inside the centered blocks. Mobile (< 750px) is untouched. */
+.cx-survey__intro {
+  margin: 24px 0 0;
+  font-size: 13px;
+  color: #808080;
+}
+
+.cx-survey__outcomes {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 14px 0 0;
+  padding: 0;
+}
+
+.cx-survey__outcome {
+  margin: 0;
+}
+
+.cx-survey__outcome-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cx-survey__outcome-statement {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.cx-survey__outcome-pct {
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* decorative bar under each row: 6px hairline track, ink fill sized by
+   the derived percent (width in the inline style, numeric only). Block
+   layout fills from inline-start in RTL natively — no physical override. */
+.cx-survey__bar {
+  height: 6px;
+  margin-block: 7px 6px;
+  border-radius: 999px;
+  background: #e9eef5;
+  overflow: hidden;
+}
+
+.cx-survey__bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #1d1d1b;
+}
+
+.cx-survey__outcome-n {
+  font-size: 11px;
+  color: #808080;
+}
+
+/* v7 — desktop keeps the v5.8.3 centered composition (merchant request):
+   the survey shares the same 680px centered measure as the study card
+   below it, the headline block reads centered, and long-form content
+   (outcome rows, the quoted question, the methodology panel) stays
+   start-aligned for readability inside the centered column. Mobile
+   (< 750px) is untouched. */
 @media (min-width: 750px) {
   .cx-survey {
     max-width: 680px;
@@ -1128,21 +1143,21 @@ body.customer--b2b .cx-sub-remove {
     text-align: center;
   }
 
-  .cx-survey__seal-row {
-    gap: 28px;
-  }
-
-  .cx-survey__seal-wrap {
-    width: 170px;
-    height: 170px;
-  }
-
-  .cx-survey__pct {
-    font-size: 42px;
+  .cx-survey__rec-pct {
+    font-size: 64px;
   }
 
   .cx-survey__headline {
     margin-inline: auto;
+  }
+
+  .cx-survey__quote {
+    margin-inline: auto;
+    text-align: start;
+  }
+
+  .cx-survey__outcomes {
+    text-align: start;
   }
 
   .cx-survey__how-row {
@@ -1152,161 +1167,6 @@ body.customer--b2b .cx-sub-remove {
   .cx-survey__panel {
     text-align: start;
   }
-
-  .cx-survey--report .cx-survey__report {
-    margin-inline: auto;
-    text-align: start;
-  }
-
-  .cx-survey--question .cx-survey__quote {
-    margin-inline: auto;
-    text-align: start;
-  }
-
-  .cx-survey__tally-head {
-    justify-content: center;
-  }
-
-  .cx-survey__dots {
-    margin-inline: auto;
-  }
-}
-
-/* format 2 — report (raw-data transparency): ruled label/value rows */
-
-.cx-survey--report .cx-survey__report {
-  max-width: 560px;
-}
-
-.cx-survey__report-title {
-  margin: 0;
-  padding-block-end: 10px;
-  border-block-end: 2px solid #1d1d1b;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
-.cx-survey__report-rows {
-  margin: 0;
-}
-
-.cx-survey__report-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-  padding-block: 12px;
-  border-block-end: 1px solid #e5e5e3;
-}
-
-.cx-survey__report-row dt {
-  font-size: 13px;
-}
-
-.cx-survey__report-row dd {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* format 3 — question (verbatim disclosure): the exact question as hero */
-
-.cx-survey--question .cx-survey__intro {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: #808080;
-}
-
-.cx-survey--question .cx-survey__quote {
-  margin: 0 0 14px;
-  padding-inline-start: 18px;
-  border-inline-start: 3px solid #b1cded;
-  max-width: 640px;
-  font-size: clamp(18px, 4vw, 24px);
-  line-height: 1.45;
-}
-
-.cx-survey--question .cx-survey__result {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-/* format 4 — tally (concrete sample): one dot per dermatologist (JS-built,
-   from data-cx-yes/data-cx-total; > 400 renders no dots — count line only) */
-
-.cx-survey__tally-head {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-block-end: 14px;
-}
-
-.cx-survey__tally-pct {
-  font-family: "Gobold", sans-serif;
-  font-weight: 700;
-  font-size: clamp(34px, 7vw, 48px);
-  line-height: 1;
-}
-
-.cx-survey--tally .cx-survey__count {
-  margin: 0;
-}
-
-.cx-survey__dots {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9px, 1fr));
-  gap: 4px;
-  max-width: 560px;
-}
-
-.cx-survey__dot {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: 50%;
-  border: 1px solid #c9c9c7;
-  background: transparent;
-}
-
-.cx-survey__dot--yes {
-  border-color: #b1cded;
-  background: #b1cded;
-}
-
-.cx-survey__legend {
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: #808080;
-}
-
-/* format 5 — strip (premium understatement): one hairline-framed line */
-
-.cx-survey--strip {
-  padding-block: 24px;
-  border-block-start: 1px solid #e5e5e3;
-  border-block-end: 1px solid #e5e5e3;
-}
-
-.cx-survey__strip-line {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.cx-survey__strip-pct {
-  font-family: "Gobold", sans-serif;
-  font-weight: 700;
-  font-size: 22px;
-  margin-inline-end: 6px;
-}
-
-.cx-survey--strip .cx-survey__how {
-  margin-block-start: 10px;
 }
 
 /* ----------------------------------------------------- clinical study */
@@ -1314,6 +1174,14 @@ body.customer--b2b .cx-sub-remove {
 .cx-study {
   border-inline-start: 4px solid #b1cded;
   padding-inline-start: 25px;
+}
+
+/* v7 — the product-binding line: this study, this formula. Sits between
+   the eyebrow and the heading; quiet ink, never shouting. */
+.cx-study__subject {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .cx-study__heading {
@@ -1381,6 +1249,25 @@ body.customer--b2b .cx-sub-remove {
   line-height: 1.4;
 }
 
+/* v7 — protocol fact chips (participants · duration · lab · instruments):
+   hairline pills on the panel tint, built only from present members. */
+.cx-study__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+}
+
+.cx-study__fact {
+  padding: 5px 12px;
+  border: 1px solid #e5e5e3;
+  border-radius: 999px;
+  background: #fafaf9;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .cx-study__method {
   font-size: 12px;
   color: #808080;
@@ -1393,124 +1280,18 @@ body.customer--b2b .cx-sub-remove {
   margin: 12px 0 0;
 }
 
-/* ---------------------------------------------- verified before/after */
-
-.cx-ba__title {
-  margin: 0 0 20px;
-}
-
-.cx-ba__row {
-  display: flex;
-  gap: 20px;
-}
-
-.cx-ba__row--multi {
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  padding-block-end: 10px;
-}
-
-.cx-ba__entry {
-  flex: 1 1 100%;
-  min-width: 0;
-  margin: 0;
-}
-
-.cx-ba__row--multi .cx-ba__entry {
-  flex: 0 0 min(100%, 560px);
-  scroll-snap-align: start;
-}
-
-.cx-ba__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.cx-ba__panel {
-  position: relative;
-}
-
-.cx-ba__img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 12px;
-}
-
-.cx-ba__tag {
-  position: absolute;
-  inset-block-start: 10px;
-  inset-inline-start: 10px;
-  padding: 3px 12px;
-  border-radius: 70px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
-.cx-ba__tag--before {
-  background: #1d1d1b;
-  color: #fff;
-}
-
-.cx-ba__tag--after {
-  background: #b1cded;
-  color: #1d1d1b;
-}
-
-.cx-ba__chips {
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-block-start: 10px;
-}
-
-.cx-ba__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: #f4f4f4;
-  border-radius: 70px;
-  padding: 3px 12px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.cx-ba__caption {
-  font-size: 11px;
-  color: #808080;
-  margin-block-start: 8px;
-}
-
-.cx-ba__verify {
-  margin-block-start: 12px;
-  padding: 15px;
-  border: 2px solid #f4f4f4;
-  border-radius: 12px;
-}
-
-.cx-ba__verify-head {
-  gap: 8px;
-}
-
-.cx-ba__verify-name {
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.cx-ba__statement {
-  margin: 8px 0 0;
-  padding-inline-start: 12px;
-  border-inline-start: 3px solid #b1cded;
-  font-size: 12px;
-  font-style: italic;
-  line-height: 1.5;
-}
-
-.cx-ba__verify-link {
-  margin: 8px 0 0;
+/* v6.11 — desktop alignment (merchant request): the card used to span the
+   full container--md width, so its left edge sat ~90px outside the theme's
+   own centered info column and the stat grid stretched edge-to-edge between
+   the centered survey (v5.8.3, 680px) above and the theme's centered
+   sections below. Desktop now constrains the card to the same 680px
+   centered measure; the long-form content inside stays start-aligned.
+   Mobile (< 750px) is untouched. */
+@media (min-width: 750px) {
+  .cx-study {
+    max-width: 680px;
+    margin-inline: auto;
+  }
 }
 
 /* ------------------------------------------------- batch transparency */
@@ -1695,15 +1476,17 @@ body.customer--b2b .cx-sub-remove {
   color: #fff;
 }
 
+/* v7 — desktop joins the survey/study centered 680px measure so the
+   guarantee panel lines up with the proof widgets above it. Mobile keeps
+   the stacked column (max-width: 640px rules below). */
+@media (min-width: 750px) {
+  .cx-bottle {
+    max-width: 680px;
+    margin-inline: auto;
+  }
+}
+
 @media (max-width: 640px) {
-  .cx-ba__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .cx-ba__row--multi .cx-ba__entry {
-    flex-basis: 85%;
-  }
-
   .cx-bottle {
     flex-direction: column;
   }
@@ -1714,6 +1497,184 @@ body.customer--b2b .cx-sub-remove {
 
   .cx-study {
     padding-inline-start: 18px;
+  }
+}
+
+/* ------------------ v8 compact display modes (survey / study / bottle) */
+
+/* Survey --compact: one headline row (the Gobold percent and the rec
+   line share a baseline, wrapping on narrow screens), the top outcome
+   inline, and the full outcome list parked behind [hidden] until
+   "+ N more outcomes". Quote/intro are not rendered in this mode. */
+
+.cx-survey--compact .cx-survey__headnum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-block-end: 0;
+}
+
+.cx-survey--compact .cx-survey__rec-pct {
+  display: inline;
+  margin-block-end: 0;
+  font-size: 32px;
+}
+
+.cx-survey--compact .cx-survey__headline {
+  margin: 0;
+  max-width: none;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.cx-survey__top-line {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.cx-survey__top-pct {
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cx-survey__more-btn {
+  display: inline-flex;
+  align-items: center;
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: #1d1d1b;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* The v6.8.1 lesson: the list's own display:flex beats the UA [hidden]
+   default, so the compact-mode guard must win explicitly. */
+.cx-survey__outcomes[hidden] {
+  display: none !important;
+}
+
+.cx-survey--compact .cx-survey__outcomes {
+  gap: 14px;
+  margin-block-start: 14px;
+}
+
+.cx-survey--compact .cx-survey__how {
+  margin-block-start: 10px;
+}
+
+/* Study --compact: subject and heading read as one block, the hero value
+   sits inline with its label on a baseline row (32px numeral, not 68),
+   the stat grid collapses to a single wrapping mini-stat row and the
+   protocol chips tighten into the same flow. Footnote kept. */
+
+.cx-study--compact .cx-study__subject {
+  margin-block-end: 2px;
+  font-size: 13px;
+}
+
+.cx-study--compact .cx-study__hero {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin-block: 10px;
+}
+
+.cx-study--compact .cx-study__hero-value {
+  font-size: 32px;
+}
+
+.cx-study--compact .cx-study__grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+  margin: 0 0 10px;
+}
+
+.cx-study--compact .cx-study__stat {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.cx-study--compact .cx-study__stat-value {
+  font-size: 15px;
+}
+
+.cx-study--compact .cx-study__stat-suffix {
+  font-size: 12px;
+  margin-inline-start: 1px;
+}
+
+.cx-study--compact .cx-study__facts {
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.cx-study--compact .cx-study__fact {
+  padding: 3px 10px;
+  font-size: 11px;
+}
+
+.cx-study--compact .cx-study__footnote {
+  margin: 8px 0 0;
+}
+
+/* Bottle --compact: a single slim ink band (~64px) — check icon, title
+   and the guarantee-check trigger on one row; body and points live in
+   the modal, which is unchanged. Declared after the stacked-column
+   mobile rule above so the band stays a row on every screen. */
+
+.cx-bottle--compact {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+}
+
+.cx-bottle--compact .cx-bottle__icon {
+  width: 32px;
+  height: 32px;
+}
+
+.cx-bottle--compact .cx-bottle__title {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: clamp(15px, 2.6vw, 18px);
+  line-height: 1.2;
+}
+
+.cx-bottle--compact .cx-bottle__check {
+  flex: 0 0 auto;
+}
+
+@media (min-width: 750px) {
+  .cx-survey--compact .cx-survey__headnum {
+    justify-content: center;
+  }
+
+  .cx-survey--compact .cx-survey__rec-pct {
+    font-size: 36px;
+  }
+}
+
+@media (max-width: 640px) {
+  .cx-survey--compact .cx-survey__rec-pct {
+    font-size: 28px;
+  }
+
+  .cx-study--compact .cx-study__hero-value {
+    font-size: 28px;
   }
 }
 
@@ -2379,6 +2340,34 @@ body.customer--b2b .cx-sub-remove {
   color: #565959;
 }
 
+/* v6.10 prominent ships-from format (merchant-selected): the
+   logistics-good-news row in the In-Stock/delivery-line family — 15px
+   line in the logistics green, ~15px truck icon, country name bold.
+   Must sit AFTER the base .cx-az-stock__ships rule (equal specificity;
+   source order carries the override). Logical properties + flex keep
+   RTL pages mirrored correctly. */
+.cx-az-stock__ships--prominent {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-block-start: 4px;
+  font-size: 15px;
+  line-height: 1.35;
+  color: #0b7b3c;
+}
+
+.cx-az-stock__ships--prominent .cx-icon {
+  flex-shrink: 0;
+}
+
+.cx-az-stock__ships-text {
+  min-inline-size: 0;
+}
+
+.cx-az-stock__ships-country {
+  font-weight: 700;
+}
+
 /* --- microcopy rows (az_microcopy) --- */
 
 .cx-az-micro {
@@ -2823,5 +2812,1275 @@ body.customer--b2b .cx-sub-remove {
 
   .cx-az-similar__img {
     height: 128px;
+  }
+}
+
+/* ==================================================================
+   v8 PROOF LIBRARY — press band · endorsement wall · results gallery
+   Every rule below styles a class emitted by cellexia-proof.js (JS-
+   built markup only — no Liquid emits these). Tokens: ink #1d1d1b,
+   accent #b1cded, hairline #e5e5e3, panel #fafaf9, muted #808080.
+   Logical properties only (RTL). Drawer/scrim/lightbox share the
+   guarantee-modal z-band (2147483200+) and its [hidden] guards win
+   over their own display rules (the v6.8.1 lesson).
+   ================================================================== */
+
+/* ------------------------------------------- press band (quiet strip) */
+.cx-press {
+  padding-block: 34px;
+  border-block-start: 1px solid #e5e5e3;
+  border-block-end: 1px solid #e5e5e3;
+  text-align: center;
+}
+
+.cx-press__logos {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 26px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-block: 6px;
+  margin-block-end: 18px;
+}
+
+.cx-press__logo {
+  flex: 0 0 auto;
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  cursor: pointer;
+  opacity: 0.55;
+  filter: grayscale(1);
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.cx-press__logo:hover,
+.cx-press__logo:focus-visible,
+.cx-press__logo[aria-pressed="true"] {
+  opacity: 1;
+  filter: grayscale(0);
+}
+
+.cx-press__logo-img {
+  display: block;
+  block-size: 24px;
+  inline-size: auto;
+  max-inline-size: 140px;
+  object-fit: contain;
+}
+
+.cx-press__logo-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1d1d1b;
+  white-space: nowrap;
+}
+
+.cx-press__quote {
+  margin: 0;
+  padding: 0;
+}
+
+.cx-press__quote-text {
+  margin-inline: auto;
+  margin-block: 0;
+  max-inline-size: 640px;
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: clamp(19px, 3.4vw, 28px);
+  line-height: 1.25;
+  color: #1d1d1b;
+}
+
+.cx-press__source {
+  margin-block-start: 12px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cx-press__pub {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #808080;
+}
+
+@media (min-width: 750px) {
+  .cx-press__logos {
+    justify-content: center;
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
+
+/* --------------------------------- endorsement wall (scale-forward) */
+.cx-endo {
+  text-align: center;
+}
+
+.cx-endo__headline {
+  margin: 0 0 22px;
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: clamp(22px, 4vw, 32px);
+  line-height: 1.15;
+  text-transform: uppercase;
+  color: #1d1d1b;
+}
+
+/* CSS columns give the dense masonry-ish wall: 1 / 2 / 3 / 4 columns
+   by breakpoint; cards keep themselves unbroken. */
+.cx-endo__wall {
+  columns: 1;
+  column-gap: 16px;
+  text-align: start;
+}
+
+.cx-endo__card {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  border: 1px solid #e5e5e3;
+  border-radius: 12px;
+  background: #fafaf9;
+  padding: 14px 16px;
+  margin-block-end: 16px;
+}
+
+.cx-endo__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cx-endo__photo {
+  inline-size: 44px;
+  block-size: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+.cx-endo__monogram {
+  inline-size: 44px;
+  block-size: 44px;
+  border-radius: 50%;
+  background: #b1cded;
+  color: #1d1d1b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  flex: 0 0 auto;
+}
+
+.cx-endo__id {
+  min-inline-size: 0;
+}
+
+.cx-endo__name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #1d1d1b;
+}
+
+.cx-endo__creds {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #808080;
+}
+
+.cx-endo__quote {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1d1d1b;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+
+.cx-endo__card--open .cx-endo__quote {
+  display: block;
+  -webkit-line-clamp: none;
+  overflow: visible;
+}
+
+.cx-endo__more {
+  margin-block-start: 8px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: #1d1d1b;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cx-endo__more[aria-expanded="true"] {
+  color: #808080;
+}
+
+.cx-endo__progress {
+  margin: 6px 0 14px;
+  font-size: 12px;
+  color: #808080;
+}
+
+/* quiet pill button shared by both Show-more controls */
+.cx-endo__show-more,
+.cx-results__more {
+  display: inline-block;
+  border: 1px solid #1d1d1b;
+  border-radius: 999px;
+  background: none;
+  color: #1d1d1b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 11px 26px;
+  cursor: pointer;
+}
+
+.cx-endo__show-more:hover,
+.cx-endo__show-more:focus-visible,
+.cx-results__more:hover,
+.cx-results__more:focus-visible {
+  background: #1d1d1b;
+  color: #fff;
+}
+
+.cx-endo__show-more[hidden],
+.cx-results__more[hidden] {
+  display: none !important;
+}
+
+@media (min-width: 640px) {
+  .cx-endo__wall {
+    columns: 2;
+  }
+}
+
+@media (min-width: 900px) {
+  .cx-endo__wall {
+    columns: 3;
+  }
+}
+
+@media (min-width: 1280px) {
+  .cx-endo__wall {
+    columns: 4;
+  }
+}
+
+/* ------------------------------------- results gallery (compact band) */
+.cx-results {
+  text-align: start;
+}
+
+.cx-results__banner {
+  margin: 0 0 14px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: #1d1d1b;
+}
+
+.cx-results__count {
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  padding-inline: 2px;
+}
+
+.cx-results__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-block-end: 14px;
+}
+
+.cx-results__chip {
+  border: 1px solid #e5e5e3;
+  border-radius: 999px;
+  background: #fff;
+  color: #1d1d1b;
+  font-size: 12px;
+  line-height: 1;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+
+.cx-results__chip--on {
+  border-color: #1d1d1b;
+  background: #1d1d1b;
+  color: #fff;
+}
+
+.cx-results__chip--clear {
+  border-style: dashed;
+  color: #808080;
+}
+
+.cx-results__chip[hidden] {
+  display: none !important;
+}
+
+/* mobile bottom-sheet drawer + scrim; [hidden] must beat the display
+   rules below (the v6.8.1 lesson) */
+.cx-results__scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(29, 29, 27, 0.5);
+  z-index: 2147483200;
+}
+
+.cx-results__scrim[hidden] {
+  display: none !important;
+}
+
+.cx-results__drawer {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: 0;
+  z-index: 2147483201;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  max-block-size: 75vh;
+  overflow-y: auto;
+  padding: 24px 20px 26px;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.25);
+}
+
+.cx-results__drawer[hidden] {
+  display: none !important;
+}
+
+.cx-results__drawer-close {
+  position: absolute;
+  inset-block-start: 10px;
+  inset-inline-end: 10px;
+  inline-size: 32px;
+  block-size: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  color: #1d1d1b;
+}
+
+.cx-results__drawer-close:hover,
+.cx-results__drawer-close:focus-visible {
+  background: #fafaf9;
+}
+
+.cx-results__group {
+  margin-block-end: 16px;
+}
+
+.cx-results__group-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #808080;
+}
+
+.cx-results__opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cx-results__opt {
+  border: 1px solid #e5e5e3;
+  border-radius: 999px;
+  background: #fff;
+  color: #1d1d1b;
+  font-size: 12px;
+  line-height: 1;
+  padding: 9px 12px;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+
+.cx-results__opt[aria-pressed="true"] {
+  border-color: #1d1d1b;
+  background: #1d1d1b;
+  color: #fff;
+}
+
+.cx-results__opt-n {
+  color: #808080;
+  font-size: 11px;
+}
+
+.cx-results__opt[aria-pressed="true"] .cx-results__opt-n {
+  color: #b1cded;
+}
+
+/* mobile: horizontally swipeable snap rail — the fixed-height band */
+.cx-results__rail {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  padding-block-end: 8px;
+}
+
+.cx-results__rail[hidden] {
+  display: none !important;
+}
+
+.cx-results__card {
+  flex: 0 0 78%;
+  max-inline-size: 320px;
+  scroll-snap-align: start;
+  border: 1px solid #e5e5e3;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+  padding-block-end: 12px;
+}
+
+.cx-results__media {
+  /* Before | After side by side — the classic comparison layout AND half
+     the card height of a stacked pair (compactness is a v8 requirement). */
+  display: flex;
+  inline-size: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: zoom-in;
+  position: relative;
+  gap: 2px;
+}
+
+.cx-results__frame {
+  position: relative;
+  flex: 1 1 50%;
+  min-inline-size: 0;
+}
+
+.cx-results__thumb {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+}
+
+.cx-results__tag {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-start: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1d1d1b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.cx-results__play {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-end: 8px;
+  inline-size: 26px;
+  block-size: 26px;
+  border-radius: 50%;
+  background: #1d1d1b;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cx-results__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px 0;
+}
+
+.cx-results__badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #1d1d1b;
+}
+
+.cx-results__badge--verified {
+  background: #b1cded;
+}
+
+.cx-results__badge--lab {
+  border: 1px solid #e5e5e3;
+}
+
+.cx-results__meta {
+  margin: 8px 0 0;
+  padding-inline: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #808080;
+}
+
+.cx-results__quote {
+  margin: 6px 0 0;
+  padding-inline: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1d1d1b;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.cx-results__empty {
+  margin: 0;
+  padding-block: 26px;
+  text-align: center;
+  font-size: 14px;
+  color: #808080;
+}
+
+.cx-results__empty[hidden] {
+  display: none !important;
+}
+
+.cx-results__more {
+  margin-block-start: 14px;
+}
+
+/* desktop ≥900px: inline filter panel + 4-col grid, no sheet, no scrim */
+@media (min-width: 900px) {
+  .cx-results__scrim {
+    display: none !important;
+  }
+
+  .cx-results__drawer {
+    position: static;
+    border: 1px solid #e5e5e3;
+    border-radius: 12px;
+    box-shadow: none;
+    max-block-size: none;
+    overflow: visible;
+    padding: 18px 20px 8px;
+    margin-block-end: 16px;
+  }
+
+  .cx-results__drawer-close {
+    display: none;
+  }
+
+  .cx-results__rail {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+    overflow: visible;
+    scroll-snap-type: none;
+    padding-block-end: 0;
+  }
+
+  .cx-results__card {
+    flex: none;
+    max-inline-size: none;
+  }
+}
+
+/* ------------------------- results lightbox (guarantee-modal manners) */
+.cx-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483202;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.cx-lightbox__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(29, 29, 27, 0.5);
+}
+
+.cx-lightbox__card {
+  position: relative;
+  background: #fff;
+  border-radius: 16px;
+  inline-size: 100%;
+  max-inline-size: 860px;
+  max-block-size: min(90vh, 780px);
+  overflow-y: auto;
+  padding: 26px 24px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+}
+
+.cx-lightbox__card:focus {
+  outline: none;
+}
+
+.cx-lightbox__close {
+  position: absolute;
+  inset-block-start: 10px;
+  inset-inline-end: 10px;
+  inline-size: 34px;
+  block-size: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #1d1d1b;
+  cursor: pointer;
+}
+
+.cx-lightbox__close:hover,
+.cx-lightbox__close:focus-visible {
+  background: #fafaf9;
+}
+
+/* side-by-side before/after; a lone image spans the row */
+.cx-lightbox__imgs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cx-lightbox__fig {
+  margin: 0;
+}
+
+.cx-lightbox__fig:only-child {
+  grid-column: 1 / -1;
+}
+
+.cx-lightbox__img {
+  display: block;
+  inline-size: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.cx-lightbox__cap {
+  margin-block-start: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #808080;
+}
+
+.cx-lightbox__video {
+  display: block;
+  inline-size: 100%;
+  margin-block-start: 14px;
+  border-radius: 8px;
+}
+
+.cx-lightbox__link {
+  margin: 14px 0 0;
+}
+
+.cx-lightbox__quote {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1d1d1b;
+}
+
+.cx-lightbox__meta {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #808080;
+}
+
+.cx-lightbox .cx-results__badges {
+  padding: 12px 0 0;
+}
+
+@media (max-width: 640px) {
+  .cx-press {
+    padding-block: 26px;
+  }
+
+  .cx-lightbox {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .cx-lightbox__card {
+    border-radius: 16px 16px 0 0;
+    max-block-size: 92vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cx-press__logo {
+    transition: none;
+  }
+}
+
+/* ==================================================================
+   v8.2/v8.3 PROOF-LIBRARY DENSITY TIERS — press / endorsements / results
+   LIVE settings (the islands' "cm" member → root modifiers set by
+   cellexia-proof.js: cm 2 → --ultra, the v8.2 ultra-compact look; cm 1
+   → --compact, the v8.3 middle tier — quote and details visible at a
+   fraction of the height; absent → full). Same proof, on BOTH
+   breakpoints. House tokens (ink #1d1d1b, accent #b1cded, hairline
+   #e5e5e3, muted #808080); logical properties only (RTL).
+   Every [hidden]-toggled element gets an explicit
+   display:none !important guard (the v6.8.1 lesson, recurred 4×).
+   ================================================================== */
+
+/* --- press --ultra: ONE collapsed row (≤60px) -----------------------
+   The root becomes the flex row (inline eyebrow + the scrollable logo
+   strip — same DOM, no recomposition); the quote starts [hidden] and,
+   once a logo tap reveals it, spans a full row of its own. */
+.cx-press--ultra {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding-block: 10px;
+  text-align: start;
+}
+
+/* the ULTRA quote toggles [hidden]; the guard must always win (compact
+   and full never hide the quote — the guard simply never applies) */
+.cx-press__quote[hidden] {
+  display: none !important;
+}
+
+.cx-press--ultra .cx-proof__eyebrow {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.cx-press--ultra .cx-press__logos {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  margin-block-end: 0;
+  padding-block: 2px;
+  gap: 18px;
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+/* classic (non-overlay) scrollbars must not add ~16px to the collapsed
+   row — the house thin-strip convention (cx-az-fbt__strip) */
+.cx-press--ultra .cx-press__logos::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cx-press--ultra .cx-press__logos::-webkit-scrollbar-thumb {
+  background: #d5d9d9;
+  border-radius: 3px;
+}
+
+.cx-press--ultra .cx-press__logos::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cx-press--ultra .cx-press__logo {
+  padding-block: 2px;
+}
+
+.cx-press--ultra .cx-press__logo-img {
+  block-size: 20px;
+}
+
+.cx-press--ultra .cx-press__logo-name {
+  font-size: 12px;
+}
+
+.cx-press--ultra .cx-press__quote {
+  flex: 1 1 100%;
+  margin-block-start: 6px;
+  text-align: start;
+}
+
+.cx-press--ultra .cx-press__quote-text {
+  margin-inline: 0;
+  font-size: clamp(15px, 2.6vw, 19px);
+}
+
+.cx-press--ultra .cx-press__source {
+  justify-content: flex-start;
+  margin-block-start: 8px;
+}
+
+@media (min-width: 750px) {
+  /* the full band centers + wraps its logos ≥750px; ultra-compact keeps
+     the single scrollable strip on BOTH breakpoints */
+  .cx-press--ultra .cx-press__logos {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+}
+
+/* --- endorsements --ultra: head row + card rail (≤180px collapsed) --
+   One composed head line (count + " · " + shown-of, built by the JS)
+   over a horizontal scroll-snap rail of the SAME cards. Fixed 240px
+   basis; align-items flex-start so an expanded card grows alone.
+   No CSS columns in ultra. */
+.cx-endo--ultra {
+  text-align: start;
+}
+
+.cx-endo--ultra .cx-endo__headline {
+  margin: 0 0 8px;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-endo--ultra .cx-endo__wall {
+  columns: auto;
+  display: flex;
+  align-items: flex-start; /* an expanded card grows alone */
+  gap: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  padding-block-end: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+.cx-endo--ultra .cx-endo__wall::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cx-endo--ultra .cx-endo__wall::-webkit-scrollbar-thumb {
+  background: #d5d9d9;
+  border-radius: 3px;
+}
+
+.cx-endo--ultra .cx-endo__wall::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cx-endo--ultra .cx-endo__card {
+  flex: 0 0 240px;
+  min-inline-size: 0; /* the fixed basis must beat the nowrap creds' min-content floor */
+  scroll-snap-align: start;
+  margin-block-end: 0;
+  padding: 10px 12px;
+}
+
+.cx-endo--ultra .cx-endo__photo,
+.cx-endo--ultra .cx-endo__monogram {
+  inline-size: 32px;
+  block-size: 32px;
+}
+
+.cx-endo--ultra .cx-endo__monogram {
+  font-size: 12px;
+}
+
+/* one-line identity + tighter quote/expander rhythm — ultra trades
+   the credentials wrap for height while the card is collapsed; an
+   expanded card restores the full credentials line */
+.cx-endo--ultra .cx-endo__creds {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-endo--ultra .cx-endo__card--open .cx-endo__creds {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.cx-endo--ultra .cx-endo__quote {
+  margin-block-start: 8px;
+}
+
+.cx-endo--ultra .cx-endo__more {
+  margin-block-start: 6px;
+}
+
+.cx-endo--ultra .cx-endo__show-more {
+  margin-block-start: 2px;
+  padding: 8px 18px;
+}
+
+/* --- v8.2 long endorsements: expanded quotes keep paragraph breaks --
+   Applies in ALL density tiers (the selector carries no root modifier,
+   so full/compact/ultra all match). Collapsed clamp is untouched — with
+   the default white-space, -webkit-line-clamp treats \n as a space, so
+   multi-paragraph quotes clamp exactly like one-liners. */
+.cx-endo__card--open .cx-endo__quote {
+  white-space: pre-line;
+}
+
+/* --- results --ultra: slim banner + one chip row + rail everywhere --
+   (≤360px collapsed) Slimmer single-line banner, the four filter chips
+   in ONE horizontally scrollable row (zero new strings), and the
+   swipeable 240px scroll-snap rail on BOTH breakpoints — the ≥900px
+   grid recomposition is suppressed under the modifier. */
+.cx-results--ultra .cx-results__banner {
+  margin-block-end: 10px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-results--ultra .cx-results__count {
+  font-size: 17px;
+}
+
+.cx-results--ultra .cx-results__filters {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-block-end: 10px;
+  padding-block-end: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+.cx-results--ultra .cx-results__filters::-webkit-scrollbar,
+.cx-results--ultra .cx-results__rail::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cx-results--ultra .cx-results__filters::-webkit-scrollbar-thumb,
+.cx-results--ultra .cx-results__rail::-webkit-scrollbar-thumb {
+  background: #d5d9d9;
+  border-radius: 3px;
+}
+
+.cx-results--ultra .cx-results__filters::-webkit-scrollbar-track,
+.cx-results--ultra .cx-results__rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cx-results--ultra .cx-results__rail {
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+.cx-results--ultra .cx-results__chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.cx-results--ultra .cx-results__card {
+  flex: 0 0 240px;
+}
+
+/* tighter card rhythm: one-line meta + one-line testimonial on the
+   card (the lightbox keeps the FULL testimonial and metadata — nothing
+   is lost, only the collapsed height) */
+.cx-results--ultra .cx-results__badges {
+  padding-block-start: 6px;
+}
+
+.cx-results--ultra .cx-results__meta {
+  margin-block-start: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-results--ultra .cx-results__quote {
+  margin-block-start: 4px;
+  -webkit-line-clamp: 1;
+}
+
+.cx-results--ultra .cx-results__more {
+  margin-block-start: 8px;
+  padding: 8px 18px;
+}
+
+@media (min-width: 900px) {
+  .cx-results--ultra .cx-results__rail {
+    display: flex;
+    grid-template-columns: none;
+    gap: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    padding-block-end: 8px;
+  }
+
+  .cx-results--ultra .cx-results__card {
+    flex: 0 0 240px;
+    max-inline-size: none;
+  }
+}
+
+/* ==================================================================
+   v8.3 COMPACT DENSITY (the middle tier, "cm": 1) — press /
+   endorsements / results. Everything slightly more visible than ultra,
+   still far more compact than full: the press quote is ALWAYS visible,
+   endorsement cards carry two-line quotes on a wider rail, the results
+   band keeps its full banner and wrapping chip row over the rail. Same
+   DOM as full mode in every widget. House tokens (ink #1d1d1b, accent
+   #b1cded, hairline #e5e5e3, muted #808080); logical properties only
+   (RTL).
+   ================================================================== */
+
+/* --- press --compact: one-row eyebrow + logo strip with the quote
+   ALWAYS visible below it (~130px). Logo taps rotate quotes exactly
+   like the full band — nothing toggles [hidden] here, so the press
+   [hidden] guard above only ever fires for the ultra tier. */
+.cx-press--compact {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding-block: 14px;
+  text-align: start;
+}
+
+.cx-press--compact .cx-proof__eyebrow {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.cx-press--compact .cx-press__logos {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  margin-block-end: 0;
+  padding-block: 2px;
+  gap: 20px;
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+.cx-press--compact .cx-press__logos::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cx-press--compact .cx-press__logos::-webkit-scrollbar-thumb {
+  background: #d5d9d9;
+  border-radius: 3px;
+}
+
+.cx-press--compact .cx-press__logos::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cx-press--compact .cx-press__logo {
+  padding-block: 2px;
+}
+
+.cx-press--compact .cx-press__logo-img {
+  block-size: 22px;
+}
+
+.cx-press--compact .cx-press__logo-name {
+  font-size: 13px;
+}
+
+/* the always-visible quote spans a full row of its own, sized down;
+   the source line sits inline after the publication on ONE line */
+.cx-press--compact .cx-press__quote {
+  flex: 1 1 100%;
+  margin-block-start: 4px;
+  text-align: start;
+}
+
+.cx-press--compact .cx-press__quote-text {
+  margin-inline: 0;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.cx-press--compact .cx-press__source {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;
+  margin-block-start: 4px;
+}
+
+@media (min-width: 750px) {
+  /* compact keeps the single scrollable strip on BOTH breakpoints,
+     exactly like ultra */
+  .cx-press--compact .cx-press__logos {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+}
+
+/* --- endorsements --compact: headline line + 280px card rail (~250px)
+   The count headline keeps its own line (H2 element, slightly smaller
+   than the full headline) with the shown-of progress inline after it
+   (one composed line, built by the JS); the wall is a rail like ultra
+   but with 280px-basis cards, TWO-line quote clamps, the full name +
+   a one-line credentials line and 40px portraits/monograms.
+   Expand-in-place is unchanged. */
+.cx-endo--compact {
+  text-align: start;
+}
+
+.cx-endo--compact .cx-endo__headline {
+  margin: 0 0 10px;
+  font-size: clamp(17px, 2.8vw, 20px);
+}
+
+.cx-endo--compact .cx-endo__wall {
+  columns: auto;
+  display: flex;
+  align-items: flex-start; /* an expanded card grows alone */
+  gap: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  padding-block-end: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+.cx-endo--compact .cx-endo__wall::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cx-endo--compact .cx-endo__wall::-webkit-scrollbar-thumb {
+  background: #d5d9d9;
+  border-radius: 3px;
+}
+
+.cx-endo--compact .cx-endo__wall::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cx-endo--compact .cx-endo__card {
+  flex: 0 0 280px;
+  min-inline-size: 0; /* the fixed basis must beat the nowrap creds' min-content floor */
+  scroll-snap-align: start;
+  margin-block-end: 0;
+  padding: 12px 14px;
+}
+
+.cx-endo--compact .cx-endo__photo,
+.cx-endo--compact .cx-endo__monogram {
+  inline-size: 40px;
+  block-size: 40px;
+}
+
+.cx-endo--compact .cx-endo__monogram {
+  font-size: 14px;
+}
+
+/* full name + ONE-line credentials while collapsed; an expanded card
+   restores the wrapping credentials line (the ultra convention) */
+.cx-endo--compact .cx-endo__creds {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-endo--compact .cx-endo__card--open .cx-endo__creds {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* TWO-line quote clamp (the base rule clamps to one line) … */
+.cx-endo--compact .cx-endo__quote {
+  margin-block-start: 8px;
+  -webkit-line-clamp: 2;
+}
+
+/* … and expand-in-place must still beat that clamp: this rule sits
+   AFTER it in source with higher specificity, so the shared --open
+   pre-line rule above keeps paragraph breaks under the new modifier */
+.cx-endo--compact .cx-endo__card--open .cx-endo__quote {
+  display: block;
+  -webkit-line-clamp: none;
+  overflow: visible;
+}
+
+.cx-endo--compact .cx-endo__show-more {
+  margin-block-start: 4px;
+  padding: 9px 20px;
+}
+
+/* --- results --compact: full banner + wrapping chips + rail (~460px)
+   The banner and the chip row are the FULL layout untouched; only the
+   ≥900px grid recomposition is suppressed — the swipeable scroll-snap
+   rail carries the FULL-size 270px cards on both breakpoints and
+   testimonials keep the full two-line clamp (the lightbox keeps
+   everything, as always). */
+.cx-results--compact .cx-results__rail {
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+.cx-results--compact .cx-results__rail::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cx-results--compact .cx-results__rail::-webkit-scrollbar-thumb {
+  background: #d5d9d9;
+  border-radius: 3px;
+}
+
+.cx-results--compact .cx-results__rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cx-results--compact .cx-results__card {
+  flex: 0 0 270px;
+}
+
+@media (min-width: 900px) {
+  .cx-results--compact .cx-results__rail {
+    display: flex;
+    grid-template-columns: none;
+    gap: 16px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    padding-block-end: 8px;
+  }
+
+  .cx-results--compact .cx-results__card {
+    flex: 0 0 270px;
+    max-inline-size: none;
   }
 }

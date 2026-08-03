@@ -1,11 +1,14 @@
 /**
  * Per-product PDP booster content (SPEC v3).
  *
- * Reads and writes the five "cellexia" product metafields and the metaobjects
+ * Reads and writes the six "cellexia" product metafields and the metaobjects
  * they reference:
  *
  *   - clinical_study      metaobject_reference       -> cellexia_clinical_study
  *                         (nested list of cellexia_study_result)
+ *   - product_survey      metaobject_reference       -> cellexia_product_survey
+ *                         (nested list of cellexia_survey_outcome; v7 — its
+ *                         presence is the per-product survey switch)
  *   - before_afters       list.metaobject_reference  -> cellexia_before_after
  *   - batch_transparency  metaobject_reference       -> cellexia_batch_transparency
  *                         (nested cellexia_ingredient + cellexia_coa lists)
@@ -46,13 +49,19 @@ export type { AdminGraphqlClient } from "./metaobjects.server";
 // Public types
 // ---------------------------------------------------------------------------
 
-/** The five per-product opt-in/out flags. Missing key = true (opted in). */
+/** The per-product opt-in/out flags. Missing key = true (opted in).
+ *  v8: `press` and `derm_endorsements` share the exact opt-OUT polarity of
+ *  the existing keys — both are BRAND-level proof modules shown on every
+ *  product page by default, and this flag is only the per-product kill
+ *  switch (missing = shown), so no polarity special-casing anywhere. */
 export const PDP_FLAG_KEYS = [
   "clinical_study",
   "verified_before_after",
   "batch_transparency",
   "empty_bottle_guarantee",
   "derm_survey",
+  "press",
+  "derm_endorsements",
 ] as const;
 export type PdpFlagKey = (typeof PDP_FLAG_KEYS)[number];
 
@@ -116,7 +125,7 @@ export const BOUGHT_COUNT_STALE_DAYS = 45;
 const BOUGHT_COUNT_MAX = 10_000_000;
 
 /**
- * The five boolean opt-in/out flags plus the optional per-product container
+ * The boolean opt-in/out flags plus the optional per-product container
  * override for the empty-bottle guarantee (`container` absent = inherit the
  * global emptyBottleGuarantee.container) and the v6.1 Amazon-pattern data:
  *
@@ -155,6 +164,8 @@ export interface StudyResultView {
 export interface ClinicalStudyView {
   id: string;
   title: string;
+  /** v7: optional "conducted on this product" line override. */
+  subject: string;
   concern: string;
   durationWeeks: number | null;
   sampleSize: number | null;
@@ -163,6 +174,28 @@ export interface ClinicalStudyView {
   studyUrl: string;
   footnote: string;
   results: StudyResultView[];
+}
+
+export interface SurveyOutcomeView {
+  id: string;
+  statement: string;
+  yesCount: number | null;
+}
+
+/** v7 per-product dermatologist survey (cellexia_product_survey). Every
+ *  field except sampleSize is optional; methodology/verifierName/
+ *  verificationUrl override the shop-global dermSurvey defaults per field. */
+export interface ProductSurveyView {
+  id: string;
+  title: string;
+  sampleSize: number | null;
+  recommendYes: number | null;
+  question: string;
+  intro: string;
+  methodology: string;
+  verifierName: string;
+  verificationUrl: string;
+  outcomes: SurveyOutcomeView[];
 }
 
 export interface BeforeAfterView {
@@ -213,6 +246,7 @@ export interface ProductBoostersResult {
   errors: string[];
   product: ProductSummary | null;
   clinicalStudy: ClinicalStudyView | null;
+  productSurvey: ProductSurveyView | null;
   beforeAfters: BeforeAfterView[];
   batchTransparency: BatchTransparencyView | null;
   flags: PdpFlags;
@@ -234,6 +268,8 @@ export interface StudyResultInput {
 
 export interface ClinicalStudyInput {
   title: string;
+  /** v7: optional "conducted on this product" line override. */
+  subject: string;
   concern: string;
   durationWeeks: number;
   sampleSize: number;
@@ -243,6 +279,27 @@ export interface ClinicalStudyInput {
   footnote: string;
   /** Ordered — becomes the metaobject's `results` list order. */
   results: StudyResultInput[];
+}
+
+export interface SurveyOutcomeInput {
+  /** Existing cellexia_survey_outcome GID to update; omit/null to create. */
+  id?: string | null;
+  statement: string;
+  yesCount: number;
+}
+
+export interface ProductSurveyInput {
+  title: string;
+  sampleSize: number;
+  /** null = no "NN% would recommend" headline (never fabricate a 0). */
+  recommendYes: number | null;
+  question: string;
+  intro: string;
+  methodology: string;
+  verifierName: string;
+  verificationUrl: string;
+  /** Ordered — becomes the metaobject's `outcomes` list order. */
+  outcomes: SurveyOutcomeInput[];
 }
 
 export interface BeforeAfterInput {
@@ -361,6 +418,8 @@ export interface ProductBoosterStatus {
     /** Number of verified before/after entries. */
     verified_before_after: number;
     batch_transparency: boolean;
+    /** v7: per-product survey content exists (content = the switch). */
+    derm_survey: boolean;
     flags: PdpFlags;
   };
 }
@@ -382,6 +441,16 @@ const MAX_STUDY_RESULTS = 25;
 const MAX_BEFORE_AFTERS = 20;
 const MAX_INGREDIENTS = 60;
 const MAX_CERTIFICATES = 60;
+/** Save-time cap on survey outcome rows. Hydration deliberately reads MORE
+ *  than this (references(first: 25), the study-results convention): if extra
+ *  outcomes were attached outside the app (Shopify metaobjects admin), the
+ *  editor must SEE them — otherwise its knownIds can never cover the extra
+ *  ids and every save dead-ends on the staleness guard. Over-cap surveys
+ *  load fully, fail save validation with an actionable error, and the
+ *  merchant trims rows in the editor. */
+const MAX_SURVEY_OUTCOMES = 8;
+const SURVEY_SAMPLE_MAX = 1_000_000;
+const SURVEY_OUTCOME_YES_MAX = 10_000_000;
 
 const PRODUCT_GID_PATTERN = /^gid:\/\/shopify\/Product\/\d+$/;
 const METAOBJECT_GID_PATTERN = /^gid:\/\/shopify\/Metaobject\/\d+$/;
@@ -876,6 +945,21 @@ const PRODUCT_BOOSTERS_QUERY = `#graphql
           }
         }
       }
+      productSurvey: metafield(namespace: "cellexia", key: "product_survey") {
+        reference {
+          ... on Metaobject {
+            id
+            fields { key value }
+            outcomesField: field(key: "outcomes") {
+              references(first: 25) {
+                nodes {
+                  ... on Metaobject { id fields { key value } }
+                }
+              }
+            }
+          }
+        }
+      }
       pdpFlags: metafield(namespace: "cellexia", key: "pdp_flags") { value }
       bestsellerCategory: metafield(namespace: "cellexia", key: "bestseller_category") { id value }
     }
@@ -934,6 +1018,15 @@ interface ProductBoostersData {
           })
         | null;
     } | null;
+    productSurvey: {
+      reference:
+        | (RawMetaobjectNode & {
+            outcomesField?: {
+              references: { nodes: RawMetaobjectNode[] } | null;
+            } | null;
+          })
+        | null;
+    } | null;
     pdpFlags: { value: string } | null;
     bestsellerCategory: { id: string; value: string } | null;
   } | null;
@@ -965,9 +1058,26 @@ function toStudyResultViews(nodes: RawMetaobjectNode[] | undefined): StudyResult
     });
 }
 
+function toSurveyOutcomeViews(
+  nodes: RawMetaobjectNode[] | undefined,
+): SurveyOutcomeView[] {
+  return (nodes ?? [])
+    .filter((node): node is Required<RawMetaobjectNode> =>
+      Boolean(node.id && node.fields),
+    )
+    .map((node) => {
+      const map = toFieldMap(node.fields);
+      return {
+        id: node.id,
+        statement: map.statement ?? "",
+        yesCount: toNumber(map.yes_count),
+      };
+    });
+}
+
 /**
- * Hydrated view of a product's four cellexia metafields (single GraphQL
- * query, referenced metaobjects and nested lists included).
+ * Hydrated view of a product's cellexia metafields (single GraphQL query,
+ * referenced metaobjects and nested lists included).
  */
 export async function getProductBoosters(
   admin: AdminGraphqlClient,
@@ -976,6 +1086,7 @@ export async function getProductBoosters(
   const empty = {
     product: null,
     clinicalStudy: null,
+    productSurvey: null,
     beforeAfters: [],
     batchTransparency: null,
     flags: defaultFlags(),
@@ -1007,6 +1118,7 @@ export async function getProductBoosters(
     clinicalStudy = {
       id: studyNode.id,
       title: map.title ?? "",
+      subject: map.subject ?? "",
       concern: map.concern ?? "",
       durationWeeks: toNumber(map.duration_weeks),
       sampleSize: toNumber(map.sample_size),
@@ -1015,6 +1127,27 @@ export async function getProductBoosters(
       studyUrl: map.study_url ?? "",
       footnote: map.footnote ?? "",
       results: toStudyResultViews(studyNode.resultsField?.references?.nodes),
+    };
+  }
+
+  // Dermatologist survey (v7 per-product)
+  let productSurvey: ProductSurveyView | null = null;
+  const surveyNode = product.productSurvey?.reference ?? null;
+  if (surveyNode?.id) {
+    const map = toFieldMap(surveyNode.fields);
+    productSurvey = {
+      id: surveyNode.id,
+      title: map.title ?? "",
+      sampleSize: toNumber(map.sample_size),
+      recommendYes: toNumber(map.recommend_yes),
+      question: map.question ?? "",
+      intro: map.intro ?? "",
+      methodology: map.methodology ?? "",
+      verifierName: map.verifier_name ?? "",
+      verificationUrl: map.verification_url ?? "",
+      outcomes: toSurveyOutcomeViews(
+        surveyNode.outcomesField?.references?.nodes,
+      ),
     };
   }
 
@@ -1101,6 +1234,7 @@ export async function getProductBoosters(
       imageUrl: product.featuredImage?.url ?? null,
     },
     clinicalStudy,
+    productSurvey,
     beforeAfters,
     batchTransparency,
     flags: applyBestsellerCategoryOverride(
@@ -1147,6 +1281,7 @@ interface ClinicalStudyStateData {
 
 interface CleanClinicalStudy {
   title: string;
+  subject: string;
   concern: string;
   durationWeeks: number;
   sampleSize: number;
@@ -1168,6 +1303,7 @@ function validateClinicalStudy(data: ClinicalStudyInput): {
   }
   const clean: CleanClinicalStudy = {
     title: cleanText(data.title, SINGLE_LINE_MAX),
+    subject: cleanText(data.subject, SINGLE_LINE_MAX),
     concern: cleanText(data.concern, SINGLE_LINE_MAX),
     durationWeeks: requireNonNegativeInt(
       data.durationWeeks,
@@ -1265,6 +1401,7 @@ export async function saveClinicalStudy(
 
   const parentFields: MetaobjectFieldInput[] = [
     { key: "title", value: clean.title },
+    { key: "subject", value: clean.subject },
     { key: "concern", value: clean.concern },
     { key: "duration_weeks", value: String(clean.durationWeeks) },
     { key: "sample_size", value: String(clean.sampleSize) },
@@ -1297,6 +1434,258 @@ export async function saveClinicalStudy(
     admin,
     productGid,
     PDP_METAFIELD_KEYS.clinicalStudy,
+    "metaobject_reference",
+    parentId,
+  );
+  if (setErrors.length > 0) {
+    // A parent created by THIS call is unreferenced — best-effort delete it
+    // so the failed save does not leak a metaobject.
+    if (!existingParentId) {
+      await deleteMetaobject(admin, parentId);
+      return { ok: false, errors: setErrors, metaobjectId: null };
+    }
+    return { ok: false, errors: setErrors, metaobjectId: parentId };
+  }
+
+  // The metafield now points at the new content; a failed orphan cleanup is
+  // non-fatal (the save itself persisted) and surfaces as warnings.
+  const deleteErrors = await deleteMetaobjects(admin, sync.orphanIds);
+  return {
+    ok: true,
+    errors: [],
+    warnings: deleteErrors,
+    metaobjectId: parentId,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// saveProductSurvey
+// ---------------------------------------------------------------------------
+
+const PRODUCT_SURVEY_STATE_QUERY = `#graphql
+  query cellexiaProductSurveyState($id: ID!) {
+    product(id: $id) {
+      id
+      metafield(namespace: "cellexia", key: "product_survey") {
+        id
+        reference {
+          ... on Metaobject {
+            id
+            outcomesField: field(key: "outcomes") { value }
+          }
+        }
+      }
+    }
+  }
+`;
+
+interface ProductSurveyStateData {
+  product: {
+    id: string;
+    metafield: {
+      id: string;
+      reference: {
+        id?: string;
+        outcomesField?: { value: string | null } | null;
+      } | null;
+    } | null;
+  } | null;
+}
+
+interface CleanProductSurvey {
+  title: string;
+  sampleSize: number;
+  recommendYes: number | null;
+  question: string;
+  intro: string;
+  methodology: string;
+  verifierName: string;
+  verificationUrl: string;
+  outcomes: { id: string | null; statement: string; yesCount: number }[];
+}
+
+function validateProductSurvey(data: ProductSurveyInput): {
+  errors: string[];
+  clean: CleanProductSurvey;
+} {
+  const errors: string[] = [];
+  const outcomes = Array.isArray(data.outcomes) ? data.outcomes : [];
+  if (outcomes.length > MAX_SURVEY_OUTCOMES) {
+    errors.push(`At most ${MAX_SURVEY_OUTCOMES} survey outcomes are allowed`);
+  }
+  const sampleSize = requireNonNegativeInt(
+    data.sampleSize,
+    "Dermatologists surveyed",
+    errors,
+  );
+  if (sampleSize < 1 || sampleSize > SURVEY_SAMPLE_MAX) {
+    errors.push(
+      `Dermatologists surveyed must be between 1 and ${SURVEY_SAMPLE_MAX}`,
+    );
+  }
+  // null = the merchant left the field blank (no recommend headline) — a
+  // value is only validated when one was actually entered, never fabricated.
+  let recommendYes: number | null = null;
+  if (data.recommendYes !== null && data.recommendYes !== undefined) {
+    recommendYes = requireNonNegativeInt(
+      data.recommendYes,
+      "Would-recommend count",
+      errors,
+    );
+    if (recommendYes > sampleSize) {
+      errors.push(
+        "Would-recommend count cannot exceed the number of dermatologists surveyed",
+      );
+    }
+  }
+  const clean: CleanProductSurvey = {
+    title: cleanText(data.title, SINGLE_LINE_MAX),
+    sampleSize,
+    recommendYes,
+    question: cleanText(data.question, SINGLE_LINE_MAX),
+    intro: cleanText(data.intro, SINGLE_LINE_MAX),
+    methodology: cleanText(data.methodology, MULTI_LINE_MAX),
+    verifierName: cleanText(data.verifierName, SINGLE_LINE_MAX),
+    verificationUrl: cleanUrl(
+      data.verificationUrl,
+      "Verification URL",
+      errors,
+    ),
+    outcomes: outcomes.slice(0, MAX_SURVEY_OUTCOMES).map((entry, index) => {
+      const statement = cleanText(entry.statement, SINGLE_LINE_MAX);
+      if (statement === "") {
+        errors.push(`Outcome ${index + 1}: a statement is required`);
+      }
+      const yesCount = requireNonNegativeInt(
+        entry.yesCount,
+        `Outcome ${index + 1} agree count`,
+        errors,
+      );
+      if (yesCount > SURVEY_OUTCOME_YES_MAX) {
+        errors.push(
+          `Outcome ${index + 1} agree count must be at most ${SURVEY_OUTCOME_YES_MAX}`,
+        );
+      }
+      return { id: cleanMetaobjectId(entry.id), statement, yesCount };
+    }),
+  };
+  return { errors, clean };
+}
+
+/**
+ * Diff-based upsert of a product's dermatologist survey (v7): syncs the
+ * nested ordered outcome metaobjects (update/create/delete), updates or
+ * creates the parent cellexia_product_survey metaobject, then points the
+ * product's cellexia.product_survey metafield at it. Because content
+ * presence IS the per-product switch, a successful first save is what turns
+ * the survey on for this product.
+ *
+ * `knownIds` — the nested metaobject GIDs the client loaded. When provided,
+ * the save aborts with STALE_CONTENT_ERROR if the server holds ids absent
+ * from both the payload and `knownIds` (concurrent edit protection).
+ */
+export async function saveProductSurvey(
+  admin: AdminGraphqlClient,
+  productGid: string,
+  data: ProductSurveyInput,
+  knownIds?: string[],
+): Promise<SaveMetaobjectResult> {
+  if (!PRODUCT_GID_PATTERN.test(productGid)) {
+    return { ok: false, errors: ["Invalid product id"], metaobjectId: null };
+  }
+  const { errors: validationErrors, clean } = validateProductSurvey(data);
+  if (validationErrors.length > 0) {
+    return { ok: false, errors: validationErrors, metaobjectId: null };
+  }
+
+  const state = await adminRequest<ProductSurveyStateData>(
+    admin,
+    PRODUCT_SURVEY_STATE_QUERY,
+    { id: productGid },
+  );
+  if (!state.data?.product) {
+    return {
+      ok: false,
+      errors: state.errors.length ? state.errors : ["Product not found"],
+      metaobjectId: null,
+    };
+  }
+  const existingReference = state.data.product.metafield?.reference ?? null;
+  const existingParentId = existingReference?.id ?? null;
+  const existingOutcomeIds = parseGidList(
+    existingReference?.outcomesField?.value,
+  );
+
+  if (
+    knownIds &&
+    hasUnseenServerIds(
+      existingOutcomeIds,
+      clean.outcomes.map((entry) => entry.id),
+      knownIds,
+    )
+  ) {
+    return {
+      ok: false,
+      errors: [STALE_CONTENT_ERROR],
+      metaobjectId: existingParentId,
+    };
+  }
+
+  const sync = await syncMetaobjectList(
+    admin,
+    PDP_METAOBJECT_TYPES.surveyOutcome,
+    existingOutcomeIds,
+    clean.outcomes.map((entry) => ({
+      id: entry.id,
+      fields: [
+        { key: "statement", value: entry.statement },
+        { key: "yes_count", value: String(entry.yesCount) },
+      ],
+    })),
+  );
+  if (!sync.ok) {
+    return { ok: false, errors: sync.errors, metaobjectId: existingParentId };
+  }
+
+  // recommendYes null -> "" : dropped on create, cleared on update — either
+  // way the metaobject ends up without a recommend_yes value (no headline).
+  const parentFields: MetaobjectFieldInput[] = [
+    { key: "title", value: clean.title },
+    { key: "sample_size", value: String(clean.sampleSize) },
+    {
+      key: "recommend_yes",
+      value: clean.recommendYes === null ? "" : String(clean.recommendYes),
+    },
+    { key: "question", value: clean.question },
+    { key: "intro", value: clean.intro },
+    { key: "methodology", value: clean.methodology },
+    { key: "verifier_name", value: clean.verifierName },
+    { key: "verification_url", value: clean.verificationUrl },
+    { key: "outcomes", value: JSON.stringify(sync.ids) },
+  ];
+
+  let parentId = existingParentId;
+  if (parentId) {
+    const updated = await updateMetaobject(admin, parentId, parentFields);
+    if (!updated.ok) {
+      return { ok: false, errors: updated.errors, metaobjectId: parentId };
+    }
+  } else {
+    const created = await createMetaobject(
+      admin,
+      PDP_METAOBJECT_TYPES.productSurvey,
+      parentFields,
+    );
+    if (!created.ok || !created.id) {
+      return { ok: false, errors: created.errors, metaobjectId: null };
+    }
+    parentId = created.id;
+  }
+
+  const setErrors = await setProductMetafield(
+    admin,
+    productGid,
+    PDP_METAFIELD_KEYS.productSurvey,
     "metaobject_reference",
     parentId,
   );
@@ -2001,6 +2390,53 @@ export async function deleteClinicalStudy(
 }
 
 /**
+ * Removes a product's dermatologist survey entirely (v7): clears the
+ * metafield first (so the storefront never sees a dangling reference), then
+ * deletes the parent metaobject and its nested outcome metaobjects. Because
+ * content presence is the per-product switch, this turns the survey off for
+ * this product.
+ */
+export async function deleteProductSurvey(
+  admin: AdminGraphqlClient,
+  productGid: string,
+): Promise<DeleteResult> {
+  if (!PRODUCT_GID_PATTERN.test(productGid)) {
+    return { ok: false, errors: ["Invalid product id"] };
+  }
+  const state = await adminRequest<ProductSurveyStateData>(
+    admin,
+    PRODUCT_SURVEY_STATE_QUERY,
+    { id: productGid },
+  );
+  if (!state.data?.product) {
+    return {
+      ok: false,
+      errors: state.errors.length ? state.errors : ["Product not found"],
+    };
+  }
+  const metafield = state.data.product.metafield;
+  if (!metafield) return { ok: true, errors: [] };
+
+  const parentId = metafield.reference?.id ?? null;
+  const outcomeIds = parseGidList(metafield.reference?.outcomesField?.value);
+
+  const errors: string[] = [];
+  errors.push(
+    ...(await deleteProductMetafield(
+      admin,
+      productGid,
+      PDP_METAFIELD_KEYS.productSurvey,
+    )),
+  );
+  if (parentId) {
+    const deleted = await deleteMetaobject(admin, parentId);
+    if (!deleted.ok) errors.push(...deleted.errors);
+  }
+  errors.push(...(await deleteMetaobjects(admin, outcomeIds)));
+  return { ok: errors.length === 0, errors };
+}
+
+/**
  * Removes a product's batch transparency block: clears the metafield, then
  * deletes the parent metaobject and its nested ingredient/CoA metaobjects.
  */
@@ -2126,6 +2562,7 @@ const LIST_PRODUCTS_QUERY = `#graphql
         status
         featuredImage { url }
         clinicalStudy: metafield(namespace: "cellexia", key: "clinical_study") { id }
+        productSurvey: metafield(namespace: "cellexia", key: "product_survey") { id }
         beforeAfters: metafield(namespace: "cellexia", key: "before_afters") { value }
         batchTransparency: metafield(namespace: "cellexia", key: "batch_transparency") { id }
         pdpFlags: metafield(namespace: "cellexia", key: "pdp_flags") { value }
@@ -2144,6 +2581,7 @@ interface ListProductsData {
       status: string;
       featuredImage: { url: string } | null;
       clinicalStudy: { id: string } | null;
+      productSurvey: { id: string } | null;
       beforeAfters: { value: string } | null;
       batchTransparency: { id: string } | null;
       pdpFlags: { value: string } | null;
@@ -2195,6 +2633,7 @@ export async function listProductsWithBoosterStatus(
         clinical_study: Boolean(node.clinicalStudy?.id),
         verified_before_after: parseGidList(node.beforeAfters?.value).length,
         batch_transparency: Boolean(node.batchTransparency?.id),
+        derm_survey: Boolean(node.productSurvey?.id),
         flags: applyBestsellerCategoryOverride(
           parseFlags(node.pdpFlags?.value),
           node.bestsellerCategory?.value,

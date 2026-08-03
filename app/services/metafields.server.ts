@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import prisma from "../db.server";
 import {
   DELIVERY_ESTIMATE_FORMATS,
-  DERM_SURVEY_FORMATS,
+  SHIPS_FROM_FORMATS,
   type BoosterSettings,
 } from "../models/settings.server";
 
@@ -65,10 +65,11 @@ export interface PreviewSyncPayload {
   armed: boolean;
   draftFlags: Record<string, boolean>;
   /**
-   * Draft, preview-session-only config overrides (v5.8) — the derm-survey
-   * display format plus the three per-surface delivery-estimate formats
-   * (`deliveryFormat` / `deliveryFormatCart` / `deliveryFormatCheckout`,
-   * v6.0). Tokenless by construction (closed-enum values only), so it is
+   * Draft, preview-session-only config overrides (v5.8) — the three
+   * per-surface delivery-estimate formats (`deliveryFormat` /
+   * `deliveryFormatCart` / `deliveryFormatCheckout`, v6.0) plus the
+   * az_ships_from style (v6.10); the derm-survey format override retired
+   * in v7. Tokenless by construction (closed-enum values only), so it is
    * safe for the page-visible app-data metafield AND the checkout shop
    * metafield while the preview is armed.
    */
@@ -113,13 +114,6 @@ async function loadPreviewPayload(shop: string): Promise<PreviewSyncPayload> {
     try {
       const parsed = JSON.parse(row.draftConfig);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        const format = (parsed as Record<string, unknown>).dermSurveyFormat;
-        if (
-          typeof format === "string" &&
-          (DERM_SURVEY_FORMATS as readonly string[]).includes(format)
-        ) {
-          draftConfig.dermSurveyFormat = format;
-        }
         const deliveryFormat = (parsed as Record<string, unknown>)
           .deliveryFormat;
         if (
@@ -149,6 +143,14 @@ async function loadPreviewPayload(shop: string): Promise<PreviewSyncPayload> {
           )
         ) {
           draftConfig.deliveryFormatCheckout = deliveryFormatCheckout;
+        }
+        const shipsFromFormat = (parsed as Record<string, unknown>)
+          .shipsFromFormat;
+        if (
+          typeof shipsFromFormat === "string" &&
+          (SHIPS_FROM_FORMATS as readonly string[]).includes(shipsFromFormat)
+        ) {
+          draftConfig.shipsFromFormat = shipsFromFormat;
         }
       }
     } catch {

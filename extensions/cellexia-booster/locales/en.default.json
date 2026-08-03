@@ -69,14 +69,15 @@
   },
   "study": {
     "eyebrow": "Independent clinical study",
-    "methodology": "n = {{ n }} participants · {{ weeks }} · {{ lab }}",
+    "subject": "Tested on {{ product }} itself — the exact formula on this page.",
     "weeks_count": {
       "one": "{{ count }}-week study",
       "other": "{{ count }}-week study"
     },
-    "instruments": "Instrument-measured: {{ methods }}",
+    "fact_participants": "{{ n }} participants",
+    "instruments": "Measured with {{ methods }}",
     "view_study": "View study summary",
-    "footnote_default": "Measured under dermatological control. Individual results may vary."
+    "footnote_default": "Measured under the supervision of dermatologists, not self-reported. Individual results may vary."
   },
   "ba": {
     "eyebrow": "Verified results",
@@ -102,7 +103,7 @@
     "honesty": "Every batch is independently tested and published. Judge for yourself."
   },
   "bottle": {
-    "title": "Use every last drop",
+    "title": "Try it for {{ days }}, completely risk-free",
     "body": "Take {{ days }}. If you don't love your results, return the empty {{ container }} for a full refund.",
     "days_count": {
       "one": "{{ count }} day",
@@ -127,23 +128,59 @@
   },
   "survey": {
     "eyebrow": "Independent dermatologist survey",
-    "title_pct": "of board-certified dermatologists surveyed would recommend Cellexia",
-    "count": "{{ yes }} of {{ total }} dermatologists surveyed",
+    "rec_line": "of {{ total }} dermatologists surveyed would recommend {{ product }}",
+    "outcomes_intro": "Dermatologists who reviewed {{ product }} rated the outcomes they observed:",
+    "outcome_agree": "@@YES@@ of @@TOTAL@@ agreed",
+    "more_outcomes": "+ @@N@@ more outcomes",
     "how": "How the survey was conducted",
     "methodology_p1": "In May 2026, an independent cosmetic research firm surveyed {{ total }} licensed dermatologists across the United States, United Kingdom, France, Germany, Italy and Spain.",
     "methodology_p2": "Each dermatologist received all Cellexia products, tested them with at least 5 patients for at least 8 weeks and reviewed a detailed overview of Cellexia, including its product range, ingredient information, intended uses and supporting clinical evidence. They were then asked:",
     "methodology_p3": "“Based on the information reviewed and your patients’ experience, would you recommend Cellexia to an appropriate patient seeking skincare for visible signs of ageing?”",
     "methodology_p4": "All {{ total }} dermatologists answered the question. {{ yes }} selected “Yes,” representing {{ percent }}% of respondents.",
     "methodology_p5": "The survey was requested by Cellexia and conducted independently. Respondents were recruited and responses were collected and analysed by the research firm. Cellexia did not select participants or alter individual responses.",
-    "report_title": "Survey results",
-    "report_surveyed": "Dermatologists surveyed",
-    "report_yes": "Answered “Yes”",
-    "report_recommend": "Would recommend Cellexia",
-    "question_intro": "{{ total }} licensed dermatologists were asked:",
-    "question_result": "{{ yes }} answered “Yes” — {{ percent }}% of respondents.",
-    "dot_legend": "Each dot represents one dermatologist surveyed.",
     "verified_badge": "Third-party verified",
     "verified_by": "Survey verified by {{ name }}"
+  },
+  "press": {
+    "eyebrow": "As seen in the press",
+    "read_article": "Read the article"
+  },
+  "endo": {
+    "eyebrow": "Dermatologist endorsements",
+    "count_headline": {
+      "one": "Endorsed by {{ n }} dermatologist",
+      "other": "Endorsed by {{ n }} dermatologists"
+    },
+    "shown_of": "Showing @@SHOWN@@ of @@TOTAL@@",
+    "show_more": "Show more",
+    "read_full": "Read full endorsement"
+  },
+  "results": {
+    "banner_verified": "See results from {{ count }} verified Cellexia customers.",
+    "banner_all": "See results from {{ count }} Cellexia customers.",
+    "filter_concern": "Concern",
+    "filter_age": "Age",
+    "filter_skin": "Skin type",
+    "filter_duration": "Duration",
+    "skin_dry": "Dry",
+    "skin_oily": "Oily",
+    "skin_combination": "Combination",
+    "skin_sensitive": "Sensitive",
+    "skin_normal": "Normal",
+    "duration_lt8": "Under 8 weeks",
+    "duration_8to12": "8–12 weeks",
+    "duration_gt12": "Over 12 weeks",
+    "age_years": "{{ range }} years",
+    "verified_badge": "Verified purchase",
+    "lab_badge": "Clinical study result",
+    "video_badge": "Video",
+    "weeks_of_use": "@@N@@ weeks of use",
+    "before": "Before",
+    "after": "After",
+    "show_more": "Show more",
+    "empty": "No results match these filters yet.",
+    "close": "Close",
+    "clear_filters": "Clear filters"
   },
   "dispatch": {
     "within": "Order within {{ hours }}h {{ minutes }}m for same-day dispatch",

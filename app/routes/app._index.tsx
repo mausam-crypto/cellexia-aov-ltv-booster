@@ -399,9 +399,9 @@ const FEATURES: FeatureDefinition[] = [
 ];
 
 /**
- * SPEC v3 PDP trust boosters — separate "Product page — trust boosters" card
- * group. Content for the first four lives per product (Product boosters
- * page); the survey uses global settings.
+ * SPEC v3/v7 PDP trust boosters — separate "Product page — trust boosters"
+ * card group. Content for every widget lives per product (Product boosters
+ * page); since v7 that includes the dermatologist survey.
  */
 const PDP_FEATURES: FeatureDefinition[] = [
   {
@@ -417,10 +417,10 @@ const PDP_FEATURES: FeatureDefinition[] = [
   },
   {
     key: "verified_before_after",
-    title: "Verified before/after",
+    title: "Results gallery",
     description:
-      "Unretouched before/after images with real dates, verified by a named professional with license number.",
-    configureUrl: "/app/products",
+      "Browsable before/after gallery with filters, verified-purchase badges and a scale banner — built for hundreds of customer results (v8).",
+    configureUrl: "/app/proof/results",
     scopeKeys: ["verified_before_after"],
     statusFlagKey: "verified_before_after",
     isEnabled: (settings) => settings.beforeAfter.enabled,
@@ -439,9 +439,9 @@ const PDP_FEATURES: FeatureDefinition[] = [
   },
   {
     key: "empty_bottle_guarantee",
-    title: "Empty bottle guarantee",
+    title: "Risk-free trial guarantee",
     description:
-      "“Use every last drop” risk-reversal panel — return the empty bottle for a full refund.",
+      "“Try it for 60 days, completely risk-free” panel — return even the empty container for a full refund.",
     configureUrl: "/app/products",
     scopeKeys: ["empty_bottle_guarantee"],
     statusFlagKey: "empty_bottle_guarantee",
@@ -452,8 +452,8 @@ const PDP_FEATURES: FeatureDefinition[] = [
     key: "derm_survey",
     title: "Dermatologist survey",
     description:
-      "“9/10 dermatologists surveyed would recommend Cellexia” with a third-party verification seal, on every product page.",
-    configureUrl: "/app/features/survey",
+      "Per-product outcomes survey — statements dermatologists rated for that specific product, with agreement bars. Off on every product until you add its survey content.",
+    configureUrl: "/app/products",
     scopeKeys: ["derm_survey"],
     statusFlagKey: "derm_survey",
     isEnabled: (settings) => settings.dermSurvey.enabled,

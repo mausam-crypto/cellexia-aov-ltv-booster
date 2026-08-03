@@ -35,21 +35,34 @@ under ~3 minutes.
   wave, never as a side effect.
 - **harness.mjs** — structural tripwires, each self-checking against
   vacuity: Liquid byte budget (≤95,000 own budget under Shopify's 102,400
-  cap) + per-file floor/ceiling; PREVIEW COVERAGE (all 31 FEATURE_KEYS
+  cap) + per-file floor/ceiling; PREVIEW COVERAGE (all 33 FEATURE_KEYS
   parsed live from settings.server.ts, each pinned to real storefront
   markers / checkout gates); PICKER COVERAGE (FEATURE_GROUPS, GROUPS,
   CONFIGURE_URL, fallback-group code); CLASS COVERAGE (every emitted cx-*
-  token styled, prefix-resolved, or annotated); CONFIG-PATH RESOLUTION
-  (executes the real settings model, prisma stubbed); ESCAPE DISCIPLINE
-  (href/src escaping in Liquid, the seven annotated innerHTML sites);
+  token styled, prefix-resolved, or annotated — cart, pdp AND the v8
+  proof asset; v8.2 closes the review-proven concat blind spots: the
+  attrs-array 'class' idiom, a comment-stripped sweep of every single-
+  quoted cx-token-only literal — ternary modifiers, className ternaries,
+  dynamic class prefixes — an annotated NON-CLASS literal list for the
+  ids the sweep drags in, and a self-test pinning the eleven review-
+  proven tokens so the scan can never go blind to them again);
+  CONFIG-PATH RESOLUTION (executes the real settings model,
+  prisma stubbed); ESCAPE DISCIPLINE (href/src escaping in Liquid, the
+  seven annotated innerHTML sites, ZERO innerHTML in cellexia-proof.js);
   schema names ≤25 chars; react-reconciler ^0.29.2 in all 4 checkout
-  extensions; SUITE INVENTORY (manifest-enforced file floors + the
-  pending→required ratchet).
+  extensions; v8 pin block (proxy Cache-Control, prisma proof tables +
+  legacyGid @unique, compact sanitize anchors + emission defaults, the
+  __preview handoff, compact island members, v8 locale keys, the v8.1
+  press market scoping, and the v8.2 ultra-compact wiring: three
+  sanitize anchors, emission defaults, the three island "cm" literals,
+  the .cx-press__quote[hidden] guard + endorsement pre-line rule); SUITE
+  INVENTORY (manifest-enforced file floors + the pending→required
+  ratchet).
 - **settings-derivation.ts** — port of the surviving v6.8 proof: executes
-  the REAL settings.server.ts and proves the 31-key inventory, amazon-flag
+  the REAL settings.server.ts and proves the 33-key inventory, amazon-flag
   mirroring, safe defaults, cfg-path resolution, sanitize round-trips,
-  the 31-key flip tripwire, snapshot/restore, and pre-v6.8 merge
-  back-compat (101 checks).
+  the 33-key flip tripwire, snapshot/restore, and pre-v6.8 merge
+  back-compat (112 checks).
 - **lib/** — shared helpers: `util.mjs` (normalization, checker,
   live FEATURE_KEYS parser), `settings-loader.ts` (loads the real settings
   model with prisma stubbed into `lib/.gen/`, regenerated from the current
@@ -59,11 +72,13 @@ under ~3 minutes.
   functions (never re-implementations) and print `ALL-N-PASSED`:
   dispatch-tz, delivery-businessdays, checkout-delivery-engine,
   native-dates, plurals, translation-service, crosssell-pipeline, fbt,
-  badge-cards, az-split, subscribed-upgrade, threshold-snap, flip-test.
-  The five most safety-critical (dispatch-tz, delivery, plurals,
-  crosssell, az-split) are mutation-tested: 3+ targeted mutants each,
-  applied to a COPY, all must be caught; the mutants are recorded in each
-  suite's header comment.
+  badge-cards, az-split, subscribed-upgrade, survey-methodology,
+  proof-gallery, proof-server, threshold-snap, flip-test.
+  The eight most safety-critical (dispatch-tz, delivery, plurals,
+  crosssell, az-split, survey-methodology, proof-gallery, proof-server)
+  are mutation-tested: 3+ targeted mutants each, applied to a COPY, all
+  must be caught; the mutants are recorded in each suite's header
+  comment.
 
   Feature batch, two lines each:
   - **translation-service.ts** — real translation.server.ts vs mock DeepL +
@@ -85,15 +100,48 @@ under ~3 minutes.
   - **subscribed-upgrade.cjs** — the v5.1 Joy rule: a volume tier is offered
     to a subscribed line only when the target variant allocates the line's
     plan (422 guard), plus savings-math fallbacks and plan lookup.
+  - **survey-methodology.cjs** — real surveyBuildPanel (v6.11): merchant
+    methodology token substitution ({{ total }}/{{ yes }}/{{ percent }} →
+    live numbers, fail-safe 0), built-in translated fallback path, verifier
+    link contract, textContent-only sink; v7 outcomes builder + study
+    chips; v8 compact modes (survey top-line + "+ N more" disclosure,
+    study --compact parity, bottle slim band). Mutation-tested (12
+    mutants, header comment).
+  - **proof-gallery.cjs** — real cellexia-proof.js renderers (v8): press
+    rotate band, endorsement wall pagination/monogram/CLDR headline,
+    results gallery cards + filter drawer → exact query pins + lightbox,
+    scale-banner fallback chain, https/video URL gates, fail-closed
+    empties, XSS textContent discipline; v8.2 ultra-compact branches
+    (press tap-reveal/re-hide, endo composed head row + rail append,
+    results root modifier, paragraph pre-line coverage) each with a
+    cm-absent twin, plus the preview-render/beacon-suppression contract
+    (pfWhenAllowed / pfPreviewVerified / pfBeaconsOff matrix — predicate,
+    never the poll). Deterministic proofFetch stub (no network).
+    Mutation-tested (9 mutants, header comment).
+  - **proof-server.ts** — real proof.server.ts (prisma stubbed in-memory,
+    settings-loader convention → validation/lib/.gen/): getPublicPress
+    v8.1 market matrix (agnostic-only without a market, never another
+    market's items), product prioritisation bands, endorsement
+    pagination vs the ALL-matching total, results projection (approved +
+    image-bearing only — items, totals AND facets), the exact public
+    field sets (no shop/status/featured/sortWeight/productGids/
+    marketHandles/legacyGid leak), facet stability under filters,
+    PUBLIC_ROW_CEILING take pins, market-handle clean/parse round-trips
+    and savePressItem validation. Mutation-tested (5 mutants incl. the
+    review-proven market-filter dead-code, header comment); as a .ts
+    suite it hands mutants.cjs the lib/tsx-shim.cjs bridge (plain-node →
+    vendored tsx) via CX_TSX_SUITE.
   - **threshold-snap.ts** — real shipping.server.ts vs a mock Admin client:
     the 60.01→60 snap matrix, zone rate rules, lowest-per-market attribution,
     rest-of-world/unmatched zones, never-throw error paths.
-  - **flip-test.ts** — all 31 FeatureKeys through the real settings model:
+  - **flip-test.ts** — all 33 FeatureKeys through the real settings model:
     flip round-trips, market scoping, applyFlipForMarket isolation,
     snapshot/restore, selective restore + the cart overlap group.
   - **sims/lib/** — shared vm-extraction helpers (`extract.cjs`), the
-    documented mini-DOM (`mini-dom.cjs`) and the mutation harness
-    (`mutants.cjs`, mutant copies under `validation/.generated/`, never tmp).
+    documented mini-DOM (`mini-dom.cjs`), the mutation harness
+    (`mutants.cjs`, mutant copies under `validation/.generated/`, never
+    tmp) and `tsx-shim.cjs` (lets mutants.cjs re-run a TypeScript suite:
+    plain-node bridge to the vendored tsx CLI, target via CX_TSX_SUITE).
 
 ## Landing a new suite (for rebuild agents)
 

@@ -3,11 +3,13 @@
  *
  * Owns three concerns:
  *
- *  1. ensurePdpDefinitions — idempotently creates the six Cellexia metaobject
- *     definitions (translatable + publishable, storefront PUBLIC_READ) and the
- *     five PRODUCT metafield definitions in the "cellexia" namespace. Safe to
- *     call from any loader on every request; it only issues create mutations
- *     for definitions that are missing.
+ *  1. ensurePdpDefinitions — idempotently creates the eight Cellexia
+ *     metaobject definitions (translatable + publishable, storefront
+ *     PUBLIC_READ) and the six PRODUCT metafield definitions in the
+ *     "cellexia" namespace. Safe to call from any loader on every request;
+ *     it only issues create mutations for definitions that are missing, and
+ *     (v7) backfills fields that later versions added to a definition via
+ *     ensureDefinitionFields (create never migrates on its own).
  *
  *  2. Generic metaobject CRUD wrappers (createMetaobject / updateMetaobject /
  *     deleteMetaobject) used by pdp-content.server.ts. Field values are always
@@ -46,19 +48,24 @@ export const PDP_METAOBJECT_TYPES = {
   ingredient: "cellexia_ingredient",
   coa: "cellexia_coa",
   batchTransparency: "cellexia_batch_transparency",
+  surveyOutcome: "cellexia_survey_outcome",
+  productSurvey: "cellexia_product_survey",
 } as const;
 
 /** FROZEN product metafield keys in the "cellexia" namespace (SPEC v3).
  *  bestseller_category (v6.4): the az bestseller badge category lives in its
  *  own single_line_text_field metafield — a TRANSLATABLE Shopify resource,
  *  unlike the pdp_flags JSON blob — so storefront Liquid serves it localized
- *  automatically and the v5.2 DeepL pipeline can register translations. */
+ *  automatically and the v5.2 DeepL pipeline can register translations.
+ *  product_survey (v7): per-product dermatologist survey content — its
+ *  presence IS the per-product switch (no metafield = survey hidden). */
 export const PDP_METAFIELD_KEYS = {
   clinicalStudy: "clinical_study",
   beforeAfters: "before_afters",
   batchTransparency: "batch_transparency",
   pdpFlags: "pdp_flags",
   bestsellerCategory: "bestseller_category",
+  productSurvey: "product_survey",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -120,6 +127,8 @@ const PDP_DEFINITION_LOOKUP_QUERY = `#graphql
     clinicalStudy: metaobjectDefinitionByType(type: "cellexia_clinical_study") { id }
     beforeAfter: metaobjectDefinitionByType(type: "cellexia_before_after") { id }
     batchTransparency: metaobjectDefinitionByType(type: "cellexia_batch_transparency") { id }
+    surveyOutcome: metaobjectDefinitionByType(type: "cellexia_survey_outcome") { id }
+    productSurvey: metaobjectDefinitionByType(type: "cellexia_product_survey") { id }
     metafieldDefinitions(first: 20, ownerType: PRODUCT, namespace: "cellexia") {
       nodes { id key }
     }
@@ -161,6 +170,8 @@ interface PdpDefinitionLookupData {
   clinicalStudy: DefinitionIdNode | null;
   beforeAfter: DefinitionIdNode | null;
   batchTransparency: DefinitionIdNode | null;
+  surveyOutcome: DefinitionIdNode | null;
+  productSurvey: DefinitionIdNode | null;
   metafieldDefinitions: { nodes: { id: string; key: string }[] } | null;
 }
 
@@ -174,6 +185,38 @@ interface MetaobjectDefinitionCreateData {
 interface MetafieldDefinitionCreateData {
   metafieldDefinitionCreate: {
     createdDefinition: { id: string } | null;
+    userErrors: UserError[];
+  } | null;
+}
+
+const METAOBJECT_DEFINITION_FIELDS_QUERY = `#graphql
+  query cellexiaMetaobjectDefinitionFields($type: String!) {
+    metaobjectDefinitionByType(type: $type) {
+      id
+      fieldDefinitions { key }
+    }
+  }
+`;
+
+const METAOBJECT_DEFINITION_UPDATE_MUTATION = `#graphql
+  mutation cellexiaMetaobjectDefinitionUpdate($id: ID!, $definition: MetaobjectDefinitionUpdateInput!) {
+    metaobjectDefinitionUpdate(id: $id, definition: $definition) {
+      metaobjectDefinition { id }
+      userErrors { field message code }
+    }
+  }
+`;
+
+interface MetaobjectDefinitionFieldsData {
+  metaobjectDefinitionByType: {
+    id: string;
+    fieldDefinitions: { key: string }[];
+  } | null;
+}
+
+interface MetaobjectDefinitionUpdateData {
+  metaobjectDefinitionUpdate: {
+    metaobjectDefinition: { id: string } | null;
     userErrors: UserError[];
   } | null;
 }
@@ -223,11 +266,14 @@ export interface EnsurePdpDefinitionsResult {
 }
 
 /**
- * Idempotently creates the six PDP metaobject definitions plus the five
+ * Idempotently creates the eight PDP metaobject definitions plus the six
  * PRODUCT metafield definitions. Leaf definitions (study result, ingredient,
- * CoA) are created before the parents whose list.metaobject_reference fields
- * validate against their definition ids. Losing a creation race to a
- * concurrent call is handled by re-querying the definition by type.
+ * CoA, survey outcome) are created before the parents whose
+ * list.metaobject_reference fields validate against their definition ids.
+ * Losing a creation race to a concurrent call is handled by re-querying the
+ * definition by type. v7: fields added to a definition after shops were
+ * provisioned (clinical study `subject`) are backfilled for existing
+ * definitions via ensureDefinitionFields.
  */
 export async function ensurePdpDefinitions(
   admin: AdminGraphqlClient,
@@ -241,6 +287,8 @@ export async function ensurePdpDefinitions(
     [PDP_METAOBJECT_TYPES.clinicalStudy]: null,
     [PDP_METAOBJECT_TYPES.beforeAfter]: null,
     [PDP_METAOBJECT_TYPES.batchTransparency]: null,
+    [PDP_METAOBJECT_TYPES.surveyOutcome]: null,
+    [PDP_METAOBJECT_TYPES.productSurvey]: null,
   };
 
   const lookup = await adminRequest<PdpDefinitionLookupData>(
@@ -268,6 +316,10 @@ export async function ensurePdpDefinitions(
     lookup.data.beforeAfter?.id ?? null;
   definitionIds[PDP_METAOBJECT_TYPES.batchTransparency] =
     lookup.data.batchTransparency?.id ?? null;
+  definitionIds[PDP_METAOBJECT_TYPES.surveyOutcome] =
+    lookup.data.surveyOutcome?.id ?? null;
+  definitionIds[PDP_METAOBJECT_TYPES.productSurvey] =
+    lookup.data.productSurvey?.id ?? null;
 
   const ensureDefinition = async (
     type: string,
@@ -348,8 +400,25 @@ export async function ensurePdpDefinitions(
       field("document", "Document (PDF)", "file_reference"),
     ],
   });
+  const surveyOutcomeId = await ensureDefinition(
+    PDP_METAOBJECT_TYPES.surveyOutcome,
+    {
+      type: PDP_METAOBJECT_TYPES.surveyOutcome,
+      name: "Cellexia survey outcome",
+      displayNameKey: "statement",
+      access: DEFINITION_ACCESS,
+      capabilities: DEFINITION_CAPABILITIES,
+      fieldDefinitions: [
+        field("statement", "Outcome statement", "single_line_text_field"),
+        field("yes_count", "Dermatologists who agreed", "number_integer"),
+      ],
+    },
+  );
 
   // 2. Parent definitions.
+  const clinicalStudyExisted = Boolean(
+    definitionIds[PDP_METAOBJECT_TYPES.clinicalStudy],
+  );
   if (studyResultId) {
     await ensureDefinition(PDP_METAOBJECT_TYPES.clinicalStudy, {
       type: PDP_METAOBJECT_TYPES.clinicalStudy,
@@ -359,6 +428,7 @@ export async function ensurePdpDefinitions(
       capabilities: DEFINITION_CAPABILITIES,
       fieldDefinitions: [
         field("title", "Study title", "single_line_text_field"),
+        field("subject", "Subject", "single_line_text_field"),
         field("concern", "Concern", "single_line_text_field"),
         field("duration_weeks", "Duration (weeks)", "number_integer"),
         field("sample_size", "Sample size (n)", "number_integer"),
@@ -369,6 +439,22 @@ export async function ensurePdpDefinitions(
         field("footnote", "Footnote", "multi_line_text_field"),
       ],
     });
+    // v7 migration: `subject` postdates already-provisioned shops, and the
+    // create branch above never runs for a definition that exists — backfill
+    // any missing fields on it (idempotent no-op once present).
+    if (clinicalStudyExisted) {
+      const migration = await ensureDefinitionFields(
+        admin,
+        PDP_METAOBJECT_TYPES.clinicalStudy,
+        [field("subject", "Subject", "single_line_text_field")],
+      );
+      errors.push(...migration.errors);
+      created.push(
+        ...migration.added.map(
+          (key) => `${PDP_METAOBJECT_TYPES.clinicalStudy}.${key}`,
+        ),
+      );
+    }
   } else {
     errors.push(
       `${PDP_METAOBJECT_TYPES.clinicalStudy}: skipped — the ${PDP_METAOBJECT_TYPES.studyResult} definition it references could not be resolved`,
@@ -411,6 +497,31 @@ export async function ensurePdpDefinitions(
   } else {
     errors.push(
       `${PDP_METAOBJECT_TYPES.batchTransparency}: skipped — the ${PDP_METAOBJECT_TYPES.ingredient}/${PDP_METAOBJECT_TYPES.coa} definitions it references could not be resolved`,
+    );
+  }
+
+  if (surveyOutcomeId) {
+    await ensureDefinition(PDP_METAOBJECT_TYPES.productSurvey, {
+      type: PDP_METAOBJECT_TYPES.productSurvey,
+      name: "Cellexia dermatologist survey",
+      displayNameKey: "title",
+      access: DEFINITION_ACCESS,
+      capabilities: DEFINITION_CAPABILITIES,
+      fieldDefinitions: [
+        field("title", "Headline override", "single_line_text_field"),
+        field("sample_size", "Dermatologists surveyed (n)", "number_integer"),
+        field("recommend_yes", "Would recommend (count)", "number_integer"),
+        field("question", "Question asked", "single_line_text_field"),
+        field("intro", "Outcomes intro override", "single_line_text_field"),
+        field("methodology", "Methodology override", "multi_line_text_field"),
+        field("verifier_name", "Verifier name", "single_line_text_field"),
+        field("verification_url", "Verification URL", "url"),
+        listReferenceField("outcomes", "Outcomes", surveyOutcomeId),
+      ],
+    });
+  } else {
+    errors.push(
+      `${PDP_METAOBJECT_TYPES.productSurvey}: skipped — the ${PDP_METAOBJECT_TYPES.surveyOutcome} definition it references could not be resolved`,
     );
   }
 
@@ -487,6 +598,30 @@ export async function ensurePdpDefinitions(
               key: PDP_METAFIELD_KEYS.batchTransparency,
               description:
                 "Ingredient concentrations and certificates of analysis rendered on the product page.",
+              type: "metaobject_reference",
+              ownerType: "PRODUCT",
+              pin: true,
+              access: DEFINITION_ACCESS,
+              validations: [
+                {
+                  name: "metaobject_definition_id",
+                  value: referencedDefinitionId,
+                },
+              ],
+            }
+          : null,
+    },
+    {
+      key: PDP_METAFIELD_KEYS.productSurvey,
+      referencedType: PDP_METAOBJECT_TYPES.productSurvey,
+      build: (referencedDefinitionId) =>
+        referencedDefinitionId
+          ? {
+              name: "Cellexia dermatologist survey",
+              namespace: CELLEXIA_NAMESPACE,
+              key: PDP_METAFIELD_KEYS.productSurvey,
+              description:
+                "Per-product dermatologist survey rendered on the product page by the Cellexia AOV & LTV Booster.",
               type: "metaobject_reference",
               ownerType: "PRODUCT",
               pin: true,
@@ -591,6 +726,79 @@ export async function ensurePdpDefinitions(
   }
 
   return { ok: errors.length === 0, errors, created, definitionIds };
+}
+
+export interface EnsureDefinitionFieldsResult {
+  ok: boolean;
+  errors: string[];
+  /** Field keys added to the definition by THIS call. */
+  added: string[];
+}
+
+/**
+ * v7 migration path: adds MISSING fields to an EXISTING metaobject
+ * definition. ensurePdpDefinitions only ever creates, so a field introduced
+ * in a later version would never reach shops provisioned before it. This
+ * helper queries the definition's current fieldDefinitions and issues one
+ * metaobjectDefinitionUpdate containing only `create` operations for the
+ * keys that are missing — existing fields are never removed or modified,
+ * re-running is a no-op, and losing the create race to a concurrent call
+ * (TAKEN) is the idempotent success case.
+ */
+export async function ensureDefinitionFields(
+  admin: AdminGraphqlClient,
+  type: string,
+  fields: FieldDefinitionInput[],
+): Promise<EnsureDefinitionFieldsResult> {
+  const lookup = await adminRequest<MetaobjectDefinitionFieldsData>(
+    admin,
+    METAOBJECT_DEFINITION_FIELDS_QUERY,
+    { type },
+  );
+  const definition = lookup.data?.metaobjectDefinitionByType ?? null;
+  if (!definition) {
+    return {
+      ok: false,
+      errors: lookup.errors.length
+        ? lookup.errors.map((message) => `${type}: ${message}`)
+        : [`${type}: definition not found — cannot add fields to it`],
+      added: [],
+    };
+  }
+  const existingKeys = new Set(
+    (definition.fieldDefinitions ?? []).map((entry) => entry.key),
+  );
+  const missing = fields.filter((entry) => !existingKeys.has(entry.key));
+  if (missing.length === 0) return { ok: true, errors: [], added: [] };
+
+  const result = await adminRequest<MetaobjectDefinitionUpdateData>(
+    admin,
+    METAOBJECT_DEFINITION_UPDATE_MUTATION,
+    {
+      id: definition.id,
+      definition: {
+        fieldDefinitions: missing.map((entry) => ({ create: entry })),
+      },
+    },
+  );
+  if (result.data?.metaobjectDefinitionUpdate?.metaobjectDefinition?.id) {
+    return { ok: true, errors: [], added: missing.map((entry) => entry.key) };
+  }
+  const userErrors = result.data?.metaobjectDefinitionUpdate?.userErrors ?? [];
+  // TAKEN = a concurrent migration added the field between our lookup and
+  // this mutation — the fields exist now, which is the goal.
+  const fatal = userErrors.filter((error) => error.code !== "TAKEN");
+  if (fatal.length === 0 && result.errors.length === 0) {
+    return { ok: true, errors: [], added: [] };
+  }
+  return {
+    ok: false,
+    errors: [
+      ...messages(fatal).map((message) => `${type}: ${message}`),
+      ...result.errors.map((message) => `${type}: ${message}`),
+    ],
+    added: [],
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -195,9 +195,9 @@ const PDP_FEATURES: PdpFeatureDefinition[] = [
   },
   {
     key: "empty_bottle_guarantee",
-    title: "Empty bottle guarantee",
+    title: "Risk-free trial guarantee",
     description:
-      "“Use every last drop” risk-reversal panel. Needs no per-product content — only the per-product opt-out below.",
+      "“Try it for 60 days, completely risk-free” risk-reversal panel — the headline follows your guarantee window below. Needs no per-product content — only the per-product opt-out.",
     perProductContent: false,
     isEnabled: (settings) => settings.emptyBottleGuarantee.enabled,
     buildPatch: (enabled) => ({ emptyBottleGuarantee: { enabled } }),
@@ -206,8 +206,8 @@ const PDP_FEATURES: PdpFeatureDefinition[] = [
     key: "derm_survey",
     title: "Dermatologist survey",
     description:
-      "“9/10 dermatologists surveyed would recommend Cellexia” with a third-party verification seal. Shown on every product page.",
-    perProductContent: false,
+      "Per-product outcomes survey — what dermatologists observed with each exact product, with a third-party verifier. Off on every product until you add its survey content.",
+    perProductContent: true,
     isEnabled: (settings) => settings.dermSurvey.enabled,
     buildPatch: (enabled) => ({ dermSurvey: { enabled } }),
   },
@@ -317,7 +317,10 @@ function ProductRow({ product }: { product: ProductBoosterStatus }) {
               />
               <StatusBadge
                 label="Survey"
-                status={boosters.flags.derm_survey ? "on" : "off"}
+                status={contentStatus(
+                  boosters.derm_survey,
+                  boosters.flags.derm_survey,
+                )}
               />
             </InlineStack>
           </BlockStack>
@@ -638,9 +641,10 @@ function ProductBoostersIndexPage() {
                   Products
                 </Text>
                 <Text as="p" tone="subdued">
-                  Configure clinical studies, verified before/afters, batch
-                  transparency and per-product opt-outs. Showing the first 25
-                  products by title — search to narrow down.
+                  Configure clinical studies, dermatologist surveys, verified
+                  before/afters, batch transparency and per-product opt-outs.
+                  Showing the first 25 products by title — search to narrow
+                  down.
                 </Text>
               </BlockStack>
               <InlineStack gap="200" blockAlign="center" wrap={false}>

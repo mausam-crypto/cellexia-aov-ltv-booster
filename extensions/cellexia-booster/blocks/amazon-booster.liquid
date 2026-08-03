@@ -269,7 +269,7 @@ endif
 "stock": {"live": {{ az_eff_stock }}},
 {%- endif %}
 {%- if az_any_ships %}
-"ships": {"live": {{ az_eff_ships }}, "warehouse": {{ az_sf | default: '' | json }}},
+"ships": {"live": {{ az_eff_ships }}, "warehouse": {{ az_sf | default: '' | json }}, "f": {{ cfg.amazon.shipsFromFormat | slice: 0 | json }}},
 {%- endif %}
 {%- if az_any_delivery %}
 "thresholdOk": true,
@@ -361,7 +361,7 @@ endif
 {%- endif %}
 },
 {%- if cx_prev_armed %}
-"preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}},
+"preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}, "sf": {{ cx_prev.draftConfig.shipsFromFormat | slice: 0 | json }}},
 {%- endif %}
 "effective": {
 "az_buy_box": {{ az_eff_buybox }},

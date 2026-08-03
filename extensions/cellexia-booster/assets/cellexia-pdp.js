@@ -1156,29 +1156,27 @@
     } catch (e) { /* never break the theme */ }
   }
 
-  // ------------------------------------------- derm survey formats (v5.8)
+  // --------------------------------- derm survey (v7, per-product outcomes)
   //
-  // Five server-rendered display formats share one data set and one
-  // accessible "How the survey was conducted" disclosure. Everything is
-  // translated server-side in the templates; this file only (a) toggles
-  // the disclosure, (b) builds the tally dot matrix at clone time from the
-  // data-cx-yes/data-cx-total attributes (never 270 Liquid iterations),
-  // and (c) prefers the alt template (cx-tpl-survey-alt — the merchant's
-  // armed DRAFT format) over cx-tpl-pdp-survey INSIDE a verified preview
-  // session only. Real visitors (PREVIEW null) never touch the alt
-  // template — it is draft-marked and only emitted inside the armed
-  // Liquid gate anyway. No config text ever reaches innerHTML.
-
-  // v6.2 Liquid diet: the five survey formats (cx-tpl-pdp-survey + alt)
-  // are JS-built now, 1:1 rebuilds of the old capture bodies. Data +
-  // page-static strings ship in cfg.survey / cfg.surveyStrings (emitted
-  // under the exact show_survey/cx_draft_survey gate the templates used,
-  // numbers pre-baked server-side, fail-closed sanity checks unchanged in
-  // buildSurveyDots). The alt-format preview keeps its convention: inside
-  // a verified preview session the armed DRAFT format
-  // (cfg.preview.surveyFormat, tokenless) switches the builder argument.
-
-  var SURVEY_FORMATS = ['seal', 'report', 'question', 'tally', 'strip'];
+  // v7: the five v5.8 display formats are retired — one outcomes-forward
+  // PER-PRODUCT widget remains. Data + page-static strings still ride
+  // #cx-pdp-config (cfg.survey / cfg.surveyStrings, emitted under the
+  // exact show_survey/cx_draft_survey gate): total is the product's own
+  // sample size, rec the validated "would recommend" count when present,
+  // o the outcome rows {s: statement, y: yes count}. All outcome math
+  // happens here — pct = Math.round(y / total * 100) — with the same
+  // fail-closed rules the Liquid gate applies: invalid rows (y outside
+  // 0 < y <= total, blank statement) are dropped, and zero valid rows
+  // with no valid rec renders nothing at all. The accessible "How the
+  // survey was conducted" disclosure and its methodology panel carry
+  // over from v6.11 unchanged (merchant token substitution intact,
+  // numbers now per-product). No config text ever reaches innerHTML.
+  //
+  // v8: an optional COMPACT display mode (cfg.dermSurvey.compact — a
+  // LIVE setting riding the survey member as a lean "cm": 1) collapses
+  // the section to one headline row, the top outcome inline and a
+  // "+ N more outcomes" disclosure over the full outcome list, which is
+  // built ONCE by the same row code and parked behind [hidden].
 
   function surveyData() {
     return cfg && cfg.survey && typeof cfg.survey === 'object' ? cfg.survey : null;
@@ -1196,16 +1194,6 @@
     return !!(cfg && cfg.survey && cfg.survey.live === true);
   }
 
-  function surveyBuildFormat() {
-    var d = surveyData();
-    var fmt = d && typeof d.fmt === 'string' && SURVEY_FORMATS.indexOf(d.fmt) !== -1 ? d.fmt : 'seal';
-    if (PREVIEW) {
-      var draft = cfg && cfg.preview && typeof cfg.preview.surveyFormat === 'string' ? cfg.preview.surveyFormat : '';
-      if (SURVEY_FORMATS.indexOf(draft) !== -1) fmt = draft;
-    }
-    return fmt;
-  }
-
   function surveyBuildPanel(panel) {
     var d = surveyData();
     var method = d && typeof d.method === 'string' ? d.method : '';
@@ -1215,21 +1203,44 @@
     if (method.replace(/\s+/g, '') !== '') {
       // Merchant methodology: one <p> per non-blank line (the old
       // escape|newline_to_br|split path — flush <p>s, textContent only).
+      // v6.11: the built-in text's live-number tokens ({{ total }},
+      // {{ yes }}, {{ percent }}) are substituted so a merchant who edits
+      // the full built-in text keeps numbers in sync — v7: with the
+      // product's own survey content (total = sample size, yes/percent =
+      // the validated would-recommend count). A product WITHOUT a valid
+      // rec count has no truthful yes/percent, so lines using those
+      // tokens are DROPPED rather than filled with fabricated zeros —
+      // the same per-line fail-closed rule the built-in p4 follows.
+      var yes = d && typeof d.rec === 'number' && isFinite(d.rec) ? d.rec : 0;
+      var total = d && typeof d.total === 'number' && isFinite(d.total) ? d.total : 0;
+      var pct = yes > 0 && total > 0 ? Math.round(yes / total * 100) : 0;
       var lines = method.split(/\r?\n/);
       for (i = 0; i < lines.length; i++) {
         var lineText = lines[i].replace(/^\s+|\s+$/g, '');
         if (!lineText) continue;
+        if (yes <= 0 && /\{\{\s*(yes|percent)\s*\}\}/.test(lineText)) continue;
+        lineText = lineText
+          .replace(/\{\{\s*total\s*\}\}/g, String(total))
+          .replace(/\{\{\s*yes\s*\}\}/g, String(yes))
+          .replace(/\{\{\s*percent\s*\}\}/g, String(pct));
         p = document.createElement('p');
         p.textContent = lineText;
         panel.appendChild(p);
       }
     } else {
+      // Built-in translated path. p4 (the answer-count sentence) is only
+      // emitted by the Liquid when the product has a valid would-recommend
+      // count — absent keys are skipped, never rendered empty.
       var defaults = [['p1', ''], ['p2', ''], ['p3', 'cx-survey__panel-q'], ['p4', ''], ['p5', '']];
+      var appended = 0;
       for (i = 0; i < defaults.length; i++) {
-        if (i > 0) panel.appendChild(document.createTextNode(' '));
+        var text = surveyStr(defaults[i][0]);
+        if (!text) continue;
+        if (appended > 0) panel.appendChild(document.createTextNode(' '));
         p = defaults[i][1] ? cxEl('p', defaults[i][1]) : document.createElement('p');
-        p.textContent = surveyStr(defaults[i][0]);
+        p.textContent = text;
         panel.appendChild(p);
+        appended++;
       }
     }
     if (verifier) {
@@ -1284,177 +1295,147 @@
     return p;
   }
 
-  function surveyBuildSection(fmt) {
+  function surveyBuildOutcomes(rows, total) {
+    // The outcome list — ONE builder for both display modes (v8): full
+    // mode renders it in place; compact mode builds the SAME list once
+    // and parks it behind [hidden] for the "+ N more outcomes" button.
+    var ul = cxEl('ul', 'cx-survey__outcomes list-reset');
+    cxSp(ul);
+    var el;
+    for (var r = 0; r < rows.length; r++) {
+      var li = cxEl('li', 'cx-survey__outcome');
+      cxSp(li);
+      var rowEl = cxEl('div', 'cx-survey__outcome-row');
+      var st = cxEl('span', 'cx-survey__outcome-statement');
+      st.textContent = decodeEntities(rows[r].s);
+      rowEl.appendChild(st);
+      cxSp(rowEl);
+      el = cxEl('span', 'cx-survey__outcome-pct');
+      el.textContent = rows[r].pct + '%';
+      rowEl.appendChild(el);
+      li.appendChild(rowEl);
+      cxSp(li);
+      // The bar is decorative (the percent is already text); its fill
+      // width is built from the derived number only — never from config
+      // strings — so nothing unescaped can reach the style attribute.
+      var bar = cxEl('div', 'cx-survey__bar', ['aria-hidden', 'true']);
+      var fill = cxEl('div', 'cx-survey__bar-fill');
+      fill.style.width = rows[r].pct + '%';
+      bar.appendChild(fill);
+      li.appendChild(bar);
+      cxSp(li);
+      el = cxEl('span', 'cx-survey__outcome-n');
+      el.textContent = surveyStr('outcome_agree').replace('@@YES@@', String(rows[r].y)).replace('@@TOTAL@@', String(total));
+      li.appendChild(el);
+      cxSp(li);
+      ul.appendChild(li);
+      cxSp(ul);
+    }
+    return ul;
+  }
+
+  function surveyBuildSection() {
     var d = surveyData();
     if (!d) return null;
-    var pct = typeof d.pct === 'number' && isFinite(d.pct) ? d.pct : 0;
-    var yes = typeof d.yes === 'number' && isFinite(d.yes) ? d.yes : 0;
-    var total = typeof d.total === 'number' && isFinite(d.total) ? d.total : 0;
-    var root = cxEl('section', 'cx-proof cx-survey cx-survey--' + fmt, ['data-cx-feature', 'derm_survey']);
+    var total = typeof d.total === 'number' && isFinite(d.total) && d.total > 0 ? d.total : 0;
+    if (!total) return null;
+    var rec = typeof d.rec === 'number' && isFinite(d.rec) && d.rec > 0 && d.rec <= total ? d.rec : 0;
+    var list = Array.isArray(d.o) ? d.o : [];
+    var rows = [];
+    for (var i = 0; i < list.length; i++) {
+      var o = list[i] && typeof list[i] === 'object' ? list[i] : {};
+      var y = typeof o.y === 'number' && isFinite(o.y) ? o.y : 0;
+      if (y > 0 && y <= total && typeof o.s === 'string' && /\S/.test(o.s)) {
+        rows.push({ s: o.s, y: y, pct: Math.round(y / total * 100) });
+      }
+    }
+    // Fail closed: no valid rec headline AND no valid outcome rows means
+    // there is nothing truthful to show — render nothing at all.
+    if (!rec && rows.length === 0) return null;
+    var compact = d.cm === 1; // v8 display density (LIVE setting, no draft plumbing)
+    var title = typeof d.t === 'string' && /\S/.test(d.t) ? bottleStr(d, 't') : '';
+    var root = cxEl('section', 'cx-proof cx-survey' + (compact ? ' cx-survey--compact' : ''), ['data-cx-feature', 'derm_survey']);
     cxSp(root);
     root.appendChild(surveyEyebrow());
     cxSp(root);
-    var el, inner;
-    if (fmt === 'report') {
-      var report = cxEl('div', 'cx-survey__report');
-      cxSp(report);
-      el = cxEl('h2', 'cx-survey__report-title');
-      el.textContent = surveyStr('report_title');
-      report.appendChild(el);
-      cxSp(report);
-      var dl = cxEl('dl', 'cx-survey__report-rows');
-      cxSp(dl);
-      var rows = [['report_surveyed', String(total)], ['report_yes', String(yes)], ['report_recommend', pct + '%']];
-      for (var r = 0; r < rows.length; r++) {
-        var rowEl = cxEl('div', 'cx-survey__report-row');
-        var dt = document.createElement('dt');
-        dt.textContent = surveyStr(rows[r][0]);
-        rowEl.appendChild(dt);
-        var dd = document.createElement('dd');
-        dd.textContent = rows[r][1];
-        rowEl.appendChild(dd);
-        dl.appendChild(rowEl);
-        cxSp(dl);
-      }
-      report.appendChild(dl);
-      cxSp(report);
-      report.appendChild(surveyBuildHow());
-      cxSp(report);
-      root.appendChild(report);
-      cxSp(root);
-    } else if (fmt === 'question') {
-      el = cxEl('p', 'cx-survey__intro');
-      el.textContent = surveyStr('question_intro');
-      root.appendChild(el);
-      cxSp(root);
-      el = cxEl('blockquote', 'cx-survey__quote');
-      el.textContent = surveyStr('p3');
-      root.appendChild(el);
-      cxSp(root);
-      el = cxEl('p', 'cx-survey__result');
-      el.textContent = surveyStr('question_result');
-      root.appendChild(el);
-      cxSp(root);
-      root.appendChild(surveyBuildHow());
-      cxSp(root);
-    } else if (fmt === 'tally') {
-      var head = cxEl('div', 'cx-survey__tally-head');
+    var el;
+    if (rec) {
+      var head = cxEl('div', 'cx-survey__headnum');
       cxSp(head);
-      el = cxEl('span', 'cx-survey__tally-pct', ['aria-hidden', 'true']);
-      el.textContent = pct + '%';
+      el = cxEl('span', 'cx-survey__rec-pct');
+      el.textContent = Math.round(rec / total * 100) + '%';
       head.appendChild(el);
       cxSp(head);
-      el = cxEl('span', 'cx-survey__count');
-      el.textContent = surveyStr('count');
+      el = cxEl('h2', 'cx-survey__headline');
+      el.textContent = title || surveyStr('rec_line');
       head.appendChild(el);
       cxSp(head);
       root.appendChild(head);
       cxSp(root);
-      root.appendChild(cxEl('div', 'cx-survey__dots', ['data-cx-yes', String(yes), 'data-cx-total', String(total), 'aria-hidden', 'true']));
-      cxSp(root);
-      el = cxEl('span', 'sr-only');
-      el.textContent = pct + '%';
-      root.appendChild(el);
-      cxSp(root);
-      el = cxEl('p', 'cx-survey__legend');
-      el.textContent = surveyStr('dot_legend');
-      root.appendChild(el);
-      cxSp(root);
-      root.appendChild(surveyBuildHow());
-      cxSp(root);
-    } else if (fmt === 'strip') {
-      var line = cxEl('p', 'cx-survey__strip-line');
-      el = cxEl('strong', 'cx-survey__strip-pct');
-      el.textContent = pct + '%';
-      line.appendChild(el);
-      line.appendChild(document.createTextNode(' '));
-      inner = document.createElement('span');
-      inner.textContent = surveyStr('title_pct');
-      line.appendChild(inner);
-      root.appendChild(line);
-      cxSp(root);
-      root.appendChild(surveyBuildHow());
-      cxSp(root);
-    } else { // seal
-      var arc = typeof d.arc === 'number' && isFinite(d.arc) ? d.arc : 0;
-      var sealRow = cxEl('div', 'cx-survey__seal-row');
-      cxSp(sealRow);
-      var fig = cxEl('div', 'cx-survey__seal-fig');
-      cxSp(fig);
-      var wrap = cxEl('div', 'cx-survey__seal-wrap');
-      cxSp(wrap);
-      var svg = cxSvg('svg', 'cx-survey__ring', ['viewBox', '0 0 100 100', 'aria-hidden', 'true', 'focusable', 'false']);
-      cxSp(svg);
-      svg.appendChild(cxSvg('circle', 'cx-survey__ring-track', ['cx', '50', 'cy', '50', 'r', '45']));
-      cxSp(svg);
-      svg.appendChild(cxSvg('circle', 'cx-survey__ring-arc', ['cx', '50', 'cy', '50', 'r', '45', 'style', '--cx-arc: ' + arc + 'px']));
-      cxSp(svg);
-      wrap.appendChild(svg);
-      cxSp(wrap);
-      el = cxEl('span', 'cx-survey__pct');
-      el.textContent = pct + '%';
-      wrap.appendChild(el);
-      cxSp(wrap);
-      fig.appendChild(wrap);
-      cxSp(fig);
-      el = cxEl('p', 'cx-survey__count');
-      el.textContent = surveyStr('count');
-      fig.appendChild(el);
-      cxSp(fig);
-      sealRow.appendChild(fig);
-      cxSp(sealRow);
-      var body = cxEl('div', 'cx-survey__seal-body');
-      cxSp(body);
+    } else if (title) {
       el = cxEl('h2', 'cx-survey__headline');
-      el.textContent = surveyStr('title_pct');
-      body.appendChild(el);
-      cxSp(body);
-      body.appendChild(surveyBuildHow());
-      cxSp(body);
-      sealRow.appendChild(body);
-      cxSp(sealRow);
-      root.appendChild(sealRow);
+      el.textContent = title;
+      root.appendChild(el);
       cxSp(root);
     }
+    // v8 compact drops the long-form middle (quoted question, intro): the
+    // vertical diet is the point. Full mode is byte-for-byte the v7 DOM.
+    if (!compact && typeof d.q === 'string' && /\S/.test(d.q)) {
+      el = cxEl('blockquote', 'cx-survey__quote');
+      el.textContent = bottleStr(d, 'q');
+      root.appendChild(el);
+      cxSp(root);
+    }
+    if (rows.length > 0) {
+      if (compact) {
+        // The TOP outcome (the merchant's first valid row) inline —
+        // "91% — Skin looked visibly firmer".
+        var top = cxEl('p', 'cx-survey__top-line');
+        var tp = cxEl('strong', 'cx-survey__top-pct');
+        tp.textContent = rows[0].pct + '%';
+        top.appendChild(tp);
+        top.appendChild(document.createTextNode(' — ' + decodeEntities(rows[0].s)));
+        root.appendChild(top);
+        cxSp(root);
+        if (rows.length > 1) {
+          var moreLabel = surveyStr('more_outcomes');
+          var full = surveyBuildOutcomes(rows, total);
+          if (/\S/.test(moreLabel)) {
+            var more = cxEl('button', null, ['type', 'button', 'class', 'cx-survey__more-btn', 'data-cx-survey-more', '', 'aria-expanded', 'false', 'aria-controls', 'cx-survey-outcomes']);
+            more.textContent = moreLabel.replace('@@N@@', String(rows.length - 1));
+            root.appendChild(more);
+            cxSp(root);
+            full.setAttribute('id', 'cx-survey-outcomes');
+            full.setAttribute('hidden', '');
+          }
+          // Stale-island degrade: no more_outcomes string means no working
+          // disclosure, so the list ships visible rather than unreachable.
+          root.appendChild(full);
+          cxSp(root);
+        }
+      } else {
+        el = cxEl('p', 'cx-survey__intro');
+        el.textContent = typeof d.intro === 'string' && /\S/.test(d.intro) ? bottleStr(d, 'intro') : surveyStr('outcomes_intro');
+        root.appendChild(el);
+        cxSp(root);
+        root.appendChild(surveyBuildOutcomes(rows, total));
+        cxSp(root);
+      }
+    }
+    root.appendChild(surveyBuildHow());
+    cxSp(root);
     return root;
   }
 
   function surveyTplNode() {
-    // v6.2 replacement for cloneTemplate(surveyTemplateId(), 'derm_survey'):
-    // same live/preview gate, same emission gate (payload presence), the
-    // preview draft format switches the builder argument.
+    // v7 replacement for the v6.2 format dispatch: same live/preview gate,
+    // same emission gate (payload presence) — one outcomes-forward builder.
     try {
       if (!surveyData() || !surveyAllowed()) return null;
-      return surveyBuildSection(surveyBuildFormat());
+      return surveyBuildSection();
     } catch (e) {
       return null;
     }
-  }
-
-  function buildSurveyDots(widget) {
-    // Fail-safe: any invalid or oversized count renders NO dots — the
-    // visible count line already tells the story (empty grid, zero height).
-    try {
-      var grid = widget.querySelector('.cx-survey__dots');
-      if (!grid) return;
-      var yes = parseInt(grid.getAttribute('data-cx-yes'), 10);
-      var total = parseInt(grid.getAttribute('data-cx-total'), 10);
-      if (!isFinite(yes) || !isFinite(total) || yes <= 0 || total <= 0 || yes > total || total > 400) {
-        // Drop the empty grid AND the "each dot" legend — the widget
-        // degrades to percent + count line, never a broken visualization.
-        var legend = widget.querySelector('.cx-survey__legend');
-        if (grid.parentNode) grid.parentNode.removeChild(grid);
-        if (legend && legend.parentNode) legend.parentNode.removeChild(legend);
-        return;
-      }
-      var frag = document.createDocumentFragment();
-      for (var i = 0; i < total; i++) {
-        var dot = document.createElement('span');
-        dot.className = i < yes ? 'cx-survey__dot cx-survey__dot--yes' : 'cx-survey__dot';
-        frag.appendChild(dot);
-      }
-      grid.appendChild(frag);
-    } catch (e) { /* never break the theme */ }
   }
 
   function bindSurveyDisclosure(widget) {
@@ -1490,6 +1471,31 @@
           setOpen(false);
           try { btn.focus(); } catch (e) { /* noop */ }
         }
+      });
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function bindSurveyMore(widget) {
+    // v8 compact: "+ N more outcomes" toggles the full outcome list the
+    // builder parked behind [hidden] (backed by the CSS
+    // display:none !important guard — the v6.8.1 lesson: the list's own
+    // display rule beats the UA [hidden] default, so the guard must win
+    // explicitly). Same disclosure manners as the methodology panel:
+    // a real <button>, aria-expanded, click/tap only. No-op outside
+    // compact mode — the button simply isn't there.
+    try {
+      var btn = widget.querySelector('[data-cx-survey-more]');
+      if (!btn) return;
+      var list = null;
+      var listId = btn.getAttribute('aria-controls');
+      if (listId) list = widget.querySelector('#' + listId);
+      if (!list) list = widget.querySelector('.cx-survey__outcomes');
+      if (!list) return;
+      btn.addEventListener('click', function () {
+        var open = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+        if (open) list.setAttribute('hidden', '');
+        else list.removeAttribute('hidden');
       });
     } catch (e) { /* never break the theme */ }
   }
@@ -1532,12 +1538,28 @@
   }
 
   function bottleBuildNode(data) {
-    var root = cxEl('section', 'cx-proof cx-bottle', ['data-cx-feature', 'empty_bottle_guarantee']);
+    // v8: cfg.emptyBottleGuarantee.compact (island "cm": 1) renders a
+    // single slim band instead of the big ink panel: check icon, title
+    // and the guarantee-check trigger on one row. Body and points are
+    // omitted — they live in the modal, which is unchanged.
+    var compact = data.cm === 1;
+    var root = cxEl('section', 'cx-proof cx-bottle' + (compact ? ' cx-bottle--compact' : ''), ['data-cx-feature', 'empty_bottle_guarantee']);
     cxSp(root);
     var icon = cxEl('div', 'cx-bottle__icon', ['aria-hidden', 'true']);
-    icon.appendChild(cxIcon('bottle', 26));
+    icon.appendChild(compact ? cxIcon('check', 16) : cxIcon('bottle', 26));
     root.appendChild(icon);
     cxSp(root);
+    if (compact) {
+      var ch2 = cxEl('h2', 'cx-bottle__title');
+      ch2.textContent = bottleStr(data, 'title');
+      root.appendChild(ch2);
+      cxSp(root);
+      var cbtn = cxEl('button', null, ['type', 'button', 'class', 'cx-bottle__check', 'data-cx-guarantee-check', '']);
+      cbtn.textContent = bottleStr(data, 'check');
+      root.appendChild(cbtn);
+      cxSp(root);
+      return root;
+    }
     var content = cxEl('div', 'cx-bottle__content');
     cxSp(content);
     var h2 = cxEl('h2', 'cx-bottle__title');
@@ -1691,169 +1713,6 @@
     }
   }
 
-  // -------------------------------------------- verified before/after (v6.7)
-  //
-  // v6.7 Liquid diet: cx-tpl-pdp-ba is JS-built now, a 1:1 rebuild of the
-  // old template body. Per-entry metaobject content (image URLs 900/1800,
-  // pre-formatted dates, pre-interpolated week/caption/verified-by
-  // strings, statement, verification URL) ships in the lean #cx-ba-config
-  // island, emitted under the exact show_ba/cx_draft_ba gate the template
-  // used, with "live" carrying the data-cx-draft distinction. Optional
-  // island keys are emitted exactly when the template's != blank / truthy
-  // gates held, so KEY PRESENCE is the branch decision here. Translated
-  // and raw-inserted strings land via textContent after decodeEntities
-  // (bottleStr — the parser used to decode them the same way);
-  // attribute-context values the template escaped or emitted raw
-  // (product title in alt, image URLs, verification href) are consumed
-  // RAW via cxRawStr. Images keep setAttribute src/srcset/alt/
-  // loading=lazy/width/height 450x450 exactly as the template had.
-
-  function baData() {
-    try {
-      var el = document.getElementById('cx-ba-config');
-      if (!el) return null; // Liquid gate emitted nothing: fail closed
-      var data = JSON.parse(el.textContent || 'null');
-      return data && typeof data === 'object' ? data : null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  function baAllowed(data) {
-    // The exact cloneTemplate/widgetAllowed gate the old template carried.
-    if (PREVIEW) {
-      return PREVIEW.live.verified_before_after === true || PREVIEW.flags.verified_before_after === true;
-    }
-    return data.live === true;
-  }
-
-  function baBuildPanel(e, imgKey, img2Key, tagMod, tagText, alt) {
-    var panel = cxEl('div', 'cx-ba__panel');
-    var src = cxRawStr(e, imgKey);
-    if (src) {
-      panel.appendChild(cxEl('img', 'cx-ba__img', [
-        'src', src,
-        'srcset', src + ' 1x, ' + cxRawStr(e, img2Key) + ' 2x',
-        'alt', alt,
-        'loading', 'lazy', 'width', '450', 'height', '450'
-      ]));
-    }
-    var tag = cxEl('span', 'cx-ba__tag cx-ba__tag--' + tagMod);
-    tag.textContent = tagText;
-    panel.appendChild(tag);
-    cxSp(panel);
-    return panel;
-  }
-
-  function baBuildChip(text) {
-    var chip = cxEl('span', 'cx-ba__chip');
-    chip.appendChild(cxIcon('calendar', 14));
-    var span = document.createElement('span');
-    span.textContent = text;
-    chip.appendChild(span);
-    cxSp(chip);
-    return chip;
-  }
-
-  function baBuildEntry(data, e) {
-    var s = data.s || {};
-    var pt = cxRawStr(data, 'pt');
-    var fig = cxEl('figure', 'cx-ba__entry');
-    cxSp(fig);
-    var grid = cxEl('div', 'cx-ba__grid');
-    cxSp(grid);
-    grid.appendChild(baBuildPanel(e, 'b', 'b2', 'before', bottleStr(s, 'before'), bottleStr(s, 'before') + ' — ' + pt));
-    cxSp(grid);
-    grid.appendChild(baBuildPanel(e, 'a', 'a2', 'after', bottleStr(s, 'after'), bottleStr(s, 'after') + ' — ' + pt));
-    cxSp(grid);
-    fig.appendChild(grid);
-    cxSp(fig);
-    var chips = cxEl('div', 'cx-ba__chips d-flex');
-    cxSp(chips);
-    var chip1 = bottleStr(s, 'w0');
-    if (typeof e.bd === 'string') chip1 += ' · ' + bottleStr(e, 'bd');
-    chips.appendChild(baBuildChip(chip1));
-    var hasWn = typeof e.wn === 'string';
-    var hasAd = typeof e.ad === 'string';
-    if (hasWn || hasAd) {
-      var chip2 = '';
-      if (hasWn) chip2 += bottleStr(e, 'wn');
-      if (hasWn && hasAd) chip2 += ' · ';
-      if (hasAd) chip2 += bottleStr(e, 'ad');
-      chips.appendChild(baBuildChip(chip2));
-    }
-    fig.appendChild(chips);
-    if (typeof e.cap === 'string') {
-      var cap = cxEl('figcaption', 'cx-ba__caption');
-      cap.textContent = bottleStr(e, 'cap');
-      fig.appendChild(cap);
-    }
-    if (typeof e.vb === 'string') {
-      var verify = cxEl('div', 'cx-ba__verify');
-      cxSp(verify);
-      var head = cxEl('div', 'cx-ba__verify-head d-flex align-center');
-      cxSp(head);
-      head.appendChild(cxIcon('shield-check', 20));
-      cxSp(head);
-      var name = cxEl('span', 'cx-ba__verify-name');
-      name.textContent = bottleStr(e, 'vb');
-      head.appendChild(name);
-      cxSp(head);
-      verify.appendChild(head);
-      if (typeof e.st === 'string') {
-        var q = cxEl('blockquote', 'cx-ba__statement');
-        q.textContent = bottleStr(e, 'st');
-        verify.appendChild(q);
-      }
-      if (typeof e.vu === 'string') {
-        var p = cxEl('p', 'cx-ba__verify-link');
-        var a = cxEl('a', 'cx-proof__link no-dec', ['href', cxRawStr(e, 'vu'), 'target', '_blank', 'rel', 'noopener nofollow']);
-        a.textContent = bottleStr(s, 'view');
-        p.appendChild(a);
-        verify.appendChild(p);
-      }
-      fig.appendChild(verify);
-    }
-    return fig;
-  }
-
-  function baBuildSection(data) {
-    var s = data.s || {};
-    var entries = Array.isArray(data.e) ? data.e : [];
-    var root = cxEl('section', 'cx-proof cx-ba', ['data-cx-feature', 'verified_before_after']);
-    cxSp(root);
-    var eb = cxEl('p', 'cx-proof__eyebrow eyebrow eyebrow--sm');
-    eb.textContent = bottleStr(s, 'eyebrow');
-    root.appendChild(eb);
-    cxSp(root);
-    var h2 = cxEl('h2', 'cx-ba__title heading--two');
-    h2.textContent = bottleStr(s, 'title');
-    root.appendChild(h2);
-    cxSp(root);
-    var row = cxEl('div', 'cx-ba__row' + (entries.length > 1 ? ' cx-ba__row--multi' : ''));
-    for (var i = 0; i < entries.length; i++) {
-      if (entries[i] && typeof entries[i] === 'object') {
-        row.appendChild(baBuildEntry(data, entries[i]));
-      }
-    }
-    root.appendChild(row);
-    cxSp(root);
-    return root;
-  }
-
-  function baTplNode() {
-    // v6.7 replacement for cloneTemplate('cx-tpl-pdp-ba',
-    // 'verified_before_after'): same live/preview gate, same emission
-    // gate (island presence).
-    try {
-      var data = baData();
-      if (!data || !baAllowed(data)) return null;
-      return baBuildSection(data);
-    } catch (e) {
-      return null;
-    }
-  }
-
   // ---------------------------------------------------- clinical study (v6.7)
   //
   // v6.7 Liquid diet: cx-tpl-pdp-study is JS-built now, a 1:1 rebuild of
@@ -1862,13 +1721,19 @@
   // cx_draft_study gate, "live" carrying the data-cx-draft distinction):
   // title/concern raw, results as {v,s,l} rows (the template's
   // integral-floor collapse — 37.0 -> "37" — runs in studyNum),
-  // methodology/instruments pre-interpolated server-side and emitted only
-  // when the template's own gates held (key presence = branch decision),
   // study URL raw for the href, merchant footnote key only when
   // non-blank with the translated default shipped alongside. First result
   // renders as the hero, the rest as grid stats with the grid <ul> only
   // when more than one result exists — exactly the template's
   // forloop.first/last shape.
+  //
+  // v7: the study binds to THIS product — a subject line always renders
+  // after the eyebrow (per-product "sub" override, else str.sub composed
+  // server-side with the localized product title), and the composed m1/m2
+  // methodology paragraphs are retired in favor of protocol fact chips
+  // built from whichever lean members the island carries: pn (sample
+  // size, gates the str.fn "N participants" chip), pw (precomposed weeks
+  // label), pl (lab name) and pi (pre-interpolated instruments line).
 
   function studyData() {
     try {
@@ -1908,20 +1773,25 @@
     return span;
   }
 
-  function studyMethodP(text) {
-    var p = cxEl('p', 'cx-study__method');
-    p.textContent = text;
-    return p;
-  }
-
   function studyBuildSection(data) {
     var s = data.str || {};
     var results = Array.isArray(data.r) ? data.r : [];
-    var root = cxEl('section', 'cx-proof cx-study', ['data-cx-feature', 'clinical_study']);
+    // v8: cfg.clinicalStudy.compact (island "cm": 1) is a pure CSS
+    // recomposition — same DOM, the --compact modifier inlines the hero
+    // with its label (32px numeral), collapses the stat grid to one
+    // wrapping mini-stat row and tightens the chips into the same flow.
+    var root = cxEl('section', 'cx-proof cx-study' + (data.cm === 1 ? ' cx-study--compact' : ''), ['data-cx-feature', 'clinical_study']);
     cxSp(root);
     var eb = cxEl('p', 'cx-proof__eyebrow eyebrow eyebrow--sm');
     eb.textContent = bottleStr(s, 'eyebrow');
     root.appendChild(eb);
+    // v7: the product-binding line — the study reads as conducted on THIS
+    // product. Per-product override wins, else the server-composed default
+    // (str.sub already carries the localized product title). Always
+    // rendered: the binding is the point of the widget.
+    var subj = cxEl('p', 'cx-study__subject');
+    subj.textContent = typeof data.sub === 'string' && /\S/.test(data.sub) ? bottleStr(data, 'sub') : bottleStr(s, 'sub');
+    root.appendChild(subj);
     if (typeof data.t === 'string' && /\S/.test(data.t)) {
       var h2 = cxEl('h2', 'cx-study__heading heading--two');
       h2.textContent = bottleStr(data, 't');
@@ -1960,8 +1830,22 @@
         root.appendChild(grid);
       }
     }
-    if (typeof data.m1 === 'string') root.appendChild(studyMethodP(bottleStr(data, 'm1')));
-    if (typeof data.m2 === 'string') root.appendChild(studyMethodP(bottleStr(data, 'm2')));
+    // v7: protocol facts as quiet chips, built only from present members —
+    // absent members simply skip, zero facts renders no list at all.
+    var facts = [];
+    if (typeof data.pn === 'number' && isFinite(data.pn) && data.pn > 0 && typeof s.fn === 'string' && /\S/.test(s.fn)) facts.push(bottleStr(s, 'fn'));
+    if (typeof data.pw === 'string' && /\S/.test(data.pw)) facts.push(bottleStr(data, 'pw'));
+    if (typeof data.pl === 'string' && /\S/.test(data.pl)) facts.push(bottleStr(data, 'pl'));
+    if (typeof data.pi === 'string' && /\S/.test(data.pi)) facts.push(bottleStr(data, 'pi'));
+    if (facts.length > 0) {
+      var factList = cxEl('ul', 'cx-study__facts list-reset');
+      for (var fi = 0; fi < facts.length; fi++) {
+        var fact = cxEl('li', 'cx-study__fact');
+        fact.textContent = facts[fi];
+        factList.appendChild(fact);
+      }
+      root.appendChild(factList);
+    }
     var url = cxRawStr(data, 'u');
     if (/\S/.test(url)) {
       var lp = cxEl('p', 'cx-study__method');
@@ -2439,11 +2323,15 @@
    * SPEC v3 proof stack — template id / feature key pairs in CRO order.
    * Liquid only renders the templates that survived flag + market +
    * per-product + content gating, so a missing template simply skips.
+   *
+   * v8: the verified_before_after row is retired — the browsable results
+   * gallery (blocks/results-gallery.liquid + cellexia-proof.js) replaces
+   * the old PDP before/after widget as a standalone merchant-placed
+   * block, and the feature's marker lives in cellexia-proof.js now.
    */
   var PROOF_ORDER = [
     ['cx-tpl-pdp-survey', 'derm_survey'],
     ['cx-tpl-pdp-study', 'clinical_study'],
-    ['cx-tpl-pdp-ba', 'verified_before_after'],
     ['cx-tpl-pdp-batch', 'batch_transparency'],
     ['cx-tpl-pdp-bottle', 'empty_bottle_guarantee']
   ];
@@ -2457,20 +2345,19 @@
         var feature = PROOF_ORDER[i][1];
         var node;
         // v6.2: the survey and bottle slots are JS-built (their templates
-        // migrated to builders — the preview draft-format preference lives
-        // in surveyBuildFormat now); v6.7 adds the study/ba/batch slots,
-        // completing the proof stack. The cloneTemplate fallback stays for
+        // migrated to builders); v6.7 adds the study/ba/batch slots,
+        // completing the proof stack; v8 retires the ba slot (results
+        // gallery, see PROOF_ORDER). The cloneTemplate fallback stays for
         // safety but no proof-stack template remains in Liquid.
         if (feature === 'derm_survey') node = surveyTplNode();
         else if (feature === 'clinical_study') node = studyTplNode();
-        else if (feature === 'verified_before_after') node = baTplNode();
         else if (feature === 'batch_transparency') node = batchTplNode();
         else if (feature === 'empty_bottle_guarantee') node = bottleTplNode();
         else node = cloneTemplate(PROOF_ORDER[i][0], feature);
         if (node) {
           if (feature === 'derm_survey') {
             bindSurveyDisclosure(node);
-            buildSurveyDots(node);
+            bindSurveyMore(node);
           }
           widgets.push({ node: node, feature: feature });
         }
@@ -2780,6 +2667,22 @@
     return azRegionName(sh && typeof sh.warehouse === 'string' ? sh.warehouse : '');
   }
 
+  function azShipsFormat() {
+    // v6.10 merchant-selectable ships-from display format, decoded
+    // fail-closed from the lean code the Liquid ships member carries
+    // ('p' = prominent; anything else — including old metafield mirrors
+    // without the member — renders the subtle pre-v6.10 default).
+    // Inside a VERIFIED preview session the armed DRAFT code
+    // (preview.sf, tokenless closed enum) wins — the survey alt-format
+    // convention; real visitors never read the draft.
+    var f = AZ_CFG && AZ_CFG.ships && typeof AZ_CFG.ships.f === 'string' ? AZ_CFG.ships.f : '';
+    if (PREVIEW) {
+      var draft = AZ_CFG && AZ_CFG.preview && typeof AZ_CFG.preview.sf === 'string' ? AZ_CFG.preview.sf : '';
+      if (draft === 's' || draft === 'p') f = draft;
+    }
+    return f === 'p' ? 'p' : 's';
+  }
+
   // ------------------------------------------------- az_bestseller_badge
 
   function azMountBestseller() {
@@ -2890,9 +2793,10 @@
       azReadConfig();
       var stockOn = azStockAllowed() && !!azT('amazon.in_stock');
       var shipsLine = '';
+      var shipsName = '';
       if (azShipsAllowed()) {
-        var name = azShipsWarehouseName();
-        if (name) shipsLine = azT('amazon.ships_from', { country: name });
+        shipsName = azShipsWarehouseName();
+        if (shipsName) shipsLine = azT('amazon.ships_from', { country: shipsName });
       }
       // Neither line renders -> the theme's stock message stays
       // untouched (a replacement must never leave a hole).
@@ -2902,7 +2806,7 @@
       var themeMsg = grey.querySelector('.stock-msg');
       var anchor = themeMsg || grey.querySelector('.pdp__actions--flex');
       if (!anchor) return;
-      var node = azBuildStock(stockOn, shipsLine);
+      var node = azBuildStock(stockOn, shipsLine, shipsName);
       if (!insertAfter(node, anchor)) return;
       azStockState = {
         node: node,
@@ -3832,13 +3736,14 @@
     return root;
   }
 
-  function azBuildStock(stockOn, shipsLine) {
+  function azBuildStock(stockOn, shipsLine, shipsName) {
     // v6.8 split builder: the container renders ONLY the lines whose
     // feature is allowed — In Stock iff az_stock_line (stockOn), Ships
     // from iff az_ships_from resolved a warehouse (shipsLine = the
-    // composed text, '' = omit). Classes unchanged (CSS + buy-box
-    // ordering untouched); each line root carries its own
-    // data-cx-feature.
+    // composed text, '' = omit; shipsName = the resolved country name
+    // for the v6.10 prominent format). Subtle classes/markup unchanged
+    // (CSS + buy-box ordering untouched); each line root carries its
+    // own data-cx-feature.
     var root = cxEl('div', 'cx-az-stock', ['hidden', '']);
     cxSp(root);
     if (stockOn) {
@@ -3848,10 +3753,44 @@
       cxSp(root);
     }
     if (shipsLine) {
-      var ships = cxEl('span', 'cx-az-stock__ships', ['data-cx-feature', 'az_ships_from', 'data-cx-az-stock-ships', '']);
-      ships.textContent = shipsLine;
-      root.appendChild(ships);
-      cxSp(root);
+      if (azShipsFormat() === 'p') {
+        // v6.10 prominent format: the logistics-green row in the
+        // In-Stock family — truck icon + the SAME translated sentence
+        // with the country name bold. azT WITHOUT params returns the
+        // template with its @@COUNTRY@@ sentinel intact, so the split
+        // renders prefix span + <strong>country</strong> + suffix span
+        // (textContent-only) and stays correct for locales where the
+        // country leads or sits mid-sentence (empty prefix/suffix
+        // spans collapse). A template missing the sentinel falls back
+        // to the composed plain line — never a broken sentence. RTL
+        // safety lives in the CSS logical properties.
+        var shipsP = cxEl('span', 'cx-az-stock__ships cx-az-stock__ships--prominent', ['data-cx-feature', 'az_ships_from', 'data-cx-az-stock-ships', '']);
+        shipsP.appendChild(cxIcon('truck', 15));
+        var shipsText = cxEl('span', 'cx-az-stock__ships-text');
+        var shipsTpl = azT('amazon.ships_from');
+        var shipsParts = shipsTpl.split('@@COUNTRY@@');
+        if (shipsParts.length >= 2 && shipsName) {
+          var shipsPre = document.createElement('span');
+          shipsPre.textContent = shipsParts[0];
+          shipsText.appendChild(shipsPre);
+          var shipsCountry = cxEl('strong', 'cx-az-stock__ships-country');
+          shipsCountry.textContent = shipsName;
+          shipsText.appendChild(shipsCountry);
+          var shipsSuf = document.createElement('span');
+          shipsSuf.textContent = shipsParts.slice(1).join(shipsName);
+          shipsText.appendChild(shipsSuf);
+        } else {
+          shipsText.textContent = shipsLine;
+        }
+        shipsP.appendChild(shipsText);
+        root.appendChild(shipsP);
+        cxSp(root);
+      } else {
+        var ships = cxEl('span', 'cx-az-stock__ships', ['data-cx-feature', 'az_ships_from', 'data-cx-az-stock-ships', '']);
+        ships.textContent = shipsLine;
+        root.appendChild(ships);
+        cxSp(root);
+      }
     }
     return root;
   }
@@ -4301,6 +4240,10 @@
           };
           try { window.sessionStorage.setItem('cx_preview_ok', '1'); } catch (e) { /* noop */ }
           injectPreviewBar();
+          // v8: cellexia-proof.js (press/endorsements/results blocks) reads
+          // this flag to suppress beacons and admit draft-only islands in a
+          // VERIFIED preview session — it has no access to PREVIEW itself.
+          window.CellexiaBooster.__preview = true;
         } else if (out.status === 200 && out.body && out.body.valid === false) {
           // Authoritative verdict: rotated/disarmed token — back to normal.
           // The cart runtime owns the missed-session catch-up beacon.

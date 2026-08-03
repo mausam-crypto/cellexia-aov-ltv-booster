@@ -22,10 +22,14 @@
     { "file": "validation/sims/badge-cards.cjs", "floorBytes": 15000, "phase": "required" },
     { "file": "validation/sims/az-split.cjs", "floorBytes": 12000, "phase": "required" },
     { "file": "validation/sims/subscribed-upgrade.cjs", "floorBytes": 8000, "phase": "required" },
+    { "file": "validation/sims/survey-methodology.cjs", "floorBytes": 9000, "phase": "required" },
+    { "file": "validation/sims/proof-gallery.cjs", "floorBytes": 12000, "phase": "required" },
+    { "file": "validation/sims/proof-server.ts", "floorBytes": 25000, "phase": "required" },
     { "file": "validation/sims/threshold-snap.ts", "floorBytes": 9000, "phase": "required" },
     { "file": "validation/sims/flip-test.ts", "floorBytes": 7000, "phase": "required" },
     { "file": "validation/sims/lib/extract.cjs", "floorBytes": 1500, "phase": "required" },
     { "file": "validation/sims/lib/mini-dom.cjs", "floorBytes": 5000, "phase": "required" },
-    { "file": "validation/sims/lib/mutants.cjs", "floorBytes": 1200, "phase": "required" }
+    { "file": "validation/sims/lib/mutants.cjs", "floorBytes": 1200, "phase": "required" },
+    { "file": "validation/sims/lib/tsx-shim.cjs", "floorBytes": 800, "phase": "required" }
   ]
 }

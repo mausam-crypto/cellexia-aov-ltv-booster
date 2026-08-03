@@ -73,15 +73,16 @@
   },
   "study": {
     "eyebrow": "Studiu clinic independent",
-    "methodology": "n = {{ n }} participanți · studiu de {{ weeks }} · {{ lab }}",
+    "subject": "Testat chiar pe {{ product }} — exact formula de pe această pagină.",
     "weeks_count": {
       "one": "{{ count }} săptămână",
       "few": "{{ count }} săptămâni",
       "other": "{{ count }} de săptămâni"
     },
-    "instruments": "Măsurători instrumentale: {{ methods }}",
+    "fact_participants": "Participanți: {{ n }}",
+    "instruments": "Măsurat cu {{ methods }}",
     "view_study": "Vezi rezumatul studiului",
-    "footnote_default": "Măsurat sub control dermatologic. Rezultatele individuale pot varia."
+    "footnote_default": "Măsurat sub supravegherea dermatologilor, nu pe baza declarațiilor participanților. Rezultatele individuale pot varia."
   },
   "ba": {
     "eyebrow": "Rezultate verificate",
@@ -112,7 +113,7 @@
     "container_tube": "tub",
     "container_pump": "flacon cu pompă",
     "container_product": "produs",
-    "title": "Folosește până la ultima picătură",
+    "title": "Încearcă-l timp de {{ days }} — fără niciun risc",
     "body": "Ai la dispoziție {{ days }}. Dacă rezultatele nu te conving, trimite înapoi ambalajul gol ({{ container }}) și îți returnăm banii integral.",
     "days_count": {
       "one": "{{ count }} zi",
@@ -133,23 +134,60 @@
   },
   "survey": {
     "eyebrow": "Sondaj independent în rândul dermatologilor",
-    "title_pct": "dintre dermatologii certificați chestionați ar recomanda Cellexia",
-    "count": "{{ yes }} din cei {{ total }} de dermatologi chestionați",
+    "rec_line": "dintre dermatologii chestionați ({{ total }} în total) ar recomanda {{ product }}",
+    "outcomes_intro": "Dermatologii chestionați au evaluat rezultatele pe care le-au observat cu {{ product }}:",
+    "outcome_agree": "De acord: @@YES@@ din @@TOTAL@@",
+    "more_outcomes": "+ alte rezultate: @@N@@",
     "how": "Cum a fost realizat sondajul",
     "methodology_p1": "În mai 2026, o firmă independentă de cercetare în domeniul cosmetic a chestionat {{ total }} de medici dermatologi cu drept de liberă practică din Statele Unite, Regatul Unit, Franța, Germania, Italia și Spania.",
     "methodology_p2": "Fiecare dermatolog a primit toate produsele Cellexia, le-a testat cu cel puțin 5 pacienți timp de cel puțin 8 săptămâni și a analizat o prezentare detaliată a Cellexia, incluzând gama de produse, informațiile despre ingrediente, utilizările prevăzute și dovezile clinice de susținere. Apoi li s-a adresat întrebarea:",
     "methodology_p3": "„Pe baza informațiilor analizate și a experienței pacienților dumneavoastră, ați recomanda Cellexia unui pacient potrivit care caută îngrijire a pielii pentru semnele vizibile de îmbătrânire?”",
     "methodology_p4": "Toți cei {{ total }} de dermatologi au răspuns la întrebare. {{ yes }} au ales „Da”, reprezentând {{ percent }}% dintre respondenți.",
     "methodology_p5": "Sondajul a fost solicitat de Cellexia și realizat în mod independent. Recrutarea respondenților, precum și colectarea și analiza răspunsurilor au fost efectuate de firma de cercetare. Cellexia nu a selectat participanții și nu a modificat răspunsurile individuale.",
-    "report_title": "Rezultatele sondajului",
-    "report_surveyed": "Dermatologi chestionați",
-    "report_yes": "Au răspuns „Da”",
-    "report_recommend": "Ar recomanda Cellexia",
-    "question_intro": "{{ total }} de dermatologi cu drept de liberă practică au fost întrebați:",
-    "question_result": "{{ yes }} au răspuns „Da” — {{ percent }}% dintre respondenți.",
-    "dot_legend": "Fiecare punct reprezintă un dermatolog chestionat.",
     "verified_badge": "Verificat de o terță parte",
     "verified_by": "Sondaj verificat de {{ name }}"
+  },
+  "press": {
+    "eyebrow": "Apariții în presă",
+    "read_article": "Citește articolul"
+  },
+  "endo": {
+    "eyebrow": "Recomandările dermatologilor",
+    "count_headline": {
+      "one": "Recomandat de {{ n }} dermatolog",
+      "few": "Recomandat de {{ n }} dermatologi",
+      "other": "Recomandat de dermatologi: {{ n }}"
+    },
+    "shown_of": "Se afișează @@SHOWN@@ din @@TOTAL@@",
+    "show_more": "Vezi mai multe",
+    "read_full": "Citește recomandarea completă"
+  },
+  "results": {
+    "banner_verified": "Vezi rezultatele obținute de clienți Cellexia verificați — {{ count }} în total.",
+    "banner_all": "Vezi rezultatele obținute de clienți Cellexia — {{ count }} în total.",
+    "filter_concern": "Problema pielii",
+    "filter_age": "Vârstă",
+    "filter_skin": "Tip de piele",
+    "filter_duration": "Durata utilizării",
+    "skin_dry": "Uscată",
+    "skin_oily": "Grasă",
+    "skin_combination": "Mixtă",
+    "skin_sensitive": "Sensibilă",
+    "skin_normal": "Normală",
+    "duration_lt8": "Sub 8 săptămâni",
+    "duration_8to12": "8–12 săptămâni",
+    "duration_gt12": "Peste 12 săptămâni",
+    "age_years": "Vârsta: {{ range }}",
+    "verified_badge": "Achiziție verificată",
+    "lab_badge": "Rezultat din studiu clinic",
+    "video_badge": "Video",
+    "weeks_of_use": "Săptămâni de utilizare: @@N@@",
+    "before": "Înainte",
+    "after": "După",
+    "show_more": "Vezi mai multe",
+    "empty": "Deocamdată, niciun rezultat nu corespunde acestor filtre.",
+    "close": "Închide",
+    "clear_filters": "Șterge filtrele"
   },
   "delivery": {
     "line": "Primești comanda cel târziu {{ date }}",
