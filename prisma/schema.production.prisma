@@ -138,3 +138,65 @@ model Experiment {
 
   @@index([shop, status])
 }
+
+model PressItem {
+  id          String   @id @default(cuid())
+  shop        String
+  status      String   @default("approved")
+  featured    Boolean  @default(false)
+  sortWeight  Int      @default(0)
+  publication String
+  logoUrl     String?
+  quote       String
+  articleUrl  String?
+  productGids String   @default("[]")
+  marketHandles String @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop, status, featured, sortWeight])
+}
+
+model DermEndorsement {
+  id          String   @id @default(cuid())
+  shop        String
+  status      String   @default("approved")
+  featured    Boolean  @default(false)
+  sortWeight  Int      @default(0)
+  name        String
+  credentials String?
+  country     String?
+  quote       String
+  imageUrl    String?
+  productGids String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop, status, featured, sortWeight])
+}
+
+model CustomerResult {
+  id            String   @id @default(cuid())
+  shop          String
+  status        String   @default("pending")
+  featured      Boolean  @default(false)
+  sortWeight    Int      @default(0)
+  source        String   @default("customer")
+  verified      Boolean  @default(false)
+  beforeUrl     String?
+  afterUrl      String?
+  ageRange      String?
+  skinType      String?
+  concern       String?
+  durationWeeks Int?
+  country       String?
+  testimonial   String?
+  videoUrl      String?
+  productGids   String   @default("[]")
+  legacyGid     String?  @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([shop, status, featured, sortWeight])
+  @@index([shop, status, concern])
+}
