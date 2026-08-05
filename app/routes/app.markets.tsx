@@ -142,6 +142,43 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
       { key: "delivery_estimate", label: "Delivery guarantee" },
     ],
   },
+  // v8.6: the per-product PDP trust boosters, proof-library widgets and
+  // Amazon patterns were MISSING from this matrix since their launches —
+  // their marketScopes existed and gated the storefront, but no admin
+  // surface could edit them (the dashboards only DISPLAY "Market reach").
+  {
+    title: "Product page — trust boosters",
+    features: [
+      { key: "clinical_study", label: "Clinical study" },
+      { key: "verified_before_after", label: "Results gallery" },
+      { key: "batch_transparency", label: "Batch transparency" },
+      { key: "empty_bottle_guarantee", label: "Risk-free trial guarantee" },
+      { key: "derm_survey", label: "Dermatologist survey" },
+    ],
+  },
+  {
+    title: "Proof library",
+    features: [
+      { key: "press", label: "As seen in the press" },
+      { key: "derm_endorsements", label: "Dermatologist endorsements" },
+    ],
+  },
+  {
+    title: "Amazon patterns",
+    features: [
+      { key: "az_buy_box", label: "Buy-box decision card" },
+      { key: "az_microcopy", label: "Trust microcopy rows" },
+      { key: "az_delivery_line", label: "Compound delivery line" },
+      { key: "az_stock_line", label: "In-stock line" },
+      { key: "az_ships_from", label: "Ships-from line" },
+      { key: "az_bought_count", label: "Bought-in-past-month count" },
+      { key: "az_bestseller_badge", label: "Bestseller badge" },
+      { key: "az_fbt", label: "Frequently bought together" },
+      { key: "az_similar_items", label: "Similar items row" },
+      { key: "az_cart_free_line", label: "Cart free-shipping sentence" },
+      { key: "az_cta_count", label: "Checkout button item count" },
+    ],
+  },
   {
     title: "Checkout",
     features: [
@@ -152,9 +189,37 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
   },
 ];
 
-const ALL_FEATURES: MatrixFeature[] = MATRIX_GROUPS.flatMap(
-  (group) => group.features,
+// v8.6 safety net (same contract as the Preview Center + Features hub
+// pickers): a FeatureKey missing from the MATRIX_GROUPS literal still gets a
+// matrix row, in an automatic trailing group, so no booster can ever lose its
+// market-targeting control again. The key inventory comes from the LOADER's
+// featureStates (built server-side from the real FEATURE_KEYS) — importing
+// the settings.server VALUE into module-scope client code breaks the Remix
+// build (the v8.3 DENSITY_VALUES lesson). The validation harness fails when
+// the literal drifts, so this group should never actually appear.
+const CURATED_MATRIX_KEYS = new Set<string>(
+  MATRIX_GROUPS.flatMap((group) => group.features.map(({ key }) => key)),
 );
+function buildRenderGroups(
+  featureStates: Record<FeatureKey, boolean>,
+): { title: string; features: MatrixFeature[] }[] {
+  const ungroupedMatrixFeatures: MatrixFeature[] = (
+    Object.keys(featureStates) as FeatureKey[]
+  )
+    .filter((key) => !CURATED_MATRIX_KEYS.has(key))
+    .map((key) => ({
+      key,
+      label: key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),
+    }));
+  return ungroupedMatrixFeatures.length > 0
+    ? [
+        ...MATRIX_GROUPS,
+        { title: "Other boosters", features: ungroupedMatrixFeatures },
+      ]
+    : MATRIX_GROUPS;
+}
+
+
 
 const CART_KEYS = [
   "cart_volume_upsell",
@@ -162,6 +227,36 @@ const CART_KEYS = [
   "cart_subscription_upsell",
   "cart_trust_row",
 ] as const;
+
+/** Amazon-pattern rows + their amazon.* flag field (client-safe mirror of
+ *  the Amazon page's AZ_FLAG_FIELD; the action validates server-side). */
+const AZ_MATRIX_KEYS = [
+  "az_buy_box",
+  "az_microcopy",
+  "az_delivery_line",
+  "az_stock_line",
+  "az_ships_from",
+  "az_bought_count",
+  "az_bestseller_badge",
+  "az_fbt",
+  "az_similar_items",
+  "az_cart_free_line",
+  "az_cta_count",
+] as const;
+type AzMatrixKey = (typeof AZ_MATRIX_KEYS)[number];
+const AZ_FLAG_FIELD = {
+  az_buy_box: "buyBox",
+  az_microcopy: "microcopy",
+  az_delivery_line: "deliveryLine",
+  az_stock_line: "stockLine",
+  az_ships_from: "shipsFrom",
+  az_bought_count: "boughtCount",
+  az_bestseller_badge: "bestsellerBadge",
+  az_fbt: "fbt",
+  az_similar_items: "similarItems",
+  az_cart_free_line: "cartFreeLine",
+  az_cta_count: "ctaCount",
+} as const satisfies Record<AzMatrixKey, string>;
 
 interface RowState {
   /** Combined flag state (master && sub-flag) for this feature. */
@@ -177,7 +272,7 @@ function initialMatrixState(
   marketScopes: Record<FeatureKey, MarketScope>,
 ): MatrixState {
   return Object.fromEntries(
-    ALL_FEATURES.map(({ key }) => {
+    (Object.keys(featureStates) as FeatureKey[]).map((key) => {
       const scope = marketScopes[key];
       return [
         key,
@@ -229,6 +324,14 @@ const subheaderStyle: CSSProperties = {
 
 export default function MarketsPage() {
   const { markets, settings, featureStates } = useLoaderData<typeof loader>();
+  const renderGroups = useMemo(
+    () => buildRenderGroups(featureStates),
+    [featureStates],
+  );
+  const allFeatures = useMemo(
+    () => renderGroups.flatMap((group) => group.features),
+    [renderGroups],
+  );
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -305,15 +408,15 @@ export default function MarketsPage() {
 
   /**
    * Column control state. Semantics: a market column counts as fully checked
-   * when every feature that is currently ON (master toggle) includes the
-   * market in its scope — rows that are off keep their scopes but don't
+   * when every feature whose row reads ON (the COMBINED master-and-sub-flag
+   * state) includes the market in its scope — rows that are off keep their scopes but don't
    * count, since they aren't live anywhere. With no enabled features the
    * column reads unchecked, so the control offers "Check all". The control
    * itself still edits every row's scope (masters untouched) so features
    * enabled later inherit the column choice.
    */
   const marketFullyChecked = (handle: string): boolean => {
-    const enabledRows = ALL_FEATURES.filter(({ key }) => state[key].on);
+    const enabledRows = allFeatures.filter(({ key }) => state[key].on);
     return (
       enabledRows.length > 0 &&
       enabledRows.every(({ key }) => {
@@ -327,7 +430,7 @@ export default function MarketsPage() {
   const setMarketAcrossRows = (handle: string, checked: boolean) => {
     setState((previous) => {
       const next: MatrixState = { ...previous };
-      for (const { key } of ALL_FEATURES) {
+      for (const { key } of allFeatures) {
         const row = previous[key];
         if (checked) {
           if (row.mode === "selected" && !row.markets.includes(handle)) {
@@ -354,7 +457,7 @@ export default function MarketsPage() {
 
   const handleSave = () => {
     const marketScopes = Object.fromEntries(
-      ALL_FEATURES.map(({ key }) => {
+      allFeatures.map(({ key }) => {
         const row = state[key];
         return [
           key,
@@ -418,6 +521,40 @@ export default function MarketsPage() {
     }
     if (state.delivery_estimate.on !== initial.delivery_estimate.on) {
       patch.deliveryEstimate = { enabled: state.delivery_estimate.on };
+    }
+
+    // v8.6 rows — simple one-boolean sections (client-safe mirror of the
+    // dashboard buildPatch literals; the action validates server-side).
+    const SIMPLE_SECTIONS = [
+      ["clinical_study", "clinicalStudy"],
+      ["verified_before_after", "beforeAfter"],
+      ["batch_transparency", "batchTransparency"],
+      ["empty_bottle_guarantee", "emptyBottleGuarantee"],
+      ["derm_survey", "dermSurvey"],
+      ["press", "press"],
+      ["derm_endorsements", "dermEndorsements"],
+    ] as const;
+    for (const [key, section] of SIMPLE_SECTIONS) {
+      if (state[key].on !== initial[key].on) {
+        (patch as Record<string, unknown>)[section] = {
+          enabled: state[key].on,
+        };
+      }
+    }
+
+    // Amazon patterns are INDEPENDENT flags — there is NO shared master
+    // switch (unlike the cart rows' cartUpsell; see AMAZON_FLAG_FIELDS in
+    // settings.server.ts: "each key toggles independently"). Write only the
+    // rows the merchant actually changed, the same changed-only discipline
+    // as SIMPLE_SECTIONS above — a stale tab must never rewrite untouched
+    // az flags.
+    const azChangedKeys = AZ_MATRIX_KEYS.filter(
+      (key) => state[key].on !== initial[key].on,
+    );
+    if (azChangedKeys.length > 0) {
+      patch.amazon = Object.fromEntries(
+        azChangedKeys.map((key) => [AZ_FLAG_FIELD[key], state[key].on]),
+      ) as Partial<Record<(typeof AZ_FLAG_FIELD)[AzMatrixKey], boolean>>;
     }
 
     const formData = new FormData();
@@ -590,7 +727,7 @@ export default function MarketsPage() {
                   );
                 })}
 
-                {MATRIX_GROUPS.map((group) => (
+                {renderGroups.map((group) => (
                   <Fragment key={group.title}>
                     <div style={subheaderStyle}>
                       <Text as="h3" variant="headingSm" tone="subdued">

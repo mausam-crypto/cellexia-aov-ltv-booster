@@ -1,3 +1,7 @@
+// Load .env before anything reads process.env: production hosts running
+// `npm start` via remix-serve do not load .env on their own (the Shopify CLI
+// only does this in dev). dotenv never overrides already-set env vars, so
+// platform-injected config (Render, Docker, etc.) always wins.
 import "dotenv/config";
 import "@shopify/shopify-app-remix/adapters/node";
 import {
@@ -11,11 +15,12 @@ import prisma from "./db.server";
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
-  apiVersion: ApiVersion.July25,
+  apiVersion: ApiVersion.October25,
   scopes: process.env.SCOPES?.split(","),
-  // Falls back to Render's auto-provided service URL so the app can boot
-  // on a fresh deploy before SHOPIFY_APP_URL is manually set.
-  appUrl: process.env.SHOPIFY_APP_URL || process.env.RENDER_EXTERNAL_URL || "",
+  // Render.com injects RENDER_EXTERNAL_URL — fall back to it so the app
+  // boots with a correct URL even when SHOPIFY_APP_URL is not set.
+  appUrl:
+    process.env.SHOPIFY_APP_URL || process.env.RENDER_EXTERNAL_URL || "",
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   // Cellexia runs this as a custom app on its own Plus store. Switch to
@@ -31,7 +36,7 @@ const shopify = shopifyApp({
 });
 
 export default shopify;
-export const apiVersion = ApiVersion.July25;
+export const apiVersion = ApiVersion.October25;
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
 export const authenticate = shopify.authenticate;
 export const unauthenticated = shopify.unauthenticated;

@@ -6,7 +6,7 @@ application_url = "https://cellexia-aov-ltv-booster.onrender.com"
 embedded = true
 
 [webhooks]
-api_version = "2026-10"
+api_version = "2025-10"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
@@ -25,4 +25,4 @@ subpath = "cellexia"
 prefix = "apps"
 
 [build]
-automatically_update_urls_on_dev = true
+automatically_update_urls_on_dev = false

@@ -521,9 +521,14 @@ function ProductBoostersIndexPage() {
                   <Text as="h2" variant="headingMd">
                     Global switches
                   </Text>
-                  <Button variant="plain" url="/app/markets">
-                    Market targeting matrix
-                  </Button>
+                  <InlineStack gap="200">
+                    <Button variant="plain" url="/app/features#display-density">
+                      Display density
+                    </Button>
+                    <Button variant="plain" url="/app/markets">
+                      Market targeting matrix
+                    </Button>
+                  </InlineStack>
                 </InlineStack>
                 <Text as="p" tone="subdued">
                   Master toggles for the five product-page trust boosters. A

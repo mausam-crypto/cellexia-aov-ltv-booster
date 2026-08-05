@@ -1,3 +1,17 @@
+// PRODUCTION (Postgres) twin of schema.prisma — generated for deploys.
+//
+// schema.prisma is the DEV schema (SQLite, file:dev.sqlite) and stays the
+// source of truth. This file is IDENTICAL except for the datasource block:
+// provider "postgresql" + url env("DATABASE_URL"). Use it on Postgres hosts
+// instead of hand-patching schema.prisma:
+//
+//   npx prisma generate --schema prisma/schema.postgres.prisma
+//   npx prisma db push  --schema prisma/schema.postgres.prisma
+//
+// (db push, NOT migrate deploy — the bundled migrations are SQLite-dialect.)
+// The validation harness diffs this file against schema.prisma modulo the
+// datasource block, so the two can never drift.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -111,6 +125,80 @@ model PreviewState {
   updatedAt       DateTime  @updatedAt
 }
 
+// ---------------------------------------------------------------------------
+// v8 proof library (docs/SPEC-v8-proof-library.md §1). Hundreds/thousands of
+// entries ride these tables + the /apps/cellexia/proof app-proxy JSON endpoint
+// instead of Liquid JSON islands (byte budget) or metaobject list references
+// (caps). productGids: JSON string[]; [] = brand-level entry. Postgres deploys
+// apply this via `prisma db push` (see UPDATE.md v8 notes).
+// ---------------------------------------------------------------------------
+
+model PressItem {
+  id          String   @id @default(cuid())
+  shop        String
+  status      String   @default("approved") // approved | hidden
+  featured    Boolean  @default(false)
+  sortWeight  Int      @default(0)
+  publication String                        // e.g. "Vogue"
+  logoUrl     String?                       // Shopify Files CDN url
+  quote       String                        // the large quote
+  articleUrl  String?
+  productGids String   @default("[]")       // JSON string[]; [] = brand-level
+  // JSON string[] of market handles; [] = every market. v8.1: each market
+  // can carry its own publications (a French visitor sees the French press).
+  marketHandles String @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop, status, featured, sortWeight])
+}
+
+model DermEndorsement {
+  id          String   @id @default(cuid())
+  shop        String
+  status      String   @default("approved")
+  featured    Boolean  @default(false)
+  sortWeight  Int      @default(0)
+  name        String                        // "Dr. Anna Weiss"
+  credentials String?                       // "MD, Board-certified dermatologist"
+  country     String?                       // ISO2
+  quote       String
+  imageUrl    String?                       // optional portrait
+  productGids String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop, status, featured, sortWeight])
+}
+
+model CustomerResult {
+  id            String   @id @default(cuid())
+  shop          String
+  status        String   @default("pending") // pending | approved | hidden
+  featured      Boolean  @default(false)
+  sortWeight    Int      @default(0)
+  source        String   @default("customer") // lab | customer
+  verified      Boolean  @default(false)      // verified purchase
+  beforeUrl     String?
+  afterUrl      String?
+  ageRange      String?  // "18-24" | "25-34" | "35-44" | "45-54" | "55-64" | "65+"
+  skinType      String?  // "dry" | "oily" | "combination" | "sensitive" | "normal"
+  concern       String?  // free-slug, e.g. "wrinkles", "firmness" (admin tags)
+  durationWeeks Int?
+  country       String?  // ISO2
+  testimonial   String?
+  videoUrl      String?
+  productGids   String   @default("[]")
+  // Source cellexia_before_after metaobject GID when this row was created by
+  // the legacy import — the unique constraint makes the import exactly-once.
+  legacyGid     String?  @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([shop, status, featured, sortWeight])
+  @@index([shop, status, concern])
+}
+
 // A sequential (never A/B) experiment: flip features for one market, then
 // compare an equal-length window against the immediately-preceding baseline.
 // See docs/SPEC-v2-markets-experiments.md.
@@ -137,66 +225,4 @@ model Experiment {
   updatedAt    DateTime  @updatedAt
 
   @@index([shop, status])
-}
-
-model PressItem {
-  id          String   @id @default(cuid())
-  shop        String
-  status      String   @default("approved")
-  featured    Boolean  @default(false)
-  sortWeight  Int      @default(0)
-  publication String
-  logoUrl     String?
-  quote       String
-  articleUrl  String?
-  productGids String   @default("[]")
-  marketHandles String @default("[]")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([shop, status, featured, sortWeight])
-}
-
-model DermEndorsement {
-  id          String   @id @default(cuid())
-  shop        String
-  status      String   @default("approved")
-  featured    Boolean  @default(false)
-  sortWeight  Int      @default(0)
-  name        String
-  credentials String?
-  country     String?
-  quote       String
-  imageUrl    String?
-  productGids String   @default("[]")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([shop, status, featured, sortWeight])
-}
-
-model CustomerResult {
-  id            String   @id @default(cuid())
-  shop          String
-  status        String   @default("pending")
-  featured      Boolean  @default(false)
-  sortWeight    Int      @default(0)
-  source        String   @default("customer")
-  verified      Boolean  @default(false)
-  beforeUrl     String?
-  afterUrl      String?
-  ageRange      String?
-  skinType      String?
-  concern       String?
-  durationWeeks Int?
-  country       String?
-  testimonial   String?
-  videoUrl      String?
-  productGids   String   @default("[]")
-  legacyGid     String?  @unique
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([shop, status, featured, sortWeight])
-  @@index([shop, status, concern])
 }

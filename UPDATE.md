@@ -12,6 +12,7 @@ re-apply local patches; deploy this tree as-is** (after the config merge in §1)
 
 | Previously patched by hand | In-tree fix |
 |---|---|
+| **Prisma datasource patch (sqlite → postgres)** | **Fully automatic now.** The build/install scripts run `node scripts/prisma-env.mjs generate`, which selects `prisma/schema.postgres.prisma` whenever `DATABASE_URL` is a Postgres URL (Render sets it at build time) and the SQLite dev schema otherwise. Drop this patch too — §2/§3 explain the new flow, and the server now REFUSES TO BOOT if a mismatched client ever slips through |
 | Missing dotenv loading | `dotenv` is a dependency; `app/shopify.server.ts` imports `dotenv/config` first (never overrides host-set vars) |
 | Missing `RENDER_EXTERNAL_URL` fallback | `appUrl` resolves `SHOPIFY_APP_URL → RENDER_EXTERNAL_URL → ""` (also in the app-proxy health check) |
 | Missing `react-reconciler` | Declared in all four checkout extensions' `package.json` (incl. the new `checkout-delivery`) |
@@ -20,10 +21,14 @@ re-apply local patches; deploy this tree as-is** (after the config merge in §1)
 | 100 KB Liquid limit | The live/draft template pairs are deduplicated in-tree (single template with a conditional `data-cx-draft` marker) — `pdp-booster.liquid` is well under the limit again and won't regress |
 | Before/after image height attributes | `width`/`height` attributes restored on B/A images (and added to every other extension `<img>`) |
 
-## 1. ⚠️ Config merge — do NOT overwrite your `shopify.app.toml` values
+## 1. ⚠️ Config merge — your `shopify.app.toml` is now SAFE from the unzip
 
-This ZIP ships a template `shopify.app.toml` (empty `client_id`, example.com URLs).
-Your production toml has the real values. **Keep yours** and change ONLY this:
+**This ZIP no longer contains `shopify.app.toml`** — unzipping over your working
+copy can no longer clobber your production config (a real hazard in previous
+rounds: the old template shipped example.com URLs at the live path, and
+`include_config_on_deploy = true` would have pushed them to the live app). The
+template now ships as **`shopify.app.toml.example`** for reference only. In your
+REAL toml, make exactly three changes:
 
 - **`scopes`** — replace the line with (additions since your build:
   `read_shipping`, `read_price_lists`, `write_price_lists`, `write_translations`):
@@ -32,45 +37,142 @@ Your production toml has the real values. **Keep yours** and change ONLY this:
 scopes = "read_products,write_products,read_publications,write_publications,read_orders,read_locales,read_translations,read_markets,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_files,write_files,read_themes,read_shipping,read_price_lists,write_price_lists,write_translations"
 ```
 
+- **`automatically_update_urls_on_dev = false`** under `[build]` (the example
+  file shows it). With `true`, any `npm run dev` session against this single
+  production app rewrites the LIVE `application_url`/`redirect_urls` to an
+  ephemeral tunnel — breaking merchant admin access until redeployed. Dev work
+  should use a separate linked dev app (`shopify app config link` +
+  `npm run config:use`).
+
+- **`api_version = "2025-10"`** under `[webhooks]` (was `2025-07`, which left
+  Shopify's 12-month support window on 2026-07-01 — the server code in this
+  version is pinned to `2025-10` to match).
+
 Everything else in your toml stays as-is: `client_id`, `application_url`,
 `redirect_urls`, and the whole `[app_proxy]` block (url = your host + `/proxy`).
-Same for `.env` on the host — **no new environment variables** in this update.
+On the host, **no NEW environment variables** — but if you set a `SCOPES` env
+var (INSTALL.md's flow does), update it to the same value as the toml scopes
+line above so the two never disagree.
 
 ## 2. Database — read this if production is Postgres
 
-The `prisma/migrations` folder is **SQLite-dialect** (generated in development) —
-`prisma migrate deploy` will NOT work against Postgres. For this update use:
+**The schema now selects itself.** `prisma/schema.postgres.prisma` is a
+ready-made Postgres twin of the dev schema (`provider = "postgresql"`,
+`url = env("DATABASE_URL")`, models byte-identical — the validation suite
+enforces it can never drift), and every npm script that touches Prisma goes
+through `scripts/prisma-env.mjs`, which picks the twin automatically whenever
+`DATABASE_URL` is a Postgres URL. **Never patch `prisma/schema.prisma` again,
+and never run bare `prisma generate` / `prisma migrate deploy` on the host.**
+
+The one database step for this update — create the new tables (run it BEFORE
+or immediately WITH the server deploy, so the new code never serves against
+missing tables):
 
 ```bash
-npx prisma db push        # against DATABASE_URL — safe here: all changes are additive
+npx prisma db push --schema prisma/schema.postgres.prisma
 ```
 
-Additions in this update: `PreviewState` table (+ `PreviewState.draftConfig`
-column — non-boolean preview options, e.g. the survey format being previewed);
-`TranslationConfig` table (holds
-the merchant's DeepL API key server-side — deliberately NOT in the settings blob
-that mirrors to metafields); `Experiment.startSyncErrors`; `Event.market`;
-`OrderStat.market`, `OrderStat.countryCode` (+ indexes). `db push`
-adds them without touching existing data. Take your usual DB backup first anyway.
-(If you previously deployed with `db push`, this is just your normal flow. If you
-maintain your own Postgres migration history, diff `prisma/schema.prisma` against
-production and add the columns/table above by hand instead.)
+**Where to run it:** either from the Render *Shell* tab (fine here — unlike
+`generate`, `db push` changes the DATABASE, not the service filesystem, so it
+persists), or from your machine with the production URL exported first:
+`DATABASE_URL='postgres://…' npx prisma db push --schema prisma/schema.postgres.prisma`.
+It fails with "Environment variable not found: DATABASE_URL" if you forget the
+export — that's your signal, not a bug. Alternatively `npm run setup` on the
+host now does generate + the correct apply step for whichever database
+`DATABASE_URL` points at.
+
+> ⚠️ **History, so nobody regresses this:** the "Cannot read properties of
+> undefined (reading 'count')" incident was caused by reusing an OLD patched
+> copy of `schema.prisma`, and the v8.4 hotfix's plain `prisma generate` would
+> have introduced the opposite failure (a SQLite-wired client silently ignoring
+> `DATABASE_URL` — reproduced in our deploy audit with every health check
+> green). Both are now impossible: the selector picks the schema from the
+> environment, and the server refuses to boot on a provider mismatch.
+
+The `prisma/migrations` folder is **SQLite-dialect** (dev-only) — that is why
+Postgres uses `db push`; the selector enforces this split automatically.
+
+Additions since the pre-v8 build: **three proof-library tables** — `PressItem`
+(incl. `marketHandles`), `DermEndorsement`, `CustomerResult` (incl. the
+`legacyGid` unique key that makes the before/after import exactly-once).
+Earlier additions if you're further behind: `PreviewState` (+ `draftConfig`),
+`TranslationConfig`, `Experiment.startSyncErrors`, `Event.market`,
+`OrderStat.market`, `OrderStat.countryCode` (+ indexes). `db push` adds all of
+this without touching existing data. Take your usual DB backup first anyway.
+One narrow edge case: if your DB was first created from the short-lived
+2026-07-20 intermediate build, `db push` may report dropping an unused
+`PreviewState.tokenHash` column — accepting that is safe (preview re-arms).
+(If you maintain your own Postgres migration history, diff
+`prisma/schema.postgres.prisma` against production and add the tables/columns
+above by hand instead.)
 
 ## 3. Deploy — BOTH halves, in this order
 
 The update changes the app server AND the extensions. Deploying only one half is
 the #1 cause of "nothing changed" reports (preview/checkout handshakes span both).
 
+**The Prisma Client regenerates itself from the RIGHT schema on every install
+and every build.** `postinstall` and `build` both run
+`node scripts/prisma-env.mjs generate`, which reads `DATABASE_URL`: a Postgres
+URL selects `prisma/schema.postgres.prisma`, anything else selects the SQLite
+dev schema. Render exposes environment variables at build time, so the standard
+Render flow needs ZERO manual Prisma steps. Two safety nets back this up: the
+selector records the chosen provider in `prisma/.generated-client.json` and the
+server **refuses to boot** (clear error, exact fix in the message) if
+`DATABASE_URL` says Postgres but the client was generated for SQLite; and the
+*Proof library database* health check independently asks the connected database
+what engine it is, failing loudly on a wrong-database deploy.
+
+> ⚠️ **Do NOT "fix" a stale client from a host shell.** Running
+> `npx prisma generate` in a one-off shell (e.g. Render's *Shell* tab) does NOT
+> persist into the running service — the shell's filesystem changes are thrown
+> away and the already-running Node process keeps its loaded client anyway.
+> `generate` runs during the BUILD, which this version's scripts do
+> automatically. If your host uses a **custom build command**, make sure it is
+> (or includes) `npm ci && npm run build` — that is sufficient. (Only for build
+> systems that HIDE env vars at build time — e.g. plain `docker build` — set
+> `PRISMA_SCHEMA=prisma/schema.postgres.prisma` in the build environment, or
+> rely on `npm run setup` at container start, which re-selects with the runtime
+> env; the shipped Dockerfile already does this.)
+
 ```bash
-npm ci                    # clean install (lockfile is authoritative)
-npm run build             # must pass locally before you ship
+# 0) DATABASE first (or simultaneously): npx prisma db push per §2
+npm ci                    # clean install (lockfile is authoritative; postinstall regenerates the client)
+npm run build             # must pass locally before you ship (also regenerates the client)
 # 1) APP SERVER: deploy/restart your Render service with this code
-#    (build command unchanged; then: npx prisma db push per §2)
 # 2) EXTENSIONS:
 npm run deploy            # pushes theme extension + 4 checkout extensions + config
 #    (v6.0 adds a FOURTH checkout extension, checkout-delivery — it deploys
 #     with the same command, no extra registration needed)
+#    If the CLI ever rejects an extension api_version as unsupported, bump the
+#    api_version line in the five extensions/*/shopify.extension.toml files to
+#    the version the CLI suggests and re-run npm run deploy — the extension
+#    code uses stable APIs only.
 ```
+
+**Verify the deployed client** (run this in a shell attached to the RUNNING
+service, from the app directory — for verification a shell is fine, it's only
+*fixing* from a shell that doesn't stick):
+
+```bash
+node -e "const m=require('./prisma/.generated-client.json');const {PrismaClient}=require('@prisma/client');const c=new PrismaClient();console.log('provider:',m.provider,'| models:',typeof c.pressItem,typeof c.dermEndorsement,typeof c.customerResult)"
+```
+
+On a Postgres host this must print `provider: postgresql` and `object` three
+times. `provider: sqlite` = the build could not see `DATABASE_URL` → fix the
+build env (see the box above) and redeploy; any `undefined` = a pre-v8 client →
+rebuild/redeploy (do not shell-generate). The app also self-diagnoses: **Setup
+& health → "Proof library database"** distinguishes all three failure modes —
+stale client, missing tables, and wrong-database — each with its own fix, and
+the Proof admin pages / storefront API report the same actionable messages.
+
+**Maintenance flag — schedule before 2026-09-30:** this release pins the Admin
+API + webhooks to `2025-10`, the newest version the current dependency line
+(`@shopify/shopify-app-remix` 3.x) supports; the checkout extensions stay on
+their tooling line's latest (`2025-07`). Before 2025-10 retires (~2026-09-30),
+plan a dedicated platform upgrade (shopify-app-remix 4.x + the matching
+`@shopify/ui-extensions` line, then bump every `api_version`) as its own tested
+release — do not fold it into a feature deploy.
 
 Then in the store admin, **open the app once** — you'll be prompted to approve the
 new scopes. Approve them (protection per-currency pricing, free-shipping
@@ -78,9 +180,11 @@ auto-detection, and booster auto-translation need them).
 
 ## 4. Post-deploy checklist (10 minutes, in order)
 
-1. **Setup & health** (app nav): re-run checks — everything green. Two checks matter
-   most after an update: *App proxy reachable* and *Deployed extension build* (its
-   build number must have INCREASED — if it didn't, `npm run deploy` didn't land).
+1. **Setup & health** (app nav): re-run checks — everything green. Three checks
+   matter most after an update: *App proxy reachable*, *Deployed extension build*
+   (its build number must have INCREASED — if it didn't, `npm run deploy` didn't
+   land), and the NEW *Proof library database* (fails with the exact fix if the
+   running server has a stale Prisma Client or the DB is missing the v8 tables).
 2. **Free shipping**: Settings → Free shipping thresholds → mode Auto → **Detect
    now** (needs the new `read_shipping` scope).
 3. **Protection prices**: Checkout features → per-market price table → enter round
@@ -139,7 +243,7 @@ identical. Nothing to do on your side beyond the normal extensions deploy.
 ## 4d. NEW: run the validation suite before every deploy
 
 The repo now ships its full validation suite at `validation/` (19 suites,
-4,390 checks: equivalence prover vs a committed baseline, structural
+4,400+ checks — `npm run validate` prints the live totals: equivalence prover vs a committed baseline, structural
 tripwires incl. the Shopify Liquid-budget guard, and engine/feature
 simulations that execute the real shipped code — all offline, ~3s):
 
@@ -195,7 +299,7 @@ DEPLOY STEPS SPECIFIC TO v8 (in addition to the §2 basics):
    press" and "Dermatologist endorsements" (both OFF by default, both
    market-targetable, both with per-product opt-outs under Product
    boosters). The proof API is served through the existing app proxy —
-   the §0 App Proxy URL requirement matters for it too.
+   the App Proxy requirement (§1 / the toml's own [app_proxy] warning) matters for it too.
 7. v8.2/v8.3 — DISPLAY DENSITY: each of the three new widgets has THREE
    density levels on the Display density card — Full, Compact and Ultra
    compact. Compact keeps everything visible at a fraction of the height
@@ -351,13 +455,83 @@ preview hardening (hash-attribute checkout handshake, cart auto-tagging,
 diagnostics) · Setup & health checks #10 (app proxy end-to-end) and #11 (deployed
 extension build) · the seven §0 fixes.
 
+**v8.4 — deploy-proofing after the "Cannot read properties of undefined
+(reading 'count')" incident.** The app itself was verified correct (the proof
+functions run green against a freshly generated client on both the tsx and the
+plain-node/remix-serve execution paths); the error can only occur when the
+RUNNING service uses a Prisma Client generated from a pre-v8 schema. v8.4 makes
+that class of deploy failure (a) self-healing — `prisma generate` now runs in
+both `postinstall` and the `build` script, so any normal rebuild regenerates
+the client; (b) impossible to misdiagnose — every proof-library entry point
+asserts the three models exist and otherwise throws a message with the exact
+fix (instead of the cryptic `undefined (reading 'count')`), and Setup & health
+check #12 "Proof library database" distinguishes a stale generated client from
+missing DB tables, each with its own fix; and (c) easier to deploy right —
+`prisma/schema.postgres.prisma` ships in-tree (drift-proofed by the validation
+suite) so Postgres hosts never hand-patch `schema.prisma` again (§2, §3).
+
+**v8.5 — full deployment audit (31-agent, adversarially verified) + the fixes.**
+The audit's headline: v8.4's plain `prisma generate` would have generated from
+the SQLite dev schema on a Postgres host, silently running production against a
+throwaway local SQLite file (empirically reproduced: app healthy, checks green,
+data on ephemeral disk). v8.5 closes it with three independent layers:
+(1) `scripts/prisma-env.mjs` — the ONLY Prisma entry point in the npm scripts —
+selects the schema from `DATABASE_URL` (Postgres → the twin; supports a
+`PRISMA_SCHEMA` override for env-less build systems) and records the provider
+in `prisma/.generated-client.json`; `npm run setup` now applies the right
+database step per engine too (db push on Postgres, migrate deploy on SQLite),
+making `docker-start` viable on both. (2) `app/db.server.ts` refuses to boot
+when `DATABASE_URL` says Postgres but the client was generated for SQLite, and
+passes `DATABASE_URL` as the datasource so even an unmarked mismatched client
+fails loudly instead of opening `dev.sqlite`. (3) The *Proof library database*
+health check now asks the connected database what engine it actually is and
+fails on a wrong-database deploy. Also from the audit: the Dockerfile builds
+again under the postinstall hook (schema + scripts copied before `npm ci`, plus
+a `PRISMA_SCHEMA` build arg); the ZIP no longer contains `shopify.app.toml`
+(template ships as `.example`) so unzipping can never clobber production
+config; `automatically_update_urls_on_dev = false` guards the live app's URLs
+from dev sessions; Admin API/webhooks pinned to `2025-10` (extensions stay on
+their tooling line's `2025-07`; see the §3 maintenance flag for the 4.x
+platform upgrade due before 2026-09-30); INSTALL.md rewritten to the same flow
+(it still taught the banned hand-patch + `migrate deploy`-on-Postgres path and
+said "three" checkout extensions). Proof status: the audit's smoke lane ran the
+Postgres twin end-to-end against a real postgres:16 in Docker (db push clean,
+server boot + route probes clean, PressItem insert/read/delete on real
+Postgres), and the v8.5 selector + boot guard were then proven on fresh clones
+of this ZIP — a build WITH `DATABASE_URL` records `provider: postgresql`, and
+the wrong-way build (no `DATABASE_URL` at build, Postgres at runtime) now
+REFUSES to boot with the exact fix in the error instead of silently serving
+SQLite.
+
+**v8.6 — Markets matrix completed + Display density made findable (merchant
+couldn't find either).** The Markets page's targeting matrix had shipped with
+only 15 of the 33 boosters since the per-product waves — the clinical study,
+results gallery, batch transparency, risk-free guarantee, dermatologist
+survey, press, dermatologist endorsements and all eleven Amazon patterns had
+working per-market gating on the storefront but NO admin surface to edit it
+(the dashboards only display "Market reach"). All 18 missing rows are now in
+the matrix under three new groups (trust boosters / Proof library / Amazon
+patterns — the Amazon rows are independent flags with no shared master
+switch, unlike the cart rows which share cartUpsell), plus the same automatic fallback group the
+Preview and Features pickers have had since v5.4, now enforced for the matrix
+by the validation suite too — a future booster can never lose its market
+control again. Separately, the "Display density" card (compact / ultra-compact
+modes, bottom of the Features page) is now one click away from where merchants
+actually look: a header link on the Proof library page and a link on the
+Product boosters page, both deep-linking straight to the card.
+
 ## 6. If something looks wrong
 
 - Preview link 404 → §Troubleshooting in INSTALL.md (app proxy).
-- Checkout preview renders nothing → the three blocks aren't placed (§4.4), or one
+- Checkout preview renders nothing → the FOUR blocks aren't placed (§4.4), or one
   deploy half is stale (§3) — the "Deployed extension build" health check tells you.
 - Widgets missing for buyers → feature/market toggles (everything ships OFF), or
   Setup & health flags the cause.
+- Proof library errors (press / endorsements / results won't load or save) →
+  run Setup & health; the "Proof library database" check names the culprit —
+  stale generated Prisma Client (rebuild per §3, never shell-generate) vs
+  missing tables (`db push` per §2) — and the error banners now carry the same
+  actionable fix.
 - Rollback: redeploy the previous server build + previous extension version from
   the Partner Dashboard (extension versions are retained); `db push` changes are
   additive and safe to leave in place.

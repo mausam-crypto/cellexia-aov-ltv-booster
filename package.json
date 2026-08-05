@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "remix vite:build",
+    "build": "node scripts/prisma-env.mjs generate && remix vite:build",
+    "postinstall": "node scripts/prisma-env.mjs generate",
     "dev": "shopify app dev",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
@@ -11,15 +12,14 @@
     "config:use": "shopify app config use",
     "env": "shopify app env",
     "start": "remix-serve ./build/server/index.js",
-    "docker-start": "npm run setup:production && npm run start",
-    "setup": "prisma generate && prisma migrate deploy",
-    "setup:production": "prisma generate --schema=./prisma/schema.production.prisma && prisma db push --schema=./prisma/schema.production.prisma --skip-generate",
+    "docker-start": "npm run setup && npm run start",
+    "setup": "node scripts/prisma-env.mjs setup",
     "shopify": "shopify",
     "prisma": "prisma",
     "typecheck": "tsc --noEmit",
-    "vite": "vite",
     "proofs": "node validation/run-all.mjs",
-    "validate": "node validation/run-all.mjs"
+    "validate": "node validation/run-all.mjs",
+    "vite": "vite"
   },
   "engines": {
     "node": "^18.20 || ^20.10 || >=21.0.0"
@@ -39,7 +39,7 @@
     "@shopify/polaris-icons": "^9.3.0",
     "@shopify/shopify-app-remix": "^3.7.0",
     "@shopify/shopify-app-session-storage-prisma": "^6.0.0",
-    "dotenv": "^16.6.1",
+    "dotenv": "^16.4.5",
     "isbot": "^5.1.0",
     "prisma": "^6.2.1",
     "react": "^18.2.0",

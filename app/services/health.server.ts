@@ -9,7 +9,7 @@ import { getPreviewState } from "./preview.server";
 /**
  * Setup & health checks (SPEC v4 §B).
  *
- * runHealthChecks(admin, session) returns the ELEVEN ordered checks, always
+ * runHealthChecks(admin, session) returns the TWELVE ordered checks, always
  * fresh (the Setup page uses it). getCachedHealth(admin, session) is the
  * cheap variant for high-traffic surfaces (dashboard banner): it reuses a
  * per-shop summary for up to five minutes; invalidateHealthCache(shop)
@@ -1003,6 +1003,89 @@ async function checkDeployedExtension(shop: string): Promise<HealthCheck> {
   );
 }
 
+/**
+ * v8.4: the proof library (press / endorsements / results) lives in three
+ * Prisma tables, and the two ways a deploy can break them produce the same
+ * cryptic storefront error ("Cannot read properties of undefined (reading
+ * 'count')"). This check tells them apart and gives each its own fix:
+ *
+ *   1. STALE GENERATED CLIENT — the running server's Prisma Client was
+ *      generated from a pre-v8 schema, so the model properties are simply
+ *      absent from the client object. Fix is a rebuild with this version's
+ *      schema (generate runs in the build/postinstall scripts).
+ *   2. MISSING TABLES — the client is current but the database was never
+ *      pushed, so a trivial count() throws (Prisma P2021). Fix is db push
+ *      (Postgres) / migrate deploy (SQLite) against the production DB.
+ *
+ * v8.5 adds the third — and sneakiest — failure: WRONG DATABASE ENTIRELY.
+ * A client generated from the dev schema ignores DATABASE_URL and runs
+ * against a local SQLite file where counts succeed, so the two probes above
+ * pass green while production data sits untouched in Postgres. The engine
+ * probe below asks the connected database what it IS (sqlite_version() only
+ * exists on SQLite) and fails the check when DATABASE_URL says Postgres.
+ */
+async function detectDatabaseEngine(): Promise<"sqlite" | "postgresql" | "unknown"> {
+  try {
+    await prisma.$queryRawUnsafe("select sqlite_version()");
+    return "sqlite";
+  } catch {
+    // fall through
+  }
+  try {
+    await prisma.$queryRawUnsafe("select version()");
+    return "postgresql";
+  } catch {
+    return "unknown";
+  }
+}
+
+async function checkProofDatabase(): Promise<HealthCheck> {
+  return runCheck("proof-database", "Proof library database", async () => {
+    const missing = (
+      ["pressItem", "dermEndorsement", "customerResult"] as const
+    ).filter((model) => !(prisma as unknown as Record<string, unknown>)[model]);
+    if (missing.length > 0) {
+      return {
+        status: "fail" as const,
+        detail: `The running server's generated Prisma Client predates the v8 schema — missing model(s): ${missing.join(", ")}.`,
+        fixHint:
+          "Deploy with THIS version's prisma schemas and make sure the build regenerates the client — this version's npm build and postinstall scripts do that automatically (they auto-select prisma/schema.postgres.prisma when DATABASE_URL is Postgres). A one-off `npx prisma generate` in a host shell does NOT persist into the running service on most platforms. Rebuild, restart, then re-run the checks.",
+      };
+    }
+    const wantsPostgres = /^postgres(ql)?:\/\//.test(process.env.DATABASE_URL ?? "");
+    const engine = await detectDatabaseEngine();
+    if (wantsPostgres && engine === "sqlite") {
+      return {
+        status: "fail" as const,
+        detail:
+          "WRONG DATABASE: DATABASE_URL points at Postgres but this server is actually connected to a local SQLite file — everything it reads and writes lives on ephemeral disk and disappears on restart, while the real production data sits untouched in Postgres.",
+        fixHint:
+          "The Prisma Client was generated from the dev (SQLite) schema. Rebuild with DATABASE_URL present in the BUILD environment (`npm ci && npm run build` auto-selects prisma/schema.postgres.prisma), or set PRISMA_SCHEMA=prisma/schema.postgres.prisma where the build cannot see DATABASE_URL, then redeploy and re-run the checks.",
+      };
+    }
+    try {
+      const [press, endorsements, results] = await Promise.all([
+        prisma.pressItem.count(),
+        prisma.dermEndorsement.count(),
+        prisma.customerResult.count(),
+      ]);
+      return {
+        status: "pass" as const,
+        detail: `Press, endorsement and result tables are reachable on ${engine} (${press} / ${endorsements} / ${results} rows).`,
+        fixHint:
+          "Nothing to fix — the generated Prisma Client and the database both carry the v8 proof tables.",
+      };
+    } catch (error) {
+      return {
+        status: "fail" as const,
+        detail: `The generated client is current but the proof tables are missing or unreachable: ${errorMessage(error)}`,
+        fixHint:
+          "The DATABASE is missing the v8 tables. Run `npx prisma db push` against the production DATABASE_URL (Postgres — the bundled migrations are SQLite-dialect; on SQLite use `npx prisma migrate deploy`), then restart and re-run the checks.",
+      };
+    }
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Orchestrator
 // ---------------------------------------------------------------------------
@@ -1047,6 +1130,7 @@ export async function runHealthChecks(
       await checkLocales(admin),
       await checkOrdersData(shop),
       await checkPreviewHygiene(shop),
+      await checkProofDatabase(),
     ];
   }
 
@@ -1063,6 +1147,7 @@ export async function runHealthChecks(
     locales,
     ordersData,
     previewHygiene,
+    proofDatabase,
   ] = await Promise.all([
     checkConfigMetafields(admin, shop, settings),
     checkAppProxy(shop),
@@ -1075,6 +1160,7 @@ export async function runHealthChecks(
     checkLocales(admin),
     checkOrdersData(shop),
     checkPreviewHygiene(shop),
+    checkProofDatabase(),
   ]);
 
   return [
@@ -1089,6 +1175,7 @@ export async function runHealthChecks(
     locales,
     ordersData,
     previewHygiene,
+    proofDatabase,
   ];
 }
 

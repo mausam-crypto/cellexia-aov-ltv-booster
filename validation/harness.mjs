@@ -35,6 +35,15 @@
  *      files exist above their byte floors (a deleted or hollowed suite
  *      fails the build); a pending file that has landed on disk MUST be
  *      flipped to required in the manifest (the ratchet).
+ *  10. v8.4/v8.5 DEPLOY-PROOFING — env-aware Prisma selector as the ONLY
+ *      generate/apply path in npm scripts (bare prisma generate/migrate
+ *      banned), db.server.ts wrong-database boot guard, assertProofModels
+ *      wired into all 11 entry funnels, proof-database health check (stale
+ *      client / missing tables / wrong-database engine probe) in both
+ *      orchestrator paths, schema.postgres.prisma recomputed-twin parity
+ *      (drift = failure), Dockerfile prisma+scripts-before-npm-ci order,
+ *      dev-URL safety + 2025-10 API pins, UPDATE.md + INSTALL.md
+ *      deploy-guidance anchors.
  *
  * Run: node validation/harness.mjs
  */
@@ -186,6 +195,69 @@ const EVIDENCE = {
   ok(
     hubSrc.includes("groupedHubKeys"),
     "app.features._index.tsx: ungrouped-key fallback group code present",
+  );
+
+  // v8.6: the Markets matrix is the marketScopes EDITOR — it shipped with
+  // only 15 of 33 keys for months (clinical_study etc. had working market
+  // gating but NO admin control). Same bar as the other two pickers now:
+  // every key curated in MATRIX_GROUPS, fallback group as the safety net.
+  const matrixSrc = read("app/routes/app.markets.tsx");
+  equalsFeatureKeys(
+    "app.markets.tsx MATRIX_GROUPS",
+    keysBetween(matrixSrc, "const MATRIX_GROUPS", "];", FEATURE_KEYS),
+  );
+  // The fallback derives its key inventory from the LOADER's featureStates
+  // (server-computed from the real FEATURE_KEYS) — module-scope client use
+  // of the settings.server VALUE breaks the Remix build (v8.3 lesson), so
+  // these anchors pin the loader-data-driven shape specifically.
+  ok(
+    matrixSrc.includes("function buildRenderGroups(") &&
+      matrixSrc.includes("CURATED_MATRIX_KEYS"),
+    "app.markets.tsx: ungrouped-key fallback group code present (loader-data-driven)",
+  );
+  ok(
+    matrixSrc.includes("buildRenderGroups(featureStates)") &&
+      matrixSrc.includes("renderGroups.flatMap((group) => group.features)"),
+    "app.markets.tsx: rendered rows AND the save list both derive from the fallback-aware groups",
+  );
+  // A matrix row must also SAVE its flag flip — every non-cart, non-az key
+  // needs a patch mapper (the hand-written blocks or SIMPLE_SECTIONS), and
+  // the az rows write their INDEPENDENT amazon.* sub-flags changed-only
+  // (there is NO amazon master switch — settings.server.ts
+  // AMAZON_FLAG_FIELDS: "each key toggles independently"; the review caught
+  // a phantom `amazon.enabled` write here, hence the negative pins).
+  for (const anchor of [
+    '["clinical_study", "clinicalStudy"]',
+    '["verified_before_after", "beforeAfter"]',
+    '["batch_transparency", "batchTransparency"]',
+    '["empty_bottle_guarantee", "emptyBottleGuarantee"]',
+    '["derm_survey", "dermSurvey"]',
+    '["press", "press"]',
+    '["derm_endorsements", "dermEndorsements"]',
+    "const azChangedKeys = AZ_MATRIX_KEYS.filter(",
+    "azChangedKeys.map((key) => [AZ_FLAG_FIELD[key], state[key].on])",
+  ]) {
+    ok(matrixSrc.includes(anchor), `app.markets.tsx: flag-patch mapper present: ${anchor}`);
+  }
+  ok(
+    !matrixSrc.includes("amazon.enabled") && !matrixSrc.includes("anyAzOn"),
+    "app.markets.tsx: no phantom amazon master switch (az flags are independent — the field does not exist in BoosterSettings)",
+  );
+
+  // v8.6: the Display density card must stay reachable — anchor + scroll on
+  // the hub, deep links from the two pages merchants actually start from.
+  ok(
+    hubSrc.includes('id="display-density"') &&
+      hubSrc.includes('window.location.hash === "#display-density"'),
+    "app.features._index.tsx: display-density anchor + hash-scroll present",
+  );
+  ok(
+    read("app/routes/app.proof.tsx").includes('url: "/app/features#display-density"'),
+    "app.proof.tsx: Display density header link present",
+  );
+  ok(
+    read("app/routes/app.products.tsx").includes('url="/app/features#display-density"'),
+    "app.products.tsx: Display density link present",
   );
 }
 
@@ -1074,6 +1146,210 @@ const EVIDENCE = {
       console.log(`  pending (not landed yet): ${file}`);
     }
   }
+}
+
+// ======================================= 10. v8.4/v8.5 DEPLOY-PROOFING
+// Two root-caused production failure classes: (v8.4) a STALE generated client
+// missing the v8 proof models ("Cannot read properties of undefined"), and
+// (v8.5, found by the 31-agent deploy audit) a client generated from the
+// SQLITE dev schema on a Postgres host — which silently runs production
+// against a throwaway local dev.sqlite while every check passes. These pins
+// keep every countermeasure from regressing.
+{
+  // (a) v8.5: EVERY Prisma-touching npm script goes through the env-aware
+  // selector — bare `prisma generate`/`migrate deploy` in scripts is banned.
+  const pkg = JSON.parse(read("package.json"));
+  ok(
+    pkg.scripts?.build === "node scripts/prisma-env.mjs generate && remix vite:build",
+    `v8.5: build script generates via the env-aware selector (got: ${pkg.scripts?.build})`,
+  );
+  ok(
+    pkg.scripts?.postinstall === "node scripts/prisma-env.mjs generate",
+    `v8.5: postinstall generates via the env-aware selector (got: ${pkg.scripts?.postinstall})`,
+  );
+  ok(
+    pkg.scripts?.setup === "node scripts/prisma-env.mjs setup",
+    `v8.5: setup goes through the selector (db push on Postgres, migrate deploy on SQLite) (got: ${pkg.scripts?.setup})`,
+  );
+  for (const [name, cmd] of Object.entries(pkg.scripts ?? {})) {
+    ok(
+      !/(^|\s)prisma (generate|migrate)/.test(cmd),
+      `v8.5: npm script "${name}" does not call prisma generate/migrate directly (selector-only rule): ${cmd}`,
+    );
+  }
+  const selector = read("scripts/prisma-env.mjs");
+  for (const anchor of [
+    'const SQLITE_SCHEMA = "prisma/schema.prisma";',
+    'const POSTGRES_SCHEMA = "prisma/schema.postgres.prisma";',
+    "/^postgres(ql)?:\\/\\//.test(url)",
+    "process.env.PRISMA_SCHEMA",
+    ".generated-client.json",
+    'run(["db", "push", "--schema", schema])',
+    'run(["migrate", "deploy", "--schema", schema])',
+  ]) {
+    ok(selector.includes(anchor), `v8.5: selector anchor present: ${anchor}`);
+  }
+
+  // (a2) v8.5: wrong-database boot guard in db.server.ts — refuses to start
+  // a Postgres-configured host on a sqlite-generated client, and passes
+  // DATABASE_URL as datasourceUrl so unmarked mismatches fail loud too.
+  const dbSrc = read("app/db.server.ts");
+  for (const anchor of [
+    'readFileSync("prisma/.generated-client.json"',
+    "/^postgres(ql)?:\\/\\//.test(DATABASE_URL)",
+    'provider !== null && provider !== "postgresql"',
+    "silently run against a local SQLite file",
+    "new PrismaClient({ datasourceUrl: DATABASE_URL })",
+  ]) {
+    ok(dbSrc.includes(anchor), `v8.5: db.server.ts boot-guard anchor present: ${anchor}`);
+  }
+
+  // (b) v8.4: every proof-library entry funnel asserts the models exist and
+  // otherwise throws the actionable message (now v8.5-flow wording).
+  const proofSrc = read("app/services/proof.server.ts");
+  ok(
+    proofSrc.includes("export function assertProofModels(): void {"),
+    "v8.4: assertProofModels guard defined in proof.server.ts",
+  );
+  for (const anchor of [
+    '"pressItem", "dermEndorsement", "customerResult"',
+    "generated BEFORE the v8 schema",
+    "a one-off shell run on the host does NOT persist",
+    "auto-selects the right schema from DATABASE_URL",
+    "prisma/schema.postgres.prisma",
+  ]) {
+    ok(proofSrc.includes(anchor), `v8.4: guard message anchor present: ${anchor}`);
+  }
+  const guardCalls = [...proofSrc.matchAll(/^ {2}assertProofModels\(\);$/gm)].length;
+  ok(
+    guardCalls >= 11,
+    `v8.4: guard wired into the entry funnels — 3 list* + 3 save* + 3 getPublic* + import + delegateFor (found ${guardCalls} call sites, need >= 11)`,
+  );
+
+  // (c) health check #12: stale client vs missing tables vs (v8.5) WRONG
+  // DATABASE — three failure modes, three distinct fixes.
+  const healthSrc = read("app/services/health.server.ts");
+  ok(
+    healthSrc.includes('runCheck("proof-database", "Proof library database"'),
+    "v8.4: proof-database health check defined",
+  );
+  const healthWired = [...healthSrc.matchAll(/checkProofDatabase\(\),/g)].length;
+  ok(
+    healthWired === 2,
+    `v8.4: proof-database check wired into BOTH orchestrator paths (found ${healthWired}, need 2 — Promise.all list + settings-crash fallback)`,
+  );
+  ok(
+    healthSrc.includes("does NOT persist into the running service"),
+    "v8.4: stale-client fixHint carries the shell-run-does-not-persist warning",
+  );
+  ok(
+    healthSrc.includes("the bundled migrations are SQLite-dialect"),
+    "v8.4: missing-tables fixHint steers Postgres to db push (SQLite-dialect migrations warning)",
+  );
+  for (const anchor of [
+    'await prisma.$queryRawUnsafe("select sqlite_version()")',
+    "WRONG DATABASE: DATABASE_URL points at Postgres",
+    'wantsPostgres && engine === "sqlite"',
+  ]) {
+    ok(healthSrc.includes(anchor), `v8.5: wrong-database engine probe anchor present: ${anchor}`);
+  }
+
+  // (d) schema twin parity: schema.postgres.prisma must be schema.prisma with
+  // ONLY the datasource block swapped (postgresql + env("DATABASE_URL")).
+  // Recompute the expected twin from schema.prisma and diff — drift = failure.
+  const dev = read("prisma/schema.prisma");
+  const twin = read("prisma/schema.postgres.prisma");
+  const expected = dev
+    .replace('provider = "sqlite"', 'provider = "postgresql"')
+    .replace('url      = "file:dev.sqlite"', 'url      = env("DATABASE_URL")');
+  ok(expected !== dev, "v8.4: twin transformation matched the dev datasource block (schema.prisma still SQLite)");
+  const body = twin.slice(twin.indexOf("generator client"));
+  ok(
+    body === expected,
+    "v8.4: schema.postgres.prisma is schema.prisma with only the datasource swapped (twin has drifted — regenerate it from schema.prisma)",
+  );
+  ok(
+    twin.startsWith("// PRODUCTION (Postgres) twin of schema.prisma"),
+    "v8.4: twin header identifies it as generated-from-schema.prisma",
+  );
+
+  // (e) docs steer the dev to all of the above — UPDATE.md and INSTALL.md
+  // must both describe the v8.5 flow (the audit caught INSTALL.md still
+  // teaching the banned hand-patch + migrate-deploy-on-Postgres path).
+  const updateMd = read("UPDATE.md");
+  for (const anchor of [
+    "npx prisma db push --schema prisma/schema.postgres.prisma",
+    "does NOT\n> persist into the running service",
+    "Proof library database",
+    "scripts/prisma-env.mjs",
+    "refuses to boot",
+    "automatically_update_urls_on_dev = false",
+    "shopify.app.toml.example",
+  ]) {
+    ok(updateMd.includes(anchor), `v8.5: UPDATE.md deploy-guidance anchor present: ${JSON.stringify(anchor)}`);
+  }
+  const installMd = read("INSTALL.md");
+  for (const anchor of [
+    "npx prisma db push --schema prisma/schema.postgres.prisma",
+    "scripts/prisma-env.mjs",
+    "never run `prisma migrate deploy` against Postgres",
+    "FOUR Cellexia blocks",
+    "cp shopify.app.toml.example shopify.app.toml",
+  ]) {
+    ok(installMd.includes(anchor), `v8.5: INSTALL.md deploy-guidance anchor present: ${JSON.stringify(anchor)}`);
+  }
+  ok(
+    !installMd.includes('change the datasource to `provider = "postgresql"`'),
+    "v8.5: INSTALL.md no longer teaches the hand-patch flow",
+  );
+
+  // (f) v8.5: Dockerfile must copy prisma/ + scripts/ BEFORE npm ci (the
+  // postinstall hook needs both) — order-sensitive, audit-proven failure.
+  const dockerfile = read("Dockerfile");
+  const ciAt = dockerfile.indexOf("RUN npm ci");
+  ok(ciAt !== -1, "v8.5: Dockerfile still installs with npm ci");
+  ok(
+    dockerfile.indexOf("COPY prisma ./prisma") !== -1 &&
+      dockerfile.indexOf("COPY prisma ./prisma") < ciAt &&
+      dockerfile.indexOf("COPY scripts ./scripts") !== -1 &&
+      dockerfile.indexOf("COPY scripts ./scripts") < ciAt,
+    "v8.5: Dockerfile copies prisma/ and scripts/ before npm ci (postinstall needs them)",
+  );
+
+  // (g) v8.5: dev-session safety + supported API version pins. The REAL
+  // shopify.app.toml is deliberately ABSENT from shipped ZIPs (so an
+  // unzip-over can never clobber production config) and, when present, may
+  // carry the dev's linked production values — so the ALWAYS-pinned file is
+  // the .example template; the real toml is checked only while it is still
+  // our unlinked template (empty client_id).
+  ok(exists("shopify.app.toml.example"), "v8.5: shopify.app.toml.example template ships in-tree");
+  const exampleToml = read("shopify.app.toml.example");
+  ok(
+    exampleToml.includes("automatically_update_urls_on_dev = false"),
+    "v8.5: .example template pins automatically_update_urls_on_dev = false (dev must never repoint live URLs)",
+  );
+  ok(
+    exampleToml.includes('api_version = "2025-10"'),
+    "v8.5: .example template pins webhooks api_version 2025-10 (newest the installed dependency line supports)",
+  );
+  if (exists("shopify.app.toml")) {
+    const appToml = read("shopify.app.toml");
+    if (/client_id = ""/.test(appToml)) {
+      ok(
+        appToml.includes("automatically_update_urls_on_dev = false") &&
+          appToml.includes('api_version = "2025-10"'),
+        "v8.5: the in-tree template shopify.app.toml matches the .example safety settings",
+      );
+    } else {
+      console.log("  shopify.app.toml is linked to a real app — template pins checked on the .example only");
+    }
+  } else {
+    console.log("  shopify.app.toml absent (shipped-ZIP layout) — template pins checked on the .example");
+  }
+  ok(
+    read("app/shopify.server.ts").includes("ApiVersion.October25"),
+    "v8.5: server apiVersion pinned to ApiVersion.October25 in shopify.server.ts",
+  );
 }
 
 finish();

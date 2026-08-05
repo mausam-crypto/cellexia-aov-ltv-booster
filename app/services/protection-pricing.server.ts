@@ -9,7 +9,8 @@
  * round per-market amounts as FIXED prices onto each market's price list
  * makes the displayed AND charged amount match the configured one exactly.
  *
- * Resolution chain per market (2025-07 Admin API, shapes verified):
+ * Resolution chain per market (shapes verified on the 2025-07 Admin API;
+ * the served version follows apiVersion in app/shopify.server.ts):
  *   markets → Market.catalogs → MarketCatalog.priceList → PriceList{id,currency}
  *   then priceListFixedPricesAdd(priceListId, prices:[{variantId, price}]).
  *

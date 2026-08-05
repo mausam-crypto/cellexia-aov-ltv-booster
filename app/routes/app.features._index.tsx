@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import {
   useActionData,
@@ -435,6 +436,16 @@ export default function FeaturesHub() {
       : GROUPS;
   const boosterCount = Object.keys(features).length;
 
+  // v8.6: deep-link scroll for /app/features#display-density (the density
+  // card sits at the bottom of a long page — links from the Proof library
+  // and Product boosters pages land directly on it).
+  const densityCardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#display-density") {
+      densityCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
+
   return (
     <Page
       title="Features"
@@ -502,6 +513,9 @@ export default function FeaturesHub() {
         ))}
 
         <Layout.Section>
+          {/* v8.6: anchor target for the "Display density" links on the
+              Proof library and Product boosters pages. */}
+          <div id="display-density" ref={densityCardRef}>
           <Card>
             <BlockStack gap="300">
               <BlockStack gap="100">
@@ -557,6 +571,7 @@ export default function FeaturesHub() {
               ))}
             </BlockStack>
           </Card>
+          </div>
         </Layout.Section>
 
         <Layout.Section>

@@ -1,8 +1,9 @@
 # Cellexia AOV & LTV Booster — Developer Install Guide
 
 This is a complete, custom Shopify app for the Cellexia store (Shopify Plus). It ships an
-embedded Polaris admin, a theme app extension (cart + product-page widgets), and three
-checkout UI extensions — pre-translated into the store's 17 languages.
+embedded Polaris admin, a theme app extension (cart + product-page widgets), and FOUR
+checkout UI extensions — pre-translated into the store's 18 languages (17 translations
++ English).
 
 **Read this file top to bottom before running anything.** Total time: ~30 min for a dev
 install, ~1–2 h including production hosting.
@@ -15,7 +16,7 @@ install, ~1–2 h including production hosting.
 |---|---|---|
 | Remix app (`app/`) | Your Node host (or `npm run dev` tunnel) | Embedded admin dashboard, settings, analytics, experiments, webhooks, app proxy |
 | Theme app extension (`extensions/cellexia-booster/`) | Shopify CDN | Cart drawer upsells, free-shipping bar, PDP trust widgets (clinical study, verified B/A, batch transparency, guarantee, derm survey) |
-| Checkout UI extensions (`extensions/checkout-*/`) | Shopify checkout | Upsell, Order Protection, trust module (Plus only) |
+| Checkout UI extensions (`extensions/checkout-*/`) | Shopify checkout | Upsell, Order Protection, trust module, delivery guarantee (Plus only) |
 | Prisma DB | SQLite (dev) / Postgres (prod) | Sessions, settings, analytics events, experiments |
 
 Two things to know before you start:
@@ -43,18 +44,27 @@ Two things to know before you start:
 ```bash
 unzip cellexia-aov-ltv-booster-*.zip && cd cellexia-aov-ltv-booster
 npm install                 # installs app + all extension workspaces
+cp shopify.app.toml.example shopify.app.toml   # the ZIP ships only the .example
+                            # (so an update-unzip can never clobber a real config)
 npm run config:link         # connect to the Partner org:
                             #   → choose "Create this app as a new app"
                             #   → name: "Cellexia AOV & LTV Booster"
-                            # (fills client_id in shopify.app.toml automatically)
+                            # (fills client_id in shopify.app.toml automatically —
+                            #  verify the [app_proxy] block SURVIVED the rewrite)
 npm run dev                 # starts tunnel + hot reload, offers install on a store
 ```
+
+> ⚠️ The template sets `automatically_update_urls_on_dev = false` on purpose: a dev
+> session must never rewrite a production app's live URLs to a tunnel. Keep it false on
+> the production config; for day-to-day dev work link a SEPARATE dev app
+> (`shopify app config link` again → new app → `npm run config:use` to switch).
 
 `npm run dev` prints an install link — use a **development store** first. The predev
 hook runs the Prisma migrations automatically. Approve the OAuth scopes when prompted.
 
 > **Scopes** (already declared in `shopify.app.toml`): products, publications, orders,
-> locales, translations, markets, metaobjects (+definitions), files.
+> locales, translations (read + write), markets, metaobjects (+definitions), files,
+> themes, shipping, price lists.
 > **Production note:** the `orders/paid` webhook carries protected customer data — for
 > the production app, request **Protected customer data access → Orders** in the Partner
 > dashboard (App → API access). Without it, order analytics/experiment metrics stay empty
@@ -70,7 +80,7 @@ npm run build       # production client + SSR build
 ## 3. Deploy the extensions
 
 ```bash
-npm run deploy      # pushes theme extension + 3 checkout extensions + app config
+npm run deploy      # pushes theme extension + 4 checkout extensions + app config
 ```
 
 `include_config_on_deploy = true` is set, so `shopify.app.toml` (scopes, webhooks, app
@@ -80,9 +90,16 @@ proxy) ships with each version. Re-run `npm run deploy` after any extension chan
 
 Any Node host works (Fly.io, Render, Railway, Heroku, a VPS). A `Dockerfile` is included.
 
-1. **Database**: switch Prisma to Postgres for production — in `prisma/schema.prisma`
-   change the datasource to `provider = "postgresql"` + `url = env("DATABASE_URL")`,
-   then run `npx prisma migrate deploy` on the host (the `setup` npm script does this).
+1. **Database**: NOTHING to patch — with `DATABASE_URL` set to a Postgres URL, every
+   npm script auto-selects the bundled `prisma/schema.postgres.prisma` (via
+   `scripts/prisma-env.mjs`). Create/update the tables with
+   `npx prisma db push --schema prisma/schema.postgres.prisma` on the host (or just
+   `npm run setup`, which generates the client AND applies the right database step for
+   whichever engine `DATABASE_URL` points at). ⚠️ Never edit `prisma/schema.prisma`'s
+   datasource and never run `prisma migrate deploy` against Postgres — the bundled
+   migrations are SQLite-dialect and will fail (the selector enforces this for you).
+   The server refuses to boot if the generated client and `DATABASE_URL` ever disagree,
+   with the fix in the error message.
 2. **Environment variables** (see `.env.example`):
    - `SHOPIFY_API_KEY` / `SHOPIFY_API_SECRET` — from the Partner dashboard (App → settings)
    - `SHOPIFY_APP_URL` — your public https URL
@@ -98,6 +115,8 @@ Any Node host works (Fly.io, Render, Railway, Heroku, a VPS). A `Dockerfile` is 
    from remote config and drops the block if the remote app had no proxy). The
    **Setup & health** page's "App proxy reachable" check verifies this end-to-end.
 4. Start: `npm run setup && npm run start` (or the Docker image, which does both).
+   `setup` is engine-aware: on Postgres it runs `db push` with the Postgres schema, on
+   SQLite it runs the bundled migrations — safe as a boot command on either.
 5. Open the app from the store admin once — OAuth completes and sessions persist.
 
 ## 5. Store wiring (one-time, ~10 minutes — do these in order)
@@ -111,9 +130,12 @@ Any Node host works (Fly.io, Render, Railway, Heroku, a VPS). A `Dockerfile` is 
 3. **Theme editor → App embeds** (Online Store → Themes → Customize → App embeds):
    enable **Cellexia cart booster** and **Cellexia PDP booster**. No theme code edits —
    widgets auto-inject into the existing mini-cart drawer and product pages.
-4. **Checkout editor** (Settings → Checkout → Customize): add the three Cellexia blocks
-   (Upsell, Order Protection, Trust) where the design calls for them (typical:
-   protection above payment, upsell under line items, trust in the summary footer).
+4. **Checkout editor** (Settings → Checkout → Customize): add the FOUR Cellexia blocks
+   (Upsell, Order Protection, Trust, Delivery) where the design calls for them (typical:
+   protection above payment, upsell under line items, trust in the summary footer, and
+   the **Cellexia delivery** block directly under the shipping options — its natural
+   placement). ⚠️ A block that is never placed here never renders, even with its
+   feature enabled — the delivery block is the one most often forgotten.
 5. **App → Checkout → "Create / verify protection product"** — creates the hidden
    `cellexia-order-protection` product, publishes it to the Online Store channel, and
    stores its variant. (Keep it published; hide it from search/collections via theme
@@ -141,7 +163,7 @@ and per-product switches. All of this is stored in Shopify **metaobjects**, so:
 - Raw entries are also editable in Shopify admin → Content → Metaobjects.
 
 Widget microcopy (headings, "Verified by…", guarantee copy) is already translated in all
-17 store languages; merchants can override any text per block in the theme editor and
+18 store languages; merchants can override any text per block in the theme editor and
 translate overrides in Translate & Adapt like any theme content.
 
 ## 7. Verifying the install (smoke test)

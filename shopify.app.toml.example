@@ -1,0 +1,67 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+# Run `npm run config:link` once to connect this file to your Partner app
+# (it will fill in client_id and application_url automatically).
+
+name = "Cellexia AOV & LTV Booster"
+handle = "cellexia-aov-ltv-booster"
+client_id = ""
+application_url = "https://example.com"
+embedded = true
+
+[build]
+# false ON PURPOSE: this is the single production app — a `npm run dev`
+# session must never rewrite its live application_url/redirect_urls to an
+# ephemeral tunnel. For dev work, link a SEPARATE dev app once with
+# `shopify app config link` (writes shopify.app.<name>.toml) and select it
+# with `npm run config:use`.
+automatically_update_urls_on_dev = false
+include_config_on_deploy = true
+
+[access_scopes]
+# read/write_products      -> upsell product pickers + creating the Shipping Protection product
+# read/write_publications  -> publishing the Shipping Protection product to the Online Store channel
+# read_orders              -> AOV / attach-rate analytics from orders/paid webhook
+# read_markets             -> market list for per-market targeting + experiments
+# metaobjects + files      -> per-product PDP booster content (clinical studies, verified B/A, CoAs)
+# read_locales             -> list shop languages on the Localization page
+# read_translations        -> show Translate & Adapt coverage per language
+scopes = "read_products,write_products,read_publications,write_publications,read_orders,read_locales,read_translations,read_markets,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_files,write_files,read_themes,read_shipping,read_price_lists,write_price_lists,write_translations"
+
+[auth]
+redirect_urls = [
+  "https://example.com/auth/callback",
+  "https://example.com/auth/shopify/callback",
+  "https://example.com/api/auth/callback"
+]
+
+[webhooks]
+api_version = "2025-10"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/paid" ]
+  uri = "/webhooks/orders/paid"
+
+# ⚠️ CRITICAL — the App Proxy powers preview links, analytics beacons and the
+# cart-data endpoint (everything under https://<store>/apps/cellexia/*).
+# `url` MUST be your production app host + "/proxy" (same host as
+# application_url above, keep the /proxy suffix) and must be updated WHENEVER
+# application_url changes, then deployed with `npm run deploy`.
+# If you (re)created the app via `shopify app config link`, verify this block
+# survived — the CLI rewrites this file from the remote config and DROPS the
+# proxy if the remote app never had one. The "App proxy reachable" check on
+# the Setup & health page verifies this end-to-end.
+[app_proxy]
+url = "https://example.com/proxy"
+subpath = "cellexia"
+prefix = "apps"
+
+[pos]
+embedded = false

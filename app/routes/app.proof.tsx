@@ -62,6 +62,14 @@ export default function ProofLibraryLayout() {
     <Page
       title="Proof library"
       backAction={{ content: "Dashboard", url: "/app" }}
+      secondaryActions={[
+        {
+          content: "Display density",
+          url: "/app/features#display-density",
+          helpText:
+            "Compact / ultra-compact modes for the press, endorsements and results widgets",
+        },
+      ]}
     >
       <TitleBar title="Proof library" />
       <Layout>

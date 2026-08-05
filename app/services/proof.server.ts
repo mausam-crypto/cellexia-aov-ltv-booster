@@ -25,6 +25,34 @@
 
 import prisma from "../db.server";
 import type { CustomerResult, DermEndorsement, PressItem } from "@prisma/client";
+
+/**
+ * Deploy-time self-diagnosis (v8.4). If the RUNNING server's generated
+ * Prisma Client predates the v8 schema, the three proof models are simply
+ * absent from the client object and every access dies with the cryptic
+ * "Cannot read properties of undefined (reading 'count')". This guard
+ * turns that into an actionable message. Root causes in the wild: the
+ * host's build reused cached node_modules (generate never re-ran), or
+ * `npx prisma generate` was run in a ONE-OFF HOST SHELL — which does not
+ * persist into the running service's filesystem on most PaaS hosts — or
+ * the deployment carries a pre-v8 schema.prisma (e.g. an old locally
+ * patched copy). The v8.4 package.json runs `prisma generate` in both
+ * postinstall and the build script, so a normal rebuild always fixes it.
+ */
+export function assertProofModels(): void {
+  const missing = (["pressItem", "dermEndorsement", "customerResult"] as const).filter(
+    (model) => !(prisma as unknown as Record<string, unknown>)[model],
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `The server is running a Prisma Client generated BEFORE the v8 schema — missing model(s): ${missing.join(", ")}. ` +
+        "Fix: rebuild with this version's scripts — the build auto-selects the right schema from DATABASE_URL " +
+        "(prisma/schema.postgres.prisma on Postgres) and regenerates the client during the BUILD " +
+        "(a one-off shell run on the host does NOT persist), then run " +
+        "`npx prisma db push --schema prisma/schema.postgres.prisma` against the production database and restart.",
+    );
+  }
+}
 import {
   getProductBoosters,
   listProductsWithBoosterStatus,
@@ -328,6 +356,7 @@ interface ModerationDelegate {
 }
 
 function delegateFor(type: ProofType): ModerationDelegate {
+  assertProofModels();
   switch (type) {
     case "press":
       return prisma.pressItem as unknown as ModerationDelegate;
@@ -483,6 +512,7 @@ export async function listPressItems(
   shop: string,
   options: ProofListOptions = {},
 ): Promise<ProofListResult<PressItem>> {
+  assertProofModels();
   const search = cleanText(options.search, SINGLE_LINE_MAX);
   const where = {
     shop,
@@ -508,6 +538,7 @@ export async function listEndorsements(
   shop: string,
   options: ProofListOptions = {},
 ): Promise<ProofListResult<DermEndorsement>> {
+  assertProofModels();
   const search = cleanText(options.search, SINGLE_LINE_MAX);
   const where = {
     shop,
@@ -539,6 +570,7 @@ export async function listResults(
   shop: string,
   options: ProofListOptions = {},
 ): Promise<ProofListResult<CustomerResult>> {
+  assertProofModels();
   const search = cleanText(options.search, SINGLE_LINE_MAX);
   const where = {
     shop,
@@ -584,6 +616,7 @@ export async function savePressItem(
   input: PressItemInput,
   id?: string | null,
 ): Promise<ProofWriteResult> {
+  assertProofModels();
   const errors: string[] = [];
   const publication = cleanText(input.publication, SINGLE_LINE_MAX);
   if (publication === "") errors.push("A publication name is required");
@@ -631,6 +664,7 @@ export async function saveEndorsement(
   input: EndorsementInput,
   id?: string | null,
 ): Promise<ProofWriteResult> {
+  assertProofModels();
   const errors: string[] = [];
   const name = cleanText(input.name, SINGLE_LINE_MAX);
   if (name === "") errors.push("A name is required");
@@ -684,6 +718,7 @@ export async function saveResult(
   input: ResultInput,
   id?: string | null,
 ): Promise<ProofWriteResult> {
+  assertProofModels();
   const errors: string[] = [];
   const source = cleanEnum(input.source, RESULT_SOURCES, "customer");
   const beforeUrl = cleanHttpsUrl(input.beforeUrl, "Before image", errors);
@@ -1021,6 +1056,7 @@ export async function getPublicPress(
   productGid: string | null,
   marketHandle: string | null,
 ): Promise<{ total: number; items: PublicPressItem[] }> {
+  assertProofModels();
   const rows = await prisma.pressItem.findMany({
     where: { shop, status: "approved" },
     orderBy: PUBLIC_ORDER_BY,
@@ -1054,6 +1090,7 @@ export async function getPublicEndorsements(
   page: number,
   per: number,
 ): Promise<{ total: number; items: PublicEndorsement[] }> {
+  assertProofModels();
   const rows = await prisma.dermEndorsement.findMany({
     where: { shop, status: "approved" },
     orderBy: PUBLIC_ORDER_BY,
@@ -1122,6 +1159,7 @@ export async function getPublicResults(
   items: PublicResult[];
   facets: PublicResultsFacets;
 }> {
+  assertProofModels();
   const rows = await prisma.customerResult.findMany({
     where: { shop, status: "approved" },
     orderBy: PUBLIC_ORDER_BY,
@@ -1189,6 +1227,7 @@ export async function importLegacyBeforeAfters(
   admin: AdminGraphqlClient,
   shop: string,
 ): Promise<ImportLegacyResult> {
+  assertProofModels();
   const errors: string[] = [];
   let imported = 0;
   let skipped = 0;
