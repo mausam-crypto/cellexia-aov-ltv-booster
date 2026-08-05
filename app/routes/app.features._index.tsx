@@ -245,6 +245,10 @@ const DENSITY_PICKERS: {
 /** Client-safe mirror of PROOF_PLACEMENTS in settings.server.ts (the
  *  v8.3 lesson — never import the .server VALUE into client code; the
  *  harness pins the two in sync). */
+/** Client-safe mirror of PRESS_LAYOUTS in settings.server.ts. */
+const PRESS_LAYOUT_VALUES = ["featured", "wall"] as const;
+type PressLayoutValue = (typeof PRESS_LAYOUT_VALUES)[number];
+
 const PLACEMENT_VALUES = ["below_tabs", "above_proof", "below_proof"] as const;
 type ProofPlacementValue = (typeof PLACEMENT_VALUES)[number];
 const PLACEMENT_OPTIONS: { label: string; value: ProofPlacementValue }[] = [
@@ -355,7 +359,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     results: settings.beforeAfter.placement,
   };
 
-  return { features, previewArmed, density, placement };
+  const pressLayout: PressLayoutValue = settings.press.layout;
+
+  return { features, previewArmed, density, placement, pressLayout };
 };
 
 /**
@@ -438,7 +444,7 @@ function FeatureRow({ feature }: { feature: FeatureCardData }) {
 }
 
 export default function FeaturesHub() {
-  const { features, previewArmed, density, placement } = useLoaderData<typeof loader>();
+  const { features, previewArmed, density, placement, pressLayout } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -482,6 +488,15 @@ export default function FeaturesHub() {
       "patch",
       JSON.stringify({ [picker.section]: { placement: selected } }),
     );
+    submit(formData, { method: "post" });
+  };
+
+  const pickPressLayout = (selected: string[]) => {
+    const value = selected[0];
+    if (!PRESS_LAYOUT_VALUES.includes(value as PressLayoutValue)) return;
+    const formData = new FormData();
+    formData.set("feature", "press_layout");
+    formData.set("patch", JSON.stringify({ press: { layout: value } }));
     submit(formData, { method: "post" });
   };
 
@@ -616,6 +631,27 @@ export default function FeaturesHub() {
                   onChange={(checked) => toggleDensity(toggle, checked)}
                 />
               ))}
+              <ChoiceList
+                title="As seen in the press — layout"
+                choices={[
+                  {
+                    label: "Featured quote",
+                    value: "featured",
+                    helpText:
+                      "The logo strip with one large quote; tapping a logo swaps the quote. The density tiers below apply to this layout.",
+                    disabled: densitySaving,
+                  },
+                  {
+                    label: "All quotes visible — compact cards",
+                    value: "wall",
+                    helpText:
+                      "Every quote shown at once as compact attribution cards (masonry columns on desktop, one tight column on mobile). Nothing to tap; inherently compact, so the density tiers are ignored.",
+                    disabled: densitySaving,
+                  },
+                ]}
+                selected={[pressLayout]}
+                onChange={pickPressLayout}
+              />
               {DENSITY_PICKERS.map((picker) => (
                 <ChoiceList
                   key={picker.feature}

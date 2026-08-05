@@ -389,6 +389,29 @@ const EVIDENCE = {
     "v8.9: Proof library header links to the placement card",
   );
 
+  // v8.10: press WALL layout — enum + island ly code + wall builder + admin.
+  ok(
+    /export const PRESS_LAYOUTS = \["featured", "wall"\] as const;/.test(read("app/models/settings.server.ts")),
+    "v8.10: PRESS_LAYOUTS enum is the closed two-layout set",
+  );
+  ok(
+    proofLiquid.includes('{% if cfg.press.layout == "wall" %},"ly":"w"{% endif %}'),
+    "v8.10: press island emits the lean ly layout code",
+  );
+  for (const anchor10 of [
+    "function pressBuildWall(items, s) {",
+    "if (conf.ly === 'w') return pressBuildWall(items, s);",
+    "cx-press__wall-card",
+    "cx-press__wall-quote",
+  ]) {
+    ok(proofJs.includes(anchor10), `v8.10: wall anchor present in cellexia-proof.js: ${anchor10}`);
+  }
+  ok(
+    read("app/routes/app.features._index.tsx").includes('const PRESS_LAYOUT_VALUES = ["featured", "wall"] as const;') &&
+      read("app/routes/app.features._index.tsx").includes("All quotes visible — compact cards"),
+    "v8.10: admin press-layout picker + client-safe mirror present",
+  );
+
   // page scope: the embed renders on product + home templates ONLY (the v8
   // design scope) — without this guard an enabled widget would append to
   // cart/blog/search pages' #main too.

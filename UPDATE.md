@@ -572,6 +572,15 @@ strip now centers when it fits (still swipeable when it overflows), a lone
 logo renders larger, and the quote text is centered to match the eyebrow and
 attribution.
 
+**v8.10 — press "All quotes visible" layout (merchant ask).** Features page →
+Display density card → **"As seen in the press — layout"**: *Featured quote*
+(the current logo strip + one large rotating quote; density tiers apply) or
+*All quotes visible — compact cards* (every press quote renders at once as a
+compact attribution card — logo or wordmark, the full quote, publication name
+and the optional article link; masonry columns on desktop, one tight column
+on mobile; nothing to tap, nothing hidden; density tiers are ignored — the
+wall is inherently compact). Live setting, no new translations.
+
 ## 6. If something looks wrong
 
 - Preview link 404 → §Troubleshooting in INSTALL.md (app proxy).

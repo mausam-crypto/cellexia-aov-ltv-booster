@@ -230,6 +230,17 @@ export const PROOF_PLACEMENTS = [
 ] as const;
 export type ProofPlacement = (typeof PROOF_PLACEMENTS)[number];
 
+/**
+ * v8.10: press band LAYOUT (LIVE setting, the dermSurvey.design pattern).
+ * "featured" — the v8 look: grayscale logo strip + ONE large featured
+ * quote (rotates on logo tap; density tiers apply). "wall" — every quote
+ * visible at once as compact attribution cards (masonry columns on
+ * desktop, single tight column on mobile; nothing to tap, nothing hidden;
+ * inherently compact, so the density tiers are ignored).
+ */
+export const PRESS_LAYOUTS = ["featured", "wall"] as const;
+export type PressLayout = (typeof PRESS_LAYOUTS)[number];
+
 /** The four merchant-selectable delivery-estimate widget formats (v5.9). */
 export const DELIVERY_ESTIMATE_FORMATS = [
   "line",
@@ -510,6 +521,8 @@ export interface BoosterSettings {
     density: ProofDensity;
     /** v8.9 product-page placement (PROOF_PLACEMENTS). */
     placement: ProofPlacement;
+    /** v8.10 layout (PRESS_LAYOUTS); density applies to "featured" only. */
+    layout: PressLayout;
   };
   /**
    * Dermatologist endorsement wall (v8). Entry content lives in the
@@ -852,6 +865,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     compact: false,
     density: "full",
     placement: "below_tabs",
+    layout: "featured",
   },
   dermEndorsements: {
     enabled: false,
@@ -1448,6 +1462,9 @@ export function sanitizeSettings(
     ) {
       next[section].placement = DEFAULT_SETTINGS[section].placement;
     }
+  }
+  if (!PRESS_LAYOUTS.includes(next.press.layout as PressLayout)) {
+    next.press.layout = DEFAULT_SETTINGS.press.layout;
   }
   if (!PROOF_DENSITIES.includes(next.press.density as ProofDensity)) {
     next.press.density = next.press.compact === true ? "ultra" : "full";

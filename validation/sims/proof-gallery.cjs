@@ -136,7 +136,7 @@ const EXTRACTED = extractAll(SRC, {
     "pfEl", "pfSp", "pfSvg", "pfDecode", "pfStr", "pfHttps", "pfVideoFile",
     "pfPosInt", "pfPageLocale", "pfRegionName", "pfQuery", "pfProductParams",
     "pfPreviewVerified", "pfBeaconsOff", "pfWhenAllowed", // v8.2: preview contract (V)
-    "pressItems", "pressBuildSection",
+    "pressItems", "pressBuildWall", "pressBuildSection",
     "endoInitials", "endoValidItems", "endoBuildCard", "endoBuildSection",
     "resultsBannerData", "resultsFacetLabel", "resultsParams",
     "resultsValidItems", "resultsMetaLine", "resultsBadges",
@@ -374,6 +374,50 @@ ok(S.pressBuildSection({ str: PRESS_STR }, { items: [{ publication: "X" }] }) ==
   ok(!!qt && qt.textContent === payload, "P5: markup-shaped quote renders literally");
   ok(!!qt && qt.childNodes.length === 0 && qt._innerHTML === null,
     "P5: textContent sink only — no parsed children, no innerHTML");
+}
+
+// --- W1-W4: v8.10 WALL layout (ly:'w' — all quotes visible, no interaction) ----------
+{
+  const section = S.pressBuildSection({ str: PRESS_STR, ly: "w" }, pressFixture());
+  ok(!!section && section.className.indexOf("cx-press--wall") !== -1, "W1: wall modifier class");
+  const cards = section.querySelectorAll(".cx-press__wall-card");
+  ok(cards.length === 3, "W1: EVERY item renders its own card");
+  ok(section.querySelectorAll(".cx-press__logo").length === 0 &&
+     !section.querySelector("[data-cx-press-logo]"),
+    "W1: no rotation logo buttons in the wall");
+  ok(!section.querySelector("[hidden]"), "W1: nothing [hidden] — every quote visible");
+  const quotes = section.querySelectorAll(".cx-press__wall-quote");
+  ok(quotes.length === 3 && quotes[0].textContent === "The quiet revolution." &&
+     quotes[1].textContent === "Skincare, decoded.",
+    "W2: quotes render in API order with full text");
+  // link only on the item that has an articleUrl
+  const links = section.querySelectorAll(".cx-proof__link");
+  ok(links.length === 2 && links[0].getAttribute("href") === "https://vogue.com/a" &&
+     links[1].getAttribute("href") === "https://bazaar.com/b",
+    "W3: read links only where an articleUrl exists (items 0 and 2, never 1)");
+  // logo image when https, name fallback otherwise
+  ok(!!cards[0].querySelector(".cx-press__wall-logo") &&
+     !cards[1].querySelector(".cx-press__wall-logo") &&
+     !!cards[1].querySelector(".cx-press__wall-name"),
+    "W3b: https logo renders, missing logo falls back to the name");
+  // footer attribution only under a logo IMAGE header — the name-fallback
+  // header IS the attribution (no duplicated wordmark)
+  const pubs = section.querySelectorAll(".cx-press__pub");
+  ok(pubs.length === 1 && pubs[0].textContent === "Vogue",
+    "W3c: attribution only under logo-image headers (name headers self-attribute)");
+}
+{
+  // W4: wall ignores density codes (inherently compact — no tier classes)
+  const section = S.pressBuildSection({ str: PRESS_STR, ly: "w", cm: 2 }, pressFixture());
+  ok(!!section && section.className.indexOf("cx-press--wall") !== -1 &&
+     section.className.indexOf("cx-press--ultra") === -1 &&
+     section.className.indexOf("cx-press--compact") === -1,
+    "W4: wall + cm:2 stays the wall (density ignored)");
+  // and an unknown ly code falls through to the featured layout
+  const feat = S.pressBuildSection({ str: PRESS_STR, ly: "x" }, pressFixture());
+  ok(!!feat && feat.className.indexOf("cx-press--wall") === -1 &&
+     !!feat.querySelector(".cx-press__logos"),
+    "W4b: unknown ly code renders the featured layout (fail closed)");
 }
 
 // ==================================================== endorsement wall (W)
@@ -1059,6 +1103,16 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
     selfPath: __filename,
     srcPath: REAL_SRC,
     mutants: [
+      {
+        name: "m11-wall-drops-items",
+        find: "    for (var i = 0; i < items.length; i++) {\n      var item = items[i];\n      var li = pfEl('li', 'cx-press__wall-card');",
+        replace: "    for (var i = 0; i < 1; i++) {\n      var item = items[i];\n      var li = pfEl('li', 'cx-press__wall-card');",
+      },
+      {
+        name: "m12-wall-dispatch-dead",
+        find: "    if (conf.ly === 'w') return pressBuildWall(items, s);",
+        replace: "",
+      },
       {
         name: "m1-https-guard-bypass",
         find: "    return typeof url === 'string' && /^https:\\/\\/\\S+$/i.test(url) ? url : '';",

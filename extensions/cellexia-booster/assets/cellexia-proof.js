@@ -523,10 +523,73 @@
     return out;
   }
 
+  // v8.10 WALL layout (island "ly":"w" — LIVE press.layout setting): every
+  // quote visible at once as compact attribution cards. Nothing to tap,
+  // nothing [hidden]; masonry columns on desktop, one tight column on
+  // mobile (pure CSS — the DOM is a flat list). Density tiers are ignored
+  // (the wall is inherently compact). Same validated items, same string
+  // catalog — no new locale keys.
+  function pressBuildWall(items, s) {
+    var root = pfEl('section', 'cx-proof cx-press cx-press--wall', ['data-cx-feature', 'press']);
+    pfSp(root);
+    var eyebrow = pfEl('p', 'cx-proof__eyebrow eyebrow eyebrow--sm');
+    eyebrow.textContent = pfStr(s, 'eyebrow');
+    root.appendChild(eyebrow);
+    pfSp(root);
+    var list = pfEl('ul', 'cx-press__wall list-reset', ['role', 'list']);
+    pfSp(list);
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var li = pfEl('li', 'cx-press__wall-card');
+      pfSp(li);
+      var hadLogo = false;
+      if (item.logo) {
+        var img = pfEl('img', 'cx-press__wall-logo', ['src', item.logo, 'alt', item.p, 'loading', 'lazy', 'width', '240', 'height', '48']);
+        li.appendChild(img);
+        hadLogo = true;
+      } else {
+        var name = pfEl('span', 'cx-press__wall-name');
+        name.textContent = item.p;
+        li.appendChild(name);
+      }
+      pfSp(li);
+      var quote = pfEl('blockquote', 'cx-press__wall-quote');
+      quote.textContent = item.q;
+      li.appendChild(quote);
+      pfSp(li);
+      // Footer attribution only when the header was a logo IMAGE — the
+      // name-fallback header IS the attribution (no duplicate wordmark).
+      var readLabel = pfStr(s, 'read');
+      var wantLink = item.url && /\S/.test(readLabel);
+      if (hadLogo || wantLink) {
+        var foot = pfEl('div', 'cx-press__wall-foot');
+        if (hadLogo) {
+          var pub = pfEl('span', 'cx-press__pub');
+          pub.textContent = item.p;
+          foot.appendChild(pub);
+        }
+        if (wantLink) {
+          if (hadLogo) pfSp(foot);
+          var a = pfEl('a', 'cx-proof__link no-dec', ['href', item.url, 'target', '_blank', 'rel', 'noopener nofollow']);
+          a.textContent = readLabel;
+          foot.appendChild(a);
+        }
+        li.appendChild(foot);
+        pfSp(li);
+      }
+      list.appendChild(li);
+      pfSp(list);
+    }
+    root.appendChild(list);
+    pfSp(root);
+    return root;
+  }
+
   function pressBuildSection(conf, data) {
     var items = pressItems(data);
     if (items.length === 0) return null; // fail closed: no press, no band
     var s = conf.str || {};
+    if (conf.ly === 'w') return pressBuildWall(items, s);
     // v8.3 three-tier density (LIVE setting, island "cm" member — lean
     // two-code convention): cm 2 = ULTRA (the v8.2 look — the band
     // collapses to ONE row, inline eyebrow + logo strip, and the quote
