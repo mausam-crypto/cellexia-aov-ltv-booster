@@ -313,7 +313,8 @@
       ref.nextElementSibling &&
       typeof ref.nextElementSibling.className === 'string' &&
       (ref.nextElementSibling.className.indexOf('cx-proof-stack') !== -1 ||
-        ref.nextElementSibling.className.indexOf('cx-az-sections') !== -1)
+        ref.nextElementSibling.className.indexOf('cx-az-sections') !== -1 ||
+        ref.nextElementSibling.className.indexOf('cx-proof-band') !== -1)
     ) {
       ref = ref.nextElementSibling;
     }
@@ -330,26 +331,22 @@
     }
   }
 
-  function pfBand() {
-    // ONE ordered band per page for all self-inserted proof widgets. The
-    // slots are created synchronously in fixed order (press → endorsements
-    // → results) so async fetch completion can never scramble the visual
-    // order. Product pages: after the theme's .pdp__tabs info box (the
-    // same "tabs_below" region the Amazon sections use); any other page:
-    // end of the theme's <main id="main">. No anchor = no render (the
-    // fail-closed rule — never append to <body>, that lands in the footer).
-    var band = document.querySelector('.cx-proof-band');
-    if (band) return band;
-    band = document.createElement('div');
+  function pfNewBand(key) {
+    var band = document.createElement('div');
     // Theme container classes so the band tracks the content column
     // (responsive max-widths + padding) — the .cx-proof-stack convention.
     band.className = 'cx-proof-band container container--md';
+    band.setAttribute('data-cx-band', key);
     for (var i = 0; i < PF_SLOT_ORDER.length; i++) {
       var slot = document.createElement('div');
       slot.className = 'cx-proof-band__slot';
       slot.setAttribute('data-cx-slot', PF_SLOT_ORDER[i]);
       band.appendChild(slot);
     }
+    return band;
+  }
+
+  function pfBandBelowTabs(band) {
     var placed = false;
     var tabs = document.querySelector('.pdp__tabs');
     if (tabs) placed = pfInsertAfter(band, pfPastCxSiblings(tabs));
@@ -370,11 +367,113 @@
         }
       }
     }
+    return placed;
+  }
+
+  function pfBandAt(key) {
+    // v8.9: ONE ordered band PER PLACEMENT — each widget picks its band
+    // via the island's lean "pl" code ('a' above_proof / 'b' below_proof /
+    // absent = below_tabs). Slots are created synchronously in fixed order
+    // (press → endorsements → results) so async fetch completion can never
+    // scramble the visual order inside a band. Anchors (product pages):
+    //   below_tabs  — after the theme's .pdp__tabs info box (v8.7);
+    //   above_proof — immediately BEFORE the pdp embed's proof stack
+    //                 (survey/study/guarantee); stack absent → before the
+    //                 tabs (where the stack would sit) → below_tabs chain;
+    //   below_proof — immediately AFTER that stack; same fallbacks.
+    // Any other page: end of <main> (all keys — placement is a PDP
+    // concept). No anchor = no render (never append to <body>).
+    var band = document.querySelector('.cx-proof-band[data-cx-band="' + key + '"]');
+    if (band) return band;
+    band = pfNewBand(key);
+    var placed = false;
+    var stack = document.querySelector('.cx-proof-stack');
+    var tabs = document.querySelector('.pdp__tabs');
+    if (key === 'above_proof') {
+      if (stack && stack.parentNode) {
+        try {
+          stack.parentNode.insertBefore(band, stack);
+          placed = true;
+        } catch (e) { placed = false; }
+      }
+      if (!placed && tabs && tabs.parentNode) {
+        try {
+          tabs.parentNode.insertBefore(band, tabs);
+          placed = true;
+        } catch (e) { placed = false; }
+      }
+    } else if (key === 'below_proof') {
+      if (stack) placed = pfInsertAfter(band, stack);
+      if (!placed && tabs && tabs.parentNode) {
+        try {
+          tabs.parentNode.insertBefore(band, tabs);
+          placed = true;
+        } catch (e) { placed = false; }
+      }
+    }
+    if (!placed) placed = pfBandBelowTabs(band);
     if (!placed) return null;
+    pfSortBandRun(band);
     return band;
   }
 
-  function pfMount(name, island, node) {
+  function pfPlacementKey(conf) {
+    // Placement is a PRODUCT-PAGE concept: off product pages every widget
+    // collapses to the single below_tabs band, preserving the v8.7 home
+    // contract (one band, fixed press → endorsements → results order —
+    // review catch: distinct keys would fragment into fetch-ordered bands).
+    if (!conf || conf.ctx !== 'product') return 'below_tabs';
+    var pl = typeof conf.pl === 'string' ? conf.pl : '';
+    if (pl === 'a') return 'above_proof';
+    if (pl === 'b') return 'below_proof';
+    return 'below_tabs';
+  }
+
+  var PF_BAND_RANK = { above_proof: 0, below_proof: 1, below_tabs: 2 };
+
+  function pfSortBandRun(band) {
+    // Deterministic cross-band order (review catch): when two bands share
+    // an anchor (e.g. both fall back to before .pdp__tabs with no stack),
+    // arrival order is fetch-completion order — nondeterministic. After
+    // every insertion, the maximal contiguous run of sibling bands
+    // containing this band is re-ordered by placement rank
+    // (above_proof < below_proof < below_tabs), so the final DOM order is
+    // identical regardless of which fetch resolved first.
+    try {
+      var first = band;
+      while (
+        first.previousElementSibling &&
+        typeof first.previousElementSibling.className === 'string' &&
+        first.previousElementSibling.className.indexOf('cx-proof-band') !== -1
+      ) {
+        first = first.previousElementSibling;
+      }
+      var run = [];
+      var node = first;
+      while (
+        node &&
+        typeof node.className === 'string' &&
+        node.className.indexOf('cx-proof-band') !== -1
+      ) {
+        run.push(node);
+        node = node.nextElementSibling;
+      }
+      if (run.length < 2) return;
+      var sorted = run.slice().sort(function (a, b) {
+        var ra = PF_BAND_RANK[a.getAttribute('data-cx-band')] || 0;
+        var rb = PF_BAND_RANK[b.getAttribute('data-cx-band')] || 0;
+        return ra - rb;
+      });
+      var anchorNext = run[run.length - 1].nextSibling;
+      var parent = run[0].parentNode;
+      if (!parent) return;
+      for (var i = 0; i < sorted.length; i++) {
+        parent.insertBefore(sorted[i], anchorNext);
+      }
+    } catch (e) { /* order pass is best-effort; the bands stay attached */ }
+  }
+
+  function pfMount(name, island, node, conf) {
     // Legacy hook kept first: a data-cx-mount container wins if a future
     // surface ever provides one (none does today — the v8 section blocks
     // that emitted them are retired).
@@ -383,7 +482,7 @@
       mount.appendChild(node);
       return true;
     }
-    var band = pfBand();
+    var band = pfBandAt(pfPlacementKey(conf));
     if (band) {
       var slot = band.querySelector('[data-cx-slot="' + name + '"]');
       if (slot) {
@@ -540,7 +639,7 @@
           if (document.querySelector('.cx-press')) return;
           var node = pressBuildSection(isl.conf, data);
           if (!node) return;
-          if (pfMount('press', isl.el, node)) pfTrack('press');
+          if (pfMount('press', isl.el, node, isl.conf)) pfTrack('press');
         } catch (e) { /* fail closed */ }
       });
     });
@@ -778,7 +877,7 @@
           if (document.querySelector('.cx-endo')) return;
           var node = endoBuildSection(isl.conf, data);
           if (!node) return;
-          if (pfMount('endorsements', isl.el, node)) pfTrack('derm_endorsements');
+          if (pfMount('endorsements', isl.el, node, isl.conf)) pfTrack('derm_endorsements');
         } catch (e) { /* fail closed */ }
       });
     });
@@ -1450,7 +1549,7 @@
           if (document.querySelector('.cx-results')) return;
           var node = resultsBuildSection(isl.conf, data);
           if (!node) return;
-          if (pfMount('results', isl.el, node)) pfTrack('verified_before_after');
+          if (pfMount('results', isl.el, node, isl.conf)) pfTrack('verified_before_after');
         } catch (e) { /* fail closed */ }
       });
     });

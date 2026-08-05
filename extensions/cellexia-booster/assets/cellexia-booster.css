@@ -2844,6 +2844,28 @@ body.customer--b2b .cx-sub-remove {
   margin-block-end: 18px;
 }
 
+/* v8.9 mobile polish: center the strip when it fits (the auto-margin
+   trick keeps scrollability when it overflows — plain justify-content:
+   center would clip the scroll start), give a lone wordmark more
+   presence, and center the quote text to match the centered eyebrow
+   and attribution (the mixed alignment read as a bug on the live PDP). */
+@media (max-width: 749px) {
+  /* mobile only: >=750px uses justify-content + flex-wrap centering, and
+     auto margins there would right-anchor the first wrapped row */
+  .cx-press__logo:first-child {
+    margin-inline-start: auto;
+  }
+  .cx-press__logo:last-child {
+    margin-inline-end: auto;
+  }
+}
+.cx-press__logo:only-child .cx-press__logo-img {
+  block-size: 30px;
+}
+.cx-press__quote-text {
+  text-align: center;
+}
+
 .cx-press__logo {
   flex: 0 0 auto;
   border: 0;
@@ -4138,6 +4160,29 @@ body.customer--b2b .cx-sub-remove {
   margin: 4px auto 14px;
   max-width: 44ch;
 }
+.cx-svyc__q {
+  margin: 2px auto 10px;
+  max-width: 46ch;
+  font-size: 14.5px;
+  line-height: 1.4;
+  font-style: italic;
+  color: rgba(29, 29, 27, 0.85);
+  quotes: "\201C" "\201D";
+}
+.cx-svyc__q::before {
+  content: open-quote;
+}
+.cx-svyc__q::after {
+  content: close-quote;
+}
+.cx-svyc__intro {
+  margin: 0 auto 10px;
+  max-width: 52ch;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: rgba(29, 29, 27, 0.62);
+}
+
 .cx-svyc__table {
   margin: 0 0 4px;
   border-top: 1px solid rgba(29, 29, 27, 0.5);
@@ -4232,6 +4277,24 @@ body.customer--b2b .cx-sub-remove {
   margin: 0;
   line-height: 1.35;
 }
+.cx-svyd__q {
+  margin: 4px 14px 6px;
+  padding-inline-start: 10px;
+  border-inline-start: 2px solid rgba(29, 29, 27, 0.35);
+  font-size: 13.5px;
+  line-height: 1.4;
+  font-style: italic;
+  color: rgba(29, 29, 27, 0.85);
+  text-align: start;
+}
+.cx-svyd__intro {
+  margin: 0 14px 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(29, 29, 27, 0.58);
+  text-align: start;
+}
+
 .cx-svyd__grid {
   margin: 6px 0 2px;
 }
@@ -4397,6 +4460,27 @@ body.customer--b2b .cx-sub-remove {
   margin: 0 0 10px;
   line-height: 1.35;
 }
+.cx-svys__q {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  font-style: italic;
+  color: rgba(29, 29, 27, 0.85);
+  quotes: "\201C" "\201D";
+}
+.cx-svys__q::before {
+  content: open-quote;
+}
+.cx-svys__q::after {
+  content: close-quote;
+}
+.cx-svys__intro {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(29, 29, 27, 0.6);
+}
+
 .cx-svys__cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

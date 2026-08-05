@@ -336,6 +336,59 @@ const EVIDENCE = {
   ]) {
     ok(proofJs.includes(anchor), `v8.7: self-insertion anchor present in cellexia-proof.js: ${anchor}`);
   }
+  // v8.9: per-widget placement — enum + island lean codes + multi-band JS.
+  ok(
+    /export const PROOF_PLACEMENTS = \[\n  "below_tabs",\n  "above_proof",\n  "below_proof",\n\] as const;/.test(read("app/models/settings.server.ts")),
+    "v8.9: PROOF_PLACEMENTS enum is the closed three-placement set",
+  );
+  for (const section of ["press", "dermEndorsements", "beforeAfter"]) {
+    ok(
+      proofLiquid.includes(`{% if cfg.${section}.placement == "above_proof" %},"pl":"a"{% elsif cfg.${section}.placement == "below_proof" %},"pl":"b"{% endif %}`),
+      `v8.9: ${section} island emits the lean pl placement code`,
+    );
+  }
+  for (const anchor99 of [
+    "function pfBandAt(key) {",
+    "function pfPlacementKey(conf) {",
+    "data-cx-band",
+    "if (key === 'above_proof') {",
+    "} else if (key === 'below_proof') {",
+    "document.querySelector('.cx-proof-stack')",
+    "pfMount(name, island, node, conf)",
+    // determinism layer (review catches): rank-sorted band runs, the
+    // brand-ctx collapse, and the band-aware sibling walk
+    "function pfSortBandRun(band) {",
+    "var PF_BAND_RANK = { above_proof: 0, below_proof: 1, below_tabs: 2 };",
+    "if (!conf || conf.ctx !== 'product') return 'below_tabs';",
+    "indexOf('cx-proof-band')",
+  ]) {
+    ok(proofJs.includes(anchor99), `v8.9: placement anchor present in cellexia-proof.js: ${anchor99}`);
+  }
+  // the pdp embed's stack insertion is band-aware (preview builds the stack
+  // late — it must land above below_proof bands already at the tabs anchor)
+  ok(
+    read(PDP_JS).includes("getAttribute('data-cx-band') === 'below_proof'"),
+    "v8.9: buildProofStack walks back past below_proof bands before inserting the stack",
+  );
+  ok(
+    [...proofJs.matchAll(/pfMount\('(?:press|endorsements|results)', isl\.el, node, isl\.conf\)/g)].length === 3,
+    "v8.9: all three widget call sites pass their island conf into pfMount",
+  );
+  const hubSrc99 = read("app/routes/app.features._index.tsx");
+  ok(
+    hubSrc99.includes('const PLACEMENT_VALUES = ["below_tabs", "above_proof", "below_proof"] as const;'),
+    "v8.9: admin client-safe PLACEMENT_VALUES mirror matches the server enum",
+  );
+  ok(
+    hubSrc99.includes('id="proof-placement"') &&
+      hubSrc99.includes('window.location.hash === "#proof-placement"'),
+    "v8.9: placement card anchor + hash scroll on the Features page",
+  );
+  ok(
+    read("app/routes/app.proof.tsx").includes('url: "/app/features#proof-placement"'),
+    "v8.9: Proof library header links to the placement card",
+  );
+
   // page scope: the embed renders on product + home templates ONLY (the v8
   // design scope) — without this guard an enabled widget would append to
   // cart/blog/search pages' #main too.
@@ -1158,10 +1211,12 @@ const EVIDENCE = {
     const pdpJs88 = read(PDP_JS);
     for (const anchor88 of [
       "function surveyDesign(d) {",
-      "if (sd === 'c') return surveyBuildCertSection(rows, total, rec, title);",
-      "return surveyBuildSealSection(rows, total, rec, title, sver);",
+      "if (sd === 'c') return surveyBuildCertSection(d, rows, total, rec, title);",
+      "return surveyBuildSealSection(d, rows, total, rec, title, sver);",
+      "function surveyQuestionNode(d, cls) {",
+      "function surveyIntroNode(d, cls) {",
       "if (!title && !rec) return null;",
-      "surveyBuildDossierSection(rows, total, rec, title, dver)",
+      "surveyBuildDossierSection(d, rows, total, rec, title, dver)",
       "cx-survey--cert",
       "cx-survey--dossier",
       "cx-survey--seal",

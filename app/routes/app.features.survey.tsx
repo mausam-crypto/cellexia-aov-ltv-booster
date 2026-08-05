@@ -567,15 +567,13 @@ export default function SurveyFeaturePage() {
                     Widget design
                   </Text>
                   <Text as="p" tone="subdued" variant="bodySm">
-                    Presentation only — every design shows the percentage
-                    headline, every outcome row with its count, the
-                    methodology disclosure and the verifier, from the same
-                    translated strings and per-product numbers. Like compact
-                    mode, the three new designs omit the long-form middle
-                    (the per-product question quote and intro line) — that is
-                    the vertical diet. This is a live setting: the saved
-                    design applies to real visitors immediately wherever the
-                    widget is already live.
+                    Presentation only — every design shows the full survey:
+                    the percentage headline, the per-product question and
+                    intro, every outcome row with its count, the methodology
+                    disclosure and the verifier, from the same translated
+                    strings and per-product numbers. This is a live setting:
+                    the saved design applies to real visitors immediately
+                    wherever the widget is already live.
                   </Text>
                 </BlockStack>
                 <ChoiceList

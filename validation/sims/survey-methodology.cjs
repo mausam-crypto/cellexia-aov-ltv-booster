@@ -119,6 +119,8 @@ const EXTRACTED = extractAll(SRC, {
     "surveyDesign",
     "surveyAgreeText",
     "surveyHeadline",
+    "surveyQuestionNode",
+    "surveyIntroNode",
     "surveyBuildCertSection",
     "surveyBuildDossierSection",
     "surveyBuildSealSection",
@@ -770,6 +772,8 @@ const STUDY_BASE = {
     return {
       live: true, sd: sd, total: 270, rec: 248,
       verifier: "Cosmetic Research Center",
+      q: "Did you observe visible results in your patients?",
+      intro: "34 independent dermatologists reviewed the product over 8 weeks.",
       o: [
         { s: "Skin looked visibly firmer", y: 243 },
         { s: "Fine lines appeared reduced", y: 200 },
@@ -791,6 +795,12 @@ const STUDY_BASE = {
   ok(textOf(certRows[1].querySelector(".cx-svyc__frac")).indexOf("200") !== -1 &&
      textOf(certRows[1].querySelector(".cx-svyc__frac")).indexOf("270") !== -1, "D1: cert micro-label carries y and total");
   ok(!!certRoot.querySelector("[data-cx-survey-toggle]"), "D1: cert keeps the methodology disclosure");
+  // v8.8b (merchant catch): the QUESTION and the INTRO render in every
+  // design — outcomes must never appear as context-free numbers.
+  ok(textOf(certRoot.querySelector(".cx-svyc__q")) === "Did you observe visible results in your patients?",
+    "D1q: cert renders the survey question");
+  ok(textOf(certRoot.querySelector(".cx-svyc__intro")).indexOf("34 independent dermatologists") === 0,
+    "D1i: cert renders the per-product intro");
   ok(all(certRoot, ".cx-survey__bar").length === 0, "D1: cert has no decorative bars (ruled table)");
 
   // D2 dossier: band + chip + indexed rows + gauge widths from numbers
@@ -804,6 +814,10 @@ const STUDY_BASE = {
      textOf(dosRows[2].querySelector(".cx-svyd__idx")) === "03", "D2: dossier zero-padded row indexes");
   ok(dosRows[1].querySelector(".cx-svyd__gauge-fill").style.width === "74%", "D2: dossier gauge width 200/270 -> 74%");
   ok(!!dosRoot.querySelector("[data-cx-survey-toggle]"), "D2: dossier keeps the methodology disclosure");
+  ok(textOf(dosRoot.querySelector(".cx-svyd__q")).indexOf("Did you observe") === 0,
+    "D2q: dossier renders the survey question");
+  ok(textOf(dosRoot.querySelector(".cx-svyd__intro")).indexOf("34 independent") === 0,
+    "D2i: dossier renders the per-product intro");
   var dosNoVer = designSurvey("d");
   dosNoVer.verifier = "";
   var dosRoot2 = buildSection(makeSandbox(dosNoVer));
@@ -817,6 +831,18 @@ const STUDY_BASE = {
   ok(all(sealRoot, ".cx-svys__card").length === 3, "D3: seal renders ALL 3 stat cards");
   ok(textOf(sealRoot.querySelector(".cx-svys__card-pct")) === "90%", "D3: seal first card pct");
   ok(!!sealRoot.querySelector("[data-cx-survey-toggle]"), "D3: seal keeps the methodology disclosure");
+  ok(textOf(sealRoot.querySelector(".cx-svys__q")).indexOf("Did you observe") === 0,
+    "D3q: seal renders the survey question");
+  ok(textOf(sealRoot.querySelector(".cx-svys__intro")).indexOf("34 independent") === 0,
+    "D3i: seal renders the per-product intro");
+  // built-in fallback: no custom intro -> translated outcomes_intro; no q -> none
+  var sealDefaults = designSurvey("s");
+  delete sealDefaults.q;
+  delete sealDefaults.intro;
+  var sealDefRoot = buildSection(makeSandbox(sealDefaults));
+  ok(!sealDefRoot.querySelector(".cx-svys__q"), "D3b: no question field -> no question node");
+  ok(textOf(sealDefRoot.querySelector(".cx-svys__intro")) === STRINGS.outcomes_intro,
+    "D3c: intro falls back to the built-in outcomes_intro string");
 
   // D4 unknown/absent sd codes fall through to classic (fail-closed)
   var weird = designSurvey("x");
@@ -898,6 +924,11 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m5-invalid-rows-kept",
         find: "      if (y > 0 && y <= total && typeof o.s === 'string' && /\\S/.test(o.s)) {",
         replace: "      if (typeof o.s === 'string') {",
+      },
+      {
+        name: "m17-design-intro-dropped",
+        find: "      root.appendChild(surveyIntroNode(d, 'cx-svyc__intro'));",
+        replace: "",
       },
       {
         name: "m15-seal-verified-ungated",

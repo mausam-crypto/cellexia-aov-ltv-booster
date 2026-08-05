@@ -134,6 +134,24 @@ class El {
     const sib = this.parentNode.childNodes;
     return sib[sib.indexOf(this) + 1] || null;
   }
+  // v8.9: element-filtered sibling traversal (the placement band walks use
+  // these; every real browser has had them since IE9)
+  get nextElementSibling() {
+    if (!this.parentNode) return null;
+    const sib = this.parentNode.childNodes;
+    for (let i = sib.indexOf(this) + 1; i < sib.length; i++) {
+      if (sib[i].nodeType === 1) return sib[i];
+    }
+    return null;
+  }
+  get previousElementSibling() {
+    if (!this.parentNode) return null;
+    const sib = this.parentNode.childNodes;
+    for (let i = sib.indexOf(this) - 1; i >= 0; i--) {
+      if (sib[i].nodeType === 1) return sib[i];
+    }
+    return null;
+  }
   get textContent() {
     if (this.childNodes.length === 0) return this._text;
     return this.childNodes.map((c) => c.textContent).join("");

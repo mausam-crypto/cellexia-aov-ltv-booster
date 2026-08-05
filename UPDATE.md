@@ -544,9 +544,8 @@ theme extension — run `npm run deploy`, then enable the embed once.
 **v8.8 — three new dermatologist-survey designs (merchant-selectable).**
 Survey page → **Widget design** now offers four looks, all presentation-only
 (same translated strings, same per-product numbers — the percentage headline,
-every outcome row with its count, the methodology disclosure and the verifier
-always render; like compact mode, the three new designs omit the long-form
-middle — the per-product question quote and intro line): **Classic** (the v7 layout; the only design the Display-density
+the per-product question and intro, every outcome row with its count, the
+methodology disclosure and the verifier all render in every design): **Classic** (the v7 layout; the only design the Display-density
 compact toggle affects), **Certificate** (engraved attestation: double-rule
 paper border, centered header between rules, large percentage, outcomes as a
 ruled figures table), **Clinical dossier** (lab-report excerpt: ink header
@@ -557,6 +556,21 @@ designs are inherently short on mobile while showing everything. It is a
 LIVE setting (density convention): saving applies to real visitors wherever
 the widget is already live. Nothing to deploy beyond the normal both-halves
 flow; no new translations (the designs recompose existing strings).
+
+**v8.9 — per-widget product-page placement + mobile press polish (merchant
+asks).** Features page → **Product-page placement** card (also one click from
+the Proof library header): each of the press band, endorsement wall and
+results gallery independently picks one of three spots on product pages —
+**Below the info tabs** (default, the v8.7 position), **Above the proof
+stack** (right before the dermatologist survey), or **Below the proof stack**
+(after the survey / study / guarantee group). Widgets sharing a spot keep the
+fixed press → endorsements → results order; when a product has no proof stack
+the above/below choices fall back to the stack's own position and then to the
+default chain — never nothing, never the footer. Home-page rendering is
+unchanged. Live settings (density convention). Mobile press band: the logo
+strip now centers when it fits (still swipeable when it overflows), a lone
+logo renders larger, and the quote text is centered to match the eyebrow and
+attribution.
 
 ## 6. If something looks wrong
 

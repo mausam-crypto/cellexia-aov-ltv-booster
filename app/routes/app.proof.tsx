@@ -66,6 +66,12 @@ export default function ProofLibraryLayout() {
       backAction={{ content: "Dashboard", url: "/app" }}
       secondaryActions={[
         {
+          content: "Placement",
+          url: "/app/features#proof-placement",
+          helpText:
+            "Where each widget sits on product pages — above/below the proof stack or below the info tabs",
+        },
+        {
           content: "Display density",
           url: "/app/features#display-density",
           helpText:
@@ -108,7 +114,8 @@ export default function ProofLibraryLayout() {
                 nothing until the embed is enabled. In the theme editor open{" "}
                 <b>App embeds</b>, switch on “Cellexia proof library”, and
                 save. One time only; the widgets then place themselves on
-                product pages (below the info tabs) and the home page, and
+                product pages (at the spot each widget's Placement setting
+                chooses) and the home page, and
                 every feature/preview toggle works normally.
               </p>
             </Banner>

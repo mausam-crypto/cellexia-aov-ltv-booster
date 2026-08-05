@@ -212,6 +212,24 @@ export const DERM_SURVEY_DESIGNS = [
 ] as const;
 export type DermSurveyDesign = (typeof DERM_SURVEY_DESIGNS)[number];
 
+/**
+ * v8.9: per-widget PRODUCT-PAGE placement for the three proof-library
+ * widgets (LIVE setting, density convention). Each widget places its own
+ * band independently: "below_tabs" (default — after the theme's info-tabs
+ * box, the v8.7 position), "above_proof" (immediately above the
+ * survey/study/guarantee proof stack, i.e. between the buy area and the
+ * stack) and "below_proof" (immediately after that stack, above the info
+ * tabs). Home-page rendering is unaffected (end of main content). When the
+ * proof stack is absent the JS falls back to the stack's own anchor
+ * (before the tabs), then to the below_tabs chain — never nothing.
+ */
+export const PROOF_PLACEMENTS = [
+  "below_tabs",
+  "above_proof",
+  "below_proof",
+] as const;
+export type ProofPlacement = (typeof PROOF_PLACEMENTS)[number];
+
 /** The four merchant-selectable delivery-estimate widget formats (v5.9). */
 export const DELIVERY_ESTIMATE_FORMATS = [
   "line",
@@ -409,6 +427,8 @@ export interface BoosterSettings {
      *  both breakpoints, ~460px) | "ultra" (the v8.2 look: slim one-line
      *  banner, one scrollable chip row, 240px rail). */
     density: ProofDensity;
+    /** v8.9 product-page placement (PROOF_PLACEMENTS). */
+    placement: ProofPlacement;
   };
   batchTransparency: {
     enabled: boolean;
@@ -488,6 +508,8 @@ export interface BoosterSettings {
      *  visible below it, ~130px) | "ultra" (the v8.2 look: one collapsed
      *  row, quote reveals on logo tap). */
     density: ProofDensity;
+    /** v8.9 product-page placement (PROOF_PLACEMENTS). */
+    placement: ProofPlacement;
   };
   /**
    * Dermatologist endorsement wall (v8). Entry content lives in the
@@ -507,6 +529,8 @@ export interface BoosterSettings {
      *  two-line quotes, ~250px) | "ultra" (the v8.2 look: one composed
      *  head line over a 240px rail). */
     density: ProofDensity;
+    /** v8.9 product-page placement (PROOF_PLACEMENTS). */
+    placement: ProofPlacement;
   };
   /**
    * Dispatch countdown ("Order within 2h 14m for same-day dispatch").
@@ -799,6 +823,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     enabled: false,
     compact: false,
     density: "full",
+    placement: "below_tabs",
   },
   batchTransparency: {
     enabled: false,
@@ -826,11 +851,13 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     enabled: false,
     compact: false,
     density: "full",
+    placement: "below_tabs",
   },
   dermEndorsements: {
     enabled: false,
     compact: false,
     density: "full",
+    placement: "below_tabs",
   },
   dispatch: {
     enabled: false,
@@ -1415,6 +1442,13 @@ export function sanitizeSettings(
   // COERCION: a missing/invalid density is derived from the (already
   // sanitized) v8.2 legacy boolean, so a shop that enabled ultra-compact
   // on v8.2 keeps ultra behavior the moment v8.3 deploys.
+  for (const section of ["press", "dermEndorsements", "beforeAfter"] as const) {
+    if (
+      !PROOF_PLACEMENTS.includes(next[section].placement as ProofPlacement)
+    ) {
+      next[section].placement = DEFAULT_SETTINGS[section].placement;
+    }
+  }
   if (!PROOF_DENSITIES.includes(next.press.density as ProofDensity)) {
     next.press.density = next.press.compact === true ? "ultra" : "full";
   }

@@ -19,6 +19,7 @@ import {
   InlineStack,
   Layout,
   Page,
+  Select,
   Text,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
@@ -241,6 +242,57 @@ const DENSITY_PICKERS: {
   },
 ];
 
+/** Client-safe mirror of PROOF_PLACEMENTS in settings.server.ts (the
+ *  v8.3 lesson — never import the .server VALUE into client code; the
+ *  harness pins the two in sync). */
+const PLACEMENT_VALUES = ["below_tabs", "above_proof", "below_proof"] as const;
+type ProofPlacementValue = (typeof PLACEMENT_VALUES)[number];
+const PLACEMENT_OPTIONS: { label: string; value: ProofPlacementValue }[] = [
+  {
+    label: "Below the info tabs (default) — after the overview/science tab box",
+    value: "below_tabs",
+  },
+  {
+    label: "Above the proof stack — right before the dermatologist survey",
+    value: "above_proof",
+  },
+  {
+    label: "Below the proof stack — after the survey / study / guarantee",
+    value: "below_proof",
+  },
+];
+const PLACEMENT_PICKERS: {
+  feature: string;
+  label: string;
+  section: "press" | "dermEndorsements" | "beforeAfter";
+  value: (placement: PlacementState) => ProofPlacementValue;
+}[] = [
+  {
+    feature: "placement_press",
+    label: "As seen in the press",
+    section: "press",
+    value: (placement) => placement.press,
+  },
+  {
+    feature: "placement_endorsements",
+    label: "Dermatologist endorsements",
+    section: "dermEndorsements",
+    value: (placement) => placement.endorsements,
+  },
+  {
+    feature: "placement_results",
+    label: "Results gallery",
+    section: "beforeAfter",
+    value: (placement) => placement.results,
+  },
+];
+
+interface PlacementState {
+  press: ProofPlacementValue;
+  endorsements: ProofPlacementValue;
+  results: ProofPlacementValue;
+}
+
 interface DensityState {
   survey: boolean;
   study: boolean;
@@ -297,7 +349,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     results: settings.beforeAfter.density,
   };
 
-  return { features, previewArmed, density };
+  const placement: PlacementState = {
+    press: settings.press.placement,
+    endorsements: settings.dermEndorsements.placement,
+    results: settings.beforeAfter.placement,
+  };
+
+  return { features, previewArmed, density, placement };
 };
 
 /**
@@ -380,7 +438,7 @@ function FeatureRow({ feature }: { feature: FeatureCardData }) {
 }
 
 export default function FeaturesHub() {
-  const { features, previewArmed, density } = useLoaderData<typeof loader>();
+  const { features, previewArmed, density, placement } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -413,6 +471,20 @@ export default function FeaturesHub() {
     submit(formData, { method: "post" });
   };
 
+  const pickPlacement = (
+    picker: (typeof PLACEMENT_PICKERS)[number],
+    selected: string,
+  ) => {
+    if (!PLACEMENT_VALUES.includes(selected as ProofPlacementValue)) return;
+    const formData = new FormData();
+    formData.set("feature", picker.feature);
+    formData.set(
+      "patch",
+      JSON.stringify({ [picker.section]: { placement: selected } }),
+    );
+    submit(formData, { method: "post" });
+  };
+
   // v5.4 safety net (same contract as the Preview Center picker): a
   // FeatureKey missing from the GROUPS literal still renders, in an
   // automatic trailing group, so no booster can ever lose its Configure /
@@ -440,9 +512,13 @@ export default function FeaturesHub() {
   // card sits at the bottom of a long page — links from the Proof library
   // and Product boosters pages land directly on it).
   const densityCardRef = useRef<HTMLDivElement>(null);
+  const placementCardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hash === "#display-density") {
+    if (typeof window === "undefined") return;
+    if (window.location.hash === "#display-density") {
       densityCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (window.location.hash === "#proof-placement") {
+      placementCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, []);
 
@@ -567,6 +643,39 @@ export default function FeaturesHub() {
                   ]}
                   selected={[picker.value(density)]}
                   onChange={(selected) => pickDensity(picker, selected)}
+                />
+              ))}
+            </BlockStack>
+          </Card>
+          </div>
+        </Layout.Section>
+
+        <Layout.Section>
+          {/* v8.9: per-widget product-page placement for the proof-library
+              widgets (anchor target for the Proof library page link). */}
+          <div id="proof-placement" ref={placementCardRef}>
+          <Card>
+            <BlockStack gap="300">
+              <BlockStack gap="100">
+                <Text as="h2" variant="headingMd">
+                  Product-page placement
+                </Text>
+                <Text as="p" tone="subdued">
+                  Where each proof-library widget sits on product pages —
+                  independently per widget. “Proof stack” means the
+                  dermatologist survey / clinical study / guarantee group.
+                  Home-page placement is unaffected. Live settings — a change
+                  applies to real visitors as soon as it saves.
+                </Text>
+              </BlockStack>
+              {PLACEMENT_PICKERS.map((picker) => (
+                <Select
+                  key={picker.feature}
+                  label={picker.label}
+                  options={PLACEMENT_OPTIONS}
+                  value={picker.value(placement)}
+                  disabled={densitySaving}
+                  onChange={(selected) => pickPlacement(picker, selected)}
                 />
               ))}
             </BlockStack>

@@ -1367,11 +1367,30 @@
     return el;
   }
 
+  function surveyQuestionNode(d, cls) {
+    // The survey QUESTION (per-product, optional) — e.g. "Did you observe
+    // visible results in your patients using X?" Without it the outcome
+    // rows read as context-free numbers (merchant catch).
+    if (!(typeof d.q === 'string' && /\S/.test(d.q))) return null;
+    var el = cxEl('blockquote', cls);
+    el.textContent = bottleStr(d, 'q');
+    return el;
+  }
+
+  function surveyIntroNode(d, cls) {
+    // The short explanation above the outcomes — the per-product intro
+    // ("34 independent dermatologists reviewed X over 8 weeks") or the
+    // built-in translated outcomes_intro. Same rule as classic.
+    var el = cxEl('p', cls);
+    el.textContent = typeof d.intro === 'string' && /\S/.test(d.intro) ? bottleStr(d, 'intro') : surveyStr('outcomes_intro');
+    return el;
+  }
+
   // CERTIFICATE ('c') — an engraved attestation: centered header between
   // rules, large percentage, outcomes as a formal ruled TABLE (figures
   // right-aligned; no decorative bars — a ledger reads more official),
   // signature-line verifier via the shared disclosure row.
-  function surveyBuildCertSection(rows, total, rec, title) {
+  function surveyBuildCertSection(d, rows, total, rec, title) {
     var root = cxEl('section', 'cx-proof cx-survey cx-survey--cert', ['data-cx-feature', 'derm_survey']);
     cxSp(root);
     root.appendChild(surveyEyebrow());
@@ -1387,7 +1406,14 @@
       root.appendChild(certHead);
       cxSp(root);
     }
+    var certQ = surveyQuestionNode(d, 'cx-svyc__q');
+    if (certQ) {
+      root.appendChild(certQ);
+      cxSp(root);
+    }
     if (rows.length > 0) {
+      root.appendChild(surveyIntroNode(d, 'cx-svyc__intro'));
+      cxSp(root);
       var ul = cxEl('ul', 'cx-svyc__table list-reset');
       cxSp(ul);
       for (var r = 0; r < rows.length; r++) {
@@ -1422,7 +1448,7 @@
   // the eyebrow and (when a verifier exists) an inverted verified chip,
   // index-numbered outcome rows with fine gauges and right-aligned
   // figures, hairline footer carrying the shared disclosure.
-  function surveyBuildDossierSection(rows, total, rec, title, verifier) {
+  function surveyBuildDossierSection(d, rows, total, rec, title, verifier) {
     var root = cxEl('section', 'cx-proof cx-survey cx-survey--dossier', ['data-cx-feature', 'derm_survey']);
     cxSp(root);
     var band = cxEl('div', 'cx-svyd__band');
@@ -1457,7 +1483,14 @@
     }
     root.appendChild(head);
     cxSp(root);
+    var dosQ = surveyQuestionNode(d, 'cx-svyd__q');
+    if (dosQ) {
+      root.appendChild(dosQ);
+      cxSp(root);
+    }
     if (rows.length > 0) {
+      root.appendChild(surveyIntroNode(d, 'cx-svyd__intro'));
+      cxSp(root);
       var ul = cxEl('ul', 'cx-svyd__grid list-reset');
       cxSp(ul);
       for (var r = 0; r < rows.length; r++) {
@@ -1552,7 +1585,7 @@
     return svg;
   }
 
-  function surveyBuildSealSection(rows, total, rec, title, ver) {
+  function surveyBuildSealSection(d, rows, total, rec, title, ver) {
     var root = cxEl('section', 'cx-proof cx-survey cx-survey--seal', ['data-cx-feature', 'derm_survey']);
     cxSp(root);
     root.appendChild(surveyEyebrow());
@@ -1592,7 +1625,14 @@
       body.appendChild(sealHead);
       cxSp(body);
     }
+    var sealQ = surveyQuestionNode(d, 'cx-svys__q');
+    if (sealQ) {
+      body.appendChild(sealQ);
+      cxSp(body);
+    }
     if (rows.length > 0) {
+      body.appendChild(surveyIntroNode(d, 'cx-svys__intro'));
+      cxSp(body);
       var ul = cxEl('ul', 'cx-svys__cards list-reset');
       cxSp(ul);
       for (var r = 0; r < rows.length; r++) {
@@ -1649,14 +1689,14 @@
     // classic layout below (fail-closed); the designs ignore cm, they are
     // inherently compact.
     var sd = surveyDesign(d);
-    if (sd === 'c') return surveyBuildCertSection(rows, total, rec, title);
+    if (sd === 'c') return surveyBuildCertSection(d, rows, total, rec, title);
     if (sd === 'd') {
       var dver = typeof d.verifier === 'string' && /\S/.test(d.verifier);
-      return surveyBuildDossierSection(rows, total, rec, title, dver);
+      return surveyBuildDossierSection(d, rows, total, rec, title, dver);
     }
     if (sd === 's') {
       var sver = typeof d.verifier === 'string' && /\S/.test(d.verifier);
-      return surveyBuildSealSection(rows, total, rec, title, sver);
+      return surveyBuildSealSection(d, rows, total, rec, title, sver);
     }
     var root = cxEl('section', 'cx-proof cx-survey' + (compact ? ' cx-survey--compact' : ''), ['data-cx-feature', 'derm_survey']);
     cxSp(root);
@@ -2685,8 +2725,22 @@
         if (below) {
           placed = insertAfter(stack, tabs);
         } else {
+          // v8.9 band-aware: in preview sessions this runs AFTER the async
+          // verification, so a proof band choosing "below_proof" may already
+          // sit directly before the tabs (its no-stack fallback spot). The
+          // stack must land ABOVE those bands — walk back past them (an
+          // above_proof band correctly stays above the stack, so stop there).
+          var ref = tabs;
+          while (
+            ref.previousElementSibling &&
+            typeof ref.previousElementSibling.className === 'string' &&
+            ref.previousElementSibling.className.indexOf('cx-proof-band') !== -1 &&
+            ref.previousElementSibling.getAttribute('data-cx-band') === 'below_proof'
+          ) {
+            ref = ref.previousElementSibling;
+          }
           try {
-            tabs.parentNode.insertBefore(stack, tabs);
+            ref.parentNode.insertBefore(stack, ref);
             placed = true;
           } catch (e) { placed = false; }
         }

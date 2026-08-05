@@ -51,6 +51,7 @@ const SUITES = [
   { name: "sims/subscribed-upgrade", dir: "sims", base: "subscribed-upgrade" },
   { name: "sims/survey-methodology", dir: "sims", base: "survey-methodology" },
   { name: "sims/proof-gallery", dir: "sims", base: "proof-gallery" },
+  { name: "sims/proof-placement", dir: "sims", base: "proof-placement" },
   { name: "sims/proof-server", dir: "sims", base: "proof-server" },
   { name: "sims/threshold-snap", dir: "sims", base: "threshold-snap" },
   { name: "sims/flip-test", dir: "sims", base: "flip-test" },
