@@ -4097,3 +4097,347 @@ body.customer--b2b .cx-sub-remove {
 .cx-proof-band__slot + .cx-proof-band__slot:not(:empty) {
   margin-top: 28px;
 }
+
+/* ===================================================== v8.8 survey designs
+   Three merchant-selectable designs for the dermatologist survey (island
+   "sd" codes; classic = no modifier). Shared goals: official/verified feel,
+   full content, short on mobile. Ink #1D1D1B, paper #fdfcfa, brand blue
+   #B2CEED. The base .cx-survey centered column (max-width 680) applies. */
+
+/* ---- certificate ('c'): engraved attestation ---- */
+.cx-survey--cert {
+  background: #fdfcfa;
+  border: 1px solid #1D1D1B;
+  box-shadow: inset 0 0 0 4px #fdfcfa, inset 0 0 0 5px rgba(29, 29, 27, 0.35);
+  padding: 26px 20px 20px;
+  text-align: center;
+}
+.cx-survey--cert .cx-proof__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  letter-spacing: 0.14em;
+  justify-content: center;
+}
+.cx-survey--cert .cx-proof__eyebrow::before,
+.cx-survey--cert .cx-proof__eyebrow::after {
+  content: "";
+  flex: 1 1 auto;
+  max-width: 88px;
+  border-top: 1px solid rgba(29, 29, 27, 0.4);
+}
+.cx-svyc__pct {
+  margin: 10px 0 2px;
+  font-size: 44px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.cx-survey--cert .cx-survey__headline {
+  font-size: 16px;
+  margin: 4px auto 14px;
+  max-width: 44ch;
+}
+.cx-svyc__table {
+  margin: 0 0 4px;
+  border-top: 1px solid rgba(29, 29, 27, 0.5);
+  text-align: start;
+}
+.cx-svyc__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 2px;
+  border-bottom: 1px solid rgba(29, 29, 27, 0.18);
+}
+.cx-svyc__row:last-child {
+  border-bottom: 1px solid rgba(29, 29, 27, 0.5);
+}
+.cx-svyc__stmt {
+  flex: 1 1 auto;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.cx-svyc__figs {
+  flex: 0 0 auto;
+  text-align: end;
+  white-space: nowrap;
+}
+.cx-svyc__figpct {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.cx-svyc__frac {
+  display: block;
+  font-size: 11px;
+  color: rgba(29, 29, 27, 0.62);
+}
+.cx-survey--cert .cx-survey__how-row {
+  justify-content: center;
+}
+
+/* ---- dossier ('d'): clinical lab-report excerpt ---- */
+.cx-survey--dossier {
+  border: 1px solid rgba(29, 29, 27, 0.55);
+  background: #fff;
+  padding: 0 0 12px;
+}
+.cx-survey--dossier .cx-proof__eyebrow {
+  display: none; /* the band carries it */
+}
+.cx-svyd__band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #1D1D1B;
+  color: #fff;
+  padding: 9px 14px;
+}
+.cx-svyd__band-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.cx-svyd__band-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #B2CEED;
+  white-space: nowrap;
+}
+.cx-svyd__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 14px 4px;
+}
+.cx-svyd__pct {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.cx-survey--dossier .cx-survey__headline {
+  font-size: 14.5px;
+  margin: 0;
+  line-height: 1.35;
+}
+.cx-svyd__grid {
+  margin: 6px 0 2px;
+}
+.cx-svyd__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  border-top: 1px solid rgba(29, 29, 27, 0.12);
+}
+.cx-svyd__idx {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: rgba(29, 29, 27, 0.45);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+.cx-svyd__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cx-svyd__stmt {
+  display: block;
+  font-size: 13.5px;
+  line-height: 1.3;
+}
+.cx-svyd__gauge {
+  height: 3px;
+  background: rgba(29, 29, 27, 0.1);
+  margin-top: 5px;
+}
+.cx-svyd__gauge-fill {
+  height: 100%;
+  background: #1D1D1B;
+}
+.cx-svyd__figs {
+  flex: 0 0 auto;
+  text-align: end;
+  white-space: nowrap;
+}
+.cx-svyd__figpct {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.cx-svyd__frac {
+  display: block;
+  font-size: 10.5px;
+  color: rgba(29, 29, 27, 0.55);
+}
+.cx-survey--dossier .cx-survey__how {
+  padding: 0 14px;
+  border-top: 1px solid rgba(29, 29, 27, 0.3);
+}
+
+/* Visually-hidden utility (the seal's accessible percentage — the figure
+   otherwise lives only inside an aria-hidden SVG). */
+.cx-vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* The classic desktop rule centers .cx-survey text at >=750px — the dossier
+   and seal compositions are start-anchored data layouts (review catch). */
+.cx-survey--dossier,
+.cx-svys__body,
+.cx-svys__cards {
+  text-align: start;
+}
+/* Narrow-viewport / long-locale overflow guards (review catch): statements
+   may shrink below their longest word; the agree fraction may wrap; the
+   dossier band wraps rather than clipping its chip. */
+.cx-svyc__stmt,
+.cx-svyd__stmt {
+  min-width: 0;
+}
+.cx-svyc__frac,
+.cx-svyd__frac {
+  white-space: normal;
+}
+.cx-svyd__band {
+  flex-wrap: wrap;
+}
+/* Arabic is a joining script — the designs' letter-spacing would break
+   letter connections roughly 3x worse than the base type (review catch). */
+:lang(ar) .cx-survey--cert .cx-proof__eyebrow,
+:lang(ar) .cx-svyd__band-eyebrow,
+:lang(ar) .cx-svyd__band-chip,
+:lang(ar) .cx-svys__seal-sub {
+  letter-spacing: 0;
+}
+
+/* Own list reset for the three design lists — never depend on the theme's
+   list-reset utility (a theme update or a missing class must not bring
+   back markers/indent and squeeze the card grid). */
+.cx-svyc__table,
+.cx-svyd__grid,
+.cx-svys__cards {
+  list-style: none;
+  padding-inline-start: 0;
+  margin-inline: 0;
+}
+/* The band (dossier) and the seal already carry the verified mark — the
+   shared disclosure row's chip would show it twice. */
+.cx-survey--dossier .cx-survey__chip,
+.cx-survey--seal .cx-survey__chip {
+  display: none;
+}
+
+/* ---- seal ('s'): notarised mark ---- */
+.cx-survey--seal {
+  border: 1px solid rgba(29, 29, 27, 0.25);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fdfcfa 0%, #fff 60%);
+  padding: 20px 16px 14px;
+}
+.cx-svys__wrap {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 10px;
+}
+.cx-svys__seal {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: #1D1D1B;
+}
+.cx-svys__seal-svg {
+  width: 108px;
+  height: 108px;
+  display: block;
+}
+.cx-svys__seal-num {
+  font-size: 26px;
+  font-weight: 700;
+  fill: currentColor;
+}
+.cx-svys__seal-sub {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(29, 29, 27, 0.72);
+  text-align: center;
+}
+.cx-svys__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cx-survey--seal .cx-survey__headline {
+  font-size: 15.5px;
+  margin: 0 0 10px;
+  line-height: 1.35;
+}
+.cx-svys__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.cx-svys__card {
+  border: 1px solid rgba(29, 29, 27, 0.2);
+  border-radius: 6px;
+  background: #fff;
+  padding: 8px 10px;
+}
+.cx-svys__card-pct {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.cx-svys__card-stmt {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+.cx-svys__card-n {
+  display: block;
+  font-size: 10.5px;
+  color: rgba(29, 29, 27, 0.55);
+  margin-top: 3px;
+}
+@media (max-width: 559px) {
+  .cx-svys__wrap {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .cx-svys__body {
+    width: 100%;
+  }
+  .cx-svys__seal-svg {
+    width: 92px;
+    height: 92px;
+  }
+}

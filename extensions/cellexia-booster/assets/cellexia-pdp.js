@@ -1334,6 +1334,297 @@
     return ul;
   }
 
+  // ------------------------------------------------- v8.8 survey designs
+  //
+  // Three merchant-selectable DESIGNS beside the v7 classic layout (island
+  // member "sd": 'c' certificate / 'd' dossier / 's' seal — absent =
+  // classic; LIVE setting, density convention). Presentation only: every
+  // design renders the SAME translated strings and per-product numbers —
+  // rec headline, ALL outcome rows with counts, methodology disclosure,
+  // verifier — recomposed for an official, verified look that stays short
+  // on mobile. The compact toggle (cm) applies to classic only; the three
+  // designs are inherently compact. All sinks textContent; gauge widths
+  // derive from validated numbers only.
+
+  function surveyDesign(d) {
+    var sd = d && typeof d.sd === 'string' ? d.sd : '';
+    return sd === 'c' || sd === 'd' || sd === 's' ? sd : '';
+  }
+
+  function surveyAgreeText(y, total) {
+    return surveyStr('outcome_agree').replace('@@YES@@', String(y)).replace('@@TOTAL@@', String(total));
+  }
+
+  function surveyHeadline(title, rec) {
+    // Fail-closed like classic: rec_line is a continuation fragment ("of N
+    // dermatologists surveyed would recommend X") — without a valid rec
+    // count there is no percentage backing it, so no title AND no rec
+    // means NO headline at all (review catch: the designs must never
+    // assert an unquantified recommendation classic suppresses).
+    if (!title && !rec) return null;
+    var el = cxEl('h2', 'cx-survey__headline');
+    el.textContent = title || surveyStr('rec_line');
+    return el;
+  }
+
+  // CERTIFICATE ('c') — an engraved attestation: centered header between
+  // rules, large percentage, outcomes as a formal ruled TABLE (figures
+  // right-aligned; no decorative bars — a ledger reads more official),
+  // signature-line verifier via the shared disclosure row.
+  function surveyBuildCertSection(rows, total, rec, title) {
+    var root = cxEl('section', 'cx-proof cx-survey cx-survey--cert', ['data-cx-feature', 'derm_survey']);
+    cxSp(root);
+    root.appendChild(surveyEyebrow());
+    cxSp(root);
+    if (rec) {
+      var pct = cxEl('p', 'cx-svyc__pct');
+      pct.textContent = Math.round(rec / total * 100) + '%';
+      root.appendChild(pct);
+      cxSp(root);
+    }
+    var certHead = surveyHeadline(title, rec);
+    if (certHead) {
+      root.appendChild(certHead);
+      cxSp(root);
+    }
+    if (rows.length > 0) {
+      var ul = cxEl('ul', 'cx-svyc__table list-reset');
+      cxSp(ul);
+      for (var r = 0; r < rows.length; r++) {
+        var li = cxEl('li', 'cx-svyc__row');
+        cxSp(li);
+        var st = cxEl('span', 'cx-svyc__stmt');
+        st.textContent = decodeEntities(rows[r].s);
+        li.appendChild(st);
+        cxSp(li);
+        var figs = cxEl('span', 'cx-svyc__figs');
+        var pc = cxEl('strong', 'cx-svyc__figpct');
+        pc.textContent = rows[r].pct + '%';
+        figs.appendChild(pc);
+        cxSp(figs);
+        var fr = cxEl('span', 'cx-svyc__frac');
+        fr.textContent = surveyAgreeText(rows[r].y, total);
+        figs.appendChild(fr);
+        li.appendChild(figs);
+        cxSp(li);
+        ul.appendChild(li);
+        cxSp(ul);
+      }
+      root.appendChild(ul);
+      cxSp(root);
+    }
+    root.appendChild(surveyBuildHow());
+    cxSp(root);
+    return root;
+  }
+
+  // DOSSIER ('d') — a clinical lab-report excerpt: ink header band with
+  // the eyebrow and (when a verifier exists) an inverted verified chip,
+  // index-numbered outcome rows with fine gauges and right-aligned
+  // figures, hairline footer carrying the shared disclosure.
+  function surveyBuildDossierSection(rows, total, rec, title, verifier) {
+    var root = cxEl('section', 'cx-proof cx-survey cx-survey--dossier', ['data-cx-feature', 'derm_survey']);
+    cxSp(root);
+    var band = cxEl('div', 'cx-svyd__band');
+    cxSp(band);
+    var eb = cxEl('span', 'cx-svyd__band-eyebrow');
+    eb.textContent = surveyStr('eyebrow');
+    band.appendChild(eb);
+    cxSp(band);
+    if (verifier) {
+      var chip = cxEl('span', 'cx-svyd__band-chip');
+      chip.appendChild(cxIcon('seal-check', 12));
+      var cl = document.createElement('span');
+      cl.textContent = surveyStr('verified_badge');
+      chip.appendChild(cl);
+      band.appendChild(chip);
+      cxSp(band);
+    }
+    root.appendChild(band);
+    cxSp(root);
+    var head = cxEl('div', 'cx-svyd__head');
+    cxSp(head);
+    if (rec) {
+      var pct = cxEl('span', 'cx-svyd__pct');
+      pct.textContent = Math.round(rec / total * 100) + '%';
+      head.appendChild(pct);
+      cxSp(head);
+    }
+    var dosHead = surveyHeadline(title, rec);
+    if (dosHead) {
+      head.appendChild(dosHead);
+      cxSp(head);
+    }
+    root.appendChild(head);
+    cxSp(root);
+    if (rows.length > 0) {
+      var ul = cxEl('ul', 'cx-svyd__grid list-reset');
+      cxSp(ul);
+      for (var r = 0; r < rows.length; r++) {
+        var li = cxEl('li', 'cx-svyd__row');
+        cxSp(li);
+        var idx = cxEl('span', 'cx-svyd__idx', ['aria-hidden', 'true']);
+        idx.textContent = (r < 9 ? '0' : '') + (r + 1);
+        li.appendChild(idx);
+        cxSp(li);
+        var main = cxEl('div', 'cx-svyd__main');
+        var st = cxEl('span', 'cx-svyd__stmt');
+        st.textContent = decodeEntities(rows[r].s);
+        main.appendChild(st);
+        cxSp(main);
+        var gauge = cxEl('div', 'cx-svyd__gauge', ['aria-hidden', 'true']);
+        var fill = cxEl('div', 'cx-svyd__gauge-fill');
+        fill.style.width = rows[r].pct + '%';
+        gauge.appendChild(fill);
+        main.appendChild(gauge);
+        li.appendChild(main);
+        cxSp(li);
+        var figs = cxEl('span', 'cx-svyd__figs');
+        var pc = cxEl('strong', 'cx-svyd__figpct');
+        pc.textContent = rows[r].pct + '%';
+        figs.appendChild(pc);
+        cxSp(figs);
+        var fr = cxEl('span', 'cx-svyd__frac');
+        fr.textContent = surveyAgreeText(rows[r].y, total);
+        figs.appendChild(fr);
+        li.appendChild(figs);
+        cxSp(li);
+        ul.appendChild(li);
+        cxSp(ul);
+      }
+      root.appendChild(ul);
+      cxSp(root);
+    }
+    root.appendChild(surveyBuildHow());
+    cxSp(root);
+    return root;
+  }
+
+  // SEAL ('s') — a notarised mark: scalloped SVG seal holding the
+  // percentage and the verified label, headline beside it, outcomes as
+  // tight bordered stat cards, then the shared disclosure (whose verified
+  // chip doubles as the signature row).
+  function surveyBuildSealSvg(pctText) {
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 120 120');
+    svg.setAttribute('class', 'cx-svys__seal-svg');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    // Scalloped edge: a dashed outer ring reads as a die-cut seal; the
+    // inner solid ring frames the figure. Stroke colors ride currentColor
+    // so the ink token comes from CSS.
+    var outer = document.createElementNS(NS, 'circle');
+    outer.setAttribute('cx', '60');
+    outer.setAttribute('cy', '60');
+    outer.setAttribute('r', '56');
+    outer.setAttribute('fill', 'none');
+    outer.setAttribute('stroke', 'currentColor');
+    outer.setAttribute('stroke-width', '5');
+    outer.setAttribute('stroke-dasharray', '2.5 4.83');
+    outer.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(outer);
+    var inner = document.createElementNS(NS, 'circle');
+    inner.setAttribute('cx', '60');
+    inner.setAttribute('cy', '60');
+    inner.setAttribute('r', '47');
+    inner.setAttribute('fill', 'none');
+    inner.setAttribute('stroke', 'currentColor');
+    inner.setAttribute('stroke-width', '1.5');
+    svg.appendChild(inner);
+    var txt = document.createElementNS(NS, 'text');
+    txt.setAttribute('x', '60');
+    txt.setAttribute('y', pctText ? '64' : '66');
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('class', 'cx-svys__seal-num');
+    txt.textContent = pctText || '';
+    svg.appendChild(txt);
+    // check mark under the figure (drawn, not a glyph — renders identically
+    // in every locale/font)
+    var check = document.createElementNS(NS, 'path');
+    check.setAttribute('d', pctText ? 'M50 78 l7 7 l13 -14' : 'M47 52 l9 9 l17 -18');
+    check.setAttribute('fill', 'none');
+    check.setAttribute('stroke', 'currentColor');
+    check.setAttribute('stroke-width', pctText ? '3' : '5');
+    check.setAttribute('stroke-linecap', 'round');
+    check.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(check);
+    return svg;
+  }
+
+  function surveyBuildSealSection(rows, total, rec, title, ver) {
+    var root = cxEl('section', 'cx-proof cx-survey cx-survey--seal', ['data-cx-feature', 'derm_survey']);
+    cxSp(root);
+    root.appendChild(surveyEyebrow());
+    cxSp(root);
+    var wrap = cxEl('div', 'cx-svys__wrap');
+    cxSp(wrap);
+    // Truthfulness gates (review catches): the "verified" sub-label ONLY
+    // when a verifier is configured (same rule as classic's chip and the
+    // dossier band); the check-only seal (no percentage) ALSO requires a
+    // verifier — a bare notary check with nothing behind it would imply a
+    // certification that does not exist. No rec AND no verifier = no seal
+    // graphic at all; the design still renders headline/cards/disclosure.
+    if (rec || ver) {
+      var seal = cxEl('div', 'cx-svys__seal');
+      seal.appendChild(surveyBuildSealSvg(rec ? Math.round(rec / total * 100) + '%' : ''));
+      if (ver) {
+        var sub = cxEl('span', 'cx-svys__seal-sub');
+        sub.textContent = surveyStr('verified_badge');
+        seal.appendChild(sub);
+      }
+      wrap.appendChild(seal);
+      cxSp(wrap);
+    }
+    var body = cxEl('div', 'cx-svys__body');
+    cxSp(body);
+    if (rec) {
+      // The percentage lives in an aria-hidden SVG — mirror it as real
+      // (visually hidden) text so screen readers hear the figure before
+      // the headline fragment (review catch).
+      var vh = cxEl('span', 'cx-vh');
+      vh.textContent = Math.round(rec / total * 100) + '%';
+      body.appendChild(vh);
+      cxSp(body);
+    }
+    var sealHead = surveyHeadline(title, rec);
+    if (sealHead) {
+      body.appendChild(sealHead);
+      cxSp(body);
+    }
+    if (rows.length > 0) {
+      var ul = cxEl('ul', 'cx-svys__cards list-reset');
+      cxSp(ul);
+      for (var r = 0; r < rows.length; r++) {
+        var li = cxEl('li', 'cx-svys__card');
+        cxSp(li);
+        var pc = cxEl('strong', 'cx-svys__card-pct');
+        pc.textContent = rows[r].pct + '%';
+        li.appendChild(pc);
+        cxSp(li);
+        var st = cxEl('span', 'cx-svys__card-stmt');
+        st.textContent = decodeEntities(rows[r].s);
+        li.appendChild(st);
+        cxSp(li);
+        var fr = cxEl('span', 'cx-svys__card-n');
+        fr.textContent = surveyAgreeText(rows[r].y, total);
+        li.appendChild(fr);
+        cxSp(li);
+        ul.appendChild(li);
+        cxSp(ul);
+      }
+      body.appendChild(ul);
+      cxSp(body);
+    }
+    wrap.appendChild(body);
+    cxSp(wrap);
+    root.appendChild(wrap);
+    cxSp(root);
+    root.appendChild(surveyBuildHow());
+    cxSp(root);
+    return root;
+  }
+
   function surveyBuildSection() {
     var d = surveyData();
     if (!d) return null;
@@ -1354,6 +1645,19 @@
     if (!rec && rows.length === 0) return null;
     var compact = d.cm === 1; // v8 display density (LIVE setting, no draft plumbing)
     var title = typeof d.t === 'string' && /\S/.test(d.t) ? bottleStr(d, 't') : '';
+    // v8.8 design dispatch — an unknown/absent sd code falls through to the
+    // classic layout below (fail-closed); the designs ignore cm, they are
+    // inherently compact.
+    var sd = surveyDesign(d);
+    if (sd === 'c') return surveyBuildCertSection(rows, total, rec, title);
+    if (sd === 'd') {
+      var dver = typeof d.verifier === 'string' && /\S/.test(d.verifier);
+      return surveyBuildDossierSection(rows, total, rec, title, dver);
+    }
+    if (sd === 's') {
+      var sver = typeof d.verifier === 'string' && /\S/.test(d.verifier);
+      return surveyBuildSealSection(rows, total, rec, title, sver);
+    }
     var root = cxEl('section', 'cx-proof cx-survey' + (compact ? ' cx-survey--compact' : ''), ['data-cx-feature', 'derm_survey']);
     cxSp(root);
     root.appendChild(surveyEyebrow());
@@ -1429,7 +1733,7 @@
 
   function surveyTplNode() {
     // v7 replacement for the v6.2 format dispatch: same live/preview gate,
-    // same emission gate (payload presence) — one outcomes-forward builder.
+    // same emission gate (payload presence); v8.8 adds three design variants dispatched inside surveyBuildSection.
     try {
       if (!surveyData() || !surveyAllowed()) return null;
       return surveyBuildSection();

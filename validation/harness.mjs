@@ -1131,6 +1131,52 @@ const EVIDENCE = {
         `v8.3: blocks/${block}.liquid island emits the two-code density member off cfg.${section}.density`,
       );
     }
+    // ---- v8.8: dermatologist-survey DESIGNS (three official looks) -----
+    // Enum + island lean-code emission + admin mirror + JS dispatch. The
+    // designs are presentation-only recompositions of the SAME strings and
+    // numbers; classic stays byte-exact (the sim's S-cases pin that) and
+    // an unknown sd code falls through to classic (sim D4).
+    ok(
+      /export const DERM_SURVEY_DESIGNS = \[\n  "classic",\n  "certificate",\n  "dossier",\n  "seal",\n\] as const;/.test(read("app/models/settings.server.ts")),
+      "v8.8: DERM_SURVEY_DESIGNS enum is the closed four-design set",
+    );
+    ok(
+      read(`${EXT}/blocks/pdp-booster.liquid`).includes(
+        `{% if cfg.dermSurvey.design == "certificate" %}, "sd": "c"{% elsif cfg.dermSurvey.design == "dossier" %}, "sd": "d"{% elsif cfg.dermSurvey.design == "seal" %}, "sd": "s"{% endif %}`,
+      ),
+      "v8.8: survey island emits the lean sd design code off cfg.dermSurvey.design",
+    );
+    const surveyAdmin = read("app/routes/app.features.survey.tsx");
+    ok(
+      surveyAdmin.includes('const DESIGN_VALUES = ["classic", "certificate", "dossier", "seal"] as const;'),
+      "v8.8: admin client-safe DESIGN_VALUES mirror matches the server enum (v8.3 lesson — never import the .server VALUE)",
+    );
+    ok(
+      surveyAdmin.includes("design: state.design,") && surveyAdmin.includes("Widget design"),
+      "v8.8: survey admin page renders the design picker and saves the field",
+    );
+    const pdpJs88 = read(PDP_JS);
+    for (const anchor88 of [
+      "function surveyDesign(d) {",
+      "if (sd === 'c') return surveyBuildCertSection(rows, total, rec, title);",
+      "return surveyBuildSealSection(rows, total, rec, title, sver);",
+      "if (!title && !rec) return null;",
+      "surveyBuildDossierSection(rows, total, rec, title, dver)",
+      "cx-survey--cert",
+      "cx-survey--dossier",
+      "cx-survey--seal",
+      "document.createElementNS(NS, 'circle')",
+    ]) {
+      ok(pdpJs88.includes(anchor88), `v8.8: survey design anchor present in cellexia-pdp.js: ${anchor88}`);
+    }
+    // cfg path resolution: the island reads cfg.dermSurvey.design — the
+    // section-5 resolver sweep picks it up automatically via the emission,
+    // but pin the settings default too (fresh shops must be classic).
+    ok(
+      read("app/models/settings.server.ts").includes('    design: "classic",'),
+      "v8.8: DEFAULT_SETTINGS.dermSurvey.design is classic",
+    );
+
     // The ultra press quote is the ONLY [hidden]-toggled proof element —
     // without this guard the flex display would defeat [hidden] (the
     // v6.8.1 bare-truck-icon lesson). Only ultra ever toggles it; the

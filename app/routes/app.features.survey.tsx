@@ -259,6 +259,7 @@ function MarketScopeCard({
  */
 interface SurveyFormState {
   enabled: boolean;
+  design: DesignValue;
   verifierName: string;
   verificationUrl: string;
   methodology: string;
@@ -271,6 +272,7 @@ function initialFormState(settings: BoosterSettings): SurveyFormState {
   const dermSurvey = settings.dermSurvey;
   return {
     enabled: dermSurvey.enabled,
+    design: dermSurvey.design,
     verifierName: dermSurvey.verifierName,
     verificationUrl: dermSurvey.verificationUrl,
     methodology: dermSurvey.methodology,
@@ -286,6 +288,38 @@ function initialFormState(settings: BoosterSettings): SurveyFormState {
  * {{ yes }} and {{ percent }} are substituted, and is labeled as example
  * values in the UI.
  */
+/** Client-safe mirror of DERM_SURVEY_DESIGNS in settings.server.ts — the
+ *  server VALUE must not be imported into client code (Remix build breaks;
+ *  the v8.3 DENSITY_VALUES lesson). The harness pins the two in sync. */
+const DESIGN_VALUES = ["classic", "certificate", "dossier", "seal"] as const;
+type DesignValue = (typeof DESIGN_VALUES)[number];
+const DESIGN_OPTIONS: { value: DesignValue; label: string; helpText: string }[] = [
+  {
+    value: "classic",
+    label: "Classic — outcomes list",
+    helpText:
+      "The current layout: percentage headline, intro, outcome bars. The only design the Display density compact toggle affects.",
+  },
+  {
+    value: "certificate",
+    label: "Certificate — engraved attestation",
+    helpText:
+      "Official document look: fine double border, centered header between rules, large percentage, outcomes as a ruled figures table. Inherently short on mobile.",
+  },
+  {
+    value: "dossier",
+    label: "Clinical dossier — lab-report excerpt",
+    helpText:
+      "Data-forward: dark header band with the verified mark, numbered outcome rows with fine gauges and right-aligned figures. Inherently short on mobile.",
+  },
+  {
+    value: "seal",
+    label: "Verified seal — notarised mark",
+    helpText:
+      "A die-cut seal holds the percentage and verified label; outcomes as tight stat cards beside it. Inherently short on mobile.",
+  },
+];
+
 const EXAMPLE_TOTAL = 270;
 const EXAMPLE_YES = 248;
 
@@ -410,6 +444,7 @@ export default function SurveyFeaturePage() {
       // switch and the shop-global defaults a product can override.
       dermSurvey: {
         enabled: state.enabled,
+        design: state.design,
         verifierName: state.verifierName.trim(),
         verificationUrl: trimmedUrl,
         methodology: methodologyToStore,
@@ -520,6 +555,43 @@ export default function SurveyFeaturePage() {
                   checked={state.enabled}
                   onChange={(enabled) =>
                     setState((previous) => ({ ...previous, enabled }))
+                  }
+                />
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="300">
+                <BlockStack gap="100">
+                  <Text as="h2" variant="headingMd">
+                    Widget design
+                  </Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Presentation only — every design shows the percentage
+                    headline, every outcome row with its count, the
+                    methodology disclosure and the verifier, from the same
+                    translated strings and per-product numbers. Like compact
+                    mode, the three new designs omit the long-form middle
+                    (the per-product question quote and intro line) — that is
+                    the vertical diet. This is a live setting: the saved
+                    design applies to real visitors immediately wherever the
+                    widget is already live.
+                  </Text>
+                </BlockStack>
+                <ChoiceList
+                  title="Design"
+                  titleHidden
+                  choices={DESIGN_OPTIONS.map((option) => ({
+                    value: option.value,
+                    label: option.label,
+                    helpText: option.helpText,
+                  }))}
+                  selected={[state.design]}
+                  onChange={(selected) =>
+                    setState((previous) => ({
+                      ...previous,
+                      design: (selected[0] ?? "classic") as DesignValue,
+                    }))
                   }
                 />
               </BlockStack>

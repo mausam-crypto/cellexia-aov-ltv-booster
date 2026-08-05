@@ -541,6 +541,23 @@ health check (now probing the proof embed, warn-grade) were all repointed
 from "place the blocks" to "enable the embed". DEPLOY NOTE: this changes the
 theme extension — run `npm run deploy`, then enable the embed once.
 
+**v8.8 — three new dermatologist-survey designs (merchant-selectable).**
+Survey page → **Widget design** now offers four looks, all presentation-only
+(same translated strings, same per-product numbers — the percentage headline,
+every outcome row with its count, the methodology disclosure and the verifier
+always render; like compact mode, the three new designs omit the long-form
+middle — the per-product question quote and intro line): **Classic** (the v7 layout; the only design the Display-density
+compact toggle affects), **Certificate** (engraved attestation: double-rule
+paper border, centered header between rules, large percentage, outcomes as a
+ruled figures table), **Clinical dossier** (lab-report excerpt: ink header
+band with inverted verified mark, index-numbered rows with fine gauges and
+right-aligned figures) and **Verified seal** (die-cut seal holding the
+percentage and verified label, outcomes as tight stat cards). The three new
+designs are inherently short on mobile while showing everything. It is a
+LIVE setting (density convention): saving applies to real visitors wherever
+the widget is already live. Nothing to deploy beyond the normal both-halves
+flow; no new translations (the designs recompose existing strings).
+
 ## 6. If something looks wrong
 
 - Preview link 404 → §Troubleshooting in INSTALL.md (app proxy).

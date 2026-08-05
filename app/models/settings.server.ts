@@ -194,6 +194,24 @@ export type DermSurveyFormat = (typeof DERM_SURVEY_FORMATS)[number];
 export const PROOF_DENSITIES = ["full", "compact", "ultra"] as const;
 export type ProofDensity = (typeof PROOF_DENSITIES)[number];
 
+/**
+ * v8.8: merchant-selected DESIGN for the per-product dermatologist survey
+ * widget (LIVE setting — the v6.5/v8.3 no-draft-plumbing convention).
+ * "classic" is the v7 outcomes-forward layout and the only design the
+ * dermSurvey.compact toggle affects; the three v8.8 designs are inherently
+ * mobile-compact while showing the full content: "certificate" (engraved
+ * attestation document), "dossier" (clinical lab-report excerpt) and
+ * "seal" (notarised seal mark). Same translated strings + per-product
+ * numbers in every design — this is presentation only.
+ */
+export const DERM_SURVEY_DESIGNS = [
+  "classic",
+  "certificate",
+  "dossier",
+  "seal",
+] as const;
+export type DermSurveyDesign = (typeof DERM_SURVEY_DESIGNS)[number];
+
 /** The four merchant-selectable delivery-estimate widget formats (v5.9). */
 export const DELIVERY_ESTIMATE_FORMATS = [
   "line",
@@ -440,7 +458,7 @@ export interface BoosterSettings {
      *  `verification_url` field overrides it per product. */
     verificationUrl: string;
     /** v7-LEGACY: merchant-selected display format (v5.8). The v7 widget
-     *  has exactly one outcomes-forward format; this field (with its enum
+     *  renders the outcomes-forward layout in four selectable designs (v8.8); this field (with its enum
      *  and sanitize fallback) is kept only so stored settings JSON keeps
      *  round-tripping. */
     format: DermSurveyFormat;
@@ -449,6 +467,8 @@ export interface BoosterSettings {
      *  display-density setting (merchant-set, no draft/preview plumbing —
      *  the v6.5 placement-setting precedent). */
     compact: boolean;
+    /** v8.8 design (DERM_SURVEY_DESIGNS); compact applies to "classic" only. */
+    design: DermSurveyDesign;
   };
   /**
    * "As seen in the press" band (v8). Entry content (publications, quotes,
@@ -800,6 +820,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     verificationUrl: "",
     format: "seal",
     compact: false,
+    design: "classic",
   },
   press: {
     enabled: false,
@@ -1368,6 +1389,11 @@ export function sanitizeSettings(
   if (typeof next.emptyBottleGuarantee.compact !== "boolean") {
     next.emptyBottleGuarantee.compact =
       DEFAULT_SETTINGS.emptyBottleGuarantee.compact;
+  }
+  if (
+    !DERM_SURVEY_DESIGNS.includes(next.dermSurvey.design as DermSurveyDesign)
+  ) {
+    next.dermSurvey.design = DEFAULT_SETTINGS.dermSurvey.design;
   }
   if (typeof next.dermSurvey.compact !== "boolean") {
     next.dermSurvey.compact = DEFAULT_SETTINGS.dermSurvey.compact;

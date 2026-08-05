@@ -116,6 +116,13 @@ const EXTRACTED = extractAll(SRC, {
     "surveyEyebrow",
     "surveyBuildOutcomes",
     "surveyBuildSection",
+    "surveyDesign",
+    "surveyAgreeText",
+    "surveyHeadline",
+    "surveyBuildCertSection",
+    "surveyBuildDossierSection",
+    "surveyBuildSealSection",
+    "surveyBuildSealSvg",
     "bindSurveyMore",
     "bottleBuildNode",
     "studyData",
@@ -754,6 +761,113 @@ const STUDY_BASE = {
     "C7: the guarantee-check modal trigger survives on the band");
 }
 
+// --- D1-D5: v8.8 survey DESIGNS (sd codes; presentation only) ------------------------
+// Every design must render the FULL content: rec %, every valid outcome row
+// with its derived pct AND the "@@YES@@ of @@TOTAL@@" micro-label, and the
+// methodology disclosure — the designs recompose, never drop.
+(function () {
+  function designSurvey(sd) {
+    return {
+      live: true, sd: sd, total: 270, rec: 248,
+      verifier: "Cosmetic Research Center",
+      o: [
+        { s: "Skin looked visibly firmer", y: 243 },
+        { s: "Fine lines appeared reduced", y: 200 },
+        { s: "Suitable for sensitive skin", y: 180 },
+      ],
+    };
+  }
+  function textOf(node) { return node ? node.textContent : ""; }
+  function all(node, sel) { return node ? node.querySelectorAll(sel) : []; }
+
+  // D1 certificate: modifier + pct + ruled table rows (statement + figures)
+  var certRoot = buildSection(makeSandbox(designSurvey("c")));
+  ok(certRoot && certRoot.className.indexOf("cx-survey--cert") !== -1, "D1: cert modifier class");
+  ok(textOf(certRoot.querySelector(".cx-svyc__pct")) === "92%", "D1: cert big pct = 92%");
+  var certRows = all(certRoot, ".cx-svyc__row");
+  ok(certRows.length === 3, "D1: cert renders ALL 3 outcome rows");
+  ok(textOf(certRows[0].querySelector(".cx-svyc__stmt")) === "Skin looked visibly firmer", "D1: cert statement text");
+  ok(textOf(certRows[0].querySelector(".cx-svyc__figpct")) === "90%", "D1: cert row pct 243/270 -> 90%");
+  ok(textOf(certRows[1].querySelector(".cx-svyc__frac")).indexOf("200") !== -1 &&
+     textOf(certRows[1].querySelector(".cx-svyc__frac")).indexOf("270") !== -1, "D1: cert micro-label carries y and total");
+  ok(!!certRoot.querySelector("[data-cx-survey-toggle]"), "D1: cert keeps the methodology disclosure");
+  ok(all(certRoot, ".cx-survey__bar").length === 0, "D1: cert has no decorative bars (ruled table)");
+
+  // D2 dossier: band + chip + indexed rows + gauge widths from numbers
+  var dosRoot = buildSection(makeSandbox(designSurvey("d")));
+  ok(dosRoot && dosRoot.className.indexOf("cx-survey--dossier") !== -1, "D2: dossier modifier class");
+  ok(!!dosRoot.querySelector(".cx-svyd__band"), "D2: dossier ink band present");
+  ok(!!dosRoot.querySelector(".cx-svyd__band-chip"), "D2: dossier verified chip (verifier set)");
+  var dosRows = all(dosRoot, ".cx-svyd__row");
+  ok(dosRows.length === 3, "D2: dossier renders ALL 3 outcome rows");
+  ok(textOf(dosRows[0].querySelector(".cx-svyd__idx")) === "01" &&
+     textOf(dosRows[2].querySelector(".cx-svyd__idx")) === "03", "D2: dossier zero-padded row indexes");
+  ok(dosRows[1].querySelector(".cx-svyd__gauge-fill").style.width === "74%", "D2: dossier gauge width 200/270 -> 74%");
+  ok(!!dosRoot.querySelector("[data-cx-survey-toggle]"), "D2: dossier keeps the methodology disclosure");
+  var dosNoVer = designSurvey("d");
+  dosNoVer.verifier = "";
+  var dosRoot2 = buildSection(makeSandbox(dosNoVer));
+  ok(dosRoot2 && !dosRoot2.querySelector(".cx-svyd__band-chip"), "D2b: no verifier -> no band chip");
+
+  // D3 seal: svg seal with pct + verified sub-label + stat cards
+  var sealRoot = buildSection(makeSandbox(designSurvey("s")));
+  ok(sealRoot && sealRoot.className.indexOf("cx-survey--seal") !== -1, "D3: seal modifier class");
+  var sealNum = sealRoot.querySelector(".cx-svys__seal-num");
+  ok(sealNum && sealNum.textContent === "92%", "D3: seal svg carries the 92% figure");
+  ok(all(sealRoot, ".cx-svys__card").length === 3, "D3: seal renders ALL 3 stat cards");
+  ok(textOf(sealRoot.querySelector(".cx-svys__card-pct")) === "90%", "D3: seal first card pct");
+  ok(!!sealRoot.querySelector("[data-cx-survey-toggle]"), "D3: seal keeps the methodology disclosure");
+
+  // D4 unknown/absent sd codes fall through to classic (fail-closed)
+  var weird = designSurvey("x");
+  var classicRoot = buildSection(makeSandbox(weird));
+  ok(classicRoot && classicRoot.className.indexOf("cx-survey--cert") === -1 &&
+     classicRoot.className.indexOf("cx-survey--dossier") === -1 &&
+     classicRoot.className.indexOf("cx-survey--seal") === -1 &&
+     all(classicRoot, ".cx-survey__outcome").length === 3, "D4: unknown sd renders classic");
+
+  // D5 designs ignore cm (inherently compact — no --compact modifier, full list)
+  var certCm = designSurvey("c");
+  certCm.cm = 1;
+  var certCmRoot = buildSection(makeSandbox(certCm));
+  ok(certCmRoot && certCmRoot.className.indexOf("cx-survey--compact") === -1 &&
+     all(certCmRoot, ".cx-svyc__row").length === 3, "D5: cert ignores cm and shows every row");
+
+  // D6 truthfulness: NO rec and NO title -> NO headline in any design
+  // (rec_line is a continuation fragment; classic fails closed the same way)
+  ["c", "d", "s"].forEach(function (sd) {
+    var noRec = designSurvey(sd);
+    delete noRec.rec;
+    var r = buildSection(makeSandbox(noRec));
+    ok(r && !r.querySelector(".cx-survey__headline"),
+      "D6(" + sd + "): rec-less design renders NO rec_line headline");
+    ok(r && r.querySelectorAll(sd === "c" ? ".cx-svyc__row" : sd === "d" ? ".cx-svyd__row" : ".cx-svys__card").length === 3,
+      "D6(" + sd + "): outcome rows still render");
+  });
+
+  // D7 seal verified gating: the "verified" sub-label requires a verifier;
+  // with neither rec nor verifier the seal graphic disappears entirely
+  var sealNoVer = designSurvey("s");
+  sealNoVer.verifier = "";
+  var sealNoVerRoot = buildSection(makeSandbox(sealNoVer));
+  ok(sealNoVerRoot && !sealNoVerRoot.querySelector(".cx-svys__seal-sub"),
+    "D7: no verifier -> no verified sub-label under the seal");
+  ok(sealNoVerRoot && !!sealNoVerRoot.querySelector(".cx-svys__seal-svg"),
+    "D7: rec alone still shows the percentage seal");
+  var sealBare = designSurvey("s");
+  sealBare.verifier = "";
+  delete sealBare.rec;
+  var sealBareRoot = buildSection(makeSandbox(sealBare));
+  ok(sealBareRoot && !sealBareRoot.querySelector(".cx-svys__seal") &&
+     !sealBareRoot.querySelector(".cx-svys__seal-sub"),
+    "D7b: neither rec nor verifier -> no seal graphic at all");
+  // D7c accessible percent: the aria-hidden SVG figure is mirrored as text
+  var sealFull = buildSection(makeSandbox(designSurvey("s")));
+  ok(sealFull && sealFull.querySelector(".cx-vh") &&
+     sealFull.querySelector(".cx-vh").textContent === "92%",
+    "D7c: seal mirrors the percentage as visually-hidden text");
+})();
+
 // ---------------------------------------------------------------- mutants
 if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
   const failedMutants = runMutants({
@@ -784,6 +898,26 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m5-invalid-rows-kept",
         find: "      if (y > 0 && y <= total && typeof o.s === 'string' && /\\S/.test(o.s)) {",
         replace: "      if (typeof o.s === 'string') {",
+      },
+      {
+        name: "m15-seal-verified-ungated",
+        find: "      if (ver) {\n        var sub = cxEl('span', 'cx-svys__seal-sub');",
+        replace: "      if (true) {\n        var sub = cxEl('span', 'cx-svys__seal-sub');",
+      },
+      {
+        name: "m16-headline-fallback-ungated",
+        find: "    if (!title && !rec) return null;",
+        replace: "",
+      },
+      {
+        name: "m13-design-dispatch-dead",
+        find: "    var sd = surveyDesign(d);",
+        replace: "    var sd = '';",
+      },
+      {
+        name: "m14-cert-drops-rows",
+        find: "      for (var r = 0; r < rows.length; r++) {\n        var li = cxEl('li', 'cx-svyc__row');",
+        replace: "      for (var r = 0; r < 1; r++) {\n        var li = cxEl('li', 'cx-svyc__row');",
       },
       {
         name: "m6-fail-open-empty",

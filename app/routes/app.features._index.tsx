@@ -173,7 +173,7 @@ const DENSITY_TOGGLES: {
     feature: "density_survey",
     label: "Dermatologist survey — compact",
     description:
-      "Compact mode — the same survey proof in a fraction of the height; outcomes beyond the first sit behind a “more outcomes” disclosure.",
+      "Compact mode — the same survey proof in a fraction of the height; outcomes beyond the first sit behind a “more outcomes” disclosure. Applies to the Classic design only — the v8.8 designs (Survey page → Widget design) are inherently compact.",
     isOn: (density) => density.survey,
     buildPatch: (compact) => ({ dermSurvey: { compact } }),
   },
