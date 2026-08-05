@@ -243,6 +243,20 @@ const EVIDENCE = {
     !matrixSrc.includes("amazon.enabled") && !matrixSrc.includes("anyAzOn"),
     "app.markets.tsx: no phantom amazon master switch (az flags are independent — the field does not exist in BoosterSettings)",
   );
+  // v8.7 (merchant ask): market scopes are ALWAYS editable — pre-configure
+  // targeting BEFORE enabling a feature. The cells must never be gated on
+  // the feature toggle or the all-markets mode (toggleCell converts
+  // all→selected itself), and the off-state note must say selections save.
+  ok(
+    !matrixSrc.includes("Enable the feature first") &&
+      !matrixSrc.includes('disabled={row.mode === "all"}') &&
+      !matrixSrc.includes("mutedStyle"),
+    "app.markets.tsx: scope cells carry no feature-off/all-mode gating or dimming (scopes editable before enabling)",
+  );
+  ok(
+    matrixSrc.includes("selections save now, apply when"),
+    "app.markets.tsx: the off-state note says selections save now and apply on enable",
+  );
 
   // v8.6: the Display density card must stay reachable — anchor + scroll on
   // the hub, deep links from the two pages merchants actually start from.
@@ -258,6 +272,125 @@ const EVIDENCE = {
   ok(
     read("app/routes/app.products.tsx").includes('url="/app/features#display-density"'),
     "app.products.tsx: Display density link present",
+  );
+
+  // v8.7 STANDING RULE (merchant-verified): this store's legacy Liquid
+  // templates cannot take section app blocks — the v8 proof blocks shipped
+  // as target "section" and were UNADDABLE (content + armed preview =
+  // nothing renders, no picker offers the block). Everything storefront
+  // ships as an app EMBED (target "body") with JS self-insertion. The five
+  // pre-v8 optional blocks are FROZEN exceptions; any NEW section-target
+  // block fails the build here. Rule text: docs/theme-integration.md.
+  const LEGACY_SECTION_BLOCKS = new Set([
+    "clinical-results.liquid",
+    "guarantee.liquid",
+    "subscription-nudge.liquid",
+    "trust-badges.liquid",
+    "trustpilot.liquid",
+  ]);
+  for (const f of listFiles(`${EXT}/blocks`, ".liquid")) {
+    const target = (read(`${EXT}/blocks/${f}`).match(/"target":"([a-z]+)"/) || [])[1];
+    if (LEGACY_SECTION_BLOCKS.has(f)) {
+      ok(
+        target === "section",
+        `embeds-only rule: ${f} is a FROZEN legacy section block (got target ${target}) — do not grow this list`,
+      );
+    } else {
+      ok(
+        target === "body",
+        `embeds-only rule: ${f} must be an app embed (target body, got ${target}) — section app blocks cannot be added on this store's legacy templates (docs/theme-integration.md)`,
+      );
+    }
+  }
+  // (a) the merged proof embed: name + target + all three islands + NO
+  // mount divs (the JS self-inserts via the ordered band)
+  const proofLiquid = read(`${EXT}/blocks/proof-booster.liquid`);
+  ok(
+    proofLiquid.includes('"name":"Cellexia proof library"') &&
+      proofLiquid.includes('"target":"body"'),
+    'v8.7: proof-booster.liquid is the "Cellexia proof library" app embed',
+  );
+  for (const island of ["cx-press-config", "cx-endo-config", "cx-results-config"]) {
+    ok(proofLiquid.includes(`id="${island}"`), `v8.7: proof embed emits #${island}`);
+  }
+  ok(
+    !proofLiquid.includes("data-cx-mount"),
+    "v8.7: proof embed emits no mount divs (self-insertion owns placement)",
+  );
+  // (b) the JS self-insertion band: fixed slot order, pdp anchor chain,
+  // main fallback, FAIL-CLOSED (never append to <body>)
+  const proofJs = read(PROOF_JS);
+  for (const anchor of [
+    "var PF_SLOT_ORDER = ['press', 'endorsements', 'results'];",
+    "document.querySelector('.pdp__tabs')",
+    "document.getElementById('main')",
+    "cx-proof-band container container--md",
+    // CODE-level fail-closed pins (a comment can rot; these cannot):
+    "    if (!placed) return null;",
+    // deterministic order at the contended .pdp__tabs anchor — the band
+    // walks past merchant-placed cx widgets that inserted there first
+    "function pfPastCxSiblings(anchor) {",
+    "indexOf('cx-proof-stack')",
+    "indexOf('cx-az-sections')",
+    "pfInsertAfter(band, pfPastCxSiblings(tabs))",
+  ]) {
+    ok(proofJs.includes(anchor), `v8.7: self-insertion anchor present in cellexia-proof.js: ${anchor}`);
+  }
+  // page scope: the embed renders on product + home templates ONLY (the v8
+  // design scope) — without this guard an enabled widget would append to
+  // cart/blog/search pages' #main too.
+  ok(
+    proofLiquid.includes("if request.page_type == 'product' or request.page_type == 'index'") &&
+      proofLiquid.includes("unless cx_page_ok"),
+    "v8.7: proof embed emission is guarded to product + index page types",
+  );
+  // no admin surface may describe the retired block-placement model
+  for (const route of ["app.proof.press.tsx", "app.proof.endorsements.tsx", "app.proof.results.tsx"]) {
+    const tabSrc = read(`app/routes/${route}`).replace(/\s+/g, " ");
+    ok(
+      !/block is placed|place the block|Add block/.test(tabSrc),
+      `${route}: no stale block-placement wording`,
+    );
+  }
+  ok(
+    !/document\.body\.appendChild\(band\)/.test(proofJs),
+    "v8.7: the band is never appended to <body> (fail-closed placement)",
+  );
+  // (c) Preview Center readiness notes name the EMBED (the surface the
+  // merchant was on when the v8.6 block-placement trap hit)
+  const previewSvc = read("app/services/preview.server.ts");
+  ok(
+    previewSvc.includes("Cellexia proof library") &&
+      previewSvc.includes("App embeds panel") &&
+      previewSvc.includes("even in preview"),
+    "preview.server.ts: proofReadiness reasons carry the enable-the-embed warning",
+  );
+  // (d) Proof library hub banner: enable-the-embed with the real embed name
+  // (whitespace-collapsed — JSX line wrapping may split strings)
+  const proofHubFlat = read("app/routes/app.proof.tsx").replace(/\s+/g, " ");
+  ok(
+    proofHubFlat.includes("One-time step: enable the app embed") &&
+      proofHubFlat.includes("Cellexia proof library") &&
+      proofHubFlat.includes("context=apps"),
+    "app.proof.tsx: enable-the-embed Banner with App-embeds deep link present",
+  );
+  // (e) docs updated + the health check probes the embed
+  const updateDoc = read("UPDATE.md");
+  ok(
+    !updateDoc.includes("Cellexia derm endorsements"),
+    'UPDATE.md: the wrong v8 block name "Cellexia derm endorsements" is gone',
+  );
+  ok(
+    updateDoc.includes('app embed is not enabled. Theme editor → App embeds'),
+    "UPDATE.md: §6 troubleshooting bullet points at the proof embed",
+  );
+  ok(
+    read("docs/theme-integration.md").includes("STANDING RULE — app embeds ONLY"),
+    "theme-integration.md: the embeds-only standing rule is documented",
+  );
+  ok(
+    read("app/services/health.server.ts").includes('detectEmbed(settingsData, "blocks/proof-booster")'),
+    "health.server.ts: theme-embeds check probes the proof embed",
   );
 }
 
@@ -824,10 +957,11 @@ const EVIDENCE = {
     // The three new blocks shipped (section 1's floor already sweeps every
     // blocks/ file; these pins keep a rename/deletion from degrading into
     // a silent directory-listing change).
-    for (const b of ["press", "derm-endorsements", "results-gallery"]) {
-      const f = `${EXT}/blocks/${b}.liquid`;
-      ok(exists(f) && bytesOf(f) >= 500, `v8: blocks/${b}.liquid shipped (>= 500B)`);
-    }
+    ok(
+      exists(`${EXT}/blocks/proof-booster.liquid`) &&
+        bytesOf(`${EXT}/blocks/proof-booster.liquid`) >= 2000,
+      "v8.7: blocks/proof-booster.liquid shipped (>= 2000B — carries all three islands)",
+    );
     // Lean compact members in the pdp islands (LIVE settings, == true strict).
     const pdpLiquid8 = read(`${EXT}/blocks/pdp-booster.liquid`);
     for (const gate of ["dermSurvey", "clinicalStudy", "emptyBottleGuarantee"]) {
@@ -985,9 +1119,9 @@ const EVIDENCE = {
     // (LIVE settings, closed-enum string compare — one literal pins both
     // codes AND both density literals per block).
     const CM_ISLANDS = [
-      ["press", "press"],
-      ["derm-endorsements", "dermEndorsements"],
-      ["results-gallery", "beforeAfter"],
+      ["proof-booster", "press"],
+      ["proof-booster", "dermEndorsements"],
+      ["proof-booster", "beforeAfter"],
     ];
     for (const [block, section] of CM_ISLANDS) {
       ok(

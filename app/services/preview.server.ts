@@ -622,21 +622,29 @@ function proofReadiness(
   singularLabel: string,
   pluralLabel: string,
 ): FeatureReadiness {
+  // v8.7: all three widgets ride ONE app embed — the store's legacy Liquid
+  // templates cannot take section app blocks (merchant-verified; the v8
+  // section blocks are retired), so the "Cellexia proof library" embed
+  // self-inserts them on product pages and the home page. With content
+  // added and the feature armed, the storefront still shows NOTHING until
+  // the embed is enabled once — the reason string is where the merchant
+  // looks when that happens.
+  const placement = `Renders through the “Cellexia proof library” app embed — enable it once in the theme editor's App embeds panel; the widgets place themselves on product pages and the home page. Without the embed, nothing shows, even in preview.`;
   if (count === undefined) {
     return {
       ready: true,
-      reason: `Shows the approved ${pluralLabel} from your Proof library — manage them under Proof library.`,
+      reason: `Shows the approved ${pluralLabel} from your Proof library — manage them under Proof library. ${placement}`,
     };
   }
   if (count <= 0) {
     return {
       ready: false,
-      reason: `No ${pluralLabel} yet — add them under Proof library.`,
+      reason: `No ${pluralLabel} yet — add them under Proof library. ${placement}`,
     };
   }
   return {
     ready: true,
-    reason: `${count} approved ${count === 1 ? singularLabel : pluralLabel}.`,
+    reason: `${count} approved ${count === 1 ? singularLabel : pluralLabel}. ${placement}`,
   };
 }
 
@@ -797,7 +805,7 @@ export function featureReadiness(
     extras.proofCounts?.results,
     "customer result",
     "customer results",
-  );
+    );
   readiness.batch_transparency = contentReadiness(
     counts?.batch,
     "batch transparency",
@@ -806,11 +814,11 @@ export function featureReadiness(
     extras.proofCounts?.press,
     "press item",
     "press items",
-  );
+    );
   readiness.derm_endorsements = proofReadiness(
     extras.proofCounts?.endorsements,
     "dermatologist endorsement",
     "dermatologist endorsements",
-  );
+    );
   return readiness;
 }

@@ -736,9 +736,6 @@ export default function MarketsPage() {
                     </div>
                     {group.features.map(({ key, label }) => {
                       const row = state[key];
-                      const mutedStyle: CSSProperties = row.on
-                        ? {}
-                        : { opacity: 0.45 };
                       return (
                         <Fragment key={key}>
                           <div style={cellStyle}>
@@ -763,19 +760,20 @@ export default function MarketsPage() {
                                 </Button>
                               </InlineStack>
                               {!row.on ? (
-                                <span title="This feature is turned off — market selections only take effect once it is enabled.">
+                                <span title="Market selections save now and take effect the moment the feature is turned on — set the targeting first, enable later.">
                                   <Text
                                     as="span"
                                     tone="subdued"
                                     variant="bodySm"
                                   >
-                                    Enable the feature first
+                                    Off — selections save now, apply when
+                                    enabled
                                   </Text>
                                 </span>
                               ) : null}
                             </BlockStack>
                           </div>
-                          <div style={{ ...cellStyle, ...mutedStyle }}>
+                          <div style={cellStyle}>
                             <Checkbox
                               label={`Show ${label} in all markets`}
                               labelHidden
@@ -786,10 +784,7 @@ export default function MarketsPage() {
                             />
                           </div>
                           {markets.map((market) => (
-                            <div
-                              key={market.id}
-                              style={{ ...cellStyle, ...mutedStyle }}
-                            >
+                            <div key={market.id} style={cellStyle}>
                               <Checkbox
                                 label={`Show ${label} in ${market.name}`}
                                 labelHidden
@@ -797,7 +792,6 @@ export default function MarketsPage() {
                                   row.mode === "all" ||
                                   row.markets.includes(market.handle)
                                 }
-                                disabled={row.mode === "all"}
                                 onChange={(checked) =>
                                   toggleCell(key, market.handle, checked)
                                 }

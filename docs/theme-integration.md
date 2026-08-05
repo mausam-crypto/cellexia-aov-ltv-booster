@@ -2,6 +2,27 @@
 
 Theme root: `../existing-shopify-theme` (Sleepless Media "Sleepify" v1.0.1, heavily customized for Cellexia).
 
+
+## ⛔ STANDING RULE — app embeds ONLY, never section app blocks
+
+**Merchant-verified constraint (2026-08-04): this store's Sleepify theme uses
+legacy Liquid templates — app blocks (`"target": "section"`) CANNOT be added
+to the product page (the theme editor offers no "Add block → Apps" there).**
+A section-target block is therefore dead weight: it ships, it appears in no
+picker the merchant can use, and the feature looks broken ("I turned it on
+and nothing shows"). This happened with the v8 proof-library blocks (press /
+endorsement wall / results gallery) — retired in v8.7 for the single
+"Cellexia proof library" embed.
+
+Every storefront surface MUST ship as an **app embed** (`"target": "body"`)
+whose JS self-inserts at the right anchor (this file documents the anchors;
+fail closed when an anchor is missing — never append to `<body>`). The five
+pre-v8 section blocks (trust-badges, trustpilot, guarantee,
+subscription-nudge, clinical-results) are FROZEN legacy exceptions — their
+functionality also rides the embeds, they stay only for stores whose themes
+can use them. The validation harness enforces this: any NEW `.liquid` block
+with `"target": "section"` fails the build.
+
 ## Cart stack
 - **CartJS 1.1.0 + jQuery** (both global). `CartJS.init({{ cart | json }})` in `snippets/script-tags.liquid`.
 - All cart mutations are AJAX (`/cart/add.js`, `/cart/change.js`, `/cart/update.js`) via `CartJS.addItem/updateItem/removeItem`.

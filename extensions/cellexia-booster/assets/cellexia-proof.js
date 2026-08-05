@@ -295,19 +295,104 @@
     }, 500);
   }
 
+  // v8.7: the widgets ship as ONE app embed ("Cellexia proof library") —
+  // this store's legacy Liquid templates cannot take section app blocks
+  // (merchant-verified), so the embed emits the config islands at the end
+  // of <body> and each widget PLACES ITSELF via the shared band below.
+  var PF_SLOT_ORDER = ['press', 'endorsements', 'results'];
+
+  function pfPastCxSiblings(anchor) {
+    // Deterministic order at a contended anchor: the pdp embed's proof
+    // stack (below_tabs placement) and the Amazon sections (tabs_below)
+    // insert at this same nextSibling position at different times — the
+    // band must always land AFTER any of them that already arrived, never
+    // between the anchor and a merchant-placed widget. (Whichever arrives
+    // later also walks past the band's own class-mates safely.)
+    var ref = anchor;
+    while (
+      ref.nextElementSibling &&
+      typeof ref.nextElementSibling.className === 'string' &&
+      (ref.nextElementSibling.className.indexOf('cx-proof-stack') !== -1 ||
+        ref.nextElementSibling.className.indexOf('cx-az-sections') !== -1)
+    ) {
+      ref = ref.nextElementSibling;
+    }
+    return ref;
+  }
+
+  function pfInsertAfter(node, reference) {
+    try {
+      if (!reference || !reference.parentNode) return false;
+      reference.parentNode.insertBefore(node, reference.nextSibling);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function pfBand() {
+    // ONE ordered band per page for all self-inserted proof widgets. The
+    // slots are created synchronously in fixed order (press → endorsements
+    // → results) so async fetch completion can never scramble the visual
+    // order. Product pages: after the theme's .pdp__tabs info box (the
+    // same "tabs_below" region the Amazon sections use); any other page:
+    // end of the theme's <main id="main">. No anchor = no render (the
+    // fail-closed rule — never append to <body>, that lands in the footer).
+    var band = document.querySelector('.cx-proof-band');
+    if (band) return band;
+    band = document.createElement('div');
+    // Theme container classes so the band tracks the content column
+    // (responsive max-widths + padding) — the .cx-proof-stack convention.
+    band.className = 'cx-proof-band container container--md';
+    for (var i = 0; i < PF_SLOT_ORDER.length; i++) {
+      var slot = document.createElement('div');
+      slot.className = 'cx-proof-band__slot';
+      slot.setAttribute('data-cx-slot', PF_SLOT_ORDER[i]);
+      band.appendChild(slot);
+    }
+    var placed = false;
+    var tabs = document.querySelector('.pdp__tabs');
+    if (tabs) placed = pfInsertAfter(band, pfPastCxSiblings(tabs));
+    if (!placed) {
+      var pdp = document.querySelector('section.pdp') || document.querySelector('.pdp');
+      if (pdp) placed = pfInsertAfter(band, pfPastCxSiblings(pdp));
+    }
+    if (!placed) {
+      var main = document.getElementById('main') ||
+        document.getElementById('MainContent') ||
+        document.querySelector('main');
+      if (main) {
+        try {
+          main.appendChild(band);
+          placed = true;
+        } catch (e) {
+          placed = false;
+        }
+      }
+    }
+    if (!placed) return null;
+    return band;
+  }
+
   function pfMount(name, island, node) {
-    // Each block emits <div data-cx-mount="…"> next to its island so the
-    // widget appears exactly where the merchant placed the block; the
-    // island itself anchors the fallback.
+    // Legacy hook kept first: a data-cx-mount container wins if a future
+    // surface ever provides one (none does today — the v8 section blocks
+    // that emitted them are retired).
     var mount = document.querySelector('[data-cx-mount="' + name + '"]');
     if (mount) {
       mount.appendChild(node);
       return true;
     }
-    if (island && island.parentNode) {
-      island.parentNode.insertBefore(node, island.nextSibling);
-      return true;
+    var band = pfBand();
+    if (band) {
+      var slot = band.querySelector('[data-cx-slot="' + name + '"]');
+      if (slot) {
+        slot.appendChild(node);
+        return true;
+      }
     }
+    // Fail closed: an island at the end of <body> is NOT a placement — the
+    // widget would render under the footer. No anchor, no render.
     return false;
   }
 

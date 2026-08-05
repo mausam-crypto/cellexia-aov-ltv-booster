@@ -3112,7 +3112,7 @@ export default function ProductBoosterDetailPage() {
                 ) : null}
                 <Checkbox
                   label="Show the results gallery on this product"
-                  helpText="Per-product opt-out for the Results gallery block (the feature key these legacy entries shared). The global switch and market scope still apply."
+                  helpText="Per-product opt-out for the results gallery widget in the proof-library embed (the feature key these legacy entries shared). The global switch and market scope still apply."
                   checked={flagChecked("verified_before_after")}
                   onChange={(checked) =>
                     toggleFlag("verified_before_after", checked)

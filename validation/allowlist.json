@@ -42,39 +42,9 @@
       "wave": "v8"
     },
     {
-      "file": "extensions/cellexia-booster/blocks/press.liquid",
-      "reason": "v8 NEW block: 'As seen in the press' — config-emission-only island #cx-press-config {live, ctx, pid, str} under cfg.press.enabled == true + marketScopes.press + product-page cx_pdp_flags.press opt-out, with the additive armed-draft twin gate; rendering lives entirely in cellexia-proof.js off the proxy API. Pinned by harness (EVIDENCE press row, section-1 floor, v8 block) + sims/proof-gallery.cjs.",
-      "wave": "v8"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/derm-endorsements.liquid",
-      "reason": "v8 NEW block: dermatologist endorsement wall — config-emission-only island #cx-endo-config {live, ctx, pid, str incl. CLDR one/other count_headline + shown_of sentinels} under cfg.dermEndorsements.enabled == true + marketScopes.derm_endorsements + cx_pdp_flags.derm_endorsements opt-out, additive draft twin; wall/pagination/monogram rendering in cellexia-proof.js. Pinned by harness (EVIDENCE derm_endorsements row, v8 block) + sims/proof-gallery.cjs.",
-      "wave": "v8"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/results-gallery.liquid",
-      "reason": "v8 NEW block replacing the retired PDP before/after widget: #cx-results-config island (~25 str keys: banners, filter/facet labels, badges, sentinels) under the UNCHANGED cfg.beforeAfter.enabled / marketScopes.verified_before_after / cx_pdp_flags.verified_before_after keys; the browsable, filterable gallery is rendered by cellexia-proof.js from the proxy API (pid → product-prioritised). Pinned by harness (re-pointed verified_before_after EVIDENCE, v8 block) + sims/proof-gallery.cjs.",
-      "wave": "v8"
-    },
-    {
       "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
       "reason": "v8 NEW shared asset: ES5 IIFE with pf-prefixed helper twins (zero name overlap with the pdp sim extraction surface), proofFetch (8s timeout, one retry, cb(null) fail-closed), the press band / endorsement wall / results gallery renderers + filter drawer + lightbox, ZERO innerHTML anywhere (SVG via createElementNS, entity decode via a bounded replace chain), every URL through the pfHttps gate, beacons suppressed via window.CellexiaBooster.__preview OR sessionStorage cx_preview_token. Carries the moved verified_before_after EVIDENCE marker plus the press/derm_endorsements markers. Pinned by harness (EVIDENCE, class coverage, zero-innerHTML escape discipline) + sims/proof-gallery.cjs (29-function extraction, 6 mutants).",
       "wave": "v8"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/press.liquid",
-      "reason": "v8.2 ultra-compact density: the island gains the lean LIVE compact member ('{% if cfg.press.compact == true %}, \"cm\": 1{% endif %}' immediately after \"live\" — byte-for-byte the pdp-island convention). No other emission/gate change. Pinned by harness v8.2 block (cm literal + sanitize anchor + emission default) + sims/proof-gallery.cjs U-series.",
-      "wave": "v8.2"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/derm-endorsements.liquid",
-      "reason": "v8.2 ultra-compact density: the island gains the lean LIVE compact member off cfg.dermEndorsements.compact ('\"cm\": 1', the pdp-island convention). No other emission/gate change. Pinned by harness v8.2 block + sims/proof-gallery.cjs U-series (composed head row, rail append).",
-      "wave": "v8.2"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/results-gallery.liquid",
-      "reason": "v8.2 ultra-compact density: the island gains the lean LIVE compact member off cfg.beforeAfter.compact ('\"cm\": 1', the pdp-island convention). No other emission/gate change. Pinned by harness v8.2 block + sims/proof-gallery.cjs U-series (root-modifier-only case).",
-      "wave": "v8.2"
     },
     {
       "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
@@ -82,24 +52,14 @@
       "wave": "v8.2"
     },
     {
-      "file": "extensions/cellexia-booster/blocks/press.liquid",
-      "reason": "v8.3 three-tier density: the v8.2 boolean-gated compact member is replaced by the lean two-code emission off the new enum ('{% if cfg.press.density == \"ultra\" %}, \"cm\": 2{% elsif cfg.press.density == \"compact\" %}, \"cm\": 1{% endif %}'; full emits nothing). No other emission/gate change. Pinned by the harness v8.3 block (island literal + enum/coercion anchors) + sims/proof-gallery.cjs U1/C1/C2.",
-      "wave": "v8.3"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/derm-endorsements.liquid",
-      "reason": "v8.3 three-tier density: the island emits the two-code cm member off cfg.dermEndorsements.density (ultra -> 2, compact -> 1, full -> absent), replacing the v8.2 boolean gate. No other emission/gate change. Pinned by the harness v8.3 block + sims/proof-gallery.cjs U3/C3/C4.",
-      "wave": "v8.3"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/results-gallery.liquid",
-      "reason": "v8.3 three-tier density: the island emits the two-code cm member off cfg.beforeAfter.density (ultra -> 2, compact -> 1, full -> absent), replacing the v8.2 boolean gate. No other emission/gate change. Pinned by the harness v8.3 block + sims/proof-gallery.cjs U7/C5.",
-      "wave": "v8.3"
-    },
-    {
       "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
       "reason": "v8.3 COMPACT middle tier: each of the three builders resolves density ONCE (var ultra = conf.cm === 2; var compact = conf.cm === 1; strict === so strings/unknown codes fall back to full) and the v8.2 branches are repointed to cm 2 under RENAMED --ultra root modifiers (cx-press--ultra / cx-endo--ultra / cx-results--ultra); cm 1 now means the NEW compact tier (cx-press--compact: quote ALWAYS visible, rotation like full; cx-endo--compact: composed H2 head line with inline shown_of; cx-results--compact: root-modifier-only CSS leverage). Pinned by sims/proof-gallery.cjs U/C series + mutants m7/m8/m10 and the harness class-coverage self-test (--compact + --ultra trios).",
       "wave": "v8.3"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/proof-booster.liquid",
+      "reason": "v8.7 NEW embed replacing the three v8 SECTION blocks (press/derm-endorsements/results-gallery .liquid, entries retired this wave): the store's legacy Liquid templates cannot take section app blocks (merchant-verified), so the three proof widgets merge into ONE app embed (target body, name 'Cellexia proof library', 22 chars). The #cx-press-config/#cx-endo-config/#cx-results-config islands keep their v8/v8.3 payload byte-for-byte (incl. the two-code cm density members) — only the gate assigns are renamed per widget (cx_p_*/cx_e_*/cx_r_*) and the data-cx-mount divs are gone: cellexia-proof.js now self-inserts via the ordered .cx-proof-band (after .pdp__tabs on product pages, end of #main elsewhere, fail-closed). Pinned by harness section-5 v8.7 block + the CM_ISLANDS density pins.",
+      "wave": "v8.7"
     }
   ]
 }

@@ -2325,7 +2325,7 @@
    * per-product + content gating, so a missing template simply skips.
    *
    * v8: the verified_before_after row is retired — the browsable results
-   * gallery (blocks/results-gallery.liquid + cellexia-proof.js) replaces
+   * gallery (the proof-booster.liquid embed + cellexia-proof.js) replaces
    * the old PDP before/after widget as a standalone merchant-placed
    * block, and the feature's marker lives in cellexia-proof.js now.
    */

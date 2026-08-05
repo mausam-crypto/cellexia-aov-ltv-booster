@@ -128,8 +128,13 @@ Any Node host works (Fly.io, Render, Railway, Heroku, a VPS). A `Dockerfile` is 
 2. **Settings → Save once** (even without changes) — writes the config metafields the
    storefront reads.
 3. **Theme editor → App embeds** (Online Store → Themes → Customize → App embeds):
-   enable **Cellexia cart booster** and **Cellexia PDP booster**. No theme code edits —
-   widgets auto-inject into the existing mini-cart drawer and product pages.
+   enable **Cellexia cart booster**, **Cellexia PDP booster**, **Cellexia Amazon
+   patterns** (if using those features) and **Cellexia proof library** (press,
+   endorsement wall, results gallery). No theme code edits — widgets auto-inject
+   into the existing mini-cart drawer, product pages and home page. ⚠️ This
+   store's theme uses legacy Liquid templates, so app EMBEDS are the only
+   integration path — section app blocks cannot be added (see
+   docs/theme-integration.md, standing rule).
 4. **Checkout editor** (Settings → Checkout → Customize): add the FOUR Cellexia blocks
    (Upsell, Order Protection, Trust, Delivery) where the design calls for them (typical:
    protection above payment, upsell under line items, trust in the summary footer, and

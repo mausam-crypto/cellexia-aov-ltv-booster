@@ -1,0 +1,118 @@
+{%- comment -%}
+v8.7: ONE app embed for the three proof-library widgets (press band,
+endorsement wall, results gallery). These shipped in v8 as section-target
+app blocks — but this store's Sleepify theme uses legacy Liquid templates,
+so app blocks can NOT be added on the product page (merchant-verified).
+STANDING RULE (docs/theme-integration.md): every storefront surface ships
+as an app embed (target "body"); cellexia-proof.js self-inserts the
+widgets (product pages: after .pdp__tabs; home page: end of #main) in
+fixed press → endorsements → results order. Islands keep their v8 ids and
+payload shape byte-for-byte — only the gates were renamed per widget.
+{%- endcomment -%}
+{%- liquid
+assign cx_page_ok = false
+if request.page_type == 'product' or request.page_type == 'index'
+assign cx_page_ok = true
+endif
+assign cfg = app.metafields.cellexia.config.value
+assign cx_market = localization.market.handle | default: ''
+assign cx_ctx = 'brand'
+assign cx_pid = 0
+if request.page_type == 'product'
+assign cx_ctx = 'product'
+assign cx_pid = product.id
+endif
+
+assign cx_p_on = false
+if cfg.press.enabled == true
+assign cx_scope = cfg.marketScopes.press
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_p_on = true
+endif
+endif
+assign cx_p_ok = true
+if request.page_type == 'product'
+if product.metafields.cellexia.pdp_flags.value.press == false
+assign cx_p_ok = false
+assign cx_p_on = false
+endif
+endif
+assign cx_p_draft = false
+if cfg.preview.armed == true and cx_p_ok
+if cfg.preview.draftFlags.press == true or cfg.press.enabled == true
+assign cx_p_draft = true
+endif
+endif
+
+assign cx_e_on = false
+if cfg.dermEndorsements.enabled == true
+assign cx_scope = cfg.marketScopes.derm_endorsements
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_e_on = true
+endif
+endif
+assign cx_e_ok = true
+if request.page_type == 'product'
+if product.metafields.cellexia.pdp_flags.value.derm_endorsements == false
+assign cx_e_ok = false
+assign cx_e_on = false
+endif
+endif
+assign cx_e_draft = false
+if cfg.preview.armed == true and cx_e_ok
+if cfg.preview.draftFlags.derm_endorsements == true or cfg.dermEndorsements.enabled == true
+assign cx_e_draft = true
+endif
+endif
+
+assign cx_r_on = false
+if cfg.beforeAfter.enabled == true
+assign cx_scope = cfg.marketScopes.verified_before_after
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_r_on = true
+endif
+endif
+assign cx_r_ok = true
+if request.page_type == 'product'
+if product.metafields.cellexia.pdp_flags.value.verified_before_after == false
+assign cx_r_ok = false
+assign cx_r_on = false
+endif
+endif
+assign cx_r_draft = false
+if cfg.preview.armed == true and cx_r_ok
+if cfg.preview.draftFlags.verified_before_after == true or cfg.beforeAfter.enabled == true
+assign cx_r_draft = true
+endif
+endif
+
+assign cx_any = false
+if cx_p_on or cx_p_draft or cx_e_on or cx_e_draft or cx_r_on or cx_r_draft
+assign cx_any = true
+endif
+unless cx_page_ok
+assign cx_any = false
+endunless
+-%}
+{%- if cx_any -%}
+{{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+{%- if cx_p_on or cx_p_draft -%}
+<script type="application/json" id="cx-press-config" data-cx-market="{{ cx_market | escape }}">
+{"live":{{cx_p_on}}{% if cfg.press.density == "ultra" %}, "cm": 2{% elsif cfg.press.density == "compact" %}, "cm": 1{% endif %},"ctx":{{cx_ctx|json}},"pid":{{cx_pid}},"str":{"eyebrow":{{'press.eyebrow'|t|json}},"aria":{{'press.eyebrow'|t|json}},"read":{{'press.read_article'|t|json}}}}
+</script>
+{%- endif -%}
+{%- if cx_e_on or cx_e_draft -%}
+<script type="application/json" id="cx-endo-config" data-cx-market="{{ cx_market | escape }}">
+{"live":{{cx_e_on}}{% if cfg.dermEndorsements.density == "ultra" %}, "cm": 2{% elsif cfg.dermEndorsements.density == "compact" %}, "cm": 1{% endif %},"ctx":{{cx_ctx|json}},"pid":{{cx_pid}},"str":{"eyebrow":{{'endo.eyebrow'|t|json}},"one":{{'endo.count_headline'|t:count:1,n:'@@N@@'|json}},"other":{{'endo.count_headline'|t:count:2,n:'@@N@@'|json}},"shown":{{'endo.shown_of'|t|json}},"more":{{'endo.show_more'|t|json}},"read":{{'endo.read_full'|t|json}}}}
+</script>
+{%- endif -%}
+{%- if cx_r_on or cx_r_draft -%}
+<script type="application/json" id="cx-results-config" data-cx-market="{{ cx_market | escape }}">
+{"live":{{cx_r_on}}{% if cfg.beforeAfter.density == "ultra" %}, "cm": 2{% elsif cfg.beforeAfter.density == "compact" %}, "cm": 1{% endif %},"ctx":{{cx_ctx|json}},"pid":{{cx_pid}},"str":{"bv":{{'results.banner_verified'|t:count:'@@N@@'|json}},"ba":{{'results.banner_all'|t:count:'@@N@@'|json}},"fc":{{'results.filter_concern'|t|json}},"fa":{{'results.filter_age'|t|json}},"fs":{{'results.filter_skin'|t|json}},"fd":{{'results.filter_duration'|t|json}},"sd":{{'results.skin_dry'|t|json}},"so":{{'results.skin_oily'|t|json}},"sc":{{'results.skin_combination'|t|json}},"ss":{{'results.skin_sensitive'|t|json}},"sn":{{'results.skin_normal'|t|json}},"d1":{{'results.duration_lt8'|t|json}},"d2":{{'results.duration_8to12'|t|json}},"d3":{{'results.duration_gt12'|t|json}},"ay":{{'results.age_years'|t:range:'@@R@@'|json}},"vb":{{'results.verified_badge'|t|json}},"lb":{{'results.lab_badge'|t|json}},"vid":{{'results.video_badge'|t|json}},"wk":{{'results.weeks_of_use'|t|json}},"bef":{{'results.before'|t|json}},"aft":{{'results.after'|t|json}},"more":{{'results.show_more'|t|json}},"empty":{{'results.empty'|t|json}},"close":{{'results.close'|t|json}},"clear":{{'results.clear_filters'|t|json}}}}
+</script>
+{%- endif -%}
+<script src="{{ 'cellexia-proof.js' | asset_url }}" defer></script>
+{%- endif -%}
+{% schema %}
+{"name":"Cellexia proof library","target":"body","settings":[]}
+{% endschema %}

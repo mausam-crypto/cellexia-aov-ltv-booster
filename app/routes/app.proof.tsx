@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { Outlet, useLoaderData, useLocation, useNavigate } from "@remix-run/react";
-import { BlockStack, Box, Card, Layout, Page, Tabs, Text } from "@shopify/polaris";
+import { Banner, BlockStack, Box, Card, Layout, Page, Tabs, Text } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getProofModerationCounts } from "../services/proof.server";
@@ -17,7 +17,9 @@ import { getProofModerationCounts } from "../services/proof.server";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const counts = await getProofModerationCounts(session.shop);
-  return { counts };
+  const storePrefix = session.shop.replace(".myshopify.com", "");
+  const themeEditorUrl = `https://admin.shopify.com/store/${storePrefix}/themes/current/editor?context=apps`;
+  return { counts, themeEditorUrl };
 };
 
 const TAB_PATHS = [
@@ -27,7 +29,7 @@ const TAB_PATHS = [
 ];
 
 export default function ProofLibraryLayout() {
-  const { counts } = useLoaderData<typeof loader>();
+  const { counts, themeEditorUrl } = useLoaderData<typeof loader>();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -86,12 +88,30 @@ export default function ProofLibraryLayout() {
                   Entries live in the app’s database and are served to the
                   storefront through the /apps/cellexia/proof endpoint — no
                   byte-budget limits, so hundreds or thousands of entries are
-                  fine. To show them, place the “Press”, “Derm endorsements”
-                  and “Results gallery” app blocks in the theme editor (product
-                  template and/or home page).
+                  fine.
                 </Text>
               </Box>
             </Card>
+            {/* v8.7: ONE app embed ("Cellexia proof library") carries all
+                three widgets — the store's legacy Liquid templates cannot
+                take section app blocks (merchant-verified), so the v8 blocks
+                were retired for an embed that self-inserts on product pages
+                and the home page. */}
+            <Banner
+              title="One-time step: enable the app embed"
+              tone="info"
+              action={{ content: "Open App embeds", url: themeEditorUrl, target: "_blank" }}
+            >
+              <p>
+                These widgets render through the <b>Cellexia proof library</b>{" "}
+                app embed — turning a feature on (or previewing it) shows
+                nothing until the embed is enabled. In the theme editor open{" "}
+                <b>App embeds</b>, switch on “Cellexia proof library”, and
+                save. One time only; the widgets then place themselves on
+                product pages (below the info tabs) and the home page, and
+                every feature/preview toggle works normally.
+              </p>
+            </Banner>
             <Outlet />
           </BlockStack>
         </Layout.Section>

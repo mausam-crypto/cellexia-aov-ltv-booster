@@ -427,10 +427,24 @@ async function checkThemeEmbeds(
         fixUrl: themeEditorUrl,
       };
     }
+    // v8.7: the proof-library widgets (press / endorsements / results) ride
+    // their own embed. Its absence only matters when those features are
+    // used, so it degrades to warn — but silently-invisible widgets cost a
+    // real merchant a confused preview session, hence the explicit probe.
+    const proof = detectEmbed(settingsData, "blocks/proof-booster");
+    if (!proof.found || !proof.enabled) {
+      return {
+        status: "warn" as const,
+        detail: `Cart and PDP booster embeds are enabled, but the "Cellexia proof library" embed is ${proof.found ? "disabled" : "not added"} — the press band, endorsement wall and results gallery cannot render (even in preview) until it is on.`,
+        fixHint:
+          "Only needed if you use the proof-library widgets: theme editor → App embeds → enable “Cellexia proof library”, then save the theme.",
+        fixUrl: themeEditorUrl,
+      };
+    }
     return {
       status: "pass" as const,
       detail:
-        "Cart booster and PDP booster app embeds are present and enabled on the published theme.",
+        "Cart booster, PDP booster and proof library app embeds are present and enabled on the published theme.",
       fixHint: "Nothing to do.",
     };
   });

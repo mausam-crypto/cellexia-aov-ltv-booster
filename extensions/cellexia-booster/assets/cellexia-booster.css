@@ -4084,3 +4084,16 @@ body.customer--b2b .cx-sub-remove {
     max-inline-size: none;
   }
 }
+
+/* v8.7 proof band — the shared self-insertion container for the embed-based
+   press / endorsement / results widgets (fixed slot order; empty slots
+   collapse). Vertical rhythm between whichever widgets actually render. */
+.cx-proof-band {
+  margin-block: 28px;
+}
+.cx-proof-band__slot:empty {
+  display: none;
+}
+.cx-proof-band__slot + .cx-proof-band__slot:not(:empty) {
+  margin-top: 28px;
+}

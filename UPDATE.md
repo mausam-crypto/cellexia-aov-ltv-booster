@@ -267,10 +267,11 @@ DEPLOY STEPS SPECIFIC TO v8 (in addition to the §2 basics):
    scoping). SQLite dev applies them via `npm run setup`; Postgres
    production uses `prisma db push` as always (prisma/migrations are
    SQLite-dialect — the schema is the source of truth).
-2. THEME EDITOR — the three new blocks must be PLACED (apps cannot do it):
-   "Cellexia press", "Cellexia derm endorsements" and "Cellexia results
-   gallery" are app blocks that work on ANY template. Place them on the
-   product template (the results gallery REPLACES the old before/after
+2. THEME EDITOR — superseded in v8.7: the three widgets now ride ONE app
+   embed, "Cellexia proof library" (the store's legacy Liquid templates
+   cannot take section app blocks). Enable it once under App embeds; the
+   widgets self-insert on product pages AND the home page — those two
+   templates only, never cart/blog/search (the results gallery REPLACES the old before/after
    widget there) and, if you want the brand-level modules, on the home
    page too. On product pages they auto-prioritise entries tagged to that
    product; on other pages they show everything.
@@ -520,6 +521,26 @@ modes, bottom of the Features page) is now one click away from where merchants
 actually look: a header link on the Proof library page and a link on the
 Product boosters page, both deep-linking straight to the card.
 
+**v8.7 — proof widgets became ONE app embed (merchant-verified theme
+constraint).** The v8 press / endorsement wall / results gallery shipped as
+section-target app blocks — but this store's legacy Liquid templates cannot
+take app blocks on the product page (the theme editor offers no "Add block →
+Apps" there), so they were unusable. They are now merged into a single app
+embed, **"Cellexia proof library"**: enable it once under App embeds (like
+the cart/PDP/Amazon embeds) and the widgets place themselves — product pages
+directly below the info-tabs box, other pages at the end of the main content,
+always press → endorsements → results, fail-closed when no anchor exists
+(never dumped at the bottom of `<body>`). The three config islands are
+byte-identical to v8.3 (density modes included); the three old block files
+are deleted. A STANDING RULE now lives in docs/theme-integration.md and is
+ENFORCED by the validation suite: every storefront surface ships as an app
+embed — any new section-target block fails the build (the five pre-v8
+optional drag-and-drop blocks are frozen exceptions). The Proof library
+banner, Preview Center readiness notes, INSTALL.md §5.3 and the theme-embeds
+health check (now probing the proof embed, warn-grade) were all repointed
+from "place the blocks" to "enable the embed". DEPLOY NOTE: this changes the
+theme extension — run `npm run deploy`, then enable the embed once.
+
 ## 6. If something looks wrong
 
 - Preview link 404 → §Troubleshooting in INSTALL.md (app proxy).
@@ -527,6 +548,13 @@ Product boosters page, both deep-linking straight to the card.
   deploy half is stale (§3) — the "Deployed extension build" health check tells you.
 - Widgets missing for buyers → feature/market toggles (everything ships OFF), or
   Setup & health flags the cause.
+- Press / endorsements / results gallery INVISIBLE on the storefront (even in
+  preview, with content added and the feature on) → the "Cellexia proof
+  library" app embed is not enabled. Theme editor → App embeds → switch on
+  "Cellexia proof library" → save. One-time step; the widgets then place
+  themselves (product pages below the info tabs, home page at the end of the
+  main content). The Proof library page and the Preview Center readiness
+  notes both say this.
 - Proof library errors (press / endorsements / results won't load or save) →
   run Setup & health; the "Proof library database" check names the culprit —
   stale generated Prisma Client (rebuild per §3, never shell-generate) vs

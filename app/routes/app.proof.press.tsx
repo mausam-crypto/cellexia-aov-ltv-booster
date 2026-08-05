@@ -653,7 +653,8 @@ export default function ProofPressTab() {
               <Text as="p" variant="bodySm" tone="subdued">
                 Publication logo + large quote for the “As seen in the press”
                 band. Entries without tagged products are brand-level and show
-                everywhere the block is placed.
+                wherever the proof band renders (product pages and the home
+                page).
               </Text>
             </BlockStack>
             <Button
