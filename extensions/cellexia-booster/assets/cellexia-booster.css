@@ -2935,6 +2935,44 @@ body.customer--b2b .cx-sub-remove {
   }
 }
 
+/* -------------------------------- press logo switch cue (v8.12) --------
+   Optional (press.logoCue): the learned active-tab pattern. A short ink
+   bar sits under the ACTIVE logo and crossfades/scales to the newly
+   selected one; a selection indicator on one item in a row is the
+   universal signal that its siblings are selectable. The inactive logos
+   also lift slightly on hover/focus so pointers get a second cue. */
+.cx-press--cue .cx-press__logo {
+  position: relative;
+  padding-block-end: 10px;
+}
+.cx-press--cue .cx-press__logo::after {
+  content: "";
+  position: absolute;
+  inset-block-end: 2px;
+  inset-inline-start: 50%;
+  inline-size: 18px;
+  block-size: 2px;
+  border-radius: 1px;
+  background: #1d1d1b;
+  opacity: 0;
+  transform: translateX(-50%) scaleX(0.4);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.cx-press--cue .cx-press__logo[aria-pressed="true"]::after {
+  opacity: 1;
+  transform: translateX(-50%) scaleX(1);
+}
+.cx-press--cue .cx-press__logo:not([aria-pressed="true"]):hover::after,
+.cx-press--cue .cx-press__logo:not([aria-pressed="true"]):focus-visible::after {
+  opacity: 0.3;
+  transform: translateX(-50%) scaleX(0.7);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cx-press--cue .cx-press__logo::after {
+    transition: none;
+  }
+}
+
 /* ------------------------------------ press WALL layout (v8.10) --------
    Every quote visible at once — compact attribution cards. Mobile: one
    tight column. Desktop: CSS-columns masonry (cards keep natural height,

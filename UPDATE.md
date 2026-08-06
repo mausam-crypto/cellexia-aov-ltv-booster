@@ -611,6 +611,16 @@ quote's source language itself (market-scoped press libraries legitimately
 mix languages), and long translation runs no longer block the moderation
 buttons — translations run on their own request lane with a result toast.
 
+**v8.12 — optional press logo switch cue (merchant ask).** Features page →
+Display density card → **"As seen in the press — logo switch cue"** (off by
+default): on the full featured layout, a short ink indicator renders under
+the ACTIVE logo and glides to whichever logo the visitor taps — the learned
+active-tab pattern, which signals "the other logos are tappable" without any
+arrows or instructional text. Pointer users get a faint secondary cue on
+hover/focus; reduced-motion visitors get the indicator without animation.
+Compact/ultra tiers and the quote wall are unaffected. Live setting; no new
+translations.
+
 ## 6. If something looks wrong
 
 - Preview link 404 → §Troubleshooting in INSTALL.md (app proxy).

@@ -412,6 +412,25 @@ const EVIDENCE = {
     "v8.10: admin press-layout picker + client-safe mirror present",
   );
 
+  // v8.12: the optional logo switch cue (active-tab indicator, full layout
+  // only — behavior pinned by proof-gallery Q-series).
+  ok(
+    proofLiquid.includes('{% if cfg.press.logoCue == true %},"lc":1{% endif %}'),
+    "v8.12: press island emits the lc cue code",
+  );
+  ok(
+    proofJs.includes("var cue = conf.lc === 1 && !ultra && !compact;"),
+    "v8.12: the cue applies to the FULL featured layout only",
+  );
+  ok(
+    read(CSS).includes(".cx-press--cue .cx-press__logo[aria-pressed=\"true\"]::after {"),
+    "v8.12: the active-logo indicator rule exists",
+  );
+  ok(
+    read("app/routes/app.features._index.tsx").includes("logo switch cue"),
+    "v8.12: admin toggle present",
+  );
+
   // v8.11: proof-library translations — schema model, island locale
   // emission, JS locale param, proxy overlay, service allowlist, admin
   // intents. Behavior itself is pinned by sims/proof-translation.ts.

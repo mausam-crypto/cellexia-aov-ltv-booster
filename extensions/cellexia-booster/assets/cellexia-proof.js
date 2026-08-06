@@ -605,7 +605,11 @@
     var ultra = conf.cm === 2;
     var compact = conf.cm === 1;
     var openIdx = -1; // ultra only: which quote is revealed (-1 = collapsed)
-    var root = pfEl('section', 'cx-proof cx-press' + (ultra ? ' cx-press--ultra' : compact ? ' cx-press--compact' : ''), ['data-cx-feature', 'press']);
+    // v8.12 optional switch cue (island "lc":1, FULL layout only): the
+    // active-tab indicator pattern — a selection marker under the current
+    // logo signals the others are tappable, no text or arrows needed.
+    var cue = conf.lc === 1 && !ultra && !compact;
+    var root = pfEl('section', 'cx-proof cx-press' + (ultra ? ' cx-press--ultra' : compact ? ' cx-press--compact' : '') + (cue ? ' cx-press--cue' : ''), ['data-cx-feature', 'press']);
     pfSp(root);
     var eyebrow = pfEl('p', 'cx-proof__eyebrow eyebrow eyebrow--sm');
     eyebrow.textContent = pfStr(s, 'eyebrow');

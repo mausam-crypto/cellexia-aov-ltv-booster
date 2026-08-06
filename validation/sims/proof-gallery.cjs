@@ -376,6 +376,25 @@ ok(S.pressBuildSection({ str: PRESS_STR }, { items: [{ publication: "X" }] }) ==
     "P5: textContent sink only — no parsed children, no innerHTML");
 }
 
+// --- Q1: v8.12 logo switch cue (lc:1 — FULL featured layout only) ---------------------
+{
+  const cued = S.pressBuildSection({ str: PRESS_STR, lc: 1 }, pressFixture());
+  ok(!!cued && cued.className.indexOf("cx-press--cue") !== -1,
+    "Q1: lc:1 adds the cue modifier on the full layout");
+  const plain = S.pressBuildSection({ str: PRESS_STR }, pressFixture());
+  ok(!!plain && plain.className.indexOf("cx-press--cue") === -1,
+    "Q1b: no lc -> no cue (off by default)");
+  const compactCued = S.pressBuildSection({ str: PRESS_STR, lc: 1, cm: 1 }, pressFixture());
+  ok(!!compactCued && compactCued.className.indexOf("cx-press--cue") === -1,
+    "Q1c: compact tier ignores the cue (full layout only)");
+  const ultraCued = S.pressBuildSection({ str: PRESS_STR, lc: 1, cm: 2 }, pressFixture());
+  ok(!!ultraCued && ultraCued.className.indexOf("cx-press--cue") === -1,
+    "Q1d: ultra tier ignores the cue");
+  const wallCued = S.pressBuildSection({ str: PRESS_STR, lc: 1, ly: "w" }, pressFixture());
+  ok(!!wallCued && wallCued.className.indexOf("cx-press--cue") === -1,
+    "Q1e: wall layout ignores the cue (nothing to switch)");
+}
+
 // --- W1-W4: v8.10 WALL layout (ly:'w' — all quotes visible, no interaction) ----------
 {
   const section = S.pressBuildSection({ str: PRESS_STR, ly: "w" }, pressFixture());

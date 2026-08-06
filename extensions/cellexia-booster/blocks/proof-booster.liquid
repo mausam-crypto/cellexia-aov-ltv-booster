@@ -98,7 +98,7 @@ endunless
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
 {%- if cx_p_on or cx_p_draft -%}
 <script type="application/json" id="cx-press-config" data-cx-market="{{ cx_market | escape }}">
-{"live":{{cx_p_on}}{% if cfg.press.density == "ultra" %}, "cm": 2{% elsif cfg.press.density == "compact" %}, "cm": 1{% endif %}{% if cfg.press.placement == "above_proof" %},"pl":"a"{% elsif cfg.press.placement == "below_proof" %},"pl":"b"{% endif %}{% if cfg.press.layout == "wall" %},"ly":"w"{% endif %},"ctx":{{cx_ctx|json}},"pid":{{cx_pid}},"lo":{{request.locale.iso_code|json}},"str":{"eyebrow":{{'press.eyebrow'|t|json}},"aria":{{'press.eyebrow'|t|json}},"read":{{'press.read_article'|t|json}}}}
+{"live":{{cx_p_on}}{% if cfg.press.density == "ultra" %}, "cm": 2{% elsif cfg.press.density == "compact" %}, "cm": 1{% endif %}{% if cfg.press.placement == "above_proof" %},"pl":"a"{% elsif cfg.press.placement == "below_proof" %},"pl":"b"{% endif %}{% if cfg.press.layout == "wall" %},"ly":"w"{% endif %}{% if cfg.press.logoCue == true %},"lc":1{% endif %},"ctx":{{cx_ctx|json}},"pid":{{cx_pid}},"lo":{{request.locale.iso_code|json}},"str":{"eyebrow":{{'press.eyebrow'|t|json}},"aria":{{'press.eyebrow'|t|json}},"read":{{'press.read_article'|t|json}}}}
 </script>
 {%- endif -%}
 {%- if cx_e_on or cx_e_draft -%}

@@ -523,6 +523,10 @@ export interface BoosterSettings {
     placement: ProofPlacement;
     /** v8.10 layout (PRESS_LAYOUTS); density applies to "featured" only. */
     layout: PressLayout;
+    /** v8.12: subtle switch cue on the FULL featured layout — a small ink
+     *  indicator under the active logo (the learned tab pattern) signals
+     *  that the other logos are tappable. Off by default. */
+    logoCue: boolean;
   };
   /**
    * Dermatologist endorsement wall (v8). Entry content lives in the
@@ -866,6 +870,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     density: "full",
     placement: "below_tabs",
     layout: "featured",
+    logoCue: false,
   },
   dermEndorsements: {
     enabled: false,
@@ -1465,6 +1470,9 @@ export function sanitizeSettings(
   }
   if (!PRESS_LAYOUTS.includes(next.press.layout as PressLayout)) {
     next.press.layout = DEFAULT_SETTINGS.press.layout;
+  }
+  if (typeof next.press.logoCue !== "boolean") {
+    next.press.logoCue = DEFAULT_SETTINGS.press.logoCue;
   }
   if (!PROOF_DENSITIES.includes(next.press.density as ProofDensity)) {
     next.press.density = next.press.compact === true ? "ultra" : "full";

@@ -360,8 +360,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 
   const pressLayout: PressLayoutValue = settings.press.layout;
+  const pressLogoCue: boolean = settings.press.logoCue;
 
-  return { features, previewArmed, density, placement, pressLayout };
+  return { features, previewArmed, density, placement, pressLayout, pressLogoCue };
 };
 
 /**
@@ -444,7 +445,7 @@ function FeatureRow({ feature }: { feature: FeatureCardData }) {
 }
 
 export default function FeaturesHub() {
-  const { features, previewArmed, density, placement, pressLayout } = useLoaderData<typeof loader>();
+  const { features, previewArmed, density, placement, pressLayout, pressLogoCue } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -631,6 +632,21 @@ export default function FeaturesHub() {
                   onChange={(checked) => toggleDensity(toggle, checked)}
                 />
               ))}
+              <Checkbox
+                label="As seen in the press — logo switch cue"
+                helpText="Featured layout only: a small ink indicator under the active logo (the familiar tab pattern), so visitors see the other logos are tappable to switch quotes. No arrows, no extra text."
+                checked={pressLogoCue}
+                disabled={densitySaving}
+                onChange={(checked) => {
+                  const formData = new FormData();
+                  formData.set("feature", "press_logo_cue");
+                  formData.set(
+                    "patch",
+                    JSON.stringify({ press: { logoCue: checked } }),
+                  );
+                  submit(formData, { method: "post" });
+                }}
+              />
               <ChoiceList
                 title="As seen in the press — layout"
                 choices={[
