@@ -92,9 +92,10 @@ host now does generate + the correct apply step for whichever database
 The `prisma/migrations` folder is **SQLite-dialect** (dev-only) — that is why
 Postgres uses `db push`; the selector enforces this split automatically.
 
-Additions since the pre-v8 build: **three proof-library tables** — `PressItem`
+Additions since the pre-v8 build: **four proof-library tables** — `PressItem`
 (incl. `marketHandles`), `DermEndorsement`, `CustomerResult` (incl. the
-`legacyGid` unique key that makes the before/after import exactly-once).
+`legacyGid` unique key that makes the before/after import exactly-once) and
+`ProofTranslation` (v8.11 — per-entry, per-locale translated text).
 Earlier additions if you're further behind: `PreviewState` (+ `draftConfig`),
 `TranslationConfig`, `Experiment.startSyncErrors`, `Event.market`,
 `OrderStat.market`, `OrderStat.countryCode` (+ indexes). `db push` adds all of
@@ -567,10 +568,11 @@ stack** (right before the dermatologist survey), or **Below the proof stack**
 fixed press → endorsements → results order; when a product has no proof stack
 the above/below choices fall back to the stack's own position and then to the
 default chain — never nothing, never the footer. Home-page rendering is
-unchanged. Live settings (density convention). Mobile press band: the logo
-strip now centers when it fits (still swipeable when it overflows), a lone
-logo renders larger, and the quote text is centered to match the eyebrow and
-attribution.
+unchanged. Live settings (density convention). Mobile press band (v8.10b):
+the logo strip wraps and centers on every breakpoint — every logo is always
+visible (the old horizontal scroller hid overflow logos with no affordance,
+reported live with a 4th publication); a lone logo renders larger, and the
+quote text is centered to match the eyebrow and attribution.
 
 **v8.10 — press "All quotes visible" layout (merchant ask).** Features page →
 Display density card → **"As seen in the press — layout"**: *Featured quote*
@@ -580,6 +582,34 @@ compact attribution card — logo or wordmark, the full quote, publication name
 and the optional article link; masonry columns on desktop, one tight column
 on mobile; nothing to tap, nothing hidden; density tiers are ignored — the
 wall is inherently compact). Live setting, no new translations.
+
+**v8.11 — proof-library translations (merchant ask: "the usual system").**
+Press quotes, endorsement quotes + credentials and before/after testimonials
+now translate like the per-product booster content — with one structural
+difference: proof entries live in the app's own database, so Translate &
+Adapt can never see them; the same contract is reproduced on a new
+`ProofTranslation` table (additive — `db push` per §2 covers it):
+DeepL via the merchant's existing key (Languages page), INCREMENTAL
+(sha256 source digests — only missing/outdated fields are sent; editing an
+entry re-translates just that entry), per-locale independent success, and
+manual-edit protection (each Proof tab's entry editor has a "Translations"
+review section; an edited value is marked manual and auto-translation never
+overwrites it; clearing it falls back to the original). Names, publications,
+URLs and country codes are NEVER machine-translated. Each Proof tab gains a
+"Translate into all languages" button + a coverage line, and saves
+auto-translate the saved entry when auto-translate-on-save is on. The
+storefront passes the page locale on every proof fetch and the proxy overlays
+stored translations per field — the original text is always the fallback, so
+a missing translation can never blank a quote. Hardened after its own
+adversarial review: translated chunks persist as they complete (a mid-run
+DeepL quota/throttle failure never discards already-billed work — the retry
+resumes exactly where it stopped), auto-writes are conditional so a manual
+edit saved at ANY moment survives a concurrently-running bulk translation,
+an edited entry immediately serves its NEW original text (never a
+translation of the old text) until re-translated, DeepL detects each
+quote's source language itself (market-scoped press libraries legitimately
+mix languages), and long translation runs no longer block the moderation
+buttons — translations run on their own request lane with a result toast.
 
 ## 6. If something looks wrong
 

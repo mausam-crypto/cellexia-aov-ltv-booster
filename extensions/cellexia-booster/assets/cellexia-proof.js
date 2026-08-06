@@ -497,6 +497,11 @@
 
   function pfProductParams(conf, params) {
     if (conf && conf.ctx === 'product' && pfPosInt(conf.pid)) params.product = conf.pid;
+    // v8.11: the page locale rides every proof fetch — the proxy overlays
+    // stored translations per field (source text is always the fallback).
+    if (conf && typeof conf.lo === 'string' && /^[a-z]{2,3}(-[a-zA-Z0-9]+)?$/i.test(conf.lo)) {
+      params.locale = conf.lo.toLowerCase();
+    }
     return params;
   }
 

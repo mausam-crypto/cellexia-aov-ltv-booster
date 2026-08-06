@@ -155,6 +155,11 @@
       "file": "validation/sims/proof-placement.cjs",
       "floorBytes": 5000,
       "phase": "required"
+    },
+    {
+      "file": "validation/sims/proof-translation.ts",
+      "floorBytes": 9000,
+      "phase": "required"
     }
   ]
 }

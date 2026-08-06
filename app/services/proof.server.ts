@@ -58,6 +58,7 @@ import {
   listProductsWithBoosterStatus,
 } from "./pdp-content.server";
 import type { AdminGraphqlClient } from "./metaobjects.server";
+import { deleteProofTranslationsFor } from "./proof-translation.server";
 
 // ---------------------------------------------------------------------------
 // Public types + enums
@@ -811,6 +812,13 @@ export async function deleteProofItem(
     const existing = await delegate.findFirst({ where: { id, shop } });
     if (!existing) return { ok: false, errors: ["Entry not found"] };
     await delegate.delete({ where: { id } });
+    // v8.11: translations are per-entry satellite rows — remove them with
+    // the entry (best-effort; orphans would only waste bytes, never render).
+    try {
+      await deleteProofTranslationsFor(shop, type, id);
+    } catch {
+      /* non-fatal */
+    }
     return { ok: true, errors: [] };
   } catch (error) {
     return {

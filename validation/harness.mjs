@@ -412,6 +412,45 @@ const EVIDENCE = {
     "v8.10: admin press-layout picker + client-safe mirror present",
   );
 
+  // v8.11: proof-library translations — schema model, island locale
+  // emission, JS locale param, proxy overlay, service allowlist, admin
+  // intents. Behavior itself is pinned by sims/proof-translation.ts.
+  ok(
+    read("prisma/schema.prisma").includes("model ProofTranslation {") &&
+      read("prisma/schema.prisma").includes("@@unique([shop, resourceType, resourceId, locale, field])"),
+    "v8.11: ProofTranslation model with the composite unique key",
+  );
+  ok(
+    [...proofLiquid.matchAll(/"lo":\{\{request\.locale\.iso_code\|json\}\}/g)].length === 3,
+    "v8.11: all three islands emit the page locale",
+  );
+  ok(
+    proofJs.includes("params.locale = conf.lo.toLowerCase();"),
+    "v8.11: proof fetches carry the page locale",
+  );
+  const proxySrc11 = read("app/routes/proxy.proof.tsx");
+  ok(
+    proxySrc11.includes("getProofTranslationOverlay") &&
+      [...proxySrc11.matchAll(/normalizeLocaleParam\(url\.searchParams\.get\("locale"\)\)/g)].length === 3,
+    "v8.11: the proxy overlays translations for all three types",
+  );
+  const ptSvc = read("app/services/proof-translation.server.ts");
+  ok(
+    ptSvc.includes('press: ["quote"],') &&
+      ptSvc.includes('endorsements: ["quote", "credentials"],') &&
+      ptSvc.includes('results: ["testimonial"],'),
+    "v8.11: the translatable-fields allowlist is exactly prose (names/publications/URLs never translated)",
+  );
+  for (const route of ["app.proof.press.tsx", "app.proof.endorsements.tsx", "app.proof.results.tsx"]) {
+    const tabSrc11 = read(`app/routes/${route}`);
+    ok(
+      tabSrc11.includes('case "translate_proof": {') &&
+        tabSrc11.includes('case "save_translation": {') &&
+        tabSrc11.includes("ProofTranslationsSection"),
+      `v8.11: ${route} carries the translate intents + per-entry review editor`,
+    );
+  }
+
   // page scope: the embed renders on product + home templates ONLY (the v8
   // design scope) — without this guard an enabled widget would append to
   // cart/blog/search pages' #main too.

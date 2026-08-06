@@ -252,11 +252,17 @@ const PDP_STUB = [
 ].join("\n");
 
 const METAOBJECTS_TYPE_IMPORT = 'from "./metaobjects.server";';
+const PT_IMPORT = 'import { deleteProofTranslationsFor } from "./proof-translation.server";';
+const PT_STUB = [
+  "// validation stub — translation cleanup is outside this suite's surface",
+  "const deleteProofTranslationsFor: any = async () => {};",
+  "void deleteProofTranslationsFor;",
+].join("\n");
 const METAOBJECTS_TYPE_REPOINT = 'from "../../../app/services/metaobjects.server";';
 
 async function loadProofModel(): Promise<any> {
   const src = fs.readFileSync(SRC_PATH, "utf8");
-  for (const anchor of [PRISMA_IMPORT, PDP_IMPORT, METAOBJECTS_TYPE_IMPORT]) {
+  for (const anchor of [PRISMA_IMPORT, PDP_IMPORT, METAOBJECTS_TYPE_IMPORT, PT_IMPORT]) {
     if (!src.includes(anchor)) {
       throw new Error(
         "proof-server loader: import anchor not found in proof.server.ts — update the loader: " + anchor,
@@ -266,7 +272,8 @@ async function loadProofModel(): Promise<any> {
   const stubbed = src
     .replace(PRISMA_IMPORT, PRISMA_STUB)
     .replace(PDP_IMPORT, PDP_STUB)
-    .replace(METAOBJECTS_TYPE_IMPORT, METAOBJECTS_TYPE_REPOINT);
+    .replace(METAOBJECTS_TYPE_IMPORT, METAOBJECTS_TYPE_REPOINT)
+    .replace(PT_IMPORT, PT_STUB);
   const genDir = path.join(ROOT, "validation", "lib", ".gen");
   fs.mkdirSync(genDir, { recursive: true });
   const outPath = path.join(genDir, "proof.server.real.ts");

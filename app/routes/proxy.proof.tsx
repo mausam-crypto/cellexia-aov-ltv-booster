@@ -8,6 +8,7 @@ import {
   getPublicPress,
   getPublicResults,
 } from "../services/proof.server";
+import { getProofTranslationOverlay } from "../services/proof-translation.server";
 import type { PublicResultsFilters } from "../services/proof.server";
 
 /**
@@ -59,6 +60,15 @@ function positiveInt(raw: string | null): number | null {
 }
 
 /** Market handle (v8.1 press scoping) — settings marketHandlePattern twin. */
+/** v8.11: storefront page locale for the translation overlay — the theme
+ *  emits request.locale.iso_code ("fr", "pt-PT"); anything malformed is
+ *  ignored (the source text serves). */
+function normalizeLocaleParam(raw: string | null): string | null {
+  if (typeof raw !== "string") return null;
+  const text = raw.trim().toLowerCase();
+  return /^[a-z]{2,3}(-[a-z0-9]+)?$/.test(text) ? text : null;
+}
+
 function normalizeMarketParam(raw: string | null): string | null {
   if (typeof raw !== "string") return null;
   const value = raw.trim().toLowerCase();
@@ -98,10 +108,40 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       case "press": {
         const market = normalizeMarketParam(url.searchParams.get("market"));
         const payload = await getPublicPress(shop, product, market);
+        // v8.11 translation overlay: per-field, source text is always the
+        // fallback (a missing translation can never blank a quote).
+        const locale = normalizeLocaleParam(url.searchParams.get("locale"));
+        if (locale && payload.items.length > 0) {
+          const overlay = await getProofTranslationOverlay(
+            shop, "press", payload.items.map((item) => item.id), locale,
+            new Map(payload.items.map((item) => [item.id, { quote: item.quote }])),
+          );
+          for (const item of payload.items) {
+            const fields = overlay.get(item.id);
+            if (fields?.quote) item.quote = fields.quote;
+          }
+        }
         return jsonResponse(payload, true);
       }
       case "endorsements": {
         const payload = await getPublicEndorsements(shop, product, page, per);
+        const locale = normalizeLocaleParam(url.searchParams.get("locale"));
+        if (locale && payload.items.length > 0) {
+          const overlay = await getProofTranslationOverlay(
+            shop, "endorsements", payload.items.map((item) => item.id), locale,
+            new Map(payload.items.map((item) => [
+              item.id,
+              { quote: item.quote, credentials: item.credentials ?? "" },
+            ])),
+          );
+          for (const item of payload.items) {
+            const fields = overlay.get(item.id);
+            if (fields?.quote) item.quote = fields.quote;
+            if (fields?.credentials && item.credentials) {
+              item.credentials = fields.credentials;
+            }
+          }
+        }
         return jsonResponse(payload, true);
       }
       case "results": {
@@ -117,6 +157,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           filters.duration = duration;
         }
         const payload = await getPublicResults(shop, product, filters, page, per);
+        const locale = normalizeLocaleParam(url.searchParams.get("locale"));
+        if (locale && payload.items.length > 0) {
+          const overlay = await getProofTranslationOverlay(
+            shop, "results", payload.items.map((item) => item.id), locale,
+            new Map(payload.items.map((item) => [
+              item.id,
+              { testimonial: item.testimonial ?? "" },
+            ])),
+          );
+          for (const item of payload.items) {
+            const fields = overlay.get(item.id);
+            if (fields?.testimonial && item.testimonial) {
+              item.testimonial = fields.testimonial;
+            }
+          }
+        }
         return jsonResponse(payload, true);
       }
       default:

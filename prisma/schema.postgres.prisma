@@ -199,6 +199,31 @@ model CustomerResult {
   @@index([shop, status, concern])
 }
 
+// v8.11: machine/manual translations for proof-library entry TEXT (press
+// quotes, endorsement quotes/credentials, result testimonials). Source text
+// lives on the entry rows (always the fallback); one row here per
+// (entry, locale, field). sourceDigest = sha256 of the source at
+// translation time — a changed source outdates the row (re-translated on
+// the next run); manual rows are NEVER overwritten by auto-translation.
+// Names, publications, URLs and country codes are never translated (the
+// TRANSLATABLE_PROOF_FIELDS allowlist in proof-translation.server.ts).
+model ProofTranslation {
+  id           String   @id @default(cuid())
+  shop         String
+  resourceType String   // press | endorsement | result
+  resourceId   String
+  locale       String   // normalized lowercase shop locale ("fr", "pt-pt")
+  field        String   // quote | credentials | testimonial
+  value        String
+  sourceDigest String
+  manual       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([shop, resourceType, resourceId, locale, field])
+  @@index([shop, resourceType, resourceId])
+}
+
 // A sequential (never A/B) experiment: flip features for one market, then
 // compare an equal-length window against the immediately-preceding baseline.
 // See docs/SPEC-v2-markets-experiments.md.

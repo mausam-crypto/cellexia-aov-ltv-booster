@@ -222,6 +222,14 @@ function AutoTranslateCard({
           review or override any of them in Translate &amp; Adapt afterwards.
         </Text>
         <Text as="p" tone="subdued">
+          The same key also translates the Proof library (press quotes,
+          dermatologist endorsement quotes and credentials, before/after
+          testimonials). That content lives in the app’s own database, so
+          Translate &amp; Adapt cannot see it — review or override those
+          translations under each entry’s “Translations” section on the
+          Proof library tabs instead.
+        </Text>
+        <Text as="p" tone="subdued">
           Names stay untouched by design: labs, clinics, verifier names and
           license numbers, INCI ingredient names, batch codes, dates and URLs
           are never machine-translated.

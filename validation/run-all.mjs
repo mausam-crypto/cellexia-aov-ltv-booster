@@ -53,6 +53,7 @@ const SUITES = [
   { name: "sims/proof-gallery", dir: "sims", base: "proof-gallery" },
   { name: "sims/proof-placement", dir: "sims", base: "proof-placement" },
   { name: "sims/proof-server", dir: "sims", base: "proof-server" },
+  { name: "sims/proof-translation", dir: "sims", base: "proof-translation" },
   { name: "sims/threshold-snap", dir: "sims", base: "threshold-snap" },
   { name: "sims/flip-test", dir: "sims", base: "flip-test" },
 ];

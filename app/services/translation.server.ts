@@ -179,7 +179,7 @@ export function chunk<T>(items: readonly T[], size: number): T[][] {
   return out;
 }
 
-interface DeeplBatchResult {
+export interface DeeplBatchResult {
   ok: boolean;
   translations: string[];
   error?: string;
@@ -247,7 +247,7 @@ function unprotectPlaceholders(text: string): string {
   return xmlUnescape(text.replace(/<\/?cx>/g, ""));
 }
 
-async function deeplTranslateBatch(
+export async function deeplTranslateBatch(
   apiKey: string,
   texts: string[],
   targetLang: string,

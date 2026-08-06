@@ -48,12 +48,22 @@ import {
   toggleProofFeatured,
   type EndorsementInput,
 } from "../services/proof.server";
+import {
+  getProofSourceText,
+  translatableProofTargets,
+  listProofTranslationsForMany,
+  proofTranslationStatusFor,
+  saveManualProofTranslation,
+  translateProofEntries,
+} from "../services/proof-translation.server";
+import { getTargetLocales, getTranslationConfig } from "../services/translation.server";
 import type { DermEndorsement } from "@prisma/client";
 import {
   parseProductGidList,
   EMPTY_ENDORSEMENT_FORM,
   PROOF_MAX_UPLOAD_BYTES,
   EndorsementForm,
+  ProofTranslationsSection,
   FeaturedStarButton,
   MoveButtons,
   TwoClickDeleteButton,
@@ -127,10 +137,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const page = /^\d+$/.test(pageParam) ? Number(pageParam) : 1;
   const q = url.searchParams.get("q") ?? "";
 
-  const [list, settings, markets] = await Promise.all([
-    listEndorsements(session.shop, { status, page, search: q }),
-    getSettings(session.shop),
-    listMarkets(admin),
+  const [list, settings, markets, locales, translationConfig] =
+    await Promise.all([
+      listEndorsements(session.shop, { status, page, search: q }),
+      getSettings(session.shop),
+      listMarkets(admin),
+      getTargetLocales(admin),
+      getTranslationConfig(session.shop),
+    ]);
+  const targetLocales = translatableProofTargets(
+    locales.primary,
+    locales.targets,
+  );
+  const localesUnavailable = (locales.errors?.length ?? 0) > 0;
+  const [translationStatus, itemTranslations] = await Promise.all([
+    proofTranslationStatusFor(session.shop, "endorsements", targetLocales),
+    listProofTranslationsForMany(
+      session.shop,
+      "endorsements",
+      list.items.map((item) => item.id),
+    ),
   ]);
   return {
     list,
@@ -141,6 +167,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         mode: "all" as const,
         markets: [],
       },
+    targetLocales,
+    translationStatus,
+    itemTranslations: Object.fromEntries(itemTranslations),
+    localesUnavailable,
+    hasDeeplKey: translationConfig.apiKey !== "",
+    autoTranslate: translationConfig.autoOnSave,
   };
 };
 
@@ -166,6 +198,8 @@ type EndorsementActionResult =
   | { intent: "set_status"; ok: boolean; errors: string[] }
   | { intent: "move"; ok: boolean; errors: string[] }
   | { intent: "save_settings"; ok: boolean; errors: string[] }
+  | { intent: "translate_proof"; ok: boolean; errors: string[]; translated: number }
+  | { intent: "save_translation"; ok: boolean; errors: string[] }
   | { intent: "unknown"; ok: false; errors: string[] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -261,6 +295,44 @@ export const action = async ({
           imageUrl: product.imageUrl,
           status: product.status,
         })),
+      };
+    }
+    case "translate_proof": {
+      // optional id → the auto-on-save fast path (just the saved entry)
+      const onlyId = String(formData.get("id") ?? "");
+      const result = await translateProofEntries(
+        session.shop,
+        admin,
+        ["endorsements"],
+        onlyId ? [onlyId] : undefined,
+      );
+      return {
+        intent: "translate_proof",
+        ok: result.ok && result.failures.length === 0,
+        errors: [
+          ...(result.reason ? [result.reason] : []),
+          ...result.failures.map((f) => `${f.locale}: ${f.error}`),
+        ],
+        translated: result.translated,
+      };
+    }
+    case "save_translation": {
+      const id = String(formData.get("id") ?? "");
+      const locale = String(formData.get("locale") ?? "");
+      const field = String(formData.get("field") ?? "");
+      const value = String(formData.get("value") ?? "");
+      // source text read server-side — never trusted from the client
+      const source = await getProofSourceText(session.shop, "endorsements", id, field);
+      if (source === null) {
+        return { intent: "save_translation", ok: false, errors: ["Entry not found"] };
+      }
+      const saved = await saveManualProofTranslation(
+        session.shop, "endorsements", id, locale, field, value, source,
+      );
+      return {
+        intent: "save_translation",
+        ok: saved.ok,
+        errors: saved.error ? [saved.error] : [],
       };
     }
     case "save_item": {
@@ -505,12 +577,30 @@ function excerpt(text: string, max: number): string {
 }
 
 export default function ProofEndorsementsTab() {
-  const { list, markets, scope } = useLoaderData<typeof loader>();
+  const {
+    list,
+    markets,
+    scope,
+    targetLocales,
+    translationStatus,
+    itemTranslations,
+    localesUnavailable,
+    hasDeeplKey,
+    autoTranslate,
+  } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const saveFetcher = useFetcher<EndorsementActionResult>();
   const rowFetcher = useFetcher<EndorsementActionResult>();
+  // v8.11b (review catches ADM-1/2/4): translation traffic gets its OWN
+  // fetchers — a long DeepL run must never disable moderation buttons, a
+  // manual translation save must never cancel (or be cancelled by) a
+  // translate run, and the translate button must reflect ITS OWN flight.
+  const translateFetcher = useFetcher<typeof action>();
+  const manualFetcher = useFetcher<typeof action>();
+  const translating = translateFetcher.state !== "idle";
+  const manualSaving = manualFetcher.state !== "idle";
   const scopeFetcher = useFetcher<EndorsementActionResult>();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -533,11 +623,45 @@ export default function ProofEndorsementsTab() {
       shopify.toast.show("Saved");
       setAddOpen(false);
       setEditingId(null);
+      // v8.11 auto-translation: fire-and-forget for JUST the saved entry
+      // (the boosters' fire-after-save convention — the save stays fast,
+      // the translation lands in the background and revalidates the list).
+      if (autoTranslate && hasDeeplKey && data.id) {
+        const formData = new FormData();
+        formData.set("intent", "translate_proof");
+        formData.set("id", data.id);
+        translateFetcher.submit(formData, { method: "post" });
+      }
     } else {
       shopify.toast.show(data.errors[0] ?? "Could not save", { isError: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveFetcher.data]);
+
+  useEffect(() => {
+    const data = translateFetcher.data;
+    if (!data || data.intent !== "translate_proof") return;
+    if (data.ok) {
+      shopify.toast.show(
+        data.translated > 0
+          ? `Translated ${data.translated} field${data.translated === 1 ? "" : "s"}`
+          : "Everything is already translated",
+      );
+    } else {
+      shopify.toast.show(data.errors[0] ?? "Translation failed", { isError: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [translateFetcher.data]);
+
+  useEffect(() => {
+    const data = manualFetcher.data;
+    if (!data || data.intent !== "save_translation") return;
+    shopify.toast.show(
+      data.ok ? "Translation saved" : (data.errors[0] ?? "Could not save translation"),
+      data.ok ? undefined : { isError: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualFetcher.data]);
 
   useEffect(() => {
     const data = rowFetcher.data;
@@ -566,6 +690,27 @@ export default function ProofEndorsementsTab() {
     formData.set("intent", "save_item");
     formData.set("payload", formToPayload(values, id));
     saveFetcher.submit(formData, { method: "post" });
+  };
+
+  const submitTranslateAll = () => {
+    const formData = new FormData();
+    formData.set("intent", "translate_proof");
+    translateFetcher.submit(formData, { method: "post" });
+  };
+
+  const submitTranslation = (
+    id: string,
+    locale: string,
+    field: string,
+    value: string,
+  ) => {
+    const formData = new FormData();
+    formData.set("intent", "save_translation");
+    formData.set("id", id);
+    formData.set("locale", locale);
+    formData.set("field", field);
+    formData.set("value", value);
+    manualFetcher.submit(formData, { method: "post" });
   };
 
   const submitRow = (fields: Record<string, string>) => {
@@ -645,14 +790,32 @@ export default function ProofEndorsementsTab() {
                 endorsement. A portrait is optional (initials show otherwise).
               </Text>
             </BlockStack>
-            <Button
-              variant="primary"
-              onClick={() => setAddOpen((previous) => !previous)}
-              disclosure={addOpen ? "up" : "down"}
-            >
-              Add endorsement
-            </Button>
+            <InlineStack gap="200" blockAlign="center">
+              <Button
+                onClick={submitTranslateAll}
+                disabled={!hasDeeplKey || translating || targetLocales.length === 0}
+                loading={translating}
+              >
+                Translate into all languages
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => setAddOpen((previous) => !previous)}
+                disclosure={addOpen ? "up" : "down"}
+              >
+                Add endorsement
+              </Button>
+            </InlineStack>
           </InlineStack>
+          <Text as="p" variant="bodySm" tone="subdued">
+            {localesUnavailable
+              ? "Could not load the shop's languages — translation status is unavailable right now (re-open the page to retry)."
+              : targetLocales.length === 0
+                ? "Your shop has one published language — nothing to translate."
+                : hasDeeplKey
+                  ? `Quotes and credentials auto-translate into ${translationStatus.targetLocales} languages${autoTranslate ? " on save" : ""} — ${translationStatus.fresh} of ${translationStatus.expected} fields translated${translationStatus.outdated > 0 ? `, ${translationStatus.outdated} outdated` : ""}. Review per entry under “Translations”.`
+                  : "Add a DeepL key on the Languages page to auto-translate into every published language."}
+          </Text>
 
           <Collapsible id="cx-endo-add" open={addOpen}>
             <Box
@@ -813,6 +976,22 @@ export default function ProofEndorsementsTab() {
                             onSubmit={(values) => submitSave(values, item.id)}
                             onCancel={() => setEditingId(null)}
                           />
+                        ) : null}
+                        {editingId === item.id ? (
+                          <Box paddingBlockStart="300">
+                            <ProofTranslationsSection
+                              fields={[
+                                { field: "quote", label: "Quote", sourceText: item.quote },
+                                { field: "credentials", label: "Credentials", sourceText: item.credentials ?? "" },
+                              ]}
+                              targetLocales={targetLocales}
+                              translations={itemTranslations[item.id] ?? []}
+                              onSave={(locale, field, value) =>
+                                submitTranslation(item.id, locale, field, value)
+                              }
+                              saving={manualSaving}
+                            />
+                          </Box>
                         ) : null}
                       </Box>
                     </Collapsible>

@@ -13,7 +13,7 @@ import {
   Tag,
   Text,
   TextField,
-  Thumbnail,
+  Thumbnail,  Collapsible,
 } from "@shopify/polaris";
 import { ArrowDownIcon, ArrowUpIcon, ImageIcon, StarFilledIcon, StarIcon } from "@shopify/polaris-icons";
 import { useAppBridge } from "@shopify/app-bridge-react";
@@ -1119,6 +1119,106 @@ export function ResultForm({
           </Button>
         ) : null}
       </InlineStack>
+    </BlockStack>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// v8.11: per-entry translations review (the proof twin of Translate & Adapt
+// review — proof entries live in the app DB, so T&A never sees them).
+// Rendered ONLY inside an expanded editor (never for collapsed rows — a
+// page of items times 17 locales would be hundreds of hidden fields).
+// ---------------------------------------------------------------------------
+
+export interface ProofTranslationRow {
+  locale: string;
+  field: string;
+  value: string;
+  manual: boolean;
+  outdated?: boolean;
+}
+
+export interface ProofTranslationsSectionProps {
+  /** Translatable fields of this entry with their CURRENT source text. */
+  fields: { field: string; label: string; sourceText: string }[];
+  /** Published non-primary shop locales (lowercase). */
+  targetLocales: string[];
+  /** Stored translations for this entry. */
+  translations: ProofTranslationRow[];
+  /** Fires the save_translation intent; blank value clears the row. */
+  onSave: (locale: string, field: string, value: string) => void;
+  saving: boolean;
+}
+
+export function ProofTranslationsSection({
+  fields,
+  targetLocales,
+  translations,
+  onSave,
+  saving,
+}: ProofTranslationsSectionProps) {
+  const [open, setOpen] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const stored = new Map(
+    translations.map((row) => [`${row.locale} ${row.field}`, row]),
+  );
+  const activeFields = fields.filter((f) => /\S/.test(f.sourceText));
+  if (activeFields.length === 0 || targetLocales.length === 0) return null;
+  const translatedCount = targetLocales.filter((locale) =>
+    activeFields.every((f) => stored.has(`${locale} ${f.field}`)),
+  ).length;
+  return (
+    <BlockStack gap="200">
+      <Button
+        variant="plain"
+        disclosure={open ? "up" : "down"}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {`Translations (${translatedCount} of ${targetLocales.length} languages)`}
+      </Button>
+      <Collapsible open={open} id="cx-proof-translations">
+        <BlockStack gap="300">
+          <Text as="p" tone="subdued" variant="bodySm">
+            Auto-translated by DeepL when a key is set (Languages page).
+            Editing a value here marks it manual — auto-translation never
+            overwrites it. Clearing a value falls back to the original text.
+          </Text>
+          {targetLocales.map((locale) => (
+            <BlockStack key={locale} gap="150">
+              <Text as="h4" variant="headingSm">
+                {locale.toUpperCase()}
+              </Text>
+              {activeFields.map((f) => {
+                const key = `${locale} ${f.field}`;
+                const row = stored.get(key);
+                const draftKey = key;
+                const value = drafts[draftKey] ?? row?.value ?? "";
+                return (
+                  <TextField
+                    key={f.field}
+                    label={`${f.label}${row?.manual ? " (manual)" : row?.outdated ? " (auto — outdated, re-translates on the next run)" : row ? " (auto)" : " (untranslated)"}`}
+                    value={value}
+                    multiline={2}
+                    autoComplete="off"
+                    disabled={saving}
+                    onChange={(next) =>
+                      setDrafts((prev) => ({ ...prev, [draftKey]: next }))
+                    }
+                    connectedRight={
+                      <Button
+                        onClick={() => onSave(locale, f.field, value)}
+                        disabled={saving || value === (row?.value ?? "")}
+                      >
+                        Save
+                      </Button>
+                    }
+                  />
+                );
+              })}
+            </BlockStack>
+          ))}
+        </BlockStack>
+      </Collapsible>
     </BlockStack>
   );
 }

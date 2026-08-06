@@ -2836,10 +2836,14 @@ body.customer--b2b .cx-sub-remove {
 .cx-press__logos {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 26px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  /* v8.10b (merchant bug report): the mobile strip was a horizontal
+     scroller — with 4+ logos the overflow ones sat past the edge with no
+     scroll affordance and read as MISSING. Every logo must be visible:
+     wrap + center on every breakpoint (the wall layout covers stores with
+     dozens of quotes). */
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 18px;
   padding-block: 6px;
   margin-block-end: 18px;
 }
@@ -2849,16 +2853,6 @@ body.customer--b2b .cx-sub-remove {
    center would clip the scroll start), give a lone wordmark more
    presence, and center the quote text to match the centered eyebrow
    and attribution (the mixed alignment read as a bug on the live PDP). */
-@media (max-width: 749px) {
-  /* mobile only: >=750px uses justify-content + flex-wrap centering, and
-     auto margins there would right-anchor the first wrapped row */
-  .cx-press__logo:first-child {
-    margin-inline-start: auto;
-  }
-  .cx-press__logo:last-child {
-    margin-inline-end: auto;
-  }
-}
 .cx-press__logo:only-child .cx-press__logo-img {
   block-size: 30px;
 }
@@ -2937,9 +2931,7 @@ body.customer--b2b .cx-sub-remove {
 
 @media (min-width: 750px) {
   .cx-press__logos {
-    justify-content: center;
-    flex-wrap: wrap;
-    overflow-x: visible;
+    gap: 10px 26px;
   }
 }
 
@@ -3690,6 +3682,17 @@ body.customer--b2b .cx-sub-remove {
   font-size: 10px;
   letter-spacing: 0.12em;
   white-space: nowrap;
+}
+
+/* The compact/ultra tiers keep their ONE-ROW scroll-strip design (the
+   band collapses to a single row — wrapping would break its geometry);
+   the v8.10b wrap-everything rule applies to the FULL layout only. */
+.cx-press--ultra .cx-press__logos,
+.cx-press--compact .cx-press__logos {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .cx-press--ultra .cx-press__logos {
