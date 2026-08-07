@@ -170,6 +170,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         mode: "all" as const,
         markets: [],
       },
+    featureEnabled: settings.beforeAfter.enabled,
     targetLocales,
     translationStatus,
     itemTranslations: Object.fromEntries(itemTranslations),
@@ -645,6 +646,7 @@ export default function ProofResultsTab() {
     list,
     markets,
     scope,
+    featureEnabled,
     targetLocales,
     translationStatus,
     itemTranslations,
@@ -766,6 +768,13 @@ export default function ProofResultsTab() {
     saveFetcher.submit(formData, { method: "post" });
   };
 
+  const submitFeatureEnabled = (enabled: boolean) => {
+    const formData = new FormData();
+    formData.set("intent", "save_settings");
+    formData.set("patch", JSON.stringify({ beforeAfter: { enabled } }));
+    rowFetcher.submit(formData, { method: "post" });
+  };
+
   const submitTranslateAll = () => {
     const formData = new FormData();
     formData.set("intent", "translate_proof");
@@ -884,9 +893,14 @@ export default function ProofResultsTab() {
         <BlockStack gap="300">
           <InlineStack align="space-between" blockAlign="center" wrap>
             <BlockStack gap="100">
-              <Text as="h2" variant="headingMd">
-                Results gallery
-              </Text>
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="h2" variant="headingMd">
+                  Results gallery
+                </Text>
+                <Badge tone={featureEnabled ? "success" : undefined}>
+                  {featureEnabled ? "Active" : "Off"}
+                </Badge>
+              </InlineStack>
               <Text as="p" variant="bodySm" tone="subdued">
                 Before/after results at any scale — lab data and customer
                 submissions. Only approved entries reach the storefront;
@@ -906,6 +920,13 @@ export default function ProofResultsTab() {
                 disabled={importing}
               >
                 Import legacy before/afters
+              </Button>
+              <Button
+                onClick={() => submitFeatureEnabled(!featureEnabled)}
+                loading={moderating && rowFetcher.formData?.get("intent") === "save_settings"}
+                variant={featureEnabled ? "secondary" : "primary"}
+              >
+                {featureEnabled ? "Disable" : "Enable"}
               </Button>
               <Button
                 onClick={submitTranslateAll}

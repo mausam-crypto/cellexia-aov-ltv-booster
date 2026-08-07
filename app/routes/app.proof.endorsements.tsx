@@ -167,6 +167,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         mode: "all" as const,
         markets: [],
       },
+    featureEnabled: settings.dermEndorsements.enabled,
     targetLocales,
     translationStatus,
     itemTranslations: Object.fromEntries(itemTranslations),
@@ -581,6 +582,7 @@ export default function ProofEndorsementsTab() {
     list,
     markets,
     scope,
+    featureEnabled,
     targetLocales,
     translationStatus,
     itemTranslations,
@@ -692,6 +694,13 @@ export default function ProofEndorsementsTab() {
     saveFetcher.submit(formData, { method: "post" });
   };
 
+  const submitFeatureEnabled = (enabled: boolean) => {
+    const formData = new FormData();
+    formData.set("intent", "save_settings");
+    formData.set("patch", JSON.stringify({ dermEndorsements: { enabled } }));
+    rowFetcher.submit(formData, { method: "post" });
+  };
+
   const submitTranslateAll = () => {
     const formData = new FormData();
     formData.set("intent", "translate_proof");
@@ -781,9 +790,14 @@ export default function ProofEndorsementsTab() {
         <BlockStack gap="300">
           <InlineStack align="space-between" blockAlign="center" wrap>
             <BlockStack gap="100">
-              <Text as="h2" variant="headingMd">
-                Dermatologist endorsements
-              </Text>
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="h2" variant="headingMd">
+                  Dermatologist endorsements
+                </Text>
+                <Badge tone={featureEnabled ? "success" : undefined}>
+                  {featureEnabled ? "Active" : "Off"}
+                </Badge>
+              </InlineStack>
               <Text as="p" variant="bodySm" tone="subdued">
                 The endorsement wall is built for dozens or hundreds of
                 entries — the storefront headline counts every approved
@@ -791,6 +805,13 @@ export default function ProofEndorsementsTab() {
               </Text>
             </BlockStack>
             <InlineStack gap="200" blockAlign="center">
+              <Button
+                onClick={() => submitFeatureEnabled(!featureEnabled)}
+                loading={moderating && rowFetcher.formData?.get("intent") === "save_settings"}
+                variant={featureEnabled ? "secondary" : "primary"}
+              >
+                {featureEnabled ? "Disable" : "Enable"}
+              </Button>
               <Button
                 onClick={submitTranslateAll}
                 disabled={!hasDeeplKey || translating || targetLocales.length === 0}

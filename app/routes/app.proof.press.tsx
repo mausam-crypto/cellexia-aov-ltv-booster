@@ -162,6 +162,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     list,
     markets,
     scope: settings.marketScopes.press ?? { mode: "all" as const, markets: [] },
+    featureEnabled: settings.press.enabled,
     targetLocales,
     translationStatus,
     itemTranslations: Object.fromEntries(itemTranslations),
@@ -592,6 +593,7 @@ export default function ProofPressTab() {
     list,
     markets,
     scope,
+    featureEnabled,
     targetLocales,
     translationStatus,
     itemTranslations,
@@ -703,6 +705,13 @@ export default function ProofPressTab() {
     saveFetcher.submit(formData, { method: "post" });
   };
 
+  const submitFeatureEnabled = (enabled: boolean) => {
+    const formData = new FormData();
+    formData.set("intent", "save_settings");
+    formData.set("patch", JSON.stringify({ press: { enabled } }));
+    rowFetcher.submit(formData, { method: "post" });
+  };
+
   const submitTranslateAll = () => {
     const formData = new FormData();
     formData.set("intent", "translate_proof");
@@ -792,9 +801,14 @@ export default function ProofPressTab() {
         <BlockStack gap="300">
           <InlineStack align="space-between" blockAlign="center" wrap>
             <BlockStack gap="100">
-              <Text as="h2" variant="headingMd">
-                Press quotes
-              </Text>
+              <InlineStack gap="200" blockAlign="center">
+                <Text as="h2" variant="headingMd">
+                  Press quotes
+                </Text>
+                <Badge tone={featureEnabled ? "success" : undefined}>
+                  {featureEnabled ? "Active" : "Off"}
+                </Badge>
+              </InlineStack>
               <Text as="p" variant="bodySm" tone="subdued">
                 Publication logo + large quote for the “As seen in the press”
                 band. Entries without tagged products are brand-level and show
@@ -803,6 +817,13 @@ export default function ProofPressTab() {
               </Text>
             </BlockStack>
             <InlineStack gap="200" blockAlign="center">
+              <Button
+                onClick={() => submitFeatureEnabled(!featureEnabled)}
+                loading={moderating && rowFetcher.formData?.get("intent") === "save_settings"}
+                variant={featureEnabled ? "secondary" : "primary"}
+              >
+                {featureEnabled ? "Disable" : "Enable"}
+              </Button>
               <Button
                 onClick={submitTranslateAll}
                 disabled={!hasDeeplKey || translating || targetLocales.length === 0}

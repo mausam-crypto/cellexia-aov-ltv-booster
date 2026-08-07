@@ -468,6 +468,15 @@ const EVIDENCE = {
         tabSrc11.includes("ProofTranslationsSection"),
       `v8.11: ${route} carries the translate intents + per-entry review editor`,
     );
+    // v8.12b (merchant catch): the feature's MASTER SWITCH lives where
+    // Configure leads — each tab enables/disables its own widget (before
+    // this, press/endorsements had NO enable control anywhere except the
+    // Markets matrix row).
+    ok(
+      tabSrc11.includes("const submitFeatureEnabled = (enabled: boolean) => {") &&
+        tabSrc11.includes("{featureEnabled ? \"Disable\" : \"Enable\"}"),
+      `v8.12b: ${route} carries the feature master switch`,
+    );
   }
 
   // page scope: the embed renders on product + home templates ONLY (the v8
@@ -715,6 +724,7 @@ const EVIDENCE = {
     cwd: ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    shell: process.platform === "win32",
   });
   const DEF = JSON.parse(out);
   ok(DEF && typeof DEF === "object", "emission: DEFAULT_SETTINGS executed from the live model");
