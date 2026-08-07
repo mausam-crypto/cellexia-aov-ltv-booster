@@ -40,6 +40,13 @@ assign show_nudge = false
 endif
 assign cx_pdp_flags = product.metafields.cellexia.pdp_flags.value
 assign cx_pname = product.metafields.cellexia.display_name.value | default: product.title
+# Shopify's Liquid parser cannot handle a literal curly-brace string (like
+# the {name} token) as a filter argument written directly inside an output
+# tag - it errors "was not properly terminated" trying to find the tag's own
+# closing delimiter. Assigning the token to a variable here (inside a plain
+# tag, which parses fine) and referencing the variable inside every output
+# tag works around it without changing any behavior.
+assign cx_name_token = '{name}'
 assign survey_ok = false
 assign show_survey = false
 if cfg.dermSurvey.enabled == true and block.settings.show_derm_survey
@@ -306,9 +313,9 @@ assign survey_url = cx_svy.verification_url.value
 if survey_url == blank
 assign survey_url = cfg.dermSurvey.verificationUrl
 endif
-assign survey_verifier = survey_verifier | replace: '{name}', cx_pname
+assign survey_verifier = survey_verifier | replace: cx_name_token, cx_pname
 -%}
-"survey": {"live": {{ show_survey }}{% if cfg.dermSurvey.compact == true %}, "cm": 1{% endif %}{% if cfg.dermSurvey.design == "certificate" %}, "sd": "c"{% elsif cfg.dermSurvey.design == "dossier" %}, "sd": "d"{% elsif cfg.dermSurvey.design == "seal" %}, "sd": "s"{% endif %}, "total": {{ cx_svy_total }}{% if cx_svy_rec > 0 %}, "rec": {{ cx_svy_rec }}{% endif %}{% if cx_svy.title.value != blank %}, "t": {{ cx_svy.title.value | replace: '{name}', cx_pname | json }}{% endif %}{% if cx_svy.question.value != blank %}, "q": {{ cx_svy.question.value | replace: '{name}', cx_pname | json }}{% endif %}{% if cx_svy.intro.value != blank %}, "intro": {{ cx_svy.intro.value | replace: '{name}', cx_pname | json }}{% endif %}, "o": [{%- for cx_o in cx_svy.outcomes.value -%}{%- unless forloop.first -%},{%- endunless -%}{"s": {{ cx_o.statement.value | replace: '{name}', cx_pname | json }}, "y": {{ cx_o.yes_count.value | json }}}{%- endfor -%}], "method": {{ cx_svy_method | replace: '{name}', cx_pname | json }}, "verifier": {{ survey_verifier | default: '' | json }}, "url": {{ survey_url | default: '' | json }}},
+"survey": {"live": {{ show_survey }}{% if cfg.dermSurvey.compact == true %}, "cm": 1{% endif %}{% if cfg.dermSurvey.design == "certificate" %}, "sd": "c"{% elsif cfg.dermSurvey.design == "dossier" %}, "sd": "d"{% elsif cfg.dermSurvey.design == "seal" %}, "sd": "s"{% endif %}, "total": {{ cx_svy_total }}{% if cx_svy_rec > 0 %}, "rec": {{ cx_svy_rec }}{% endif %}{% if cx_svy.title.value != blank %}, "t": {{ cx_svy.title.value | replace: cx_name_token, cx_pname | json }}{% endif %}{% if cx_svy.question.value != blank %}, "q": {{ cx_svy.question.value | replace: cx_name_token, cx_pname | json }}{% endif %}{% if cx_svy.intro.value != blank %}, "intro": {{ cx_svy.intro.value | replace: cx_name_token, cx_pname | json }}{% endif %}, "o": [{%- for cx_o in cx_svy.outcomes.value -%}{%- unless forloop.first -%},{%- endunless -%}{"s": {{ cx_o.statement.value | replace: cx_name_token, cx_pname | json }}, "y": {{ cx_o.yes_count.value | json }}}{%- endfor -%}], "method": {{ cx_svy_method | replace: cx_name_token, cx_pname | json }}, "verifier": {{ survey_verifier | default: '' | json }}, "url": {{ survey_url | default: '' | json }}},
 "surveyStrings": {"eyebrow": {{ 'survey.eyebrow' | t | json }}, "how": {{ 'survey.how' | t | json }}, "verified_badge": {{ 'survey.verified_badge' | t | json }}, "verified_by": {{ 'survey.verified_by' | t: name: survey_verifier | json }}, "p1": {{ 'survey.methodology_p1' | t: total: cx_svy_total | json }}, "p2": {{ 'survey.methodology_p2' | t | json }}, "p3": {{ 'survey.methodology_p3' | t | json }}, {% if cx_svy_rec > 0 %}"p4": {{ 'survey.methodology_p4' | t: total: cx_svy_total, yes: cx_svy_rec, percent: cx_svy_pct | json }}, {% endif %}"p5": {{ 'survey.methodology_p5' | t | json }}, "rec_line": {{ 'survey.rec_line' | t: total: cx_svy_total, product: cx_pname | json }}, "outcomes_intro": {{ 'survey.outcomes_intro' | t: product: cx_pname | json }}, "outcome_agree": {{ 'survey.outcome_agree' | t | json }}{% if cfg.dermSurvey.compact == true %}, "more_outcomes": {{ 'survey.more_outcomes' | t | json }}{% endif %}},
 {%- endif %}
 {%- if show_badges or cx_draft_badges %}
@@ -348,10 +355,10 @@ assign tp_stars_label = tp_stars | round: 1
 </script>
 {%- if show_study or cx_draft_study -%}
 <script type="application/json" id="cx-study-config">
-{"live": {{ show_study }}{% if cfg.clinicalStudy.compact == true %}, "cm": 1{% endif %}, "t": {{ cx_study.title.value | replace: '{name}', cx_pname | json }}, "c": {{ cx_study.concern.value | replace: '{name}', cx_pname | json }}, "u": {{ cx_study.study_url.value | json }}, "r": [
+{"live": {{ show_study }}{% if cfg.clinicalStudy.compact == true %}, "cm": 1{% endif %}, "t": {{ cx_study.title.value | replace: cx_name_token, cx_pname | json }}, "c": {{ cx_study.concern.value | replace: cx_name_token, cx_pname | json }}, "u": {{ cx_study.study_url.value | json }}, "r": [
 {%- for cx_res in cx_study.results.value -%}
 {%- unless forloop.first -%},{%- endunless -%}
-{"v": {{ cx_res.value.value | json }}, "s": {{ cx_res.suffix.value | replace: '{name}', cx_pname | json }}, "l": {{ cx_res.label.value | replace: '{name}', cx_pname | json }}}
+{"v": {{ cx_res.value.value | json }}, "s": {{ cx_res.suffix.value | replace: cx_name_token, cx_pname | json }}, "l": {{ cx_res.label.value | replace: cx_name_token, cx_pname | json }}}
 {%- endfor -%}
 ]
 {%- liquid
@@ -360,7 +367,7 @@ assign cx_study_weeks = cx_study.duration_weeks.value
 assign cx_study_lab = cx_study.lab_name.value
 -%}
 {%- if cx_study.subject.value != blank -%}
-, "sub": {{ cx_study.subject.value | replace: '{name}', cx_pname | json }}
+, "sub": {{ cx_study.subject.value | replace: cx_name_token, cx_pname | json }}
 {%- endif -%}
 {%- if cx_study_n != blank and cx_study_n > 0 -%}
 , "pn": {{ cx_study_n | json }}
@@ -370,13 +377,13 @@ assign cx_study_lab = cx_study.lab_name.value
 , "pw": {{ cx_weeks_label | json }}
 {%- endif -%}
 {%- if cx_study_lab != blank -%}
-, "pl": {{ cx_study_lab | replace: '{name}', cx_pname | json }}
+, "pl": {{ cx_study_lab | replace: cx_name_token, cx_pname | json }}
 {%- endif -%}
 {%- if cx_study.instruments.value != blank -%}
-, "pi": {{ 'study.instruments' | t: methods: cx_study.instruments.value | replace: '{name}', cx_pname | json }}
+, "pi": {{ 'study.instruments' | t: methods: cx_study.instruments.value | replace: cx_name_token, cx_pname | json }}
 {%- endif -%}
 {%- if cx_study.footnote.value != blank -%}
-, "f": {{ cx_study.footnote.value | replace: '{name}', cx_pname | json }}
+, "f": {{ cx_study.footnote.value | replace: cx_name_token, cx_pname | json }}
 {%- endif -%}
 , "str": {"eyebrow": {{ 'study.eyebrow' | t | json }}, "view": {{ 'study.view_study' | t | json }}, "foot": {{ 'study.footnote_default' | t | json }}, "sub": {{ 'study.subject' | t: product: cx_pname | json }}{%- if cx_study_n != blank and cx_study_n > 0 -%}, "fn": {{ 'study.fact_participants' | t: n: cx_study_n | json }}{%- endif -%}}}
 </script>

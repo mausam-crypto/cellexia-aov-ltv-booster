@@ -1725,7 +1725,20 @@ const EVIDENCE = {
   // substitute the display name — the raw value used to ship verbatim
   // ("Tested on {name} itself" showed literally). Every merchant-entered
   // text field of the two islands carries the replace filter.
-  const NAME_REPLACE = "| replace: '{name}', cx_pname";
+  //
+  // Deploy-time correction (found by a real `shopify app deploy`, not by
+  // this suite or the vendor's own tooling): Shopify's production Liquid
+  // parser rejects a literal curly-brace string as a filter argument
+  // written directly inside a {{ }} output tag ("was not properly
+  // terminated with regexp: /\}\}/") — a real parser discrepancy from the
+  // liquidjs library this test suite runs on, which accepted it happily.
+  // The token is now assigned to `cx_name_token` in a plain tag once, and
+  // every {{ }} site references the variable instead of the literal.
+  ok(
+    pdpLiquid.includes("assign cx_name_token = '{name}'"),
+    "v8.13b: cx_name_token holds the {name} literal (assigned in a plain tag, not inside {{ }})",
+  );
+  const NAME_REPLACE = "| replace: cx_name_token, cx_pname";
   const replaceUses = pdpLiquid.split(NAME_REPLACE).length - 1;
   ok(
     replaceUses === 14,
