@@ -284,7 +284,7 @@ async function main() {
     const summary = await translateResources(admin, "key", ["gid://shopify/Metaobject/9"], ["fr"]);
     ok(summary.ok === true && summary.fieldCount === 1, "methodology field admitted to the run");
     const call = log.find((l) => l.body?.target_lang === "FR");
-    ok(call?.body?.tag_handling === "xml" && call?.body?.ignore_tags === "cx",
+    ok(call?.body?.tag_handling === "xml" && Array.isArray(call?.body?.ignore_tags) && (call?.body?.ignore_tags as string[]).join(",") === "cx",
       "placeholder batch switches to XML mode with the cx ignore tag");
     const sent = ((call?.body?.text ?? []) as string[])[0] ?? "";
     ok(sent.includes("<cx>{{ total }}</cx>") && sent.includes("<cx>{{ percent }}</cx>"),
@@ -321,7 +321,7 @@ async function main() {
     const summary = await translateResources(admin, "key", ["gid://shopify/Metaobject/11"], ["fr"]);
     ok(summary.ok === true && summary.fieldCount === 1, "v8.13b: subject field admitted to the run");
     const call = log.find((l) => l.body?.target_lang === "FR");
-    ok(call?.body?.tag_handling === "xml" && call?.body?.ignore_tags === "cx",
+    ok(call?.body?.tag_handling === "xml" && Array.isArray(call?.body?.ignore_tags) && (call?.body?.ignore_tags as string[]).join(",") === "cx",
       "v8.13b: a single-brace {name} batch switches to XML mode with the cx ignore tag");
     const sent = ((call?.body?.text ?? []) as string[])[0] ?? "";
     ok(sent.includes("<cx>{name}</cx>") && sent.includes("<cx>{ name }</cx>"),

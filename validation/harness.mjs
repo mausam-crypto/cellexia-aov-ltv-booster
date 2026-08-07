@@ -1770,6 +1770,14 @@ const EVIDENCE = {
     trSrcB.includes("options?.protectPlaceholders ?? true"),
     "v8.13b: deeplTranslateBatch supports the protectPlaceholders opt-out (default on)",
   );
+  // v8.13c (merchant catch — live HTTP 400 on every locale): DeepL's JSON
+  // API takes ignore_tags as an ARRAY; the comma-separated string form is
+  // form-encoding only and 400s. The string form shipped latent since v7
+  // because only the sim ever exercised XML mode.
+  ok(
+    trSrcB.includes('ignore_tags: ["cx"]') && !trSrcB.includes('ignore_tags: "cx"'),
+    "v8.13c: ignore_tags sent as a JSON array, never the form-encoded string",
+  );
   ok(
     read("app/services/proof-translation.server.ts").includes(
       "{ protectPlaceholders: false }",

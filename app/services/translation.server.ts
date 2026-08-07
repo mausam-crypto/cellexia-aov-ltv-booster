@@ -280,7 +280,9 @@ export async function deeplTranslateBatch(
             target_lang: targetLang,
             ...(sourceLang ? { source_lang: sourceLang } : {}),
             preserve_formatting: true,
-            ...(protect ? { tag_handling: "xml", ignore_tags: "cx" } : {}),
+            // JSON requests take ignore_tags as an ARRAY (the comma-separated
+            // form is form-encoding only) — the string form is HTTP 400.
+            ...(protect ? { tag_handling: "xml", ignore_tags: ["cx"] } : {}),
           }),
         });
         if (!response.ok) {
