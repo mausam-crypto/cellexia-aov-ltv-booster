@@ -621,6 +621,40 @@ hover/focus; reduced-motion visitors get the indicator without animation.
 Compact/ultra tiers and the quote wall are unaffected. Live setting; no new
 translations.
 
+**v8.12b — enable switches on the Proof library tabs (merchant catch).**
+"As seen in the press" and "Dermatologist endorsements" had no enable button
+anywhere their Configure links led — the only master switches were the
+Markets matrix rows. Each Proof library tab now carries its own
+Active/Off badge + Enable/Disable button (press, endorsements, results),
+exactly like the dashboard feature cards. Market targeting, per-product
+opt-outs and content requirements still apply as before.
+
+**v8.13 — per-language product names + Markets page redesign (merchant
+asks).** Two changes, no deploy steps beyond the normal §3 flow:
+
+1. *Product names tab* (new nav entry): the dermatologist survey and
+   clinical study widgets speak the product's name inside a sentence, and on
+   translated pages that name was either the untranslated English title or a
+   machine translation that didn't match the store's exact name. The new
+   page lets the merchant set the exact name per language: pick a product,
+   set a base display name plus one field per published store language.
+   Values live in a new translatable `cellexia.display_name` product
+   metafield (auto-created the first time any product-related app page —
+   including this new tab — loads, by the same definition-ensure pass as
+   the other cellexia metafields; nothing to migrate), and each language is
+   registered as a native Shopify translation on it, so localized pages
+   serve the right name with zero runtime cost. Unset = falls back to the
+   product title, byte-identical to v8.12b behavior. These names are
+   deliberately NEVER machine-translated (excluded from the DeepL flow).
+
+2. *Markets page* is now a master-detail layout instead of the giant
+   feature × market checkbox grid: search/pick a feature on the left (with
+   Active/Off, reach and unsaved-edit badges), edit its master switch,
+   "All markets" mode and per-market chips on the right, with Select
+   all/Clear shortcuts. Save semantics are unchanged — the same
+   changed-only settings writes as before, and market selections still save
+   while a feature is off (they apply the moment it's enabled).
+
 ## 6. If something looks wrong
 
 - Preview link 404 → §Troubleshooting in INSTALL.md (app proxy).

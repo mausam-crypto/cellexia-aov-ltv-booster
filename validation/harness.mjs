@@ -1678,4 +1678,98 @@ const EVIDENCE = {
   );
 }
 
+// ===================================== v8.13 PRODUCT DISPLAY NAMES
+{
+  // (a) Translatable cellexia.display_name product metafield definition.
+  const metaSrc = read("app/services/metaobjects.server.ts");
+  ok(
+    metaSrc.includes('displayName: "display_name"'),
+    "v8.13: PDP_METAFIELD_KEYS carries displayName -> display_name",
+  );
+  ok(
+    metaSrc.includes('"Cellexia display name"') &&
+      metaSrc.includes("single_line_text_field"),
+    "v8.13: display_name metafield definition present (single_line_text_field)",
+  );
+
+  // (b) Liquid: cx_pname derivation + ALL name interpolations use it. The
+  // negative pin means a future edit can't quietly reintroduce the raw
+  // title into a sentence the merchant localized.
+  const pdpLiquid = read(`${EXT}/blocks/pdp-booster.liquid`);
+  ok(
+    pdpLiquid.includes(
+      "assign cx_pname = product.metafields.cellexia.display_name.value | default: product.title",
+    ),
+    "v8.13: pdp-booster.liquid derives cx_pname from display_name with title fallback",
+  );
+  // Review v8.13 F6: the assign originally sat INSIDE the survey gate, so
+  // the study-only path interpolated an undefined name ("Tested on  itself").
+  // Pin the assign UNCONDITIONAL: before the first feature gate of the block.
+  const pnameAssignAt = pdpLiquid.indexOf("assign cx_pname");
+  const firstGateAt = pdpLiquid.indexOf("if cfg.dermSurvey.enabled");
+  ok(
+    pnameAssignAt !== -1 && firstGateAt !== -1 && pnameAssignAt < firstGateAt,
+    "v8.13: cx_pname assigned unconditionally BEFORE the survey gate (study/preview paths need it too)",
+  );
+  const pnameUses = (pdpLiquid.match(/product: cx_pname/g) ?? []).length;
+  ok(
+    pnameUses === 3,
+    `v8.13: exactly 3 'product: cx_pname' interpolations in pdp-booster.liquid (got ${pnameUses})`,
+  );
+  ok(
+    !pdpLiquid.includes("product: product.title"),
+    "v8.13: no raw 'product: product.title' interpolation remains in pdp-booster.liquid",
+  );
+
+  // (c) Service anchors: native Shopify translation machinery on the
+  // metafield GID (register with digest, remove by locale, delete-on-blank).
+  const nameSrc = read("app/services/product-names.server.ts");
+  for (const anchor of [
+    "translationsRegister(resourceId: $id, translations: $translations)",
+    "translationsRemove(resourceId: $id, locales: $locales",
+    "translatableContentDigest: digest",
+    "metafieldsDelete(metafields: [$input])",
+    'type: "single_line_text_field"',
+  ]) {
+    ok(nameSrc.includes(anchor), `v8.13: product-names.server.ts anchor: ${anchor}`);
+  }
+
+  // (d) Admin page wired to the service + nav tab present.
+  const pageSrc = read("app/routes/app.product-names.tsx");
+  ok(
+    pageSrc.includes('case "load_names"') &&
+      pageSrc.includes('case "save_names"') &&
+      pageSrc.includes("saveProductDisplayName(admin, gid, baseName, perLocale)"),
+    "v8.13: Product names page wires load/save intents to the service",
+  );
+  ok(
+    read("app/routes/app.tsx").includes(
+      '<Link to="/app/product-names">Product names</Link>',
+    ),
+    "v8.13: NavMenu carries the Product names tab",
+  );
+
+  // (e) NEVER machine-translated: the DeepL metafield allowlist stays
+  // closed to display_name. Doc contract pinned positively; the function
+  // BODY (comment excluded — slice starts at the export line) must never
+  // mention display_name in any casing.
+  const trSrc = read("app/services/translation.server.ts");
+  ok(
+    trSrc.includes(
+      "cellexia.display_name metafield (v8.13 product display names) must NEVER",
+    ),
+    "v8.13: collectAllowedMetafieldGids doc pins the display_name exclusion",
+  );
+  const fnStart = trSrc.indexOf("export function collectAllowedMetafieldGids");
+  const fnEnd = trSrc.indexOf("\n}", fnStart);
+  const fnBody = fnStart === -1 ? "" : trSrc.slice(fnStart, fnEnd);
+  ok(
+    fnStart !== -1 &&
+      fnEnd !== -1 &&
+      !fnBody.includes("display_name") &&
+      !fnBody.toLowerCase().includes("displayname"),
+    "v8.13: collectAllowedMetafieldGids body admits no display_name GID",
+  );
+}
+
 finish();

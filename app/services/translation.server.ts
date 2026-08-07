@@ -445,7 +445,9 @@ export function collectBoosterResourceGids(
 }
 
 /** The metafield GIDs in `boosters` whose "value" key may join a translate
- *  run — the allowlist for shouldTranslateMetafieldValue. */
+ *  run — the allowlist for shouldTranslateMetafieldValue. NOTE: the
+ *  cellexia.display_name metafield (v8.13 product display names) must NEVER
+ *  be added here — that surface is manual-entry only by contract. */
 export function collectAllowedMetafieldGids(
   boosters: ProductBoostersResult,
 ): Set<string> {

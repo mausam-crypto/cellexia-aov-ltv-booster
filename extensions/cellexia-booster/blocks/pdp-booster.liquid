@@ -39,6 +39,7 @@ if customer.b2b?
 assign show_nudge = false
 endif
 assign cx_pdp_flags = product.metafields.cellexia.pdp_flags.value
+assign cx_pname = product.metafields.cellexia.display_name.value | default: product.title
 assign survey_ok = false
 assign show_survey = false
 if cfg.dermSurvey.enabled == true and block.settings.show_derm_survey
@@ -307,7 +308,7 @@ assign survey_url = cfg.dermSurvey.verificationUrl
 endif
 -%}
 "survey": {"live": {{ show_survey }}{% if cfg.dermSurvey.compact == true %}, "cm": 1{% endif %}{% if cfg.dermSurvey.design == "certificate" %}, "sd": "c"{% elsif cfg.dermSurvey.design == "dossier" %}, "sd": "d"{% elsif cfg.dermSurvey.design == "seal" %}, "sd": "s"{% endif %}, "total": {{ cx_svy_total }}{% if cx_svy_rec > 0 %}, "rec": {{ cx_svy_rec }}{% endif %}{% if cx_svy.title.value != blank %}, "t": {{ cx_svy.title.value | json }}{% endif %}{% if cx_svy.question.value != blank %}, "q": {{ cx_svy.question.value | json }}{% endif %}{% if cx_svy.intro.value != blank %}, "intro": {{ cx_svy.intro.value | json }}{% endif %}, "o": [{%- for cx_o in cx_svy.outcomes.value -%}{%- unless forloop.first -%},{%- endunless -%}{"s": {{ cx_o.statement.value | json }}, "y": {{ cx_o.yes_count.value | json }}}{%- endfor -%}], "method": {{ cx_svy_method | json }}, "verifier": {{ survey_verifier | default: '' | json }}, "url": {{ survey_url | default: '' | json }}},
-"surveyStrings": {"eyebrow": {{ 'survey.eyebrow' | t | json }}, "how": {{ 'survey.how' | t | json }}, "verified_badge": {{ 'survey.verified_badge' | t | json }}, "verified_by": {{ 'survey.verified_by' | t: name: survey_verifier | json }}, "p1": {{ 'survey.methodology_p1' | t: total: cx_svy_total | json }}, "p2": {{ 'survey.methodology_p2' | t | json }}, "p3": {{ 'survey.methodology_p3' | t | json }}, {% if cx_svy_rec > 0 %}"p4": {{ 'survey.methodology_p4' | t: total: cx_svy_total, yes: cx_svy_rec, percent: cx_svy_pct | json }}, {% endif %}"p5": {{ 'survey.methodology_p5' | t | json }}, "rec_line": {{ 'survey.rec_line' | t: total: cx_svy_total, product: product.title | json }}, "outcomes_intro": {{ 'survey.outcomes_intro' | t: product: product.title | json }}, "outcome_agree": {{ 'survey.outcome_agree' | t | json }}{% if cfg.dermSurvey.compact == true %}, "more_outcomes": {{ 'survey.more_outcomes' | t | json }}{% endif %}},
+"surveyStrings": {"eyebrow": {{ 'survey.eyebrow' | t | json }}, "how": {{ 'survey.how' | t | json }}, "verified_badge": {{ 'survey.verified_badge' | t | json }}, "verified_by": {{ 'survey.verified_by' | t: name: survey_verifier | json }}, "p1": {{ 'survey.methodology_p1' | t: total: cx_svy_total | json }}, "p2": {{ 'survey.methodology_p2' | t | json }}, "p3": {{ 'survey.methodology_p3' | t | json }}, {% if cx_svy_rec > 0 %}"p4": {{ 'survey.methodology_p4' | t: total: cx_svy_total, yes: cx_svy_rec, percent: cx_svy_pct | json }}, {% endif %}"p5": {{ 'survey.methodology_p5' | t | json }}, "rec_line": {{ 'survey.rec_line' | t: total: cx_svy_total, product: cx_pname | json }}, "outcomes_intro": {{ 'survey.outcomes_intro' | t: product: cx_pname | json }}, "outcome_agree": {{ 'survey.outcome_agree' | t | json }}{% if cfg.dermSurvey.compact == true %}, "more_outcomes": {{ 'survey.more_outcomes' | t | json }}{% endif %}},
 {%- endif %}
 {%- if show_badges or cx_draft_badges %}
 {%- liquid
@@ -376,7 +377,7 @@ assign cx_study_lab = cx_study.lab_name.value
 {%- if cx_study.footnote.value != blank -%}
 , "f": {{ cx_study.footnote.value | json }}
 {%- endif -%}
-, "str": {"eyebrow": {{ 'study.eyebrow' | t | json }}, "view": {{ 'study.view_study' | t | json }}, "foot": {{ 'study.footnote_default' | t | json }}, "sub": {{ 'study.subject' | t: product: product.title | json }}{%- if cx_study_n != blank and cx_study_n > 0 -%}, "fn": {{ 'study.fact_participants' | t: n: cx_study_n | json }}{%- endif -%}}}
+, "str": {"eyebrow": {{ 'study.eyebrow' | t | json }}, "view": {{ 'study.view_study' | t | json }}, "foot": {{ 'study.footnote_default' | t | json }}, "sub": {{ 'study.subject' | t: product: cx_pname | json }}{%- if cx_study_n != blank and cx_study_n > 0 -%}, "fn": {{ 'study.fact_participants' | t: n: cx_study_n | json }}{%- endif -%}}}
 </script>
 {%- endif -%}
 {%- if show_batch or cx_draft_batch -%}

@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useEffect,
   useMemo,
   useState,
@@ -16,14 +15,19 @@ import {
   Badge,
   Banner,
   BlockStack,
+  Box,
   Button,
   Card,
   Checkbox,
+  Divider,
+  Icon,
   InlineStack,
   Layout,
   Page,
   Text,
+  TextField,
 } from "@shopify/polaris";
+import { SearchIcon } from "@shopify/polaris-icons";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import {
@@ -302,24 +306,37 @@ function serializeMatrixForCompare(matrix: MatrixState): string {
   );
 }
 
-const headerCellStyle: CSSProperties = {
-  padding: "8px 8px 12px",
-  borderBottom: "2px solid #d9d9d9",
-  alignSelf: "end",
+// v8.13 master-detail layout (merchant ask: the 33-row × N-market checkbox
+// grid was unusable on stores with many markets). Left pane = searchable
+// grouped feature list; right pane = the selected feature's market
+// targeting. ALL save semantics are unchanged from the grid era: the same
+// MatrixState, the same changed-only patch mapping in handleSave, and
+// toggleCell still converts all→selected so scopes stay editable whether or
+// not the feature is enabled.
+
+const listRowStyle: CSSProperties = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  padding: "10px 12px",
+  border: "none",
+  borderLeft: "3px solid transparent",
+  borderBottom: "1px solid #f1f1f1",
+  background: "transparent",
+  cursor: "pointer",
 };
 
-const cellStyle: CSSProperties = {
-  padding: "12px 8px",
-  borderBottom: "1px solid #ebebeb",
-  display: "flex",
-  alignItems: "center",
-  minHeight: 56,
+const listRowSelectedStyle: CSSProperties = {
+  background: "#f1f8f5",
+  borderLeftColor: "#29845a",
 };
 
-const subheaderStyle: CSSProperties = {
-  gridColumn: "1 / -1",
-  padding: "18px 8px 6px",
-  borderBottom: "1px solid #ebebeb",
+const groupHeaderStyle: CSSProperties = {
+  padding: "12px 12px 4px",
+  position: "sticky",
+  top: 0,
+  background: "#ffffff",
+  zIndex: 1,
 };
 
 export default function MarketsPage() {
@@ -339,6 +356,10 @@ export default function MarketsPage() {
 
   const [state, setState] = useState<MatrixState>(() =>
     initialMatrixState(featureStates, settings.marketScopes),
+  );
+  const [query, setQuery] = useState("");
+  const [selectedKey, setSelectedKey] = useState<FeatureKey | null>(
+    () => allFeatures[0]?.key ?? null,
   );
 
   useEffect(() => {
@@ -388,6 +409,10 @@ export default function MarketsPage() {
   };
 
   const setAllMarkets = (key: FeatureKey, checked: boolean) => {
+    // With no market list loaded, "selected" would pre-check ZERO markets —
+    // an invisible feature-wide off switch (review v8.13 F2). Refuse; the
+    // checkbox is also disabled in this state.
+    if (!checked && allHandles.length === 0) return;
     setRow(key, (row) =>
       checked
         ? { ...row, mode: "all", markets: [] }
@@ -406,53 +431,18 @@ export default function MarketsPage() {
     });
   };
 
-  /**
-   * Column control state. Semantics: a market column counts as fully checked
-   * when every feature whose row reads ON (the COMBINED master-and-sub-flag
-   * state) includes the market in its scope — rows that are off keep their scopes but don't
-   * count, since they aren't live anywhere. With no enabled features the
-   * column reads unchecked, so the control offers "Check all". The control
-   * itself still edits every row's scope (masters untouched) so features
-   * enabled later inherit the column choice.
-   */
-  const marketFullyChecked = (handle: string): boolean => {
-    const enabledRows = allFeatures.filter(({ key }) => state[key].on);
-    return (
-      enabledRows.length > 0 &&
-      enabledRows.every(({ key }) => {
-        const row = state[key];
-        return row.mode === "all" || row.markets.includes(handle);
-      })
+  /** Check every current market but STAY in selected mode (unlike the "All
+   *  markets" checkbox, this list does not auto-include future markets). */
+  const selectAllMarkets = (key: FeatureKey) => {
+    setRow(key, (row) =>
+      row.mode === "all"
+        ? row
+        : { ...row, mode: "selected", markets: [...allHandles] },
     );
   };
 
-  /** One-click "check all / uncheck all" for a whole market column. */
-  const setMarketAcrossRows = (handle: string, checked: boolean) => {
-    setState((previous) => {
-      const next: MatrixState = { ...previous };
-      for (const { key } of allFeatures) {
-        const row = previous[key];
-        if (checked) {
-          if (row.mode === "selected" && !row.markets.includes(handle)) {
-            const set = new Set(row.markets);
-            set.add(handle);
-            next[key] = { ...row, markets: normalizeHandles(set) };
-          }
-        } else if (row.mode === "all") {
-          next[key] = {
-            ...row,
-            mode: "selected",
-            markets: allHandles.filter((other) => other !== handle),
-          };
-        } else if (row.markets.includes(handle)) {
-          next[key] = {
-            ...row,
-            markets: row.markets.filter((other) => other !== handle),
-          };
-        }
-      }
-      return next;
-    });
+  const clearMarkets = (key: FeatureKey) => {
+    setRow(key, (row) => ({ ...row, mode: "selected", markets: [] }));
   };
 
   const handleSave = () => {
@@ -566,11 +556,59 @@ export default function MarketsPage() {
     setState(initial);
   };
 
-  const gridTemplateColumns = [
-    "minmax(240px, 1.6fr)",
-    "150px",
-    ...markets.map(() => "minmax(150px, 1fr)"),
-  ].join(" ");
+  /** Row-level dirty flag for the "Edited" badge in the list (markets are
+   *  sets — compare order-insensitively, same as the global dirty check). */
+  const rowDirty = (key: FeatureKey): boolean => {
+    const a = state[key];
+    const b = initial[key];
+    // A key can appear in revalidated loader data one render before the
+    // state-reset effect re-seeds MatrixState (review v8.13 F5).
+    if (!a || !b) return false;
+    return (
+      a.on !== b.on ||
+      a.mode !== b.mode ||
+      [...a.markets].sort().join("|") !==
+        [...b.markets].sort().join("|")
+    );
+  };
+
+  /** How many CURRENT markets the row reaches (stale handles for deleted
+   *  markets are kept in the save payload but not counted here). */
+  const effectiveCount = (row: RowState): number =>
+    row.mode === "all"
+      ? markets.length
+      : row.markets.filter((handle) => allHandles.includes(handle)).length;
+
+  const reachLabel = (row: RowState): string => {
+    if (row.mode === "all") return "All markets";
+    if (markets.length === 0) return "Selected markets";
+    return `${effectiveCount(row)} of ${markets.length} markets`;
+  };
+
+  const visibleGroups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return renderGroups;
+    return renderGroups
+      .map((group) => ({
+        ...group,
+        features: group.features.filter(
+          ({ key, label }) =>
+            label.toLowerCase().includes(q) ||
+            key.includes(q) ||
+            group.title.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((group) => group.features.length > 0);
+  }, [renderGroups, query]);
+
+  const selectedFeature =
+    allFeatures.find(({ key }) => key === selectedKey) ?? null;
+  const selectedGroupTitle = selectedFeature
+    ? renderGroups.find((group) =>
+        group.features.some(({ key }) => key === selectedFeature.key),
+      )?.title ?? ""
+    : "";
+  const selectedRow = selectedFeature ? state[selectedFeature.key] : null;
 
   return (
     <Page
@@ -620,8 +658,8 @@ export default function MarketsPage() {
             <Banner tone="warning" title="Unsaved changes">
               <BlockStack gap="200">
                 <Text as="p">
-                  Your market matrix changes are not saved yet — nothing has
-                  changed on the storefront.
+                  Your market targeting changes are not saved yet — nothing
+                  has changed on the storefront.
                 </Text>
                 <InlineStack gap="200">
                   <Button
@@ -654,158 +692,247 @@ export default function MarketsPage() {
         ) : null}
 
         <Layout.Section>
-          <Card>
-            <BlockStack gap="200">
-              <Text as="p">
-                Control which markets see each feature. A feature must be
-                enabled AND include a market to appear there.
-              </Text>
-              <Text as="p" tone="subdued" variant="bodySm">
-                A market column’s “Check all” includes that market in every
-                feature’s scope — each feature still needs its master toggle
-                on to go live there. The master toggle turns a feature on or
-                off everywhere; the “All markets” column switches a feature
-                between every market and a hand-picked list. Cart widgets
-                share the cart drawer master switch — turning any of them on
-                also activates the drawer.
-              </Text>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-
-        <Layout.Section>
-          <Card>
-            <div style={{ overflowX: "auto" }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns,
-                  minWidth: 390 + markets.length * 150,
-                }}
-              >
-                <div style={headerCellStyle}>
-                  <Text as="span" variant="headingSm">
-                    Feature
-                  </Text>
-                </div>
-                <div style={headerCellStyle}>
-                  <BlockStack gap="050">
-                    <Text as="span" variant="headingSm">
-                      All markets
-                    </Text>
-                    <Text as="span" tone="subdued" variant="bodySm">
-                      Scope mode
-                    </Text>
-                  </BlockStack>
-                </div>
-                {markets.map((market) => {
-                  const fullyChecked = marketFullyChecked(market.handle);
-                  return (
-                    <div key={market.id} style={headerCellStyle}>
-                      <BlockStack gap="050">
-                        <Text as="span" variant="headingSm">
-                          {market.name}
-                        </Text>
-                        <Text as="span" tone="subdued" variant="bodySm">
-                          {market.handle}
-                          {market.primary ? " · primary" : ""}
-                          {market.enabled ? "" : " · inactive"}
-                        </Text>
-                        <InlineStack>
-                          <Button
-                            variant="plain"
-                            size="slim"
-                            onClick={() =>
-                              setMarketAcrossRows(market.handle, !fullyChecked)
-                            }
-                          >
-                            {fullyChecked ? "Uncheck all" : "Check all"}
-                          </Button>
-                        </InlineStack>
-                      </BlockStack>
-                    </div>
-                  );
-                })}
-
-                {renderGroups.map((group) => (
-                  <Fragment key={group.title}>
-                    <div style={subheaderStyle}>
-                      <Text as="h3" variant="headingSm" tone="subdued">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(280px, 360px) minmax(0, 1fr)",
+              gap: 16,
+              alignItems: "start",
+            }}
+          >
+            <Card padding="0">
+              <Box padding="300" borderBlockEndWidth="025" borderColor="border">
+                <TextField
+                  label="Search features"
+                  labelHidden
+                  placeholder="Search features"
+                  value={query}
+                  onChange={setQuery}
+                  autoComplete="off"
+                  prefix={<Icon source={SearchIcon} tone="subdued" />}
+                  clearButton
+                  onClearButtonClick={() => setQuery("")}
+                />
+              </Box>
+              <div style={{ maxHeight: 620, overflowY: "auto" }}>
+                {visibleGroups.map((group) => (
+                  <div key={group.title}>
+                    <div style={groupHeaderStyle}>
+                      <Text as="h3" variant="headingXs" tone="subdued">
                         {group.title}
                       </Text>
                     </div>
                     {group.features.map(({ key, label }) => {
-                      const row = state[key];
+                      // Fallback for the one-render window where a freshly
+                      // revalidated key exists before the state-reset effect
+                      // re-seeds MatrixState (review v8.13 F5).
+                      const row = state[key] ?? {
+                        on: featureStates[key],
+                        mode: "all" as const,
+                        markets: [],
+                      };
+                      const selected = key === selectedKey;
                       return (
-                        <Fragment key={key}>
-                          <div style={cellStyle}>
-                            <BlockStack gap="100">
+                        <button
+                          key={key}
+                          type="button"
+                          aria-current={selected ? "true" : undefined}
+                          onClick={() => setSelectedKey(key)}
+                          style={{
+                            ...listRowStyle,
+                            ...(selected ? listRowSelectedStyle : {}),
+                          }}
+                        >
+                          <InlineStack
+                            gap="200"
+                            blockAlign="center"
+                            align="space-between"
+                            wrap={false}
+                          >
+                            <BlockStack gap="050">
                               <Text
                                 as="span"
                                 variant="bodyMd"
-                                fontWeight="semibold"
+                                fontWeight={selected ? "semibold" : "regular"}
                               >
                                 {label}
                               </Text>
-                              <InlineStack gap="200" blockAlign="center">
-                                <Badge tone={row.on ? "success" : undefined}>
-                                  {row.on ? "Active" : "Off"}
-                                </Badge>
-                                <Button
-                                  variant="plain"
-                                  size="slim"
-                                  onClick={() => toggleMaster(key)}
-                                >
-                                  {row.on ? "Turn off" : "Turn on"}
-                                </Button>
-                              </InlineStack>
-                              {!row.on ? (
-                                <span title="Market selections save now and take effect the moment the feature is turned on — set the targeting first, enable later.">
-                                  <Text
-                                    as="span"
-                                    tone="subdued"
-                                    variant="bodySm"
-                                  >
-                                    Off — selections save now, apply when
-                                    enabled
-                                  </Text>
-                                </span>
-                              ) : null}
+                              <Text as="span" variant="bodySm" tone="subdued">
+                                {reachLabel(row)}
+                              </Text>
                             </BlockStack>
-                          </div>
-                          <div style={cellStyle}>
-                            <Checkbox
-                              label={`Show ${label} in all markets`}
-                              labelHidden
-                              checked={row.mode === "all"}
-                              onChange={(checked) =>
-                                setAllMarkets(key, checked)
-                              }
-                            />
-                          </div>
-                          {markets.map((market) => (
-                            <div key={market.id} style={cellStyle}>
-                              <Checkbox
-                                label={`Show ${label} in ${market.name}`}
-                                labelHidden
-                                checked={
-                                  row.mode === "all" ||
-                                  row.markets.includes(market.handle)
-                                }
-                                onChange={(checked) =>
-                                  toggleCell(key, market.handle, checked)
-                                }
-                              />
-                            </div>
-                          ))}
-                        </Fragment>
+                            <InlineStack gap="100" wrap={false}>
+                              {rowDirty(key) ? (
+                                <Badge tone="attention" size="small">
+                                  Edited
+                                </Badge>
+                              ) : null}
+                              <Badge
+                                tone={row.on ? "success" : undefined}
+                                size="small"
+                              >
+                                {row.on ? "Active" : "Off"}
+                              </Badge>
+                            </InlineStack>
+                          </InlineStack>
+                        </button>
                       );
                     })}
-                  </Fragment>
+                  </div>
                 ))}
+                {visibleGroups.length === 0 ? (
+                  <Box padding="400">
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      No features match “{query.trim()}”.
+                    </Text>
+                  </Box>
+                ) : null}
               </div>
-            </div>
-          </Card>
+            </Card>
+
+            <Card>
+              {selectedFeature && selectedRow ? (
+                <BlockStack gap="400">
+                  <InlineStack
+                    gap="200"
+                    blockAlign="start"
+                    align="space-between"
+                  >
+                    <BlockStack gap="100">
+                      <InlineStack gap="200" blockAlign="center">
+                        <Text as="h2" variant="headingMd">
+                          {selectedFeature.label}
+                        </Text>
+                        <Badge tone={selectedRow.on ? "success" : undefined}>
+                          {selectedRow.on ? "Active" : "Off"}
+                        </Badge>
+                      </InlineStack>
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        {selectedGroupTitle}
+                      </Text>
+                    </BlockStack>
+                    <Button
+                      onClick={() => toggleMaster(selectedFeature.key)}
+                      variant={selectedRow.on ? undefined : "primary"}
+                      disabled={isSaving}
+                    >
+                      {selectedRow.on ? "Turn off" : "Turn on"}
+                    </Button>
+                  </InlineStack>
+
+                  {!selectedRow.on ? (
+                    <Banner tone="info">
+                      <Text as="p" variant="bodySm">
+                        Off — selections save now, apply when enabled. Set the
+                        market targeting first, turn the feature on whenever
+                        you’re ready.
+                      </Text>
+                    </Banner>
+                  ) : null}
+
+                  <Divider />
+
+                  <Checkbox
+                    label="All markets"
+                    helpText={
+                      markets.length === 0
+                        ? "The market list is unavailable, so hand-picking markets is disabled — the feature keeps its all-markets scope."
+                        : "Show in every market, including markets you add later. Uncheck to hand-pick markets below."
+                    }
+                    checked={selectedRow.mode === "all"}
+                    disabled={
+                      isSaving ||
+                      (markets.length === 0 && selectedRow.mode === "all")
+                    }
+                    onChange={(checked) =>
+                      setAllMarkets(selectedFeature.key, checked)
+                    }
+                  />
+
+                  {markets.length > 0 ? (
+                    <BlockStack gap="200">
+                      <InlineStack
+                        gap="200"
+                        blockAlign="center"
+                        align="space-between"
+                      >
+                        <Text as="h3" variant="headingSm">
+                          Markets ({effectiveCount(selectedRow)}/
+                          {markets.length})
+                        </Text>
+                        <InlineStack gap="200">
+                          <Button
+                            variant="plain"
+                            size="slim"
+                            disabled={isSaving}
+                            onClick={() =>
+                              selectAllMarkets(selectedFeature.key)
+                            }
+                          >
+                            Select all
+                          </Button>
+                          <Button
+                            variant="plain"
+                            size="slim"
+                            disabled={isSaving}
+                            onClick={() => clearMarkets(selectedFeature.key)}
+                          >
+                            Clear
+                          </Button>
+                        </InlineStack>
+                      </InlineStack>
+                      <InlineStack gap="150" wrap>
+                        {markets.map((market) => {
+                          const checked =
+                            selectedRow.mode === "all" ||
+                            selectedRow.markets.includes(market.handle);
+                          return (
+                            <Button
+                              key={market.id}
+                              size="slim"
+                              pressed={checked}
+                              variant={checked ? "primary" : undefined}
+                              disabled={isSaving}
+                              onClick={() =>
+                                toggleCell(
+                                  selectedFeature.key,
+                                  market.handle,
+                                  !checked,
+                                )
+                              }
+                              accessibilityLabel={`Show ${selectedFeature.label} in ${market.name}`}
+                            >
+                              {market.name +
+                                (market.primary ? " · primary" : "") +
+                                (market.enabled ? "" : " · inactive")}
+                            </Button>
+                          );
+                        })}
+                      </InlineStack>
+                    </BlockStack>
+                  ) : null}
+                  {/* Outside the markets.length > 0 gate so a saved
+                      selected-mode row still warns when the market list
+                      fails to load (review v8.13 F2). With no list loaded,
+                      only a truly EMPTY selection warns — saved handles for
+                      real-but-unloaded markets are not a false alarm. */}
+                  {selectedRow.mode === "selected" &&
+                  (markets.length > 0
+                    ? effectiveCount(selectedRow) === 0
+                    : selectedRow.markets.length === 0) ? (
+                    <Text as="p" variant="bodySm" tone="caution">
+                      No markets selected — this feature won’t appear
+                      anywhere, even when enabled.
+                    </Text>
+                  ) : null}
+                </BlockStack>
+              ) : (
+                <Text as="p" tone="subdued">
+                  Pick a feature on the left to edit its market targeting.
+                </Text>
+              )}
+            </Card>
+          </div>
         </Layout.Section>
       </Layout>
     </Page>

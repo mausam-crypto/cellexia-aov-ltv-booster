@@ -66,6 +66,7 @@ export const PDP_METAFIELD_KEYS = {
   pdpFlags: "pdp_flags",
   bestsellerCategory: "bestseller_category",
   productSurvey: "product_survey",
+  displayName: "display_name",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -643,6 +644,20 @@ export async function ensurePdpDefinitions(
         key: PDP_METAFIELD_KEYS.bestsellerCategory,
         description:
           "Category shown in the Cellexia bestseller badge (“#1 Bestseller · {category}”). Translatable per language.",
+        type: "single_line_text_field",
+        ownerType: "PRODUCT",
+        pin: true,
+        access: DEFINITION_ACCESS,
+      }),
+    },
+    {
+      key: PDP_METAFIELD_KEYS.displayName,
+      build: () => ({
+        name: "Cellexia display name",
+        namespace: CELLEXIA_NAMESPACE,
+        key: PDP_METAFIELD_KEYS.displayName,
+        description:
+          "v8.13: how the survey/study widgets refer to this product per language (“…would recommend {name}”, “Tested on {name} itself”). Empty = the product title. Set per language on the app's Product names page; a NAME is never machine-translated.",
         type: "single_line_text_field",
         ownerType: "PRODUCT",
         pin: true,
