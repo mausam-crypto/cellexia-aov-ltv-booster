@@ -655,6 +655,21 @@ asks).** Two changes, no deploy steps beyond the normal §3 flow:
    changed-only settings writes as before, and market selections still save
    while a feature is off (they apply the moment it's enabled).
 
+**v8.13b — `{name}` placeholder in custom study/survey text (merchant
+catch).** Custom text overrides used to ship verbatim, so "Tested on {name}
+itself" showed the literal braces. Every merchant-entered text field of the
+clinical study (title, concern, subject line, footnote, result labels and
+suffixes, lab name, instruments) and dermatologist survey (headline,
+question, intro, outcome statements, verifier, methodology — per-product
+and the global default) now substitutes `{name}` with the product's display
+name from the Product names page (per language; falls back to the product
+title). Type it as `{name}` — common variants ({Name}, {{ name }},
+{ name }) are auto-corrected on save. The placeholder also survives machine
+translation of custom text, same as the existing `{{ total }}` family, while
+proof-library prose (press quotes, endorsements, testimonials) is explicitly
+exempt from placeholder freezing so brace-styled words in quotes still
+translate normally. The editor field hints mention the placeholder.
+
 ## 6. If something looks wrong
 
 - Preview link 404 → §Troubleshooting in INSTALL.md (app proxy).

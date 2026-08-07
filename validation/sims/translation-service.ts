@@ -297,6 +297,43 @@ async function main() {
       "registered translation carries the placeholders VERBATIM, unwrapped and unescaped");
   }
 
+  // --- v8.13b: single-brace {name} survives DeepL verbatim -----------------------
+  // Custom study/survey text supports {name} (substituted with the per-language
+  // product display name by the storefront Liquid), so the token must reach the
+  // registered translations untouched — same XML-mode protection as {{ total }}.
+  // The widened pattern also freezes spaced variants ({ name }) already saved
+  // before the save-time canonicalization existed.
+  {
+    const log = installDeepl();
+    const { admin, registered } = mockAdmin([
+      {
+        resourceId: "gid://shopify/Metaobject/11", // clinical study parent
+        content: [
+          {
+            key: "subject",
+            value: "Tested on {name} itself & { name } again.",
+            digest: "d11",
+            locale: "en",
+          },
+        ],
+      },
+    ]);
+    const summary = await translateResources(admin, "key", ["gid://shopify/Metaobject/11"], ["fr"]);
+    ok(summary.ok === true && summary.fieldCount === 1, "v8.13b: subject field admitted to the run");
+    const call = log.find((l) => l.body?.target_lang === "FR");
+    ok(call?.body?.tag_handling === "xml" && call?.body?.ignore_tags === "cx",
+      "v8.13b: a single-brace {name} batch switches to XML mode with the cx ignore tag");
+    const sent = ((call?.body?.text ?? []) as string[])[0] ?? "";
+    ok(sent.includes("<cx>{name}</cx>") && sent.includes("<cx>{ name }</cx>"),
+      "v8.13b: {name} AND the spaced legacy variant are each wrapped in an ignored <cx> tag");
+    ok(sent.includes("itself &amp;"),
+      "v8.13b: surrounding prose is XML-escaped in protected batches");
+    const reg = registered.find((r) => r.id === "gid://shopify/Metaobject/11");
+    const value = reg?.translations[0]?.value ?? "";
+    ok(value === "[FR] Tested on {name} itself & { name } again.",
+      "v8.13b: registered translation carries {name} VERBATIM, unwrapped and unescaped");
+  }
+
   // --- incremental: current kept (manual edits preserved), outdated redone -------
   {
     const log = installDeepl();

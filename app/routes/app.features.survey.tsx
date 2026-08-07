@@ -672,7 +672,7 @@ export default function SurveyFeaturePage() {
                   }
                   placeholder="Leave empty to use the built-in explanation, already translated into all 17 additional languages."
                   helpText={
-                    "The full text shown in the “How the survey was conducted” panel. Leave empty to use the built-in explanation (translated into all 17 additional languages). Custom text appears exactly as written in every language — it is not translated. Separate paragraphs with line breaks. The placeholders {{ total }}, {{ yes }} and {{ percent }} are replaced with each product's own survey numbers on the storefront; lines using {{ yes }} or {{ percent }} appear only on products with a Would-recommend count."
+                    "The full text shown in the “How the survey was conducted” panel. Leave empty to use the built-in explanation (translated into all 17 additional languages). Custom text appears exactly as written in every language — it is not translated. Separate paragraphs with line breaks. The placeholders {{ total }}, {{ yes }} and {{ percent }} are replaced with each product's own survey numbers on the storefront; lines using {{ yes }} or {{ percent }} appear only on products with a Would-recommend count. {name} inserts each product’s display name (Product names page)."
                   }
                   autoComplete="off"
                 />

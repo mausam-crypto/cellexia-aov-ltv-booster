@@ -1520,7 +1520,10 @@ export function sanitizeSettings(
   if (typeof next.dermSurvey.methodology !== "string") {
     next.dermSurvey.methodology = "";
   } else {
+    // v8.13b: same {name}-variant canonicalization as pdp-content cleanText —
+    // the storefront Liquid substitutes the exact lowercase token only.
     next.dermSurvey.methodology = next.dermSurvey.methodology
+      .replace(/\{\{?\s*name\s*\}?\}/gi, "{name}")
       .trim()
       .slice(0, 4000);
   }

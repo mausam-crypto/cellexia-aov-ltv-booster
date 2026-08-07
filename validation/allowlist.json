@@ -65,6 +65,11 @@
       "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
       "reason": "v8.13 product display names: new `assign cx_pname = product.metafields.cellexia.display_name.value | default: product.title` and the three name interpolations (survey rec_line, survey outcomes_intro, study sub) switch from product.title to cx_pname. The metafield is translatable (native Shopify translations registered by the Product names admin page), so localized pages serve the merchant's exact per-language name; unset falls back to the title \u2014 byte-identical output for shops that never set a display name.",
       "wave": "v8.13"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+      "reason": "v8.13b {name} placeholder in custom text (merchant catch: 'Tested on {name} itself' rendered the literal braces): the 14 merchant-entered text substitution sites of the survey island (title/question/intro/outcome statements/methodology, plus verifier via a single assign-site replace covering both its emissions) and study island (title/concern/subject/footnote/result labels/result suffixes/lab name/instruments) gain `| replace: '{name}', cx_pname` before | json, so custom copy can interpolate the per-language display name exactly like the built-in lines. No-op for text without the token.",
+      "wave": "v8.13b"
     }
   ]
 }

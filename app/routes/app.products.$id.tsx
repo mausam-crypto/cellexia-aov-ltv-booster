@@ -2825,7 +2825,7 @@ export default function ProductBoosterDetailPage() {
                   value={clinicalState.subject}
                   onChange={(subject) => setClinicalField({ subject })}
                   disabled={savingClinical}
-                  helpText="Replaces the ENTIRE “Tested on … itself — the exact formula on this page.” line under the eyebrow, word for word. Leave empty for the built-in line with the product title. Plain language wins with skeptical shoppers."
+                  helpText="Replaces the ENTIRE “Tested on … itself — the exact formula on this page.” line under the eyebrow, word for word. Leave empty for the built-in line with the product title. Use {name} to insert the product’s display name (Product names page). Plain language wins with skeptical shoppers."
                   autoComplete="off"
                 />
                 <Text as="p" tone="subdued" variant="bodySm">
@@ -3004,7 +3004,7 @@ export default function ProductBoosterDetailPage() {
                   onChange={(footnote) => setClinicalField({ footnote })}
                   multiline={2}
                   disabled={savingClinical}
-                  helpText="Methodology small print, e.g. “Measured under dermatological control. Individual results may vary.”"
+                  helpText="Methodology small print, e.g. “Measured under dermatological control. Individual results may vary.” Use {name} to insert the product’s display name (Product names page)."
                   autoComplete="off"
                 />
 
@@ -3798,7 +3798,7 @@ export default function ProductBoosterDetailPage() {
                       value={surveyState.title}
                       onChange={(title) => setSurveyField({ title })}
                       disabled={savingSurvey}
-                      helpText="Optional. Leave empty for the built-in “NN% would recommend” headline."
+                      helpText="Optional. Leave empty for the built-in “NN% would recommend” headline. Use {name} to insert the product’s display name (Product names page)."
                       autoComplete="off"
                     />
                   </Box>
@@ -3840,7 +3840,7 @@ export default function ProductBoosterDetailPage() {
                   value={surveyState.question}
                   onChange={(question) => setSurveyField({ question })}
                   disabled={savingSurvey}
-                  helpText="Optional — quoted verbatim in the widget. Only publish the question the dermatologists were actually asked."
+                  helpText="Optional — quoted verbatim in the widget. Only publish the question the dermatologists were actually asked. Use {name} to insert the product’s display name (Product names page)."
                   autoComplete="off"
                 />
                 <TextField
@@ -3848,7 +3848,7 @@ export default function ProductBoosterDetailPage() {
                   value={surveyState.intro}
                   onChange={(intro) => setSurveyField({ intro })}
                   disabled={savingSurvey}
-                  helpText="Optional. Leave empty for the built-in intro line with the product title."
+                  helpText="Optional. Leave empty for the built-in intro line with the product title. Use {name} to insert the product’s display name (Product names page)."
                   autoComplete="off"
                 />
 
@@ -3890,7 +3890,7 @@ export default function ProductBoosterDetailPage() {
                                 ? "Required"
                                 : undefined
                             }
-                            helpText="e.g. “Visibly firmer skin after 8 weeks of use”"
+                            helpText="e.g. “Visibly firmer skin after 8 weeks of use” Use {name} to insert the product’s display name (Product names page)."
                             autoComplete="off"
                           />
                         </Box>
@@ -3985,7 +3985,7 @@ export default function ProductBoosterDetailPage() {
                   onChange={(methodology) => setSurveyField({ methodology })}
                   multiline={6}
                   disabled={savingSurvey}
-                  helpText="Optional per-product disclosure — overrides the global text from the survey defaults page. The placeholders {{ total }}, {{ yes }} and {{ percent }} track this product’s numbers; lines using {{ yes }} or {{ percent }} appear only when a Would-recommend count is set."
+                  helpText="Optional per-product disclosure — overrides the global text from the survey defaults page. The placeholders {{ total }}, {{ yes }} and {{ percent }} track this product’s numbers; lines using {{ yes }} or {{ percent }} appear only when a Would-recommend count is set. {name} inserts the product’s display name (Product names page)."
                   autoComplete="off"
                 />
                 <InlineStack gap="300" wrap>

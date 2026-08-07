@@ -1721,6 +1721,69 @@ const EVIDENCE = {
     "v8.13: no raw 'product: product.title' interpolation remains in pdp-booster.liquid",
   );
 
+  // (b2) v8.13b (merchant catch): "{name}" in CUSTOM study/survey text must
+  // substitute the display name — the raw value used to ship verbatim
+  // ("Tested on {name} itself" showed literally). Every merchant-entered
+  // text field of the two islands carries the replace filter.
+  const NAME_REPLACE = "| replace: '{name}', cx_pname";
+  const replaceUses = pdpLiquid.split(NAME_REPLACE).length - 1;
+  ok(
+    replaceUses === 14,
+    `v8.13b: exactly 14 '{name}' replace filters in pdp-booster.liquid (got ${replaceUses})`,
+  );
+  for (const site of [
+    `{{ cx_study.subject.value ${NAME_REPLACE} | json }}`,
+    `{{ cx_svy.question.value ${NAME_REPLACE} | json }}`,
+    `"method": {{ cx_svy_method ${NAME_REPLACE} | json }}`,
+    // review v8.13b F0/F1: instruments rides the t: output; the verifier is
+    // substituted ONCE at the variable so both its emissions are covered.
+    `t: methods: cx_study.instruments.value ${NAME_REPLACE} | json }}`,
+    `assign survey_verifier = survey_verifier ${NAME_REPLACE}`,
+  ]) {
+    ok(pdpLiquid.includes(site), `v8.13b: {name} replace at: ${site.slice(0, 60)}`);
+  }
+  // DeepL protection: single-brace {name} (and spaced legacy variants) must
+  // survive machine translation of custom text (the substitution happens
+  // later, in Liquid). Behavioral proof lives in sims/translation-service.ts.
+  const trSrcB = read("app/services/translation.server.ts");
+  ok(
+    trSrcB.includes("/\\{\\{\\s*[a-z_]+\\s*\\}\\}|\\{\\s*[a-z_]+\\s*\\}/i") &&
+      trSrcB.includes("/\\{\\{\\s*[a-z_]+\\s*\\}\\}|\\{\\s*[a-z_]+\\s*\\}/gi"),
+    "v8.13b: DeepL placeholder patterns protect single-brace {name} tokens (spaces tolerated)",
+  );
+  // Proof prose opt-out: quotes/testimonials have no placeholder consumer,
+  // so the proof path must never freeze brace-styled words (review F4).
+  ok(
+    trSrcB.includes("options?.protectPlaceholders ?? true"),
+    "v8.13b: deeplTranslateBatch supports the protectPlaceholders opt-out (default on)",
+  );
+  ok(
+    read("app/services/proof-translation.server.ts").includes(
+      "{ protectPlaceholders: false }",
+    ),
+    "v8.13b: the proof-translation path opts out of placeholder freezing",
+  );
+  // Save-time canonicalization: {Name}/{ name }/{{name}}/{{ name }} collapse
+  // to the exact token Liquid substitutes — in BOTH text funnels (review F5).
+  ok(
+    read("app/services/pdp-content.server.ts").includes(
+      '.replace(/\\{\\{?\\s*name\\s*\\}?\\}/gi, "{name}")',
+    ),
+    "v8.13b: pdp-content cleanText canonicalizes {name}-token variants",
+  );
+  ok(
+    read("app/models/settings.server.ts").includes(
+      '.replace(/\\{\\{?\\s*name\\s*\\}?\\}/gi, "{name}")',
+    ),
+    "v8.13b: global survey methodology canonicalizes {name}-token variants",
+  );
+  ok(
+    read("app/routes/app.products.$id.tsx").includes(
+      "Use {name} to insert the product’s display name",
+    ),
+    "v8.13b: per-product editor advertises the {name} placeholder",
+  );
+
   // (c) Service anchors: native Shopify translation machinery on the
   // metafield GID (register with digest, remove by locale, delete-on-blank).
   const nameSrc = read("app/services/product-names.server.ts");

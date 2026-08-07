@@ -459,7 +459,15 @@ const FILE_GID_PATTERN = /^gid:\/\/shopify\/(GenericFile|MediaImage)\/\d+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function cleanText(value: unknown, max: number): string {
-  return typeof value === "string" ? value.trim().slice(0, max) : "";
+  if (typeof value !== "string") return "";
+  // v8.13b: canonicalize {name}-token variants ({Name}, { name }, {{name}},
+  // {{ name }}) to the exact token the storefront Liquid substitutes with
+  // the per-language display name — otherwise a variant would be frozen
+  // through DeepL yet never replaced, shipping literal braces to shoppers.
+  return value
+    .replace(/\{\{?\s*name\s*\}?\}/gi, "{name}")
+    .trim()
+    .slice(0, max);
 }
 
 /** Optional https(s) URL: "" passes; anything else must be http(s). */

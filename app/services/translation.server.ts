@@ -225,9 +225,13 @@ function deeplErrorForStatus(status: number): string {
  *  NOT protect free-text braces (they get translated, re-spaced or
  *  reordered like ordinary words), so any slice carrying placeholders is
  *  sent in XML mode with each placeholder wrapped in an ignored <cx> tag
- *  (all other content XML-escaped), then unwrapped after translation. */
-const HAS_PLACEHOLDER = /\{\{\s*[a-z_]+\s*\}\}/i;
-const PLACEHOLDER_PATTERN = /\{\{\s*[a-z_]+\s*\}\}/gi;
+ *  (all other content XML-escaped), then unwrapped after translation.
+ *  v8.13b: single-brace {name} joins the protected set — study/survey
+ *  custom text supports it (Liquid substitutes the per-language product
+ *  display name at render time), so it must reach the translated
+ *  metaobject field values verbatim. */
+const HAS_PLACEHOLDER = /\{\{\s*[a-z_]+\s*\}\}|\{\s*[a-z_]+\s*\}/i;
+const PLACEHOLDER_PATTERN = /\{\{\s*[a-z_]+\s*\}\}|\{\s*[a-z_]+\s*\}/gi;
 
 function xmlEscape(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -252,12 +256,19 @@ export async function deeplTranslateBatch(
   texts: string[],
   targetLang: string,
   sourceLang: string | undefined,
+  // v8.13b: callers whose text has NO placeholder consumer (proof-library
+  // prose — press quotes, endorsements, testimonials) opt out, so a
+  // brace-styled word in a quote is translated normally instead of being
+  // frozen (and flipping its whole slice to XML mode) for nothing.
+  options?: { protectPlaceholders?: boolean },
 ): Promise<DeeplBatchResult> {
   const out: string[] = [];
   for (const slice of chunk(texts, DEEPL_TEXTS_PER_REQUEST)) {
     let lastError = "";
     let translated: string[] | null = null;
-    const protect = slice.some((text) => HAS_PLACEHOLDER.test(text));
+    const protect =
+      (options?.protectPlaceholders ?? true) &&
+      slice.some((text) => HAS_PLACEHOLDER.test(text));
     const outbound = protect ? slice.map(protectPlaceholders) : slice;
     for (let attempt = 0; attempt < 2 && !translated; attempt += 1) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 1200));
