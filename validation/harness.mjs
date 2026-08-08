@@ -934,55 +934,92 @@ const EVIDENCE = {
     );
   }
 
-  // ---- v8.16 ships-from GRAMMAR (per-locale country tables) ---------------
+  // ---- v8.16/v8.16b ships-from GRAMMAR (JS-asset country tables) ----------
   // The line reads naturally in every language: each locale carries a
-  // natural `ships_from` sentence, a full `ships_from_c` country table of
-  // grammar-inflected phrases (articles / case / fused prepositions) and a
-  // label-style `ships_from_fallback` that stays grammatical with a bare
-  // nominative name for any country outside the table. The Liquid bakes the
-  // one table entry for the page's resolved warehouse; the JS prefers
-  // form -> fallback -> bare-natural (sims/az-split G-cases + m8/m9 pin the
-  // behavior).
+  // natural `ships_from` sentence and a label-style `ships_from_fallback`
+  // that stays grammatical with a bare nominative name; the full
+  // grammar-inflected country tables (articles / case / fused
+  // prepositions) live in cellexia-pdp.js as the GENERATED AZ_SHIPS_FORMS
+  // literal (scripts/gen-ships-from-grammar.mjs) — v8.16 shipped them as
+  // locale keys and Shopify REJECTED the deploy on the 15,360B per-file
+  // locale cap (ar/el UTF-8 weight). The JS prefers table form -> fallback
+  // label -> bare-natural (sims/az-split G-cases + m8/m9 pin the behavior).
   {
     const azLiquid16 = read(`${EXT}/blocks/amazon-booster.liquid`);
-    ok(
-      azLiquid16.includes(
-        `,"amazon.ships_from_c": {{ 'amazon.ships_from_c.' | append: az_sf | t | json }}`,
-      ),
-      "v8.16: island bakes the inflected phrase for the resolved warehouse",
-    );
     ok(
       azLiquid16.includes(
         `,"amazon.ships_from_fallback": {{ 'amazon.ships_from_fallback' | t: country: '@@COUNTRY@@' | json }}`,
       ),
       "v8.16: island bakes the label-style fallback template",
     );
+    ok(
+      !azLiquid16.includes("ships_from_c"),
+      "v8.16b: island no longer emits per-locale table keys (the locale-cap regression path)",
+    );
     const pdpSrc16 = read(PDP_JS);
     for (const anchor16 of [
-      "function azShipsForm() {",
+      "function azShipsWarehouseCode() {",
+      "function azShipsForm(code) {",
       "function azShipsTemplate(hasForm) {",
-      "function azShipsCompose(name) {",
+      "function azShipsCompose(code, name) {",
       "if (form) return azT('amazon.ships_from', { country: form });",
-      "var shipsForm = azShipsForm();",
+      "var shipsForm = azShipsForm(azShipsWarehouseCode());",
     ]) {
       ok(
         pdpSrc16.includes(anchor16),
         `v8.16: grammar-compose anchor present in cellexia-pdp.js: ${anchor16}`,
       );
     }
-    // Locale-table integrity over ALL 18 files: same country-key set
-    // everywhere (a per-locale gap would let Shopify's en.default fallback
-    // leak an ENGLISH inflected form into another language's sentence),
-    // every entry a non-empty string, templates keep their country slot.
+    ok(
+      exists("scripts/gen-ships-from-grammar.mjs"),
+      "v8.16b: the grammar generator ships in-repo (scripts/gen-ships-from-grammar.mjs)",
+    );
+    // Table integrity, now against the shipped JS literal: 18 page-locale
+    // tables, identical country-key sets, every phrase a non-empty string.
+    const formsMatch16 = pdpSrc16.match(/ {2}var AZ_SHIPS_FORMS = (\{[^\n]*\});\n/);
+    ok(!!formsMatch16, "v8.16b: AZ_SHIPS_FORMS single-line generated literal present");
+    const forms16 = formsMatch16 ? JSON.parse(formsMatch16[1]) : {};
+    const localeKeys16 = Object.keys(forms16);
+    ok(
+      localeKeys16.length === 18,
+      `v8.16b: 18 page-locale tables in AZ_SHIPS_FORMS (${localeKeys16.length})`,
+    );
+    const enKeys16 = Object.keys(forms16.en || {}).sort().join(",");
+    ok(
+      (forms16.en ? Object.keys(forms16.en).length : 0) >= 59,
+      "v8.16b: tables cover the 59-country warehouse set",
+    );
+    for (const lk of localeKeys16) {
+      ok(
+        Object.keys(forms16[lk]).sort().join(",") === enKeys16 &&
+          Object.values(forms16[lk]).every(
+            (v) => typeof v === "string" && v.trim() !== "",
+          ),
+        `v8.16b: AZ_SHIPS_FORMS['${lk}'] matches the shared country-key set with non-empty phrases`,
+      );
+    }
+    // Grammar spot-pins for the warehouse that matters most (CH) plus one
+    // fused/plural form per fusing language — regressions here mean the
+    // merchant's own storefront reads wrong again.
+    const pin16 = (loc, code, expect) => {
+      const t = forms16[loc] || {};
+      ok(t[code] === expect, `v8.16: ${loc} ${code} form is ${JSON.stringify(expect)} (got ${JSON.stringify(t[code])})`);
+    };
+    pin16("fr", "CH", "la Suisse");
+    pin16("fr", "US", "les États-Unis");
+    pin16("de", "CH", "der Schweiz");
+    pin16("de", "NL", "den Niederlanden");
+    pin16("it", "CH", "dalla Svizzera");
+    pin16("it", "US", "dagli Stati Uniti");
+    pin16("pt-PT", "CH", "da Suíça");
+    pin16("pt-PT", "US", "dos Estados Unidos");
+    pin16("el", "CH", "την Ελβετία");
+    pin16("pl", "CH", "ze Szwajcarii");
+    pin16("fi", "CH", "Sveitsistä");
+    pin16("hu", "CH", "Svájcból");
+    // Locale files keep the two sentence templates (the actual COPY).
     const localeFiles16 = listFiles(`${EXT}/locales`, ".json");
     ok(localeFiles16.length === 18, "v8.16: 18 locale files present");
-    const enTable16 = JSON.parse(read(`${EXT}/locales/en.default.json`)).amazon
-      .ships_from_c;
-    const enKeys16 = Object.keys(enTable16).sort().join(",");
-    ok(
-      Object.keys(enTable16).length >= 59,
-      `v8.16: en table covers the warehouse country set (${Object.keys(enTable16).length})`,
-    );
     for (const lf of localeFiles16) {
       const amazon16 = JSON.parse(read(`${EXT}/locales/${lf}`)).amazon;
       ok(
@@ -992,40 +1029,33 @@ const EVIDENCE = {
           amazon16.ships_from_fallback.includes("{{ country }}"),
         `v8.16: ${lf} ships_from + ships_from_fallback templates carry the country slot`,
       );
-      const table16 = amazon16.ships_from_c;
       ok(
-        table16 &&
-          Object.keys(table16).sort().join(",") === enKeys16 &&
-          Object.values(table16).every(
-            (v) => typeof v === "string" && v.trim() !== "",
-          ),
-        `v8.16: ${lf} ships_from_c table matches the shared country-key set with non-empty phrases`,
+        !("ships_from_c" in amazon16),
+        `v8.16b: ${lf} carries no in-file country table (locale-cap regression guard)`,
       );
     }
-    // Grammar spot-pins for the warehouse that matters most (CH) plus one
-    // fused/plural form per fusing language — regressions here mean the
-    // merchant's own storefront reads wrong again.
-    const pin16 = (file, code, expect) => {
-      const t = JSON.parse(read(`${EXT}/locales/${file}`)).amazon.ships_from_c;
-      ok(t[code] === expect, `v8.16: ${file} ${code} form is ${JSON.stringify(expect)} (got ${JSON.stringify(t[code])})`);
-    };
-    pin16("fr.json", "CH", "la Suisse");
-    pin16("fr.json", "US", "les États-Unis");
-    pin16("de.json", "CH", "der Schweiz");
-    pin16("de.json", "NL", "den Niederlanden");
-    pin16("it.json", "CH", "dalla Svizzera");
-    pin16("it.json", "US", "dagli Stati Uniti");
-    pin16("pt-PT.json", "CH", "da Suíça");
-    pin16("pt-PT.json", "US", "dos Estados Unidos");
-    pin16("el.json", "CH", "την Ελβετία");
-    pin16("pl.json", "CH", "ze Szwajcarii");
-    pin16("fi.json", "CH", "Sveitsistä");
-    pin16("hu.json", "CH", "Svájcból");
     ok(
       JSON.parse(read(`${EXT}/locales/fr.json`)).amazon.ships_from ===
         "Expédié depuis {{ country }}",
       "v8.16: the French sentence is the natural form (no colon)",
     );
+    // v8.16b THE MISSING TRIPWIRE: Shopify hard-caps EVERY extension
+    // locale file at 15,360 bytes — the v8.16 deploy was rejected because
+    // nothing here watched per-file locale bytes (only total Liquid).
+    // Budget 15,000 leaves margin; remedy when a language's copy grows:
+    // add the file to MINIFIED_LOCALES in scripts/gen-ships-from-grammar
+    // .mjs (el.json already ships minified) or trim copy.
+    for (const extDir of listFiles("extensions")) {
+      const locDir = `extensions/${extDir}/locales`;
+      if (!exists(locDir)) continue;
+      for (const lf of listFiles(locDir, ".json")) {
+        const size = bytesOf(`${locDir}/${lf}`);
+        ok(
+          size <= 15000,
+          `v8.16b: ${locDir}/${lf} is ${size}B <= 15,000B (Shopify rejects locale files over 15,360B — minify via MINIFIED_LOCALES or trim copy)`,
+        );
+      }
+    }
   }
 
   // ---- v6.11 survey methodology full-text editability ---------------------

@@ -328,7 +328,6 @@ endif
 {%- endif %}
 {%- if az_need_ships %}
 ,"amazon.ships_from": {{ 'amazon.ships_from' | t: country: '@@COUNTRY@@' | json }}
-,"amazon.ships_from_c": {{ 'amazon.ships_from_c.' | append: az_sf | t | json }}
 ,"amazon.ships_from_fallback": {{ 'amazon.ships_from_fallback' | t: country: '@@COUNTRY@@' | json }}
 {%- endif %}
 {%- if az_any_stock %}

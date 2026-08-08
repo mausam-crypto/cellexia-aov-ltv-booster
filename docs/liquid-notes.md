@@ -410,21 +410,26 @@ sessions see the swap):
   for the combined pre-split look) and restore it on unavailability /
   preview exit; az_ships_from fails closed without a resolvable
   warehouse;
-- v8.16 ships-from GRAMMAR: every locale file carries a natural
-  `amazon.ships_from` sentence + a full `amazon.ships_from_c` table
-  (ISO2 -> grammar-inflected country phrase: "la Suisse",
+- v8.16/v8.16b ships-from GRAMMAR: every locale file carries a natural
+  `amazon.ships_from` sentence + a label-style
+  `amazon.ships_from_fallback` that stays grammatical with a bare
+  nominative name. The grammar-inflected country tables ("la Suisse",
   "der Schweiz", "dalla Svizzera", "ze Szwajcarii", "Sveitsistä",
-  "την Ελβετία"…) + a label-style `amazon.ships_from_fallback` that
-  stays grammatical with a bare nominative name. The island bakes the
-  ONE table entry for the page's resolved warehouse (dynamic t key
-  `'amazon.ships_from_c.' | append: az_sf`); azShipsCompose prefers
-  form -> fallback label -> bare-natural (back-compat). ALL 18 locales
-  share the SAME country-key set — a per-locale gap would let
-  Shopify's en.default t-fallback leak an ENGLISH phrase into another
-  language (harness-pinned). The prominent format bolds the whole
-  inflected phrase, article included; merchant free-text defaultLabel
-  (micro row) bypasses the tables and rides the natural sentence
-  verbatim.
+  "την Ελβετία"…) live in cellexia-pdp.js as the GENERATED
+  AZ_SHIPS_FORMS literal keyed [pageLocale][ISO2] — maintained by
+  scripts/gen-ships-from-grammar.mjs, NEVER hand-edited. v8.16 shipped
+  them as `ships_from_c` locale keys and Shopify REJECTED the deploy:
+  every extension locale file is HARD-CAPPED at 15,360 bytes and
+  ar/el (2-byte UTF-8 scripts) blew it; el.json sits near the cap on
+  its own copy and now ships MINIFIED (MINIFIED_LOCALES in the
+  generator; the harness trips any locale file over 15,000B).
+  azShipsCompose prefers table form -> fallback label -> bare-natural
+  (back-compat with stale config mirrors). The prominent format bolds
+  the whole inflected phrase, article included; merchant free-text
+  defaultLabel (micro row) bypasses the tables and rides the natural
+  sentence verbatim. Country names were never locale-file copy
+  (pre-v8.16 they came from Intl.DisplayNames at runtime) — the
+  SENTENCES stay in the locale files for Translate & Adapt.
 - az_cta_count / az_cart_free_line replacements live in the cart
   surface, not here.
 
