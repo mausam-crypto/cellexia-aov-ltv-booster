@@ -803,15 +803,17 @@ export default function ProofPressTab() {
             <BlockStack gap="100">
               <InlineStack gap="200" blockAlign="center">
                 <Text as="h2" variant="headingMd">
-                  Press quotes
+                  Press coverage
                 </Text>
                 <Badge tone={featureEnabled ? "success" : undefined}>
                   {featureEnabled ? "Active" : "Off"}
                 </Badge>
               </InlineStack>
               <Text as="p" variant="bodySm" tone="subdued">
-                Publication logo + large quote for the “As seen in the press”
-                band. Entries without tagged products are brand-level and show
+                Publication logo + optional large quote for the “As seen in
+                the press” band. Quote-less entries show just the logo — with
+                no quotes at all the band renders as a compact logo strip.
+                Entries without tagged products are brand-level and show
                 wherever the proof band renders (product pages and the home
                 page).
               </Text>
@@ -836,7 +838,7 @@ export default function ProofPressTab() {
                 onClick={() => setAddOpen((previous) => !previous)}
                 disclosure={addOpen ? "up" : "down"}
               >
-                Add press quote
+                Add press entry
               </Button>
             </InlineStack>
           </InlineStack>
@@ -860,7 +862,7 @@ export default function ProofPressTab() {
                 <PressItemForm
                   initial={EMPTY_PRESS_FORM}
                   busy={saving}
-                  submitLabel="Add press quote"
+                  submitLabel="Add press entry"
                   markets={markets}
                   onSubmit={(values) => submitSave(values, null)}
                   onCancel={() => setAddOpen(false)}
@@ -888,7 +890,7 @@ export default function ProofPressTab() {
 
           {list.items.length === 0 ? (
             <Text as="p" tone="subdued">
-              No press quotes yet — add the first one above.
+              No press entries yet — add the first one above.
             </Text>
           ) : (
             <BlockStack gap="300">
@@ -940,7 +942,9 @@ export default function ProofPressTab() {
                             )}
                           </InlineStack>
                           <Text as="p" variant="bodySm" tone="subdued">
-                            {excerpt(item.quote, 120)}
+                            {/\S/.test(item.quote)
+                              ? excerpt(item.quote, 120)
+                              : "Logo only — no quote"}
                           </Text>
                         </BlockStack>
                       </InlineStack>

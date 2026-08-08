@@ -98,6 +98,9 @@ export type DurationBucket = (typeof DURATION_BUCKETS)[number];
 export interface PressItemInput {
   publication: string;
   logoUrl: string;
+  /** Optional (v8.14) — blank = a logo-only mention. The storefront shows
+   *  just the logo/wordmark; with no quotes in the whole library the band
+   *  renders as a compact logo strip. */
   quote: string;
   /** Optional — a press item without a link renders quote + name only. */
   articleUrl: string;
@@ -621,8 +624,9 @@ export async function savePressItem(
   const errors: string[] = [];
   const publication = cleanText(input.publication, SINGLE_LINE_MAX);
   if (publication === "") errors.push("A publication name is required");
+  // v8.14: the quote is optional — "" is a stored logo-only mention (the
+  // translation layer already skips blank sources).
   const quote = cleanText(input.quote, MULTI_LINE_MAX);
-  if (quote === "") errors.push("A quote is required");
   const logoUrl = cleanHttpsUrl(input.logoUrl, "Logo image", errors);
   const articleUrl = cleanHttpsUrl(input.articleUrl, "Article link", errors);
   const productGids = cleanProductGids(input.productGids, errors);

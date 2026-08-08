@@ -567,8 +567,8 @@ export default function MarketsPage() {
     return (
       a.on !== b.on ||
       a.mode !== b.mode ||
-      [...a.markets].sort().join("|") !==
-        [...b.markets].sort().join("|")
+      [...a.markets].sort().join(" ") !==
+        [...b.markets].sort().join(" ")
     );
   };
 

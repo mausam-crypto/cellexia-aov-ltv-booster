@@ -510,19 +510,22 @@
   // Quiet full-width band: eyebrow, grayscale logo strip (horizontally
   // scrollable on mobile), ONE large featured quote below. Quotes rotate
   // on logo click/tap only — no autoplay. The API orders items featured-
-  // first, so item 0 is the merchant's featured quote.
+  // first, so item 0 is the merchant's featured quote. v8.14: the quote
+  // is OPTIONAL — quote-less items are static marks in the strip, and a
+  // library with no quotes at all renders the compact LOGOS-ONLY band.
 
   function pressItems(data) {
     // Client-side re-validation: the API is trusted for ORDER, never for
-    // content safety. Rows need a publication + a quote; URLs pass
-    // pfHttps or drop to '' (text-only logo / no article link).
+    // content safety. Rows need a publication; the quote is OPTIONAL as of
+    // v8.14 (blank -> '' = a logo-only mention). URLs pass pfHttps or drop
+    // to '' (text-only logo / no article link).
     if (!data || !Array.isArray(data.items)) return [];
     var out = [];
     for (var i = 0; i < data.items.length; i++) {
       var it = data.items[i] && typeof data.items[i] === 'object' ? data.items[i] : {};
       var pub = typeof it.publication === 'string' && /\S/.test(it.publication) ? it.publication : '';
       var quote = typeof it.quote === 'string' && /\S/.test(it.quote) ? it.quote : '';
-      if (!pub || !quote) continue;
+      if (!pub) continue;
       out.push({ p: pub, q: quote, logo: pfHttps(it.logoUrl), url: pfHttps(it.articleUrl) });
     }
     return out;
@@ -558,23 +561,29 @@
         li.appendChild(name);
       }
       pfSp(li);
-      var quote = pfEl('blockquote', 'cx-press__wall-quote');
-      quote.textContent = item.q;
-      li.appendChild(quote);
-      pfSp(li);
-      // Footer attribution only when the header was a logo IMAGE — the
-      // name-fallback header IS the attribution (no duplicate wordmark).
+      // v8.14 optional quote: a quote-less item is a bare logo/name card.
+      if (item.q) {
+        var quote = pfEl('blockquote', 'cx-press__wall-quote');
+        quote.textContent = item.q;
+        li.appendChild(quote);
+        pfSp(li);
+      }
+      // Footer attribution only when the header was a logo IMAGE AND a
+      // quote needed attributing — the name-fallback header IS the
+      // attribution (no duplicate wordmark), and a quote-less logo card
+      // attributes itself.
       var readLabel = pfStr(s, 'read');
       var wantLink = item.url && /\S/.test(readLabel);
-      if (hadLogo || wantLink) {
+      var wantPub = hadLogo && !!item.q;
+      if (wantPub || wantLink) {
         var foot = pfEl('div', 'cx-press__wall-foot');
-        if (hadLogo) {
+        if (wantPub) {
           var pub = pfEl('span', 'cx-press__pub');
           pub.textContent = item.p;
           foot.appendChild(pub);
         }
         if (wantLink) {
-          if (hadLogo) pfSp(foot);
+          if (wantPub) pfSp(foot);
           var a = pfEl('a', 'cx-proof__link no-dec', ['href', item.url, 'target', '_blank', 'rel', 'noopener nofollow']);
           a.textContent = readLabel;
           foot.appendChild(a);
@@ -602,14 +611,22 @@
     // one-row eyebrow + logo strip, but the quote is ALWAYS visible below
     // it — sized down, single-line source — and logo taps rotate quotes
     // exactly like full mode); absent = full.
-    var ultra = conf.cm === 2;
-    var compact = conf.cm === 1;
+    // v8.14 optional quotes: only quoteful items join the rotation —
+    // quote-less items render as static (non-button) marks in the strip.
+    // No quotes at all -> the LOGOS-ONLY band: eyebrow + strip, tight
+    // vertical rhythm, density tiers + cue ignored (the strip is
+    // inherently compact, same precedent as the wall).
+    var quoted = [];
+    for (var qx = 0; qx < items.length; qx++) { if (items[qx].q) quoted.push(qx); }
+    var logosOnly = quoted.length === 0;
+    var ultra = !logosOnly && conf.cm === 2;
+    var compact = !logosOnly && conf.cm === 1;
     var openIdx = -1; // ultra only: which quote is revealed (-1 = collapsed)
     // v8.12 optional switch cue (island "lc":1, FULL layout only): the
     // active-tab indicator pattern — a selection marker under the current
     // logo signals the others are tappable, no text or arrows needed.
-    var cue = conf.lc === 1 && !ultra && !compact;
-    var root = pfEl('section', 'cx-proof cx-press' + (ultra ? ' cx-press--ultra' : compact ? ' cx-press--compact' : '') + (cue ? ' cx-press--cue' : ''), ['data-cx-feature', 'press']);
+    var cue = conf.lc === 1 && !ultra && !compact && !logosOnly;
+    var root = pfEl('section', 'cx-proof cx-press' + (logosOnly ? ' cx-press--logos' : ultra ? ' cx-press--ultra' : compact ? ' cx-press--compact' : '') + (cue ? ' cx-press--cue' : ''), ['data-cx-feature', 'press']);
     pfSp(root);
     var eyebrow = pfEl('p', 'cx-proof__eyebrow eyebrow eyebrow--sm');
     eyebrow.textContent = pfStr(s, 'eyebrow');
@@ -617,7 +634,7 @@
     pfSp(root);
 
     var strip = pfEl('div', 'cx-press__logos', ['role', 'group', 'aria-label', pfStr(s, 'aria')]);
-    var buttons = [];
+    var buttons = []; // { el, idx } — only quoteful logos are rotation buttons
     var quoteText = pfEl('p', 'cx-press__quote-text');
     var pubName = pfEl('span', 'cx-press__pub');
     var readLink = pfEl('a', 'cx-proof__link no-dec', ['target', '_blank', 'rel', 'noopener nofollow', 'hidden', '']);
@@ -636,7 +653,7 @@
         readLink.removeAttribute('href');
       }
       for (var b = 0; b < buttons.length; b++) {
-        buttons[b].setAttribute('aria-pressed', b === idx ? 'true' : 'false');
+        buttons[b].el.setAttribute('aria-pressed', buttons[b].idx === idx ? 'true' : 'false');
       }
     }
 
@@ -647,7 +664,7 @@
           // quote — the band collapses back to its one-row height.
           quote.setAttribute('hidden', '');
           openIdx = -1;
-          for (var b = 0; b < buttons.length; b++) buttons[b].setAttribute('aria-pressed', 'false');
+          for (var b = 0; b < buttons.length; b++) buttons[b].el.setAttribute('aria-pressed', 'false');
           return;
         }
         show(idx);
@@ -659,25 +676,40 @@
     }
 
     for (var i = 0; i < items.length; i++) {
-      var btn = pfEl('button', 'cx-press__logo', ['type', 'button', 'aria-pressed', i === 0 ? 'true' : 'false']);
+      var isBtn = !logosOnly && !!items[i].q;
+      var btn = isBtn
+        ? pfEl('button', 'cx-press__logo', ['type', 'button', 'aria-pressed', i === quoted[0] ? 'true' : 'false'])
+        : pfEl('span', 'cx-press__logo cx-press__logo--static');
       if (items[i].logo) {
-        var img = pfEl('img', 'cx-press__logo-img', ['alt', '', 'aria-hidden', 'true', 'loading', 'lazy']);
+        // Static marks carry the publication on the img alt directly —
+        // no button semantics, nothing to announce beyond the name.
+        var img = isBtn
+          ? pfEl('img', 'cx-press__logo-img', ['alt', '', 'aria-hidden', 'true', 'loading', 'lazy'])
+          : pfEl('img', 'cx-press__logo-img', ['alt', items[i].p, 'loading', 'lazy']);
         img.src = items[i].logo;
         btn.appendChild(img);
-        var srName = pfEl('span', 'sr-only');
-        srName.textContent = items[i].p;
-        btn.appendChild(srName);
+        if (isBtn) {
+          var srName = pfEl('span', 'sr-only');
+          srName.textContent = items[i].p;
+          btn.appendChild(srName);
+        }
       } else {
         var nameSpan = pfEl('span', 'cx-press__logo-name');
         nameSpan.textContent = items[i].p;
         btn.appendChild(nameSpan);
       }
-      bindLogo(btn, i);
-      buttons.push(btn);
+      if (isBtn) {
+        bindLogo(btn, i);
+        buttons.push({ el: btn, idx: i });
+      }
       strip.appendChild(btn);
     }
     root.appendChild(strip);
     pfSp(root);
+
+    // v8.14 logos-only: the band ends at the strip — no quote block, no
+    // handlers, nothing [hidden].
+    if (logosOnly) return root;
 
     var quote = pfEl('blockquote', 'cx-press__quote', ['aria-live', 'polite']);
     if (ultra) quote.setAttribute('hidden', ''); // ultra starts collapsed; logo tap reveals (compact/full always show it)
@@ -692,7 +724,7 @@
     pfSp(quote);
     root.appendChild(quote);
     pfSp(root);
-    show(0);
+    show(quoted[0]);
     return root;
   }
 

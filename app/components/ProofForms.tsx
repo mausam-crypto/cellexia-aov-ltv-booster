@@ -612,10 +612,9 @@ export function PressItemForm({
   ) => setValues((previous) => ({ ...previous, [key]: value }));
 
   const articleError = httpsUrlError(values.articleUrl);
-  const valid =
-    values.publication.trim() !== "" &&
-    values.quote.trim() !== "" &&
-    !articleError;
+  // v8.14: the quote is optional — a publication alone is a valid
+  // logo-only mention.
+  const valid = values.publication.trim() !== "" && !articleError;
   const dirty = JSON.stringify(values) !== JSON.stringify(initial);
 
   return (
@@ -641,13 +640,12 @@ export function PressItemForm({
         />
       </InlineStack>
       <TextField
-        label="Quote"
+        label="Quote (optional)"
         value={values.quote}
         multiline={3}
         maxLength={5000}
         onChange={(quote) => set("quote", quote)}
-        requiredIndicator
-        helpText="The large quote shown in the press band — exactly as printed."
+        helpText="The large quote shown in the press band — exactly as printed. Leave blank for a logo-only mention: the band shows just the logo, and when no entry has a quote it renders as a compact logo strip."
         autoComplete="off"
         disabled={busy}
       />

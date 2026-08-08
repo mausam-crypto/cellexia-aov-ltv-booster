@@ -2962,8 +2962,11 @@ body.customer--b2b .cx-sub-remove {
   opacity: 1;
   transform: translateX(-50%) scaleX(1);
 }
-.cx-press--cue .cx-press__logo:not([aria-pressed="true"]):hover::after,
-.cx-press--cue .cx-press__logo:not([aria-pressed="true"]):focus-visible::after {
+/* v8.14: :not([aria-pressed…]) alone would also match the static quote-
+   less marks (a span carries no aria-pressed at all) — exclude them, a
+   ghost cue on a non-interactive logo is a false affordance. */
+.cx-press--cue .cx-press__logo:not([aria-pressed="true"]):not(.cx-press__logo--static):hover::after,
+.cx-press--cue .cx-press__logo:not([aria-pressed="true"]):not(.cx-press__logo--static):focus-visible::after {
   opacity: 0.3;
   transform: translateX(-50%) scaleX(0.7);
 }
@@ -2971,6 +2974,34 @@ body.customer--b2b .cx-sub-remove {
   .cx-press--cue .cx-press__logo::after {
     transition: none;
   }
+}
+
+/* ------------------------------ press LOGOS-ONLY band (v8.14) ----------
+   Optional quotes: an entry without a quote is a bare press MENTION. In a
+   MIXED strip it renders as span.cx-press__logo--static — same grayscale
+   mark, but no pointer affordance and no hover lift (a non-interactive
+   element must not advertise tappability; the cue's ghost-bar selectors
+   exclude it explicitly above). When NO entry has a quote the whole
+   band is cx-press--logos: eyebrow + centered wrapping strip only, tight
+   vertical rhythm on every breakpoint — density tiers and the switch cue
+   are ignored (nothing to reveal or switch; same precedent as the wall). */
+.cx-press__logo--static {
+  cursor: default;
+}
+.cx-press__logo--static:hover,
+.cx-press__logo--static:focus-visible {
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+.cx-press--logos {
+  padding-block: 18px;
+}
+.cx-press--logos .cx-proof__eyebrow {
+  margin-block-end: 8px;
+}
+.cx-press--logos .cx-press__logos {
+  padding-block: 2px;
+  margin-block-end: 0;
 }
 
 /* ------------------------------------ press WALL layout (v8.10) --------

@@ -670,6 +670,31 @@ proof-library prose (press quotes, endorsements, testimonials) is explicitly
 exempt from placeholder freezing so brace-styled words in quotes still
 translate normally. The editor field hints mention the placeholder.
 
+**v8.14 — press quotes are now OPTIONAL: logo-only mentions (merchant
+ask).** A press entry needs only a publication name; the quote field on the
+Proof library → Press tab is optional. No deploy steps beyond §3; no schema
+change (a blank quote stores as an empty string).
+
+- *Logo-only entries in a mixed band:* an entry without a quote renders as a
+  static (non-tappable) grayscale mark in the logo strip — no switch cue, no
+  hover lift, no `aria-pressed` — while quoteful entries keep the tap-to-
+  rotate behavior. The rotation starts at the first entry that HAS a quote.
+  In the "All quotes visible" wall layout, a quote-less entry is a bare
+  logo/name card (its "Read the article" link still shows when set).
+- *No quotes at all → compact logo strip:* when no serving entry has a
+  quote, the band automatically renders the classic "As seen in" pattern —
+  eyebrow + centered wrapping logo strip, roughly half the height of the
+  featured layout on both mobile and desktop. Density tiers and the logo
+  switch cue are ignored in this state (nothing to reveal or switch), same
+  as the wall layout.
+- *Admin:* the entry list labels blank-quote rows "Logo only — no quote";
+  translation status/coverage only counts entries that have a quote; and a
+  cleared quote can never resurrect its old translations (stale rows are
+  digest-skipped by the proxy overlay).
+
+No new locale keys and no Liquid change — the band reuses the existing
+eyebrow/aria strings, so nothing to re-translate.
+
 ## 6. If something looks wrong
 
 - Preview link 404 → §Troubleshooting in INSTALL.md (app proxy).

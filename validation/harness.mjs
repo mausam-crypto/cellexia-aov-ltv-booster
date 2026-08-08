@@ -419,8 +419,8 @@ const EVIDENCE = {
     "v8.12: press island emits the lc cue code",
   );
   ok(
-    proofJs.includes("var cue = conf.lc === 1 && !ultra && !compact;"),
-    "v8.12: the cue applies to the FULL featured layout only",
+    proofJs.includes("var cue = conf.lc === 1 && !ultra && !compact && !logosOnly;"),
+    "v8.12/v8.14: the cue applies to the FULL featured layout only (never the logos-only band)",
   );
   ok(
     read(CSS).includes(".cx-press--cue .cx-press__logo[aria-pressed=\"true\"]::after {"),
@@ -429,6 +429,51 @@ const EVIDENCE = {
   ok(
     read("app/routes/app.features._index.tsx").includes("logo switch cue"),
     "v8.12: admin toggle present",
+  );
+
+  // v8.14: OPTIONAL press quotes — a publication alone is a valid
+  // logo-only mention. No quotes in the library -> the compact
+  // cx-press--logos band; mixed strips render quote-less items as static
+  // marks. Behavior pinned by proof-gallery PL1-PL4 + mutants m13-m15.
+  ok(
+    proofJs.includes("if (!pub) continue;") &&
+      !proofJs.includes("if (!pub || !quote) continue;"),
+    "v8.14: the client-side press validator requires the publication only",
+  );
+  ok(
+    proofJs.includes("var logosOnly = quoted.length === 0;") &&
+      proofJs.includes("cx-press__logo cx-press__logo--static"),
+    "v8.14: logos-only detection + static strip marks emitted",
+  );
+  ok(
+    read(CSS).includes(".cx-press--logos {") &&
+      read(CSS).includes(".cx-press__logo--static {"),
+    "v8.14: logos-only band + static marks styled",
+  );
+  {
+    const proofSvc13 = read("app/services/proof.server.ts");
+    const pressStart13 = proofSvc13.indexOf("export async function savePressItem");
+    const pressEnd13 = proofSvc13.indexOf("export async function saveEndorsement");
+    ok(
+      pressStart13 !== -1 && pressEnd13 > pressStart13 &&
+        !proofSvc13.slice(pressStart13, pressEnd13).includes('"A quote is required"'),
+      "v8.14: savePressItem no longer requires a quote",
+    );
+    ok(
+      proofSvc13.includes('if (quote === "") errors.push("A quote is required");'),
+      "v8.14: the ENDORSEMENT quote requirement is untouched",
+    );
+  }
+  ok(
+    read("app/components/ProofForms.tsx").includes('label="Quote (optional)"') &&
+      read("app/components/ProofForms.tsx").includes(
+        'const valid = values.publication.trim() !== "" && !articleError;',
+      ),
+    "v8.14: the admin press form treats the quote as optional",
+  );
+  ok(
+    read("app/routes/app.proof.press.tsx").includes("Logo only — no quote"),
+    "v8.14: the press list labels logo-only entries instead of a blank cell",
   );
 
   // v8.11: proof-library translations — schema model, island locale
@@ -724,7 +769,6 @@ const EVIDENCE = {
     cwd: ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    shell: process.platform === "win32",
   });
   const DEF = JSON.parse(out);
   ok(DEF && typeof DEF === "object", "emission: DEFAULT_SETTINGS executed from the live model");
@@ -1725,20 +1769,7 @@ const EVIDENCE = {
   // substitute the display name — the raw value used to ship verbatim
   // ("Tested on {name} itself" showed literally). Every merchant-entered
   // text field of the two islands carries the replace filter.
-  //
-  // Deploy-time correction (found by a real `shopify app deploy`, not by
-  // this suite or the vendor's own tooling): Shopify's production Liquid
-  // parser rejects a literal curly-brace string as a filter argument
-  // written directly inside a {{ }} output tag ("was not properly
-  // terminated with regexp: /\}\}/") — a real parser discrepancy from the
-  // liquidjs library this test suite runs on, which accepted it happily.
-  // The token is now assigned to `cx_name_token` in a plain tag once, and
-  // every {{ }} site references the variable instead of the literal.
-  ok(
-    pdpLiquid.includes("assign cx_name_token = '{name}'"),
-    "v8.13b: cx_name_token holds the {name} literal (assigned in a plain tag, not inside {{ }})",
-  );
-  const NAME_REPLACE = "| replace: cx_name_token, cx_pname";
+  const NAME_REPLACE = "| replace: '{name}', cx_pname";
   const replaceUses = pdpLiquid.split(NAME_REPLACE).length - 1;
   ok(
     replaceUses === 14,

@@ -614,10 +614,6 @@ function pubs(res: { items: { publication: string }[] }): string[] {
   const noPub = await P.savePressItem(shop, { ...base, publication: "  " });
   ok(noPub.ok === false && noPub.errors.includes("A publication name is required"),
     "SV1: whitespace publication rejected");
-  const noQuote = await P.savePressItem(shop, { ...base, quote: "" });
-  ok(noQuote.ok === false && noQuote.errors.includes("A quote is required"),
-    "SV1: empty quote rejected");
-
   const httpLogo = await P.savePressItem(shop, { ...base, logoUrl: "http://cdn/logo.svg" });
   ok(httpLogo.ok === false && httpLogo.errors.includes("Logo image must be an https:// URL"),
     "SV2: http logo rejected by the https gate");
@@ -635,6 +631,16 @@ function pubs(res: { items: { publication: string }[] }): string[] {
   const second = await P.savePressItem(shop, base);
   const secondRow = db._tables.pressItem.find((r) => r.id === second.id) as StubRow;
   ok(secondRow.sortWeight === 1, "SV3: the next row appends after the current max weight");
+
+  // v8.14: the quote is OPTIONAL — a publication alone is a logo-only
+  // mention. Whitespace normalizes to "" and is STORED (the column is
+  // non-nullable; the translation layer skips blank sources).
+  const logoOnly = await P.savePressItem(shop, { ...base, quote: "   " });
+  ok(logoOnly.ok === true && typeof logoOnly.id === "string",
+    "SV3b: quote-less entry saves (v8.14 logo-only mention)");
+  const logoOnlyRow = db._tables.pressItem.find((r) => r.id === logoOnly.id) as StubRow;
+  ok(logoOnlyRow.quote === "" && logoOnlyRow.sortWeight === 2,
+    "SV3b: whitespace quote stores '' and the row appends normally");
 
   const badGid = await P.savePressItem(shop, { ...base, productGids: ["gid://shopify/Collection/1"] });
   ok(badGid.ok === false && badGid.errors.includes("Tagged products must be Shopify product GIDs"),

@@ -29,6 +29,14 @@
  *   hides without a URL, text-name fallback for missing/insecure logos,
  *   fail-closed empty/invalid payloads, XSS quote stays inert text.
  *
+ * Optional-quote cases (PL, v8.14): quotes are optional — a library with
+ *   NO quotes renders the compact cx-press--logos band (strip only, no
+ *   quote block, no buttons, density tiers + cue ignored like the wall);
+ *   in a MIXED strip quote-less items are static span marks
+ *   (cx-press__logo--static, no aria-pressed, no handler) and rotation
+ *   starts at the FIRST QUOTEFUL item; wall cards without a quote drop
+ *   the blockquote + pub attribution but keep their read link.
+ *
  * Endorsement-wall cases (W): count headline (CLDR one/other pick,
  *   @@N@@ = API total), "Showing X of N" progress math, Show-more
  *   pagination 24 -> 48 -> 60 with the exact ?type=endorsements&page=2
@@ -106,6 +114,12 @@
  *   m10-press-tier-confusion    the cm===1 branch treated as ULTRA
  *                               (caught by the C compact-tier case: the
  *                               quote must be VISIBLE without a tap)
+ *   m13-press-logosonly-dead    logosOnly forced false (caught by PL1:
+ *                               the --logos band must render)
+ *   m14-press-static-lost       every strip item becomes a button (PL1
+ *                               zero-button + PL3 static-span asserts)
+ *   m15-press-first-quote-lost  rotation initialized at item 0 instead
+ *                               of the first quoteful item (PL3)
  */
 "use strict";
 const fs = require("fs");
@@ -363,8 +377,8 @@ ok(S.pfRegionName("") === "" && S.pfRegionName("DEU") === "", "H5: malformed cod
 // --- P4: fail closed on empty/invalid payloads ---------------------------------------
 ok(S.pressBuildSection({ str: PRESS_STR }, null) === null, "P4: null payload -> no band");
 ok(S.pressBuildSection({ str: PRESS_STR }, { items: [] }) === null, "P4: zero items -> no band");
-ok(S.pressBuildSection({ str: PRESS_STR }, { items: [{ publication: "X" }] }) === null,
-  "P4: quote-less rows dropped -> no band");
+ok(S.pressBuildSection({ str: PRESS_STR }, { items: [{ quote: "Orphan quote" }] }) === null,
+  "P4: publication-less rows dropped -> no band (quote alone is not an item)");
 
 // --- P5: XSS quote stays inert text --------------------------------------------------
 {
@@ -393,6 +407,114 @@ ok(S.pressBuildSection({ str: PRESS_STR }, { items: [{ publication: "X" }] }) ==
   const wallCued = S.pressBuildSection({ str: PRESS_STR, lc: 1, ly: "w" }, pressFixture());
   ok(!!wallCued && wallCued.className.indexOf("cx-press--cue") === -1,
     "Q1e: wall layout ignores the cue (nothing to switch)");
+}
+
+// --- PL1-PL4: v8.14 OPTIONAL quotes (logos-only band + static marks) -----------------
+function logosOnlyFixture() {
+  return {
+    total: 3,
+    items: [
+      { publication: "Vogue", logoUrl: "https://cdn/vogue.svg", quote: "", articleUrl: "https://vogue.com/a" },
+      { publication: "Elle", logoUrl: null, quote: null },
+      { publication: "Bazaar", logoUrl: "http://cdn/insecure.svg" },
+    ],
+  };
+}
+{
+  // PL1: no quotes at all -> the compact LOGOS-ONLY band (strip ends the band)
+  const section = S.pressBuildSection({ str: PRESS_STR }, logosOnlyFixture());
+  ok(!!section && section.className === "cx-proof cx-press cx-press--logos",
+    "PL1: all-quote-less library -> cx-press--logos modifier");
+  ok(!section.querySelector(".cx-press__quote") && !section.querySelector(".cx-press__quote-text"),
+    "PL1: no quote block at all — the band ends at the strip");
+  ok(section.querySelectorAll("button.cx-press__logo").length === 0,
+    "PL1: nothing is a button (nothing to reveal)");
+  const statics = section.querySelectorAll(".cx-press__logo--static");
+  ok(statics.length === 3, "PL1: every mention renders as a static mark");
+  ok(!section.querySelector("[hidden]"), "PL1: nothing [hidden]");
+  const img = statics[0] && statics[0].querySelector(".cx-press__logo-img");
+  ok(!!img && img.getAttribute("alt") === "Vogue",
+    "PL1: static logo img carries the publication as its alt (no sr-only span needed)");
+  ok(!!statics[1] && !!statics[1].querySelector(".cx-press__logo-name") &&
+     !!statics[2] && !!statics[2].querySelector(".cx-press__logo-name"),
+    "PL1: missing/http logo falls back to the wordmark name in the strip");
+  const eyebrow = section.querySelector(".cx-proof__eyebrow");
+  ok(!!eyebrow && eyebrow.textContent === "As seen in the press", "PL1: eyebrow kept");
+  const strip = section.querySelector(".cx-press__logos");
+  ok(!!strip && strip.getAttribute("role") === "group", "PL1: strip stays a labelled group");
+  ok(!section.querySelector(".cx-proof__link"), "PL1: no read links in the logos-only band");
+}
+{
+  // PL2: logos-only ignores density tiers AND the switch cue (wall precedent)
+  const ultra = S.pressBuildSection({ str: PRESS_STR, cm: 2 }, logosOnlyFixture());
+  ok(!!ultra && ultra.className === "cx-proof cx-press cx-press--logos",
+    "PL2: cm:2 with no quotes stays the logos-only band (no --ultra)");
+  const compact = S.pressBuildSection({ str: PRESS_STR, cm: 1 }, logosOnlyFixture());
+  ok(!!compact && compact.className.indexOf("cx-press--compact") === -1,
+    "PL2: cm:1 with no quotes -> no --compact tier");
+  const cued = S.pressBuildSection({ str: PRESS_STR, lc: 1 }, logosOnlyFixture());
+  ok(!!cued && cued.className.indexOf("cx-press--cue") === -1,
+    "PL2: lc:1 with no quotes -> no switch cue (nothing to switch)");
+}
+{
+  // PL3: MIXED strip — quote-less items are static marks, quoteful rotate
+  const mixed = {
+    total: 3,
+    items: [
+      { publication: "Vogue", logoUrl: "https://cdn/vogue.svg", quote: "", articleUrl: "https://vogue.com/a" },
+      { publication: "Elle", logoUrl: null, quote: "Skincare, decoded.", articleUrl: null },
+      { publication: "Bazaar", logoUrl: "https://cdn/bazaar.svg", quote: "Third quote.", articleUrl: "https://bazaar.com/b" },
+    ],
+  };
+  const section = S.pressBuildSection({ str: PRESS_STR }, mixed);
+  ok(!!section && section.className === "cx-proof cx-press",
+    "PL3: a single quote keeps the normal featured band (no --logos)");
+  const logos = section.querySelectorAll(".cx-press__logo");
+  ok(logos.length === 3, "PL3: every mention stays in the strip, quote-less included");
+  ok(section.querySelectorAll("button.cx-press__logo").length === 2,
+    "PL3: only quoteful items are buttons");
+  ok(logos[0].tagName === "SPAN" &&
+     (logos[0].attrs.class || "").indexOf("cx-press__logo--static") !== -1 &&
+     !logos[0].hasAttribute("aria-pressed"),
+    "PL3: the quote-less mention is a static span with no aria-pressed");
+  ok(section.querySelector(".cx-press__quote-text").textContent === "Skincare, decoded.",
+    "PL3: rotation starts at the FIRST QUOTEFUL item, not item 0");
+  ok(logos[1].getAttribute("aria-pressed") === "true" &&
+     logos[2].getAttribute("aria-pressed") === "false",
+    "PL3: aria-pressed starts on the first quoteful button");
+  click(logos[0]);
+  ok(section.querySelector(".cx-press__quote-text").textContent === "Skincare, decoded.",
+    "PL3: tapping a static mark changes nothing (no handler bound)");
+  click(logos[2]);
+  ok(section.querySelector(".cx-press__quote-text").textContent === "Third quote." &&
+     logos[2].getAttribute("aria-pressed") === "true" &&
+     logos[1].getAttribute("aria-pressed") === "false",
+    "PL3: quoteful buttons still rotate normally around the static mark");
+  ok(!logos[0].hasAttribute("aria-pressed"),
+    "PL3: rotation never stamps aria-pressed onto the static span");
+}
+{
+  // PL4: WALL cards without a quote — bare logo/name card, no dangling foot
+  const mixed = {
+    total: 3,
+    items: [
+      { publication: "Vogue", logoUrl: "https://cdn/vogue.svg", quote: "The quiet revolution.", articleUrl: "https://vogue.com/a" },
+      { publication: "Elle", logoUrl: "https://cdn/elle.svg", quote: "", articleUrl: "https://elle.com/x" },
+      { publication: "Bazaar", logoUrl: null },
+    ],
+  };
+  const section = S.pressBuildSection({ str: PRESS_STR, ly: "w" }, mixed);
+  const cards = section.querySelectorAll(".cx-press__wall-card");
+  ok(cards.length === 3, "PL4: quote-less mentions still get wall cards");
+  ok(section.querySelectorAll(".cx-press__wall-quote").length === 1,
+    "PL4: only the quoteful card carries a blockquote");
+  const pubs = section.querySelectorAll(".cx-press__pub");
+  ok(pubs.length === 1 && pubs[0].textContent === "Vogue",
+    "PL4: attribution only where a LOGO header has a quote to attribute (a bare logo card self-attributes)");
+  ok(!!cards[1].querySelector(".cx-proof__link"),
+    "PL4: a quote-less card keeps its read link when an articleUrl exists");
+  ok(!cards[2].querySelector(".cx-press__wall-foot"),
+    "PL4: name-only quote-less card has no footer at all");
 }
 
 // --- W1-W4: v8.10 WALL layout (ly:'w' — all quotes visible, no interaction) ----------
@@ -1164,8 +1286,8 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
       },
       {
         name: "m7-press-cm-gate-inverted",
-        find: "    var ultra = conf.cm === 2;\n    var compact = conf.cm === 1;\n    var openIdx = -1; // ultra only: which quote is revealed (-1 = collapsed)",
-        replace: "    var ultra = conf.cm !== 2;\n    var compact = conf.cm === 1;\n    var openIdx = -1; // ultra only: which quote is revealed (-1 = collapsed)",
+        find: "    var ultra = !logosOnly && conf.cm === 2;\n    var compact = !logosOnly && conf.cm === 1;\n    var openIdx = -1; // ultra only: which quote is revealed (-1 = collapsed)",
+        replace: "    var ultra = !logosOnly && conf.cm !== 2;\n    var compact = !logosOnly && conf.cm === 1;\n    var openIdx = -1; // ultra only: which quote is revealed (-1 = collapsed)",
       },
       {
         name: "m8-press-reveal-broken",
@@ -1177,8 +1299,23 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         // ultra — the C1 compact case (quote VISIBLE without a tap) and
         // the --compact root-modifier assert both catch it.
         name: "m10-press-tier-confusion",
-        find: "    var ultra = conf.cm === 2;\n    var compact = conf.cm === 1;\n    var openIdx = -1; // ultra only: which quote is revealed (-1 = collapsed)",
-        replace: "    var ultra = conf.cm === 2 || conf.cm === 1;\n    var compact = false;\n    var openIdx = -1; // ultra only: which quote is revealed (-1 = collapsed)",
+        find: "    var ultra = !logosOnly && conf.cm === 2;\n    var compact = !logosOnly && conf.cm === 1;\n    var openIdx = -1; // ultra only: which quote is revealed (-1 = collapsed)",
+        replace: "    var ultra = !logosOnly && (conf.cm === 2 || conf.cm === 1);\n    var compact = false;\n    var openIdx = -1; // ultra only: which quote is revealed (-1 = collapsed)",
+      },
+      {
+        name: "m13-press-logosonly-dead",
+        find: "    var logosOnly = quoted.length === 0;",
+        replace: "    var logosOnly = false;",
+      },
+      {
+        name: "m14-press-static-lost",
+        find: "      var isBtn = !logosOnly && !!items[i].q;",
+        replace: "      var isBtn = true;",
+      },
+      {
+        name: "m15-press-first-quote-lost",
+        find: "    show(quoted[0]);\n    return root;",
+        replace: "    show(0);\n    return root;",
       },
       {
         name: "m9-preview-always-verified",
