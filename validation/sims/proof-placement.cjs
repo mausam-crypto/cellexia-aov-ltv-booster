@@ -15,12 +15,20 @@
  *   P4 no anchors at all: pfBandAt returns null (fail closed, nothing
  *      appended to <body>);
  *   P5 slots: every band carries the three fixed slots in
- *      press → endorsements → results order.
+ *      press → endorsements → results order;
+ *   H  (v8.15) press home anchor: a valid island "ha" yields the
+ *      home_after key on brand ctx only (product ctx keeps pl; malformed
+ *      ha collapses to below_tabs); the home_after band inserts right
+ *      after the merchant-picked shopify-section wrapper; a missing
+ *      section key falls back to the end-of-main chain; press band +
+ *      default band coexist rank-ordered when adjacent.
  *
  * MUTATION TESTS (all must be CAUGHT):
- *   m1-sort-dropped      pfSortBandRun call removed (P2)
- *   m2-ctx-gate-dropped  pfPlacementKey ignores ctx (P3)
- *   m3-rank-flattened    PF_BAND_RANK collapses to one rank (P2)
+ *   m1-sort-dropped        pfSortBandRun call removed (P2)
+ *   m2-ctx-gate-dropped    pfPlacementKey ignores ctx (P3)
+ *   m3-rank-flattened      PF_BAND_RANK collapses to one rank (P2)
+ *   m4-home-anchor-dropped home_after never resolves its section (H)
+ *   m5-ha-gate-dropped     pfPlacementKey ignores the ha member (H)
  */
 "use strict";
 const fs = require("fs");
@@ -47,6 +55,7 @@ const EXTRACTED = extractAll(SRC, {
   vars: ["PF_SLOT_ORDER", "PF_BAND_RANK"],
   functions: [
     "pfInsertAfter", "pfPastCxSiblings", "pfNewBand", "pfBandBelowTabs",
+    "pfHomeAnchorKey", "pfHomeSectionAnchor",
     "pfBandAt", "pfPlacementKey", "pfSortBandRun",
   ],
 });
@@ -72,6 +81,20 @@ function makePage(kind) {
     tabs.className = "pdp__tabs";
     main.appendChild(tabs);
   }
+  if (kind === "home-sections") {
+    // The OS-2.0 home page: JSON-template sections rendered as
+    // shopify-section wrappers directly inside #main (id suffix = the
+    // templates/index.json order key).
+    for (const key of ["main", "product_slider_FR8JAB", "cta_banner_4KL4FE"]) {
+      const section = doc.createElement("div");
+      section.className = "shopify-section";
+      section.setAttribute(
+        "id",
+        "shopify-section-template--12345__" + key,
+      );
+      main.appendChild(section);
+    }
+  }
   return { doc, sandbox, main };
 }
 
@@ -84,6 +107,8 @@ function landmarkOrder(main) {
       if (cls.indexOf("cx-proof-band") !== -1) order.push(c.getAttribute("data-cx-band"));
       else if (cls.indexOf("cx-proof-stack") !== -1) order.push("STACK");
       else if (cls.indexOf("pdp__tabs") !== -1) order.push("TABS");
+      else if (cls.indexOf("shopify-section") !== -1)
+        order.push("S:" + (c.getAttribute("id") || "").split("__").pop());
       else walk(c);
     }
   })(main);
@@ -157,6 +182,58 @@ for (const perm of [["above_proof", "below_proof"], ["below_proof", "above_proof
   ok(slots === "press,endorsements,results", "P5: fixed slot order (got " + slots + ")");
 }
 
+// ---- H (v8.15): press home anchor -----------------------------------------
+{
+  // H1: key selection — a valid ha wins on brand ctx only; malformed
+  // shapes fail closed to the shared end-of-main band.
+  const { sandbox } = makePage("home");
+  const keyOf = (conf) =>
+    vm.runInContext(`pfPlacementKey(${JSON.stringify(conf)});`, sandbox);
+  ok(keyOf({ ctx: "brand", ha: "product_slider_FR8JAB" }) === "home_after",
+    "H1: brand ctx + valid ha -> home_after");
+  ok(keyOf({ ctx: "brand" }) === "below_tabs",
+    "H1b: brand ctx without ha keeps the v8.7 collapse");
+  ok(keyOf({ ctx: "product", ha: "product_slider_FR8JAB", pl: "a" }) === "above_proof",
+    "H1c: product ctx ignores ha (home-only concept)");
+  for (const bad of ["bad key!", "", 123, "x".repeat(65)]) {
+    ok(keyOf({ ctx: "brand", ha: bad }) === "below_tabs",
+      "H1d: malformed ha " + JSON.stringify(bad) + " fails closed to below_tabs");
+  }
+}
+{
+  // H2: the home_after band lands right after the picked section wrapper.
+  const { sandbox, main } = makePage("home-sections");
+  vm.runInContext(
+    'pfBandAt("home_after", { ctx: "brand", ha: "product_slider_FR8JAB" });',
+    sandbox);
+  ok(landmarkOrder(main) === "S:main|S:product_slider_FR8JAB|home_after|S:cta_banner_4KL4FE",
+    "H2: band inserted after the picked section (got " + landmarkOrder(main) + ")");
+}
+{
+  // H3: a deleted/renamed section key falls back to the end-of-main chain,
+  // and the shared default band still rank-sorts after the press band.
+  const { sandbox, main } = makePage("home-sections");
+  vm.runInContext(
+    'pfBandAt("home_after", { ctx: "brand", ha: "gone_section" });',
+    sandbox);
+  place(sandbox, ["below_tabs"]);
+  ok(landmarkOrder(main) ===
+      "S:main|S:product_slider_FR8JAB|S:cta_banner_4KL4FE|home_after|below_tabs",
+    "H3: missing section -> end of main, press band before the default band (got " +
+      landmarkOrder(main) + ")");
+}
+{
+  // H4: idempotence — re-requesting the home band returns the same node.
+  const { sandbox, main } = makePage("home-sections");
+  const twice = vm.runInContext(
+    'pfBandAt("home_after", { ctx: "brand", ha: "product_slider_FR8JAB" }) === ' +
+      'pfBandAt("home_after", { ctx: "brand", ha: "product_slider_FR8JAB" });',
+    sandbox);
+  ok(twice === true, "H4: home band is created once and reused");
+  ok((landmarkOrder(main).match(/home_after/g) || []).length === 1,
+    "H4b: exactly one home band in the DOM");
+}
+
 // ---- mutants ---------------------------------------------------------------
 if (!process.env.CX_SIM_SRC) {
   const failedMutants = runMutants({
@@ -170,13 +247,23 @@ if (!process.env.CX_SIM_SRC) {
       },
       {
         name: "m2-ctx-gate-dropped",
-        find: "    if (!conf || conf.ctx !== 'product') return 'below_tabs';",
-        replace: "",
+        find: "    if (!conf || conf.ctx !== 'product') {",
+        replace: "    if (false) {",
       },
       {
         name: "m3-rank-flattened",
-        find: "  var PF_BAND_RANK = { above_proof: 0, below_proof: 1, below_tabs: 2 };",
-        replace: "  var PF_BAND_RANK = { above_proof: 0, below_proof: 0, below_tabs: 0 };",
+        find: "  var PF_BAND_RANK = { home_after: 0, above_proof: 1, below_proof: 2, below_tabs: 3 };",
+        replace: "  var PF_BAND_RANK = { home_after: 0, above_proof: 0, below_proof: 0, below_tabs: 0 };",
+      },
+      {
+        name: "m4-home-anchor-dropped",
+        find: "      var homeAnchor = pfHomeSectionAnchor(pfHomeAnchorKey(conf));",
+        replace: "      var homeAnchor = null;",
+      },
+      {
+        name: "m5-ha-gate-dropped",
+        find: "      if (conf && pfHomeAnchorKey(conf)) return 'home_after';",
+        replace: "",
       },
     ],
   });

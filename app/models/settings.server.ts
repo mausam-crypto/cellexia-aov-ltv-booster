@@ -527,6 +527,15 @@ export interface BoosterSettings {
      *  indicator under the active logo (the learned tab pattern) signals
      *  that the other logos are tappable. Off by default. */
     logoCue: boolean;
+    /** v8.15 HOME-page position: "" (default) = end of the home page (the
+     *  v8.7 contract), else a home-template SECTION KEY (an entry of
+     *  templates/index.json `order`, e.g. "product_slider_FR8JAB") — the
+     *  press band inserts itself right AFTER that section's rendered
+     *  wrapper. Keys survive theme-editor reordering; a deleted/renamed
+     *  key falls back to the end-of-page default. LIVE setting (the v8.9
+     *  placement precedent — no draft/preview plumbing). Home page only:
+     *  product-page placement stays `placement` above. */
+    homeAfterSection: string;
   };
   /**
    * Dermatologist endorsement wall (v8). Entry content lives in the
@@ -871,6 +880,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     placement: "below_tabs",
     layout: "featured",
     logoCue: false,
+    homeAfterSection: "",
   },
   dermEndorsements: {
     enabled: false,
@@ -1473,6 +1483,16 @@ export function sanitizeSettings(
   }
   if (typeof next.press.logoCue !== "boolean") {
     next.press.logoCue = DEFAULT_SETTINGS.press.logoCue;
+  }
+  // v8.15 press home anchor: a theme section key ("" = end-of-page
+  // default). Section keys are theme-editor-generated [A-Za-z0-9_-] slugs;
+  // anything else (wrong type, injection-shaped, oversized) coerces to the
+  // default rather than reaching the storefront island.
+  if (
+    typeof next.press.homeAfterSection !== "string" ||
+    !/^[A-Za-z0-9_-]{0,64}$/.test(next.press.homeAfterSection)
+  ) {
+    next.press.homeAfterSection = DEFAULT_SETTINGS.press.homeAfterSection;
   }
   if (!PROOF_DENSITIES.includes(next.press.density as ProofDensity)) {
     next.press.density = next.press.compact === true ? "ultra" : "full";

@@ -370,7 +370,46 @@
     return placed;
   }
 
-  function pfBandAt(key) {
+  function pfHomeAnchorKey(conf) {
+    // v8.15 home anchor: the island's "ha" member (press.homeAfterSection)
+    // names the home-template section the press band inserts after. The
+    // sanitize-mirroring shape gate fails closed to '' (= the end-of-page
+    // default) on any non-slug value.
+    var ha = conf && typeof conf.ha === 'string' ? conf.ha : '';
+    return /^[A-Za-z0-9_-]{1,64}$/.test(ha) ? ha : '';
+  }
+
+  function pfHomeSectionAnchor(sectionKey) {
+    // Resolve a home-template section key to its rendered wrapper:
+    // Shopify wraps every JSON-template section in a
+    // <div id="shopify-section-…__{key}"> directly inside #main. Ids are
+    // compared in plain JS on main's element children (no attr-value
+    // selectors — the mini-DOM lesson; children-only so header/footer
+    // group sections can never match). null = section gone/renamed →
+    // caller falls back to the end-of-main default.
+    if (!sectionKey) return null;
+    var main = document.getElementById('main') ||
+      document.getElementById('MainContent') ||
+      document.querySelector('main');
+    if (!main) return null;
+    var suffix = '__' + sectionKey;
+    var nodes = main.childNodes;
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      if (!node || node.nodeType !== 1) continue;
+      var id = typeof node.id === 'string' ? node.id : '';
+      if (
+        id.indexOf('shopify-section-') === 0 &&
+        id.length > suffix.length &&
+        id.lastIndexOf(suffix) === id.length - suffix.length
+      ) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  function pfBandAt(key, conf) {
     // v8.9: ONE ordered band PER PLACEMENT — each widget picks its band
     // via the island's lean "pl" code ('a' above_proof / 'b' below_proof /
     // absent = below_tabs). Slots are created synchronously in fixed order
@@ -382,13 +421,20 @@
     //                 tabs (where the stack would sit) → below_tabs chain;
     //   below_proof — immediately AFTER that stack; same fallbacks.
     // Any other page: end of <main> (all keys — placement is a PDP
-    // concept). No anchor = no render (never append to <body>).
+    // concept) — EXCEPT the v8.15 home_after band, anchored right after
+    // the merchant-picked home section (conf.ha; missing section → the
+    // same end-of-main chain). No anchor = no render (never append to
+    // <body>).
     var band = document.querySelector('.cx-proof-band[data-cx-band="' + key + '"]');
     if (band) return band;
     band = pfNewBand(key);
     var placed = false;
     var stack = document.querySelector('.cx-proof-stack');
     var tabs = document.querySelector('.pdp__tabs');
+    if (key === 'home_after') {
+      var homeAnchor = pfHomeSectionAnchor(pfHomeAnchorKey(conf));
+      if (homeAnchor) placed = pfInsertAfter(band, pfPastCxSiblings(homeAnchor));
+    }
     if (key === 'above_proof') {
       if (stack && stack.parentNode) {
         try {
@@ -422,14 +468,20 @@
     // collapses to the single below_tabs band, preserving the v8.7 home
     // contract (one band, fixed press → endorsements → results order —
     // review catch: distinct keys would fragment into fetch-ordered bands).
-    if (!conf || conf.ctx !== 'product') return 'below_tabs';
+    // v8.15 exception: an island carrying a valid home anchor ("ha" —
+    // press only today) gets its own home_after band at the merchant-
+    // picked section; the other widgets keep the shared end-of-main band.
+    if (!conf || conf.ctx !== 'product') {
+      if (conf && pfHomeAnchorKey(conf)) return 'home_after';
+      return 'below_tabs';
+    }
     var pl = typeof conf.pl === 'string' ? conf.pl : '';
     if (pl === 'a') return 'above_proof';
     if (pl === 'b') return 'below_proof';
     return 'below_tabs';
   }
 
-  var PF_BAND_RANK = { above_proof: 0, below_proof: 1, below_tabs: 2 };
+  var PF_BAND_RANK = { home_after: 0, above_proof: 1, below_proof: 2, below_tabs: 3 };
 
   function pfSortBandRun(band) {
     // Deterministic cross-band order (review catch): when two bands share
@@ -482,7 +534,7 @@
       mount.appendChild(node);
       return true;
     }
-    var band = pfBandAt(pfPlacementKey(conf));
+    var band = pfBandAt(pfPlacementKey(conf), conf);
     if (band) {
       var slot = band.querySelector('[data-cx-slot="' + name + '"]');
       if (slot) {

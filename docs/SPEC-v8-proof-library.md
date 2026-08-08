@@ -288,3 +288,37 @@ gallery (seeded 40 cards, filters live against a stub server), compact modes ×3
 mobile+desktop · adversarial review wave · UPDATE.md v8 notes (new nav page, blocks
 must be PLACED in the theme editor on product template + home; migration note:
 Postgres `prisma db push`; legacy BA import button; compact toggles) · memory · ZIP.
+
+## 9. v8.15 — press HOME-page position (2026-08-08)
+
+Merchant ask: place the "As seen in the press" band anywhere on the HOME page
+(e.g. between the product slider and the lip-plumping banner), admin-picked.
+
+- Setting: `press.homeAfterSection: string` — `""` (default) = end of the home
+  page (the v8.7 contract), else a home `templates/index.json` section KEY
+  (an `order` entry, e.g. `product_slider_FR8JAB`): the band inserts itself
+  right AFTER that section's rendered wrapper. LIVE setting (v8.9 placement
+  precedent). Sanitize slug-gates `/^[A-Za-z0-9_-]{0,64}$/`, fail-closed to "".
+  Home page ONLY — product pages keep `press.placement`; endorsements/results
+  keep the shared end-of-page band.
+- Island: press config gains lean `"ha"` member (emitted only when set).
+- JS (cellexia-proof.js): `pfHomeAnchorKey` (shape gate mirroring sanitize) +
+  `pfHomeSectionAnchor` (walks #main's element children for the id suffix
+  `__{key}` on a `shopify-section-` id — plain JS compare, children-only so
+  header/footer groups can never match) + new `home_after` band key in
+  `pfPlacementKey` (brand ctx + valid ha only) and `pfBandAt(key, conf)`;
+  missing section falls back to the end-of-main chain (never nothing).
+  `PF_BAND_RANK` gains home_after rank 0.
+- Admin: Features page placement card gains "Home-page position — As seen in
+  the press" Select. New service `home-sections.server.ts` reads the LIVE
+  theme's `templates/index.json` via GraphQL (scope read_themes, already
+  granted) and lists visible sections in order as "After: {humanized type} —
+  “{content hint}”"; fail-soft (unreadable theme → saved value + default
+  only); a saved key no longer in the template stays selectable, labeled as
+  falling back to the end of the page.
+- Validation: harness v8.15 pins (shape/sanitize/island/JS anchors/admin
+  mirror + slug-gate parity); proof-placement sim H1–H4 (key selection incl.
+  malformed-ha fail-closed + product-ctx ignore, insert-after-section,
+  missing-section fallback + rank order vs the default band, idempotence) +
+  mutants m4/m5 (m2/m3 anchors updated); settings-derivation v8.15 block
+  (default/valid/malformed×6/merge back-compat).

@@ -37,6 +37,10 @@ import {
 } from "../models/settings.server";
 import { getPreviewState } from "../services/preview.server";
 import { syncSettingsToMetafields } from "../services/metafields.server";
+import {
+  listHomeSections,
+  type HomeSectionsResult,
+} from "../services/home-sections.server";
 
 /**
  * Features hub (SPEC v4 §C): all 19 features as cards grouped by surface,
@@ -307,10 +311,13 @@ interface DensityState {
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const [settings, previewState] = await Promise.all([
+  const { session, admin } = await authenticate.admin(request);
+  const [settings, previewState, homeSections] = await Promise.all([
     getSettings(session.shop),
     getPreviewState(session.shop),
+    // v8.15 press home-position picker — fail-soft: an unreadable theme
+    // degrades the picker, never the page.
+    listHomeSections(admin),
   ]);
 
   const previewArmed = previewState?.armed === true;
@@ -361,8 +368,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const pressLayout: PressLayoutValue = settings.press.layout;
   const pressLogoCue: boolean = settings.press.logoCue;
+  const pressHomeAfter: string = settings.press.homeAfterSection;
 
-  return { features, previewArmed, density, placement, pressLayout, pressLogoCue };
+  return {
+    features,
+    previewArmed,
+    density,
+    placement,
+    pressLayout,
+    pressLogoCue,
+    pressHomeAfter,
+    homeSections,
+  };
 };
 
 /**
@@ -444,8 +461,44 @@ function FeatureRow({ feature }: { feature: FeatureCardData }) {
   );
 }
 
+/** v8.15: the press home-position anchor is a theme-generated section-key
+ *  slug — the same shape gate sanitizeSettings applies server-side. */
+const HOME_ANCHOR_SLUG = /^[A-Za-z0-9_-]{1,64}$/;
+
+function buildHomePositionOptions(
+  homeSections: HomeSectionsResult,
+  current: string,
+): { label: string; value: string }[] {
+  const options = [
+    { label: "End of the home page (default)", value: "" },
+    ...homeSections.sections.map((section) => ({
+      label: `After: ${section.label}`,
+      value: section.key,
+    })),
+  ];
+  // A saved anchor whose section is gone (removed/renamed, or the theme
+  // was unreadable) stays selectable so the Select shows the truth instead
+  // of silently jumping to the default.
+  if (current !== "" && !options.some((option) => option.value === current)) {
+    options.push({
+      label: `After: ${current} (section not found — currently showing at the end of the page)`,
+      value: current,
+    });
+  }
+  return options;
+}
+
 export default function FeaturesHub() {
-  const { features, previewArmed, density, placement, pressLayout, pressLogoCue } = useLoaderData<typeof loader>();
+  const {
+    features,
+    previewArmed,
+    density,
+    placement,
+    pressLayout,
+    pressLogoCue,
+    pressHomeAfter,
+    homeSections,
+  } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -488,6 +541,17 @@ export default function FeaturesHub() {
     formData.set(
       "patch",
       JSON.stringify({ [picker.section]: { placement: selected } }),
+    );
+    submit(formData, { method: "post" });
+  };
+
+  const pickPressHomePosition = (selected: string) => {
+    if (selected !== "" && !HOME_ANCHOR_SLUG.test(selected)) return;
+    const formData = new FormData();
+    formData.set("feature", "press_home_position");
+    formData.set(
+      "patch",
+      JSON.stringify({ press: { homeAfterSection: selected } }),
     );
     submit(formData, { method: "post" });
   };
@@ -704,7 +768,8 @@ export default function FeaturesHub() {
 
         <Layout.Section>
           {/* v8.9: per-widget product-page placement for the proof-library
-              widgets (anchor target for the Proof library page link). */}
+              widgets (anchor target for the Proof library page link).
+              v8.15: the same card carries the press HOME-page position. */}
           <div id="proof-placement" ref={placementCardRef}>
           <Card>
             <BlockStack gap="300">
@@ -716,8 +781,8 @@ export default function FeaturesHub() {
                   Where each proof-library widget sits on product pages —
                   independently per widget. “Proof stack” means the
                   dermatologist survey / clinical study / guarantee group.
-                  Home-page placement is unaffected. Live settings — a change
-                  applies to real visitors as soon as it saves.
+                  The home page is controlled separately below. Live settings
+                  — a change applies to real visitors as soon as it saves.
                 </Text>
               </BlockStack>
               {PLACEMENT_PICKERS.map((picker) => (
@@ -730,6 +795,34 @@ export default function FeaturesHub() {
                   onChange={(selected) => pickPlacement(picker, selected)}
                 />
               ))}
+              <Divider />
+              <BlockStack gap="100">
+                <Text as="h3" variant="headingSm">
+                  Home-page position — As seen in the press
+                </Text>
+                <Text as="p" tone="subdued">
+                  Where the press band sits on the home page. Pick a home
+                  section to slot the band right after it — the band follows
+                  that section if you reorder the home page in the theme
+                  editor, and falls back to the end of the page if the
+                  section is removed. Endorsements and the results gallery
+                  keep the end-of-page position.
+                </Text>
+                {!homeSections.ok ? (
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Couldn’t read the home template from the live theme (
+                    {homeSections.error}) — showing the saved value only.
+                  </Text>
+                ) : null}
+              </BlockStack>
+              <Select
+                label="Position on the home page"
+                labelHidden
+                options={buildHomePositionOptions(homeSections, pressHomeAfter)}
+                value={pressHomeAfter}
+                disabled={densitySaving}
+                onChange={pickPressHomePosition}
+              />
             </BlockStack>
           </Card>
           </div>

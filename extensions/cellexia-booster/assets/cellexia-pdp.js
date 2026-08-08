@@ -3025,6 +3025,42 @@
     return azRegionName(sh && typeof sh.warehouse === 'string' ? sh.warehouse : '');
   }
 
+  function azShipsForm() {
+    // v8.16 grammar form: the Liquid island bakes the locale table entry
+    // amazon.ships_from_c.{warehouse} — the country phrase inflected the
+    // way this language's ships_from sentence needs it ("la Suisse",
+    // "der Schweiz", "dalla Svizzera", "ze Szwajcarii", "Sveitsistä").
+    // '' when the table has no entry for the warehouse (azT discards the
+    // Translation-missing marker) — callers fall back.
+    return azT('amazon.ships_from_c');
+  }
+
+  function azShipsTemplate(hasForm) {
+    // The sentence template WITH its @@COUNTRY@@ sentinel intact. With an
+    // inflected form the natural sentence is safe; without one the
+    // label-style ships_from_fallback ("Kraj wysyłki: …") stays
+    // grammatical with the bare nominative country name in every
+    // language. No fallback string -> the natural template (the pre-v8.16
+    // behavior, correct for the bare-name languages).
+    if (!hasForm) {
+      var fb = azT('amazon.ships_from_fallback');
+      if (fb) return fb;
+    }
+    return azT('amazon.ships_from');
+  }
+
+  function azShipsCompose(name) {
+    // Composed plain ships-from line: inflected-form path first, then the
+    // fallback-label path with the bare localized name, then the natural
+    // template with the bare name. '' when nothing can be said.
+    var form = azShipsForm();
+    if (form) return azT('amazon.ships_from', { country: form });
+    if (!name) return '';
+    var fb = azT('amazon.ships_from_fallback', { country: name });
+    if (fb) return fb;
+    return azT('amazon.ships_from', { country: name });
+  }
+
   function azShipsFormat() {
     // v6.10 merchant-selectable ships-from display format, decoded
     // fail-closed from the lean code the Liquid ships member carries
@@ -3154,7 +3190,7 @@
       var shipsName = '';
       if (azShipsAllowed()) {
         shipsName = azShipsWarehouseName();
-        if (shipsName) shipsLine = azT('amazon.ships_from', { country: shipsName });
+        if (shipsName) shipsLine = azShipsCompose(shipsName);
       }
       // Neither line renders -> the theme's stock message stays
       // untouched (a replacement must never leave a hole).
@@ -3317,8 +3353,10 @@
       // "Ships from" — the microcopy row yields so the buy box never says
       // it twice.
       var label = '';
+      var labelIsCountry = false;
       if (!azShipsAllowed()) {
         label = azWarehouseName();
+        labelIsCountry = !!label;
         if (!label && AZ_CFG && AZ_CFG.shipsFrom && typeof AZ_CFG.shipsFrom.defaultLabel === 'string') {
           label = AZ_CFG.shipsFrom.defaultLabel.replace(/^\s+|\s+$/g, '');
         }
@@ -3326,7 +3364,13 @@
       if (label) {
         var row = node.querySelector('[data-cx-az-micro-ships]');
         var slot = node.querySelector('[data-cx-az-ships-slot]');
-        var line = azT('amazon.ships_from', { country: label });
+        // v8.16: a resolved COUNTRY rides the grammar compose (inflected
+        // table form / label fallback); merchant free-text defaultLabel
+        // keeps the natural sentence verbatim — the merchant wrote it to
+        // fit ("Ships from our Swiss lab").
+        var line = labelIsCountry
+          ? azShipsCompose(label)
+          : azT('amazon.ships_from', { country: label });
         if (row && slot && line) {
           slot.textContent = line;
           row.removeAttribute('hidden');
@@ -4125,17 +4169,23 @@
         var shipsP = cxEl('span', 'cx-az-stock__ships cx-az-stock__ships--prominent', ['data-cx-feature', 'az_ships_from', 'data-cx-az-stock-ships', '']);
         shipsP.appendChild(cxIcon('truck', 15));
         var shipsText = cxEl('span', 'cx-az-stock__ships-text');
-        var shipsTpl = azT('amazon.ships_from');
+        // v8.16: bold the SAME value the composed line used — the
+        // inflected table form when the locale has one ("der Schweiz"
+        // bolds whole, article included), else the bare name inside the
+        // fallback/natural template azShipsTemplate picked.
+        var shipsForm = azShipsForm();
+        var shipsVal = shipsForm || shipsName;
+        var shipsTpl = azShipsTemplate(!!shipsForm);
         var shipsParts = shipsTpl.split('@@COUNTRY@@');
-        if (shipsParts.length >= 2 && shipsName) {
+        if (shipsParts.length >= 2 && shipsVal) {
           var shipsPre = document.createElement('span');
           shipsPre.textContent = shipsParts[0];
           shipsText.appendChild(shipsPre);
           var shipsCountry = cxEl('strong', 'cx-az-stock__ships-country');
-          shipsCountry.textContent = shipsName;
+          shipsCountry.textContent = shipsVal;
           shipsText.appendChild(shipsCountry);
           var shipsSuf = document.createElement('span');
-          shipsSuf.textContent = shipsParts.slice(1).join(shipsName);
+          shipsSuf.textContent = shipsParts.slice(1).join(shipsVal);
           shipsText.appendChild(shipsSuf);
         } else {
           shipsText.textContent = shipsLine;

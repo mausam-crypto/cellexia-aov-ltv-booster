@@ -171,6 +171,45 @@ for (const path of [
     "pre-v6.10 store merges to the subtle default",
   );
 }
+// v8.15: press home-page anchor — a theme section-key slug ("" = the
+// end-of-page default). Sanitize is shape-gated (slug charset + 64-char
+// cap), so nothing injection-shaped ever reaches the storefront island.
+{
+  ok(
+    DEFAULT_SETTINGS.press.homeAfterSection === "",
+    "press.homeAfterSection defaults to '' (end of the home page)",
+  );
+  const valid = clone(DEFAULT_SETTINGS);
+  valid.press.homeAfterSection = "product_slider_FR8JAB";
+  ok(
+    sanitizeSettings(valid, DEFAULT_SETTINGS).press.homeAfterSection ===
+      "product_slider_FR8JAB",
+    "sanitize: a section-key slug survives",
+  );
+  for (const bad of [
+    'x"y',
+    "a b",
+    "<script>",
+    7,
+    null,
+    "x".repeat(65),
+  ] as const) {
+    const dirty = clone(DEFAULT_SETTINGS) as any;
+    dirty.press.homeAfterSection = bad;
+    ok(
+      sanitizeSettings(dirty, DEFAULT_SETTINGS).press.homeAfterSection === "",
+      `sanitize: malformed home anchor ${JSON.stringify(bad)} -> '' (default)`,
+    );
+  }
+  // Back-compat: a stored pre-v8.15 blob (no homeAfterSection) merges to
+  // the default — existing stores keep the end-of-page position untouched.
+  const stored = clone(DEFAULT_SETTINGS) as any;
+  delete stored.press.homeAfterSection;
+  ok(
+    mergeSettings(clone(DEFAULT_SETTINGS), stored).press.homeAfterSection === "",
+    "pre-v8.15 store merges to the end-of-page default",
+  );
+}
 {
   const scoped = clone(DEFAULT_SETTINGS);
   scoped.marketScopes.az_ships_from = { mode: "selected", markets: ["switzerland"] };

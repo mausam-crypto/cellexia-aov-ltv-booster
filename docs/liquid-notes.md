@@ -410,6 +410,21 @@ sessions see the swap):
   for the combined pre-split look) and restore it on unavailability /
   preview exit; az_ships_from fails closed without a resolvable
   warehouse;
+- v8.16 ships-from GRAMMAR: every locale file carries a natural
+  `amazon.ships_from` sentence + a full `amazon.ships_from_c` table
+  (ISO2 -> grammar-inflected country phrase: "la Suisse",
+  "der Schweiz", "dalla Svizzera", "ze Szwajcarii", "Sveitsistä",
+  "την Ελβετία"…) + a label-style `amazon.ships_from_fallback` that
+  stays grammatical with a bare nominative name. The island bakes the
+  ONE table entry for the page's resolved warehouse (dynamic t key
+  `'amazon.ships_from_c.' | append: az_sf`); azShipsCompose prefers
+  form -> fallback label -> bare-natural (back-compat). ALL 18 locales
+  share the SAME country-key set — a per-locale gap would let
+  Shopify's en.default t-fallback leak an ENGLISH phrase into another
+  language (harness-pinned). The prominent format bolds the whole
+  inflected phrase, article included; merchant free-text defaultLabel
+  (micro row) bypasses the tables and rides the natural sentence
+  verbatim.
 - az_cta_count / az_cart_free_line replacements live in the cart
   surface, not here.
 

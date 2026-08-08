@@ -74,6 +74,11 @@ An in-cart "upgrade to 2/3 units" therefore means **swapping the cart line to th
 - **Clinical results injection point: after `{% section 'pdp' %}` / before `.pdp__tabs`**, or inside the science tab.
 - The `pdp` section schema does NOT accept `@app` blocks — PDP widgets are auto-injected by our app embed JS at the selectors above (with graceful no-op if selectors are missing).
 
+## Home page (`templates/index.json` — OS 2.0 JSON template)
+- Layout: `layout/theme.liquid` renders `{{ content_for_layout }}` inside `<main id="main">`; each JSON-template section becomes a `<div id="shopify-section-template--…__{key}" class="shopify-section">` DIRECT child of `#main` (`{key}` = the `order` entry in `templates/index.json`). Header/footer are section GROUPS outside `#main`.
+- Section order (2026-08 snapshot): `main` (hero-home) → `cta_bar_aYWtJT` → `product_slider_FR8JAB` → `cta_banner_product_4KL4FE` (lip banner) → `brand_logos_P84bfG` → `callouts_cAJacK` → `cta_banner_QyH97h` (+ 2 disabled sliders, not rendered).
+- **Proof-band home anchoring (v8.15): `press.homeAfterSection` stores a section KEY; the band inserts after that wrapper (id-suffix compare on `#main`'s children). Keys survive reordering; a removed key falls back to the end of `#main`.**
+
 ## Reviews / other apps
 - Active review platform: **Stamped.io** (`.stamped-product-reviews-badge`, `#stamped-main-widget`; metafields `product.metafields.stamped.reviews_count/reviews_average`). No Trustpilot today — our Trustpilot widget is config-driven (rating/count/URL entered in dashboard).
 - Also installed: Fast Bundle, Klaviyo, Triple Whale, Littledata, Growave (loyalty page), Shopify Forms.

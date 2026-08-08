@@ -90,6 +90,9 @@ const FNS = [
   "azVariantInfo",
   "azStockAllowed",
   "azShipsAllowed",
+  "azShipsForm",
+  "azShipsTemplate",
+  "azShipsCompose",
   "azShipsFormat",
   "azStockSync",
   "azMountStock",
@@ -528,14 +531,107 @@ const CH_NAME = new Intl.DisplayNames(["en"], { type: "region" }).of("CH"); // "
   }
 }
 
+// --------------------------------------- v8.16 ships-from grammar compose
+// The locale-table contract: an inflected country phrase (island member
+// amazon.ships_from_c, baked from the per-locale ships_from_c table) rides
+// the NATURAL sentence; without one the label-style ships_from_fallback
+// keeps the line grammatical with the bare nominative name; with neither,
+// the pre-v8.16 natural+bare behavior (F1/S2 pin that path).
+{
+  const G_STRINGS = {
+    "amazon.ships_from": "Versand aus @@COUNTRY@@",
+    "amazon.ships_from_c": "der Schweiz",
+    "amazon.ships_from_fallback": "Versand aus: @@COUNTRY@@",
+  };
+
+  // G1 subtle + form: the inflected phrase wins over fallback AND the
+  // Intl name — the German dative article renders in the sentence.
+  {
+    const cfg = cfgFor(false, true, "CH");
+    Object.assign(cfg.strings, G_STRINGS);
+    const { page } = runScenario(cfg);
+    const ships = page.document.querySelector(".cx-az-stock__ships");
+    ok(!!ships && ships.textContent === "Versand aus der Schweiz",
+      "G1 form path: natural sentence with the inflected phrase (got " + (ships && ships.textContent) + ")");
+  }
+
+  // G2 subtle + NO form, fallback present: label line with the bare name.
+  {
+    const cfg = cfgFor(false, true, "CH");
+    Object.assign(cfg.strings, G_STRINGS);
+    delete cfg.strings["amazon.ships_from_c"];
+    const { page } = runScenario(cfg);
+    const ships = page.document.querySelector(".cx-az-stock__ships");
+    ok(!!ships && ships.textContent === "Versand aus: " + CH_NAME,
+      "G2 fallback path: label template with the bare Intl name");
+  }
+
+  // G2b a Translation-missing marker in the form member behaves exactly
+  // like an absent table entry (the azT marker rule).
+  {
+    const cfg = cfgFor(false, true, "CH");
+    Object.assign(cfg.strings, G_STRINGS);
+    cfg.strings["amazon.ships_from_c"] = "Translation missing: de.amazon.ships_from_c.XX";
+    const { page } = runScenario(cfg);
+    const ships = page.document.querySelector(".cx-az-stock__ships");
+    ok(!!ships && ships.textContent === "Versand aus: " + CH_NAME,
+      "G2b marker form: treated as missing, fallback label used");
+  }
+
+  // G3 neither form nor fallback: the pre-v8.16 natural+bare line.
+  {
+    const cfg = cfgFor(false, true, "CH");
+    cfg.strings["amazon.ships_from"] = "Versand aus @@COUNTRY@@";
+    const { page } = runScenario(cfg);
+    const ships = page.document.querySelector(".cx-az-stock__ships");
+    ok(!!ships && ships.textContent === "Versand aus " + CH_NAME,
+      "G3 bare path: natural template with the Intl name (back-compat)");
+  }
+
+  // G4 prominent + form: the WHOLE inflected phrase bolds (article
+  // included) and the sentence recomposes exactly.
+  {
+    const cfg = cfgFor(false, true, "CH");
+    cfg.ships.f = "p";
+    Object.assign(cfg.strings, G_STRINGS);
+    const { page } = runScenario(cfg);
+    const text = page.document.querySelector(".cx-az-stock__ships-text");
+    const country = text && text.querySelector(".cx-az-stock__ships-country");
+    ok(!!country && country.textContent === "der Schweiz",
+      "G4 prominent form: <strong> carries the whole inflected phrase");
+    ok(!!text && text.textContent === "Versand aus der Schweiz",
+      "G4 prominent form: recomposed sentence intact");
+  }
+
+  // G5 prominent + no form: the fallback label template is the one that
+  // splits — bare name bolds inside the label line.
+  {
+    const cfg = cfgFor(false, true, "CH");
+    cfg.ships.f = "p";
+    Object.assign(cfg.strings, G_STRINGS);
+    delete cfg.strings["amazon.ships_from_c"];
+    const { page } = runScenario(cfg);
+    const text = page.document.querySelector(".cx-az-stock__ships-text");
+    const country = text && text.querySelector(".cx-az-stock__ships-country");
+    ok(!!country && country.textContent === CH_NAME,
+      "G5 prominent fallback: bare name bolds");
+    ok(!!text && text.textContent === "Versand aus: " + CH_NAME,
+      "G5 prominent fallback: label sentence recomposed");
+  }
+}
+
 // ---------------------------------------------------- v6.8.1 micro dedupe
 // The microcopy ships-from row must YIELD to the dedicated az_ships_from
 // line (never two "Ships from" in one buy box), and must stay hidden when
 // no label resolves (the CSS [hidden] guard covers the display:flex trap).
 {
   const src = SRC;
-  ok(/var label = '';\s*\n\s*if \(!azShipsAllowed\(\)\) \{/.test(src),
+  ok(/var label = '';\s*\n\s*var labelIsCountry = false;\s*\n\s*if \(!azShipsAllowed\(\)\) \{/.test(src),
     'v6.8.1: micro ships row gated behind !azShipsAllowed() (dedupe vs the dedicated line)');
+  // v8.16: a resolved COUNTRY label rides the grammar compose; merchant
+  // free-text defaultLabel keeps the natural sentence verbatim.
+  ok(src.includes("? azShipsCompose(label)\n          : azT('amazon.ships_from', { country: label });"),
+    'v8.16: micro row dispatches country labels through azShipsCompose, free text through the natural template');
   ok(src.includes("if (row && slot && line) {") &&
     src.indexOf("row.removeAttribute('hidden')") > src.indexOf("if (row && slot && line) {"),
     'v6.8.1: micro row still fail-closed (populate+unhide only with a resolved label and line)');
@@ -628,6 +724,21 @@ if (!process.env.CX_SKIP_MUTANTS && SRC_PATH === REAL_SRC) {
       name: "m6-format-always-prominent",
       find: "return f === 'p' ? 'p' : 's';",
       replace: "return 'p';",
+    },
+    {
+      // v8.16: a compose that ignores the inflected table form would ship
+      // ungrammatical bare names in the fusing languages — G1/G4 catch it
+      // (the line demotes to the fallback label).
+      name: "m8-form-ignored",
+      find: "    var form = azShipsForm();\n    if (form) return azT('amazon.ships_from', { country: form });",
+      replace: "    var form = '';\n    if (form) return azT('amazon.ships_from', { country: form });",
+    },
+    {
+      // v8.16: skipping the fallback label on a table miss would ship the
+      // natural sentence with a bare nominative name — G2/G5 catch it.
+      name: "m9-fallback-skipped",
+      find: "    if (!hasForm) {\n      var fb = azT('amazon.ships_from_fallback');\n      if (fb) return fb;\n    }",
+      replace: "    if (false) {\n      var fb = azT('amazon.ships_from_fallback');\n      if (fb) return fb;\n    }",
     },
     {
       // v6.10: dropping the PREVIEW verification gate would leak the

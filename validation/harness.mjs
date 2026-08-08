@@ -348,7 +348,7 @@ const EVIDENCE = {
     );
   }
   for (const anchor99 of [
-    "function pfBandAt(key) {",
+    "function pfBandAt(key, conf) {",
     "function pfPlacementKey(conf) {",
     "data-cx-band",
     "if (key === 'above_proof') {",
@@ -358,8 +358,8 @@ const EVIDENCE = {
     // determinism layer (review catches): rank-sorted band runs, the
     // brand-ctx collapse, and the band-aware sibling walk
     "function pfSortBandRun(band) {",
-    "var PF_BAND_RANK = { above_proof: 0, below_proof: 1, below_tabs: 2 };",
-    "if (!conf || conf.ctx !== 'product') return 'below_tabs';",
+    "var PF_BAND_RANK = { home_after: 0, above_proof: 1, below_proof: 2, below_tabs: 3 };",
+    "if (!conf || conf.ctx !== 'product') {",
     "indexOf('cx-proof-band')",
   ]) {
     ok(proofJs.includes(anchor99), `v8.9: placement anchor present in cellexia-proof.js: ${anchor99}`);
@@ -475,6 +475,66 @@ const EVIDENCE = {
     read("app/routes/app.proof.press.tsx").includes("Logo only — no quote"),
     "v8.14: the press list labels logo-only entries instead of a blank cell",
   );
+
+  // v8.15: press HOME-page position — press.homeAfterSection stores a home
+  // templates/index.json SECTION KEY; the press island carries it as the
+  // lean "ha" member and the band inserts itself after that section's
+  // rendered wrapper on the home page only (behavior pinned by
+  // sims/proof-placement H-cases + mutants m4/m5).
+  {
+    const settingsSrc15 = read("app/models/settings.server.ts");
+    ok(
+      settingsSrc15.includes("homeAfterSection: string;") &&
+        settingsSrc15.includes('homeAfterSection: "",'),
+      "v8.15: press.homeAfterSection in the settings shape, default '' (end of page)",
+    );
+    ok(
+      settingsSrc15.includes(
+        "!/^[A-Za-z0-9_-]{0,64}$/.test(next.press.homeAfterSection)",
+      ),
+      "v8.15: sanitize slug-gates the home anchor (fail-closed to the default)",
+    );
+    ok(
+      proofLiquid.includes(
+        '{% if cfg.press.homeAfterSection != blank %},"ha":{{ cfg.press.homeAfterSection | json }}{% endif %}',
+      ),
+      "v8.15: press island emits the lean ha home-anchor member",
+    );
+    for (const anchor15 of [
+      "function pfHomeAnchorKey(conf) {",
+      "function pfHomeSectionAnchor(sectionKey) {",
+      "if (key === 'home_after') {",
+      "id.indexOf('shopify-section-') === 0",
+      "if (conf && pfHomeAnchorKey(conf)) return 'home_after';",
+    ]) {
+      ok(
+        proofJs.includes(anchor15),
+        `v8.15: home-anchor code present in cellexia-proof.js: ${anchor15}`,
+      );
+    }
+    // The shape gate the JS applies must mirror the sanitize slug gate.
+    ok(
+      proofJs.includes("/^[A-Za-z0-9_-]{1,64}$/.test(ha)"),
+      "v8.15: the JS home-anchor gate mirrors the sanitize slug shape",
+    );
+    ok(
+      read("app/services/home-sections.server.ts").includes(
+        'filenames: ["templates/index.json"]',
+      ),
+      "v8.15: the home-section listing reads the LIVE theme's index template",
+    );
+    const hubSrc15 = read("app/routes/app.features._index.tsx");
+    ok(
+      hubSrc15.includes("Home-page position — As seen in the press") &&
+        hubSrc15.includes("homeAfterSection: selected") &&
+        hubSrc15.includes("End of the home page (default)"),
+      "v8.15: the Features page renders the home-position picker and saves the field",
+    );
+    ok(
+      hubSrc15.includes("const HOME_ANCHOR_SLUG = /^[A-Za-z0-9_-]{1,64}$/;"),
+      "v8.15: admin client-side slug gate mirrors the server sanitize shape",
+    );
+  }
 
   // v8.11: proof-library translations — schema model, island locale
   // emission, JS locale param, proxy overlay, service allowlist, admin
@@ -871,6 +931,100 @@ const EVIDENCE = {
     ok(
       pdpSrc.includes("function azShipsFormat()"),
       "v6.10: azShipsFormat decoder present in the theme JS",
+    );
+  }
+
+  // ---- v8.16 ships-from GRAMMAR (per-locale country tables) ---------------
+  // The line reads naturally in every language: each locale carries a
+  // natural `ships_from` sentence, a full `ships_from_c` country table of
+  // grammar-inflected phrases (articles / case / fused prepositions) and a
+  // label-style `ships_from_fallback` that stays grammatical with a bare
+  // nominative name for any country outside the table. The Liquid bakes the
+  // one table entry for the page's resolved warehouse; the JS prefers
+  // form -> fallback -> bare-natural (sims/az-split G-cases + m8/m9 pin the
+  // behavior).
+  {
+    const azLiquid16 = read(`${EXT}/blocks/amazon-booster.liquid`);
+    ok(
+      azLiquid16.includes(
+        `,"amazon.ships_from_c": {{ 'amazon.ships_from_c.' | append: az_sf | t | json }}`,
+      ),
+      "v8.16: island bakes the inflected phrase for the resolved warehouse",
+    );
+    ok(
+      azLiquid16.includes(
+        `,"amazon.ships_from_fallback": {{ 'amazon.ships_from_fallback' | t: country: '@@COUNTRY@@' | json }}`,
+      ),
+      "v8.16: island bakes the label-style fallback template",
+    );
+    const pdpSrc16 = read(PDP_JS);
+    for (const anchor16 of [
+      "function azShipsForm() {",
+      "function azShipsTemplate(hasForm) {",
+      "function azShipsCompose(name) {",
+      "if (form) return azT('amazon.ships_from', { country: form });",
+      "var shipsForm = azShipsForm();",
+    ]) {
+      ok(
+        pdpSrc16.includes(anchor16),
+        `v8.16: grammar-compose anchor present in cellexia-pdp.js: ${anchor16}`,
+      );
+    }
+    // Locale-table integrity over ALL 18 files: same country-key set
+    // everywhere (a per-locale gap would let Shopify's en.default fallback
+    // leak an ENGLISH inflected form into another language's sentence),
+    // every entry a non-empty string, templates keep their country slot.
+    const localeFiles16 = listFiles(`${EXT}/locales`, ".json");
+    ok(localeFiles16.length === 18, "v8.16: 18 locale files present");
+    const enTable16 = JSON.parse(read(`${EXT}/locales/en.default.json`)).amazon
+      .ships_from_c;
+    const enKeys16 = Object.keys(enTable16).sort().join(",");
+    ok(
+      Object.keys(enTable16).length >= 59,
+      `v8.16: en table covers the warehouse country set (${Object.keys(enTable16).length})`,
+    );
+    for (const lf of localeFiles16) {
+      const amazon16 = JSON.parse(read(`${EXT}/locales/${lf}`)).amazon;
+      ok(
+        typeof amazon16.ships_from === "string" &&
+          amazon16.ships_from.includes("{{ country }}") &&
+          typeof amazon16.ships_from_fallback === "string" &&
+          amazon16.ships_from_fallback.includes("{{ country }}"),
+        `v8.16: ${lf} ships_from + ships_from_fallback templates carry the country slot`,
+      );
+      const table16 = amazon16.ships_from_c;
+      ok(
+        table16 &&
+          Object.keys(table16).sort().join(",") === enKeys16 &&
+          Object.values(table16).every(
+            (v) => typeof v === "string" && v.trim() !== "",
+          ),
+        `v8.16: ${lf} ships_from_c table matches the shared country-key set with non-empty phrases`,
+      );
+    }
+    // Grammar spot-pins for the warehouse that matters most (CH) plus one
+    // fused/plural form per fusing language — regressions here mean the
+    // merchant's own storefront reads wrong again.
+    const pin16 = (file, code, expect) => {
+      const t = JSON.parse(read(`${EXT}/locales/${file}`)).amazon.ships_from_c;
+      ok(t[code] === expect, `v8.16: ${file} ${code} form is ${JSON.stringify(expect)} (got ${JSON.stringify(t[code])})`);
+    };
+    pin16("fr.json", "CH", "la Suisse");
+    pin16("fr.json", "US", "les États-Unis");
+    pin16("de.json", "CH", "der Schweiz");
+    pin16("de.json", "NL", "den Niederlanden");
+    pin16("it.json", "CH", "dalla Svizzera");
+    pin16("it.json", "US", "dagli Stati Uniti");
+    pin16("pt-PT.json", "CH", "da Suíça");
+    pin16("pt-PT.json", "US", "dos Estados Unidos");
+    pin16("el.json", "CH", "την Ελβετία");
+    pin16("pl.json", "CH", "ze Szwajcarii");
+    pin16("fi.json", "CH", "Sveitsistä");
+    pin16("hu.json", "CH", "Svájcból");
+    ok(
+      JSON.parse(read(`${EXT}/locales/fr.json`)).amazon.ships_from ===
+        "Expédié depuis {{ country }}",
+      "v8.16: the French sentence is the natural form (no colon)",
     );
   }
 
