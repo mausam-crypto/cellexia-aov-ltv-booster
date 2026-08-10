@@ -1,5 +1,10 @@
 {
-  "guarantee_title": "{{days}}-dniowa gwarancja zwrotu pieniędzy",
+  "guarantee_title": {
+    "one": "{{days}}-dniowa gwarancja zwrotu pieniędzy",
+    "few": "{{days}}-dniowa gwarancja zwrotu pieniędzy",
+    "many": "{{days}}-dniowa gwarancja zwrotu pieniędzy",
+    "other": "{{days}}-dniowa gwarancja zwrotu pieniędzy"
+  },
   "guarantee_body": {
     "one": "Produkt nie spełnia oczekiwań? Zwrócimy Ci pieniądze w ciągu {{days}} dnia.",
     "few": "Produkt nie spełnia oczekiwań? Zwrócimy Ci pieniądze w ciągu {{days}} dni.",

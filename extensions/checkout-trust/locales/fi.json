@@ -1,6 +1,12 @@
 {
-  "guarantee_title": "{{days}} päivän rahat takaisin -takuu",
-  "guarantee_body": "Etkö ole tyytyväinen? Saat rahasi takaisin {{days}} päivän kuluessa.",
+  "guarantee_title": {
+    "one": "{{days}} päivän rahat takaisin -takuu",
+    "other": "{{days}} päivän rahat takaisin -takuu"
+  },
+  "guarantee_body": {
+    "one": "Etkö ole tyytyväinen? Saat rahasi takaisin {{days}} päivän kuluessa.",
+    "other": "Etkö ole tyytyväinen? Saat rahasi takaisin {{days}} päivän kuluessa."
+  },
   "secure": "Turvallinen, salattu maksaminen",
   "clinical": "Kliinisesti todistetut koostumukset",
   "trustpilot": "{{rating}}/5 · {{count}} arvostelua Trustpilot-palvelussa",

@@ -1,6 +1,10 @@
 {
-  "guarantee_title": "{{days}}日間返金保証",
-  "guarantee_body": "ご満足いただけない場合は、{{days}}日以内に返金いたします。",
+  "guarantee_title": {
+    "other": "{{days}}日間返金保証"
+  },
+  "guarantee_body": {
+    "other": "ご満足いただけない場合は、{{days}}日以内に返金いたします。"
+  },
   "secure": "安全な暗号化決済",
   "clinical": "臨床的に実証された処方",
   "trustpilot": "{{rating}}/5・Trustpilotで{{count}}件のレビュー",

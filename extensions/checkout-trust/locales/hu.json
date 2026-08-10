@@ -1,6 +1,12 @@
 {
-  "guarantee_title": "{{days}} napos pénzvisszafizetési garancia",
-  "guarantee_body": "Nem vagy elégedett? {{days}} napon belül visszakapod a pénzed.",
+  "guarantee_title": {
+    "one": "{{days}} napos pénzvisszafizetési garancia",
+    "other": "{{days}} napos pénzvisszafizetési garancia"
+  },
+  "guarantee_body": {
+    "one": "Nem vagy elégedett? {{days}} napon belül visszakapod a pénzed.",
+    "other": "Nem vagy elégedett? {{days}} napon belül visszakapod a pénzed."
+  },
   "secure": "Biztonságos, titkosított fizetés",
   "clinical": "Klinikailag igazolt formulák",
   "trustpilot": "{{rating}}/5 · {{count}} értékelés a Trustpilot oldalán",
