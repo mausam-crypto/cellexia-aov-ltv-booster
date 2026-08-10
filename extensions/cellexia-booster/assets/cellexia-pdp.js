@@ -375,10 +375,24 @@
     if (!strings || typeof strings !== 'object' ||
         typeof strings['dispatch.within'] !== 'string' ||
         typeof strings['dispatch.within_minutes'] !== 'string') return null;
+    var cutoffMinutes = Number(d.cutoff.slice(0, 2)) * 60 + Number(d.cutoff.slice(3, 5));
+    var days = d.days;
+    // v10 per-state dispatch override (SPEC-v10): deliveryConfig()
+    // already resolved the state-adjusted cutoff/dispatch days (with
+    // the fail-open discard rules), so a resolved state substitutes
+    // them here — the countdown and the promised dates read separate
+    // config copies and must never disagree. Timezone always inherits.
+    if (cfg.delivery && cfg.delivery.us) {
+      var dcUs = deliveryConfig();
+      if (dcUs && dcUs.us && dcUs.us.state) {
+        cutoffMinutes = dcUs.cutoffMinutes;
+        days = dcUs.dispatchDays;
+      }
+    }
     return {
-      cutoffMinutes: Number(d.cutoff.slice(0, 2)) * 60 + Number(d.cutoff.slice(3, 5)),
+      cutoffMinutes: cutoffMinutes,
       timezone: d.timezone,
-      days: d.days,
+      days: days,
       withinMinutes: within * 60
     };
   }
@@ -766,7 +780,7 @@
     for (var k = 0; k < req.length; k++) {
       if (typeof map[req[k]] !== 'string' || !map[req[k]]) return null;
     }
-    return {
+    var dc = {
       minDays: min,
       maxDays: max,
       deliveryDays: days,
@@ -777,6 +791,72 @@
       timezone: s.timezone,
       dispatchDays: s.days
     };
+    // v10 US state layer (SPEC-v10). Doctrine inversion, on purpose: the
+    // COUNTRY resolution above fails closed, the STATE layer fails OPEN
+    // — a malformed module, unknown state or invalid entry keeps the
+    // US-wide promise just resolved; ONLY an explicit hidden:true state
+    // override may hide. Dates stay fail-closed: the adopted values
+    // re-enter the same engine unchanged.
+    var us = d.us;
+    if (!us || typeof us !== 'object' || us.enabled !== true) return dc;
+    var st = deliveryUsCurrent(us);
+    var e = st && us.byState && typeof us.byState === 'object' ? us.byState[st] : null;
+    if (!e || typeof e !== 'object') e = null;
+    if (e) {
+      if (e.hidden === true) return null; // state hidden: deliberate hide
+      // CANDIDATE merge — per-field keep-if-valid; an incoherent merged
+      // window discards the WHOLE entry (never a half-applied state).
+      var cMin = dc.minDays;
+      var cMax = dc.maxDays;
+      var cDays = dc.deliveryDays;
+      var cHol = dc.holidaysEnabled;
+      if (typeof e.minDays === 'number' && e.minDays === Math.floor(e.minDays) && e.minDays >= 0 && e.minDays <= 30) cMin = e.minDays;
+      if (typeof e.maxDays === 'number' && e.maxDays === Math.floor(e.maxDays) && e.maxDays >= 1 && e.maxDays <= 30) cMax = e.maxDays;
+      if (Array.isArray(e.deliveryDays) && e.deliveryDays.length > 0) {
+        var dOk = true;
+        for (var di = 0; di < e.deliveryDays.length; di++) {
+          if (e.deliveryDays[di] !== Math.floor(e.deliveryDays[di]) || e.deliveryDays[di] < 1 || e.deliveryDays[di] > 7) dOk = false;
+        }
+        if (dOk) cDays = e.deliveryDays;
+      }
+      if (typeof e.holidaysEnabled === 'boolean') cHol = e.holidaysEnabled;
+      if (cMax >= cMin) {
+        dc.minDays = cMin;
+        dc.maxDays = cMax;
+        dc.deliveryDays = cDays;
+        dc.holidaysEnabled = cHol;
+        if (typeof e.cutoff === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(e.cutoff)) {
+          dc.cutoffMinutes = Number(e.cutoff.slice(0, 2)) * 60 + Number(e.cutoff.slice(3, 5));
+        }
+        if (Array.isArray(e.dispatchDays) && e.dispatchDays.length > 0) {
+          var pOk = true;
+          for (var pi = 0; pi < e.dispatchDays.length; pi++) {
+            if (e.dispatchDays[pi] !== Math.floor(e.dispatchDays[pi]) || e.dispatchDays[pi] < 1 || e.dispatchDays[pi] > 7) pOk = false;
+          }
+          if (pOk) dc.dispatchDays = e.dispatchDays;
+        }
+      } else {
+        e = null; // incoherent window: whole entry ignored (fail open)
+      }
+    }
+    // Merchant extra days off — module-wide + state, "MM-DD" (every
+    // year) or "YYYY-MM-DD" (one-off), invalid entries dropped. The
+    // federal dates are NOT materialized here: deliveryQualifies
+    // computes them per candidate day via deliveryUsFederal, so this
+    // resolver stays clock-free.
+    var extra = [];
+    var eRe = /^(\d{4}-)?(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+    var lists = [us.extraHolidays, e ? e.extraHolidays : null];
+    for (var li = 0; li < lists.length; li++) {
+      if (!Array.isArray(lists[li])) continue;
+      for (var xi = 0; xi < lists[li].length; xi++) {
+        if (typeof lists[li][xi] === 'string' && eRe.test(lists[li][xi])) extra.push(lists[li][xi]);
+      }
+    }
+    if (extra.length) dc.extra = extra;
+    dc.usFederal = us.federalHolidays !== false && dc.holidaysEnabled === true;
+    dc.us = { sel: us.selector === true, state: st || null };
+    return dc;
   }
 
   function deliveryDispatchUt(dc) {
@@ -833,6 +913,15 @@
     if (dc.holidaysEnabled) {
       var table = DELIVERY_HOLIDAYS[dc.country];
       if (table && table.indexOf(mmdd) !== -1) return false; // public holiday
+    }
+    // v10 US layer: merchant days off (both date forms) and the six
+    // movable federal holidays, computed for the candidate day's own
+    // UTC year (6 pure-math rules — cheap over the <= 74-day window).
+    if (dc.extra || dc.usFederal === true) {
+      var y = date.getUTCFullYear();
+      var full = y + '-' + mmdd;
+      if (dc.extra && (dc.extra.indexOf(mmdd) !== -1 || dc.extra.indexOf(full) !== -1)) return false; // merchant day off
+      if (dc.usFederal === true && deliveryUsFederal(y).indexOf(full) !== -1) return false; // movable federal holiday
     }
     return true;
   }
@@ -922,6 +1011,429 @@
     };
     if (!texts.line || !texts.range || !texts.ship || !texts.delivered || !texts.title || !texts.tooltip) return null;
     return texts;
+  }
+
+  // --------------------------------------------- US state overlay (v10)
+  //
+  // SPEC-v10 sub-module of the delivery estimate: per-US-state overrides
+  // (window / delivery days / holidays / dispatch cutoff), merchant extra
+  // days off, the six movable US federal holidays and the Amazon-style
+  // "Deliver to" state selector. The state resolves from the visitor's
+  // explicit choice (localStorage cx:us_state) else the self-hosted IP
+  // hint (sessionStorage cx_geo:1 — our own app proxy, never a third
+  // party); precedence is choice > geo > none. The LAYER fails OPEN: any
+  // malformed piece degrades to the validated US-wide promise and ONLY
+  // an explicit hidden:true state override may hide the widget — while
+  // every DATE shown still comes from the fail-closed engine above.
+  // Everything from US_STATE_NAMES through deliveryUsGeoKick is
+  // byte-twinned between cellexia-pdp.js and cellexia-cart.js (the
+  // validation harness compares the copies).
+  //
+  // State names are ENGLISH proper nouns in the JS asset on purpose (the
+  // AZ_SHIPS_FORMS precedent: locale files are byte-capped and US place
+  // names stay untranslated by e-commerce convention). No territories.
+  var US_STATE_NAMES = { AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California', CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia', FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming' };
+
+  var deliveryUsGeoState = null; // geo-resolved USPS code, this page only
+  var deliveryUsGeoPromise = null; // single-flight: ONE geo fetch per page
+  var deliveryUsDocBound = false; // selector close listeners bound once
+  var deliveryUsEventToken = {}; // this bundle's identity on cx:us-state (never loops)
+
+  function deliveryUsFederal(year) {
+    // The six MOVABLE US federal holidays of a year as "YYYY-MM-DD" (the
+    // fixed-date ones already ride DELIVERY_HOLIDAYS.US and the global
+    // exclusions). Rules are [month, ISO weekday, ordinal] with ordinal
+    // 5 = last — pure UTC calendar math, no Intl, a behavioral mirror of
+    // usFederalMovable in app/services/delivery-holidays.server.ts and
+    // the checkout engines (the sims compare all four copies).
+    var rules = [[1, 1, 3], [2, 1, 3], [5, 1, 5], [9, 1, 1], [10, 1, 2], [11, 4, 4]];
+    var out = [];
+    for (var i = 0; i < rules.length; i++) {
+      var month = rules[i][0];
+      var wd = rules[i][1];
+      var ord = rules[i][2];
+      var day;
+      if (ord === 5) {
+        var last = new Date(Date.UTC(year, month, 0));
+        var lastIso = ((last.getUTCDay() + 6) % 7) + 1;
+        day = last.getUTCDate() - ((lastIso - wd + 7) % 7);
+      } else {
+        var firstIso = ((new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7) + 1;
+        day = 1 + ((wd - firstIso + 7) % 7) + (ord - 1) * 7;
+      }
+      out.push(year + '-' + (month < 10 ? '0' + month : '' + month) + '-' + (day < 10 ? '0' + day : '' + day));
+    }
+    return out;
+  }
+
+  function deliveryUsChoiceGet() {
+    // The visitor's explicit "Deliver to" choice. First localStorage use
+    // in this file — private mode / disabled storage must stay silent —
+    // and only a known state code is ever honored.
+    try {
+      var v = window.localStorage ? window.localStorage.getItem('cx:us_state') : null;
+      if (typeof v === 'string' && /^[A-Z]{2}$/.test(v) && US_STATE_NAMES[v]) return v;
+    } catch (e) { /* noop */ }
+    return null;
+  }
+
+  function deliveryUsChoiceSet(code) {
+    // Persist the explicit choice — an invalid/empty code CLEARS it (the
+    // placeholder option is the visitor's way back to the geo hint).
+    // Best-effort: storage failures are silent.
+    try {
+      if (typeof code === 'string' && /^[A-Z]{2}$/.test(code) && US_STATE_NAMES[code]) {
+        window.localStorage.setItem('cx:us_state', code);
+      } else {
+        window.localStorage.removeItem('cx:us_state');
+      }
+    } catch (e) { /* noop */ }
+  }
+
+  function deliveryUsCurrent(us) {
+    // Effective state code — the explicit choice wins over the geo hint,
+    // null (US-wide promise) when neither resolved. The module object is
+    // required so a disabled/absent module can never resolve a state.
+    if (!us || typeof us !== 'object') return null;
+    var choice = deliveryUsChoiceGet();
+    if (choice) return choice;
+    var g = deliveryUsGeoState;
+    if (typeof g === 'string' && /^[A-Z]{2}$/.test(g) && US_STATE_NAMES[g]) return g;
+    return null;
+  }
+
+  function deliveryUsDeliverTo() {
+    // The deliver_to label — '' on a miss OR a Shopify "Translation
+    // missing" marker (the azT rule), so an incomplete locale hides ONLY
+    // the selector, never the promise.
+    var str = deliveryT('delivery.deliver_to');
+    if (!str || str.indexOf('Translation missing') === 0) return '';
+    return str;
+  }
+
+  function deliveryUsLabel() {
+    // "Deliver to<NBSP>California" — the deliver_to string carries each
+    // language's own punctuation convention (a locale-file fact), the
+    // place name rides after an NBSP so the pair never line-breaks
+    // apart. No resolved state: the country name in the page language
+    // via Intl.DisplayNames, English fallback.
+    var t = deliveryUsDeliverTo();
+    if (!t) return '';
+    var us = cfg && cfg.delivery && typeof cfg.delivery === 'object' ? cfg.delivery.us : null;
+    var st = deliveryUsCurrent(us);
+    var place = st && US_STATE_NAMES[st] ? US_STATE_NAMES[st] : '';
+    if (!place) {
+      place = 'United States';
+      try {
+        if (window.Intl && Intl.DisplayNames) {
+          var loc = cfg.delivery && typeof cfg.delivery.pageLocale === 'string' && cfg.delivery.pageLocale ? cfg.delivery.pageLocale : 'en';
+          var name = new Intl.DisplayNames([loc], { type: 'region' }).of('US');
+          if (typeof name === 'string' && name) place = name;
+        }
+      } catch (e) { /* keep the English fallback */ }
+    }
+    return t + '\u00a0' + place;
+  }
+
+  function deliveryUsPointerCoarse() {
+    // The selector's close semantics split on this: coarse-pointer
+    // native pickers fire ONE change per commit (change may close), a
+    // fine pointer arrow-browses a closed <select> firing change per
+    // keystroke, so closing must wait for blur/outside-click/Escape. A
+    // matchMedia miss counts as fine — the keyboard-safe default.
+    try {
+      return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    } catch (e) { return false; }
+  }
+
+  function deliveryUsPopToggle(root, open) {
+    var btn = root.querySelector('.cx-usloc__btn');
+    var pop = root.querySelector('.cx-usloc__pop');
+    if (!btn || !pop) return;
+    if (open) {
+      pop.removeAttribute('hidden');
+      btn.setAttribute('aria-expanded', 'true');
+    } else {
+      pop.setAttribute('hidden', '');
+      btn.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function deliveryUsPopCloseAll() {
+    var nodes = document.querySelectorAll('.cx-usloc');
+    for (var i = 0; i < nodes.length; i++) deliveryUsPopToggle(nodes[i], false);
+  }
+
+  function deliveryUsDocBind() {
+    // Document-level selector wiring, bound ONCE (cart re-renders
+    // re-create the nodes; the bindings must never stack). Outside-click
+    // + Escape close both exit before any DOM walk while no popover is
+    // open; Escape must return focus to the open popover's button —
+    // keyboard focus never falls to <body>. The cx:us-state listener is
+    // the cross-bundle half of the state fan-out: pdp + cart are
+    // separate closures on one page, so a change in either must re-run
+    // the OTHER's local prime + ticks; deliveryUsEventToken identifies
+    // this bundle's own dispatches (skipped — its ticks already ran).
+    if (deliveryUsDocBound) return;
+    deliveryUsDocBound = true;
+    document.addEventListener('click', function (event) {
+      if (!document.querySelector('.cx-usloc__pop:not([hidden])')) return;
+      var t = event.target;
+      if (t && t.nodeType === 1 && typeof t.closest === 'function' && t.closest('.cx-usloc')) return;
+      deliveryUsPopCloseAll();
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape' && event.key !== 'Esc') return;
+      var open = document.querySelector('.cx-usloc__pop:not([hidden])');
+      if (!open) return;
+      deliveryUsPopCloseAll();
+      var btn = open.parentNode && typeof open.parentNode.querySelector === 'function' ? open.parentNode.querySelector('.cx-usloc__btn') : null;
+      if (btn) { try { btn.focus(); } catch (e) { /* noop */ } }
+    });
+    document.addEventListener('cx:us-state', function (event) {
+      if (event && event.detail === deliveryUsEventToken) return; // own dispatch: local ticks already ran
+      deliveryUsPrime();
+      deliveryUsTicks();
+    });
+  }
+
+  function deliveryUsSelectorFill(root) {
+    // Refresh ONE selector's label, selection and attribution from the
+    // current resolution (storage/module vars — never DOM state, so cart
+    // re-renders and geo upgrades always converge). The db-ip.com credit
+    // is REQUIRED (CC BY 4.0) exactly while the shown state came from
+    // the geo hint; a manual choice needs no attribution.
+    var us = cfg && cfg.delivery && typeof cfg.delivery === 'object' ? cfg.delivery.us : null;
+    var st = deliveryUsCurrent(us);
+    var label = root.querySelector('.cx-usloc__label');
+    if (label) label.textContent = deliveryUsLabel();
+    var sel = root.querySelector('.cx-usloc__select');
+    if (sel) sel.value = st || '';
+    var attr = root.querySelector('.cx-usloc__attr');
+    if (attr) {
+      if (st && !deliveryUsChoiceGet()) attr.removeAttribute('hidden');
+      else attr.setAttribute('hidden', '');
+    }
+  }
+
+  function deliveryUsSelectorSync() {
+    var nodes = document.querySelectorAll('.cx-usloc');
+    for (var i = 0; i < nodes.length; i++) deliveryUsSelectorFill(nodes[i]);
+  }
+
+  function deliveryUsTicks() {
+    // The quiet-upgrade fan-out: a state change re-runs the mounted
+    // widgets through their NORMAL tick paths (in-place text swap, no
+    // rebuild, and no beacon — ticks never call track()). azDeliveryTick
+    // exists only in the PDP bundle; typeof-guarded so the twins stay
+    // byte-identical.
+    deliveryTick();
+    dispatchTick();
+    if (typeof azDeliveryTick === 'function') azDeliveryTick();
+    deliveryUsSelectorSync();
+  }
+
+  function deliveryUsBroadcast() {
+    // The cross-bundle half of a state change: the sibling bundle holds
+    // its own closures and intervals, so only a document event reaches
+    // it (the deliveryUsDocBind listener). The shared storage halves
+    // are written BEFORE any dispatch, so the sibling re-primes to the
+    // same state. No CustomEvent: the 30s intervals catch up instead.
+    try {
+      if (typeof window.CustomEvent !== 'function') return;
+      document.dispatchEvent(new window.CustomEvent('cx:us-state', { detail: deliveryUsEventToken }));
+    } catch (e) { /* best effort */ }
+  }
+
+  function deliveryUsSelectorNode() {
+    // "Deliver to: California ▾" — the Amazon location-line pattern,
+    // deliberately quiet under the promise line. createElement /
+    // textContent ONLY (no config text can ever reach markup); the
+    // native <select> doubles as the native mobile picker. Idempotent by
+    // construction: selection state lives in storage/module vars, so a
+    // rebuilt node always re-derives it via deliveryUsSelectorFill.
+    var t = deliveryUsDeliverTo();
+    if (!t) return null;
+    var us = cfg && cfg.delivery && typeof cfg.delivery === 'object' ? cfg.delivery.us : null;
+    var by = us && typeof us === 'object' && us.byState && typeof us.byState === 'object' ? us.byState : null;
+    var inRoot = false; // mousedown-inside flag for the blur close path
+    var root = cxEl('div', 'cx-usloc');
+    var btn = cxEl('button', null, ['type', 'button', 'class', 'cx-usloc__btn', 'aria-haspopup', 'true', 'aria-expanded', 'false']);
+    btn.appendChild(cxIcon('pin', 12));
+    btn.appendChild(cxEl('span', 'cx-usloc__label'));
+    var caret = cxEl('span', 'cx-usloc__caret', ['aria-hidden', 'true']);
+    caret.textContent = '▾';
+    btn.appendChild(caret);
+    root.appendChild(btn);
+    var pop = cxEl('div', 'cx-usloc__pop', ['hidden', '']);
+    var sel = cxEl('select', 'cx-usloc__select', ['aria-label', t]);
+    var ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = t;
+    sel.appendChild(ph);
+    var codes = Object.keys(US_STATE_NAMES);
+    codes.sort(function (a, b) { return US_STATE_NAMES[a] < US_STATE_NAMES[b] ? -1 : 1; });
+    for (var i = 0; i < codes.length; i++) {
+      // A merchant-hidden state must never be CHOOSABLE: offering it
+      // would trade the widget for a stored choice that hides every
+      // surface. Geo may still resolve it — hiding a state's own
+      // locals is the merchant's stated intent; the dropdown is not.
+      var entry = by ? by[codes[i]] : null;
+      if (entry && typeof entry === 'object' && entry.hidden === true) continue;
+      var opt = document.createElement('option');
+      opt.value = codes[i];
+      opt.textContent = US_STATE_NAMES[codes[i]];
+      sel.appendChild(opt);
+    }
+    pop.appendChild(sel);
+    var attr = cxEl('a', 'cx-usloc__attr', ['href', 'https://db-ip.com', 'rel', 'noopener', 'target', '_blank', 'hidden', '']);
+    attr.textContent = 'IP Geolocation by DB-IP';
+    pop.appendChild(attr);
+    root.appendChild(pop);
+    btn.addEventListener('click', function () {
+      // Toggle THIS popover; any sibling instance (drawer + cart page)
+      // closes first so only one can ever be open.
+      var wasHidden = pop.hasAttribute('hidden');
+      deliveryUsPopCloseAll();
+      if (wasHidden) deliveryUsPopToggle(root, true);
+    });
+    sel.addEventListener('change', function () {
+      // Coarse pointers: the native picker fires ONE change per commit,
+      // so change may also close. Fine pointers fire change per arrow
+      // keystroke on a closed <select> — the popover must stay open (a
+      // live date preview) and close on blur/outside-click/Escape.
+      deliveryUsChoiceSet(sel.value);
+      if (deliveryUsPointerCoarse()) deliveryUsPopToggle(root, false);
+      deliveryUsTicks();
+      deliveryUsBroadcast();
+    });
+    root.addEventListener('mousedown', function () {
+      // Safari never focuses a clicked <button>, so a click inside the
+      // selector can blur the select with relatedTarget null — this
+      // one-task flag keeps such blurs from closing (the click's own
+      // handler decides), while true outside blurs still close below.
+      inRoot = true;
+      window.setTimeout(function () { inRoot = false; }, 0);
+    });
+    sel.addEventListener('blur', function (event) {
+      // Fine-pointer close path: the commit ends when the select loses
+      // focus. Focus moving WITHIN the selector never closes; focus
+      // falling to <body> returns to the button (keyboard users are
+      // never stranded); focus moving to another control is left alone.
+      if (deliveryUsPointerCoarse()) return;
+      if (pop.hasAttribute('hidden')) return;
+      if (inRoot) return;
+      var to = event && event.relatedTarget;
+      if (to && typeof root.contains === 'function' && root.contains(to)) return;
+      deliveryUsPopToggle(root, false);
+      if (!to) { try { btn.focus(); } catch (e) { /* noop */ } }
+    });
+    deliveryUsSelectorFill(root);
+    return root;
+  }
+
+  function deliveryUsSelectorAttach(node) {
+    // Append the selector as the LAST child of a mounted delivery node —
+    // only when the module resolved (dc.us), the merchant kept the
+    // selector on and the deliver_to string exists (a missing string
+    // hides ONLY the selector, never the promise). Safe to call on every
+    // (re-)mount: fresh nodes get a fresh selector, mounted ones keep
+    // theirs.
+    try {
+      if (!node || node.querySelector('.cx-usloc')) return;
+      var dc = deliveryConfig();
+      if (!dc || !dc.us || dc.us.sel !== true) return;
+      var sel = deliveryUsSelectorNode();
+      if (!sel) return;
+      node.appendChild(sel);
+      deliveryUsDocBind();
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function deliveryUsGeoApply(s) {
+    // Adopt a geo verdict; when the EFFECTIVE state actually changed (an
+    // explicit choice masks geo entirely), fan out the quiet upgrade.
+    // Never called with an unvalidated code. The sessionStorage verdict
+    // is already written by every caller, so the cross-bundle broadcast
+    // finds the same state when the sibling re-primes.
+    var us = cfg && cfg.delivery && typeof cfg.delivery === 'object' ? cfg.delivery.us : null;
+    var before = deliveryUsCurrent(us);
+    deliveryUsGeoState = s;
+    if (deliveryUsCurrent(us) !== before) {
+      deliveryUsTicks();
+      deliveryUsBroadcast();
+    }
+  }
+
+  function deliveryUsPrime() {
+    // The SYNCHRONOUS half of the state resolution — MUST run before
+    // any delivery/dispatch/az mount decision, and never touches the
+    // network (deliveryUsGeoKick owns that half). Beacon honesty: a
+    // fresh cached geo verdict has to be effective ahead of the first
+    // paint so a hidden state never mounts a widget whose impression
+    // beacon then counts a removed-before-paint node. Self-heal: a
+    // stored CHOICE now resolving to hidden:true is auto-CLEARED (the
+    // selector no longer offers hidden states) — the visitor falls
+    // back to geo, which re-hides a genuine hidden-state local.
+    try {
+      var us = cfg && cfg.delivery && typeof cfg.delivery === 'object' ? cfg.delivery.us : null;
+      if (!us || typeof us !== 'object' || us.enabled !== true) return;
+      var choice = deliveryUsChoiceGet();
+      if (choice) {
+        var entry = us.byState && typeof us.byState === 'object' ? us.byState[choice] : null;
+        if (entry && typeof entry === 'object' && entry.hidden === true) deliveryUsChoiceSet('');
+        else return; // a live choice masks geo: nothing to prime
+      }
+      var raw = window.sessionStorage ? window.sessionStorage.getItem('cx_geo:1') : null;
+      if (!raw) return;
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || typeof parsed.t !== 'number' ||
+          Date.now() - parsed.t >= 21600000) return;
+      var cs = parsed.s;
+      if (typeof cs === 'string' && /^[A-Z]{2}$/.test(cs) && US_STATE_NAMES[cs]) deliveryUsGeoState = cs;
+    } catch (e) { /* fail open: US-wide */ }
+  }
+
+  function deliveryUsGeoKick() {
+    // SPEC-v10 IP-to-state hint: at most ONE self-hosted app-proxy fetch
+    // per page, kicked AFTER a delivery mount so it can only quietly
+    // upgrade an already-painted US-wide promise, never gate one. Every
+    // failure is silent and the 6h sessionStorage verdict is cached
+    // NEGATIVELY too (a null verdict stops refetch storms). The
+    // visitor's IP never reaches a third party and no beacon ever rides
+    // this path.
+    try {
+      if (deliveryUsGeoPromise) return; // single-flight
+      var dc = deliveryConfig();
+      if (!dc || !dc.us) return; // module off / invalid config: nothing to upgrade
+      if (deliveryUsChoiceGet()) return; // explicit choice masks geo: skip
+      var cached = null;
+      try {
+        var raw = window.sessionStorage ? window.sessionStorage.getItem('cx_geo:1') : null;
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object' && typeof parsed.t === 'number' &&
+              Date.now() - parsed.t < 21600000) cached = parsed;
+        }
+      } catch (e) { cached = null; }
+      if (cached) {
+        var cs = cached.s;
+        if (typeof cs === 'string' && /^[A-Z]{2}$/.test(cs) && US_STATE_NAMES[cs]) deliveryUsGeoApply(cs);
+        return; // fresh verdict (positive or negative): no fetch
+      }
+      if (!window.fetch) return;
+      deliveryUsGeoPromise = window.fetch(routeRoot() + 'apps/cellexia/geo', { cache: 'no-store', headers: { Accept: 'application/json' } })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          var s = data && typeof data.s === 'string' && /^[A-Z]{2}$/.test(data.s) && US_STATE_NAMES[data.s] ? data.s : null;
+          try { window.sessionStorage.setItem('cx_geo:1', JSON.stringify({ s: s, t: Date.now() })); } catch (e) { /* best effort */ }
+          if (s) deliveryUsGeoApply(s);
+        })
+        .catch(function () {
+          // Network/parse trouble: negative-cache the miss, keep US-wide.
+          try { window.sessionStorage.setItem('cx_geo:1', JSON.stringify({ s: null, t: Date.now() })); } catch (e) { /* best effort */ }
+        });
+    } catch (e) { /* never break the theme */ }
   }
 
   // ------------------------------------------- delivery DOM layer (v5.9)
@@ -1149,10 +1661,14 @@
       if (!anchor || !insertAfter(node, anchor)) return;
       deliverySetText(node, texts);
       bindDeliveryTooltip(node);
+      deliveryUsSelectorAttach(node); // v10 "Deliver to" selector — self-gated
       deliveryEnsureTimer();
       // Impression honesty (v6.1): no beacon when the az delivery line
       // will replace this widget before paint (same rule as dispatch).
       if (!azReplacesDelivery()) track('delivery_estimate');
+      // v10: the geo hint fires only AFTER the mount — it can quietly
+      // upgrade the painted US-wide promise, never gate it.
+      deliveryUsGeoKick();
     } catch (e) { /* never break the theme */ }
   }
 
@@ -3352,8 +3868,12 @@
       azRemoveAll('.pdp__grey .cx-dispatch--pdp');
       azRemoveAll('.pdp__grey .cx-delivery');
       azRemoveAll('.pdp__grey [data-cx-note="dispatch"]');
+      deliveryUsSelectorAttach(node); // v10 "Deliver to" selector — self-gated
       if (!azDeliveryTimer) azDeliveryTimer = window.setInterval(azDeliveryTick, 30000);
       track('az_delivery_line');
+      // v10: the geo hint fires only AFTER the mount — it can quietly
+      // upgrade the painted US-wide promise, never gate it.
+      deliveryUsGeoKick();
     } catch (e) { /* never break the theme */ }
   }
 
@@ -4102,7 +4622,10 @@
     // v6.7 extended PDP batch: icons used only by the migrated badges
     // widget — byte-equal twins of the cx-icons snippet cases.
     droplet: ['1.5', '<path d="M10 2.2S4.6 8 4.6 12a5.4 5.4 0 0 0 10.8 0c0-4-5.4-9.8-5.4-9.8Z"/><path d="M7.4 12.4a2.6 2.6 0 0 0 2.1 2.5"/>'],
-    leaf: ['1.5', '<path d="M16.8 3.2c.3 6.8-2.6 12.4-8.4 12.4-2.3 0-4.2-1.4-4.9-3.3C5 8 9.6 3.9 16.8 3.2Z"/><path d="M3.5 16.5C6 12.5 9.5 9.5 13 7.7"/>']
+    leaf: ['1.5', '<path d="M16.8 3.2c.3 6.8-2.6 12.4-8.4 12.4-2.3 0-4.2-1.4-4.9-3.3C5 8 9.6 3.9 16.8 3.2Z"/><path d="M3.5 16.5C6 12.5 9.5 9.5 13 7.7"/>'],
+    // v10 US state module: location pin on the "Deliver to" selector —
+    // same entry rides the cellexia-cart.js icon subset.
+    pin: ['1.5', '<path d="M10 18.2S4.4 12.9 4.4 8.6a5.6 5.6 0 0 1 11.2 0c0 4.3-5.6 9.6-5.6 9.6Z"/><circle cx="10" cy="8.4" r="2.1"/>']
   };
 
   function cxIcon(name, size) {
@@ -4541,6 +5064,12 @@
   function init() {
     try {
       cfg = readConfig();
+
+      // v10: the synchronous state half (stored choice + fresh geo
+      // cache) must be resolved BEFORE any mount below decides to paint
+      // or beacon — a cached hidden verdict vetoes the mount itself,
+      // never removes an already-counted node.
+      deliveryUsPrime();
 
       // --- v1 widgets, anchored inside .pdp__grey ---
       var grey = document.querySelector('.pdp__grey');

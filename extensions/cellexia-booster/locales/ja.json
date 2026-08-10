@@ -148,13 +148,20 @@
     "read_article": "記事を読む"
   },
   "endo": {
-    "eyebrow": "皮膚科医による推薦",
+    "eyebrow": "皮膚科医が推薦",
     "count_headline": {
-      "other": "{{ n }}名の皮膚科医が推薦"
+      "other": "{{ n }}名の皮膚科医がCellexiaを推薦"
     },
     "shown_of": "@@TOTAL@@名中@@SHOWN@@名を表示",
     "show_more": "もっと見る",
-    "read_full": "全文を読む"
+    "read_full": "全文を読む",
+    "description": "資格を持つ皮膚科医による検証済みの推薦です。製品、Cellexia、そしてそのスキンケアへの考え方についての声をお読みください。",
+    "badge_headline": {
+      "other": "皮膚科医{{ n }}名が推薦"
+    },
+    "badge_link": "専門家による評価を読む",
+    "badge_alt": "検証済みの専門家評価",
+    "badge_chip": "認定皮膚科医"
   },
   "results": {
     "banner_verified": "Cellexiaのお客様{{ count }}名（購入確認済み）の結果をご覧ください。",
@@ -193,7 +200,8 @@
     "box_title": "{{ date }}までのお届けを保証",
     "box_sub": "万一遅れた場合は、返金または無料で代替品をお送りします。",
     "badge": "お届け保証",
-    "tooltip": "{{ date }}までにお届けします。万一遅れた場合は、返金または無料で代替品をお送りします。"
+    "tooltip": "{{ date }}までにお届けします。万一遅れた場合は、返金または無料で代替品をお送りします。",
+    "deliver_to": "お届け先:"
   },
   "amazon": {
     "in_stock": "在庫あり",

@@ -28,7 +28,9 @@ const PDP_JS = path.join(ROOT, "extensions", "cellexia-booster", "assets", "cell
 // Shopify's per-file cap is 15,360B; keep 360B of margin so a growing
 // language trips HERE (and in the validation harness) before a deploy fails.
 const LOCALE_BYTE_BUDGET = 15000;
-const MINIFIED_LOCALES = ["el.json"];
+// v8.17: ar.json joined el.json — the endorsement-badge copy took the
+// pretty-printed file over budget; minified it has ~1.2KB of headroom.
+const MINIFIED_LOCALES = ["ar.json", "el.json"];
 
 const COUNTRIES = ["AT","BE","BG","HR","CY","CZ","DK","EE","FI","FR","DE","GR","HU","IE","IT","LV","LT","LU","MT","NL","PL","PT","RO","SK","SI","ES","SE","CH","NO","IS","LI","GB","MC","AD","TR","UA","RS","US","CA","MX","BR","AU","NZ","JP","CN","HK","TW","KR","SG","TH","VN","MY","ID","PH","IN","AE","IL","ZA","MA"];
 

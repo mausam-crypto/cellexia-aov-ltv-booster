@@ -237,3 +237,26 @@ model Experiment {
 
   @@index([shop, status])
 }
+
+// v10 US state module (docs/SPEC-v10-us-state-delivery.md §6): compiled
+// IP→US-state range table behind the /apps/cellexia/geo proxy endpoint.
+// Built by streaming the self-hosted DB-IP City Lite CSV (CC BY 4.0,
+// monthly refresh) — SOURCE data only, never visitor data (visitor IPs are
+// never stored or logged anywhere). dataV4/dataV6 hold gzipped fixed-size
+// sorted records; stateIdx bytes index the US_STATE_CODES array in
+// app/services/geo.server.ts (part of the stored format — never reorder).
+// Postgres deploys apply this via `prisma db push` (see UPDATE.md v10 notes).
+model GeoStateDb {
+  id        Int       @id @default(autoincrement())
+  shop      String    @unique
+  status    String    @default("empty")  // empty | building | ready | error
+  source    String    @default("")       // "dbip-city-lite-YYYY-MM"
+  error     String    @default("")
+  rangesV4  Int       @default(0)
+  rangesV6  Int       @default(0)
+  dataV4    Bytes?    // gzip( concat per range: start BE u32, end BE u32, stateIdx u8 )
+  dataV6    Bytes?    // gzip( concat per range: start 16B BE, end 16B BE, stateIdx u8 )
+  builtAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}

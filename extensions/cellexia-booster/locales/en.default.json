@@ -146,14 +146,22 @@
     "read_article": "Read the article"
   },
   "endo": {
-    "eyebrow": "Dermatologist endorsements",
+    "eyebrow": "Dermatologist recommended",
     "count_headline": {
-      "one": "Endorsed by {{ n }} dermatologist",
-      "other": "Endorsed by {{ n }} dermatologists"
+      "one": "{{ n }} dermatologist recommends Cellexia",
+      "other": "{{ n }} dermatologists recommend Cellexia"
     },
     "shown_of": "Showing @@SHOWN@@ of @@TOTAL@@",
     "show_more": "Show more",
-    "read_full": "Read full endorsement"
+    "read_full": "Read full endorsement",
+    "description": "Verified recommendations from licensed dermatologists. Read what they have to say about the product, Cellexia and its approach to skincare.",
+    "badge_headline": {
+      "one": "Recommended by {{ n }} dermatologist",
+      "other": "Recommended by {{ n }} dermatologists"
+    },
+    "badge_link": "Read their professional assessments",
+    "badge_alt": "Verified professional assessments",
+    "badge_chip": "Licensed dermatologists"
   },
   "results": {
     "banner_verified": "See results from {{ count }} verified Cellexia customers.",
@@ -196,7 +204,8 @@
     "box_title": "Guaranteed delivery by {{ date }}",
     "box_sub": "…or we refund you or send a free replacement.",
     "badge": "Delivery guarantee",
-    "tooltip": "Delivered on or before {{ date }} — or we refund you or send a free replacement."
+    "tooltip": "Delivered on or before {{ date }} — or we refund you or send a free replacement.",
+    "deliver_to": "Deliver to:"
   },
   "amazon": {
     "in_stock": "In Stock",

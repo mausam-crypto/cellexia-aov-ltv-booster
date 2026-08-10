@@ -1,7 +1,9 @@
 {
   "guarantee_title": "{{days}} päivän rahat takaisin -takuu",
-  "guarantee_body": "Rakastu tuloksiin tai saat rahasi takaisin — kyselemättä.",
-  "secure": "Turvallinen SSL-salattu maksaminen",
+  "guarantee_body": "Etkö ole tyytyväinen? Saat rahasi takaisin {{days}} päivän kuluessa.",
+  "secure": "Turvallinen, salattu maksaminen",
   "clinical": "Kliinisesti todistetut koostumukset",
-  "trustpilot": "{{rating}}/5 · {{count}} arvostelua Trustpilot-palvelussa"
+  "trustpilot": "{{rating}}/5 · {{count}} arvostelua Trustpilot-palvelussa",
+  "customs": "Ei tulli- eikä lisämaksuja toimituksen yhteydessä.",
+  "tracked": "Toimitus seurantakoodilla · Taatusti perillä viimeistään: {{date}}"
 }

@@ -7,7 +7,7 @@
  *   1. Liquid byte budget — total <= 95,000 (own budget under the 102,400
  *      Shopify theme-app-extension cap) + per-file floor/ceiling sanity.
  *   2. PREVIEW COVERAGE — FEATURE_KEYS parsed LIVE from settings.server.ts
- *      (33 keys); every key mapped to verified evidence in a real file
+ *      (35 keys); every key mapped to verified evidence in a real file
  *      (storefront data-cx-feature markers / checkout extension gates /
  *      documented alias), both directions (no unmapped key, no stale map).
  *   3. PICKER COVERAGE — every key present in app.preview.tsx
@@ -93,7 +93,7 @@ const CSS = `${EXT}/assets/cellexia-booster.css`;
 
 // ==================================================== 2. PREVIEW COVERAGE
 const FEATURE_KEYS = parseFeatureKeys();
-ok(FEATURE_KEYS.length === 33, `FEATURE_KEYS parsed live: 33 keys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 35, `FEATURE_KEYS parsed live: 35 keys (got ${FEATURE_KEYS.length})`);
 
 /**
  * Evidence map: every FeatureKey -> at least one verified pattern in a real
@@ -115,6 +115,8 @@ const EVIDENCE = {
   checkout_upsell: [{ file: "extensions/checkout-upsell/src/Checkout.tsx", has: "'checkout_upsell'", note: "checkout extension gate" }],
   checkout_protection: [{ file: "extensions/checkout-protection/src/Checkout.tsx", has: "'checkout_protection'", note: "checkout extension gate" }],
   checkout_trust: [{ file: "extensions/checkout-trust/src/Checkout.tsx", has: "'checkout_trust'", note: "checkout extension gate" }],
+  checkout_customs: [{ file: "extensions/checkout-trust/src/Checkout.tsx", has: "'checkout_customs'", note: "v9 trust-row market gate inside the trust extension" }],
+  checkout_tracked: [{ file: "extensions/checkout-trust/src/Checkout.tsx", has: "'checkout_tracked'", note: "v9 trust-row market gate inside the trust extension" }],
   clinical_study: [{ file: PDP_JS, has: MARK("clinical_study") }],
   verified_before_after: [{ file: PROOF_JS, has: MARK("verified_before_after"), note: "v8: marker moved to the proof asset — the results-gallery block replaces the retired PDP BA widget (same feature key)" }],
   batch_transparency: [{ file: PDP_JS, has: MARK("batch_transparency") }],
@@ -257,6 +259,31 @@ const EVIDENCE = {
     matrixSrc.includes("selections save now, apply when"),
     "app.markets.tsx: the off-state note says selections save now and apply on enable",
   );
+
+  // v9: the checkout-trust V2 rows are checkoutTrust sub-flags, so they can
+  // NOT ride SIMPLE_SECTIONS ({enabled} writers) — the matrix save path
+  // needs its hand-written cart-style mapper. Without these pins a missing
+  // mapper fails silently at save-time, not build-time (the exact gap the
+  // v9 scout flagged).
+  for (const anchor of [
+    'const TRUST_ROW_KEYS = ["checkout_customs", "checkout_tracked"] as const;',
+    "showCustoms: state.checkout_customs.on",
+    "showTracked: state.checkout_tracked.on",
+  ]) {
+    ok(matrixSrc.includes(anchor), `app.markets.tsx: v9 trust-row flag-patch mapper present: ${anchor}`);
+  }
+  // The checkout features page must persist both row flags + both scopes.
+  {
+    const checkoutSrc = read("app/routes/app.features.checkout.tsx");
+    for (const anchor of [
+      "showCustoms: state.showCustoms",
+      "showTracked: state.showTracked",
+      "checkout_customs: toScopeState(settings.marketScopes.checkout_customs)",
+      "checkout_tracked: toScopeState(settings.marketScopes.checkout_tracked)",
+    ]) {
+      ok(checkoutSrc.includes(anchor), `app.features.checkout.tsx: v9 row plumbing present: ${anchor}`);
+    }
+  }
 
   // v8.6: the Display density card must stay reachable — anchor + scroll on
   // the hub, deep links from the two pages merchants actually start from.
@@ -533,6 +560,308 @@ const EVIDENCE = {
     ok(
       hubSrc15.includes("const HOME_ANCHOR_SLUG = /^[A-Za-z0-9_-]{1,64}$/;"),
       "v8.15: admin client-side slug gate mirrors the server sanitize shape",
+    );
+  }
+
+  // v8.17: endorsement BADGE + merchant copy overrides — settings fields,
+  // lean island members, the badge's own anchor chain (NOT the band
+  // system), the locale additions, and the admin card. Behavior is pinned
+  // by sims/proof-gallery B-cases + mutants m16–m19 and the
+  // settings-derivation v8.17 block.
+  {
+    const settingsSrc17 = read("app/models/settings.server.ts");
+    ok(
+      settingsSrc17.includes("badgeEnabled: boolean;") &&
+        settingsSrc17.includes("badgeShowLink: boolean;") &&
+        settingsSrc17.includes("copyBadgeNoLink: string;") &&
+        settingsSrc17.includes("badgeEnabled: false,") &&
+        settingsSrc17.includes("badgeShowLink: true,"),
+      "v8.17: badge flags in the settings shape, default off + link-on",
+    );
+    ok(
+      settingsSrc17.includes(
+        'if (field === "copyHeadline" || field === "copyBadgeHeadline") {',
+      ) &&
+        settingsSrc17.includes(
+          'value = value.replace(/\\{\\{?\\s*n\\s*\\}?\\}/gi, "{n}");',
+        ),
+      "v8.17: the two headline fields canonicalize {n} brace variants (methodology discipline)",
+    );
+    for (const member17 of [
+      '{% if cfg.dermEndorsements.badgeEnabled == true %},"bd":1{% endif %}',
+      '{% if cfg.dermEndorsements.badgeShowLink == false %},"bk":0{% endif %}',
+      `"desc":{{'endo.description'|t|json}}`,
+      `"bh1":{{'endo.badge_headline'|t:count:1,n:'@@N@@'|json}}`,
+      `"bh2":{{'endo.badge_headline'|t:count:2,n:'@@N@@'|json}}`,
+      `"oh":{{cfg.dermEndorsements.copyHeadline|replace:'{n}','@@N@@'|json}}`,
+      `"ob":{{cfg.dermEndorsements.copyBadgeHeadline|replace:'{n}','@@N@@'|json}}`,
+      `"on":{{cfg.dermEndorsements.copyBadgeNoLink|json}}`,
+      `"bl":{{'endo.badge_link'|t|json}}`,
+      `"bv":{{'endo.badge_alt'|t|json}}`,
+      `"oe":{{cfg.dermEndorsements.copyEyebrow|json}}`,
+      `"od":{{cfg.dermEndorsements.copyDescription|json}}`,
+      `"ol":{{cfg.dermEndorsements.copyBadgeLink|json}}`,
+    ]) {
+      ok(
+        proofLiquid.includes(member17),
+        `v8.17: endo island emits ${member17.slice(0, 48)}…`,
+      );
+    }
+    for (const anchor17 of [
+      "function endoBadgeBuild(conf, data) {",
+      "function endoBadgeMount(node) {",
+      "if (conf.bd !== 1 || conf.ctx !== 'product') return null;",
+      "'.pdp__info .pdp__images--mobile'",
+      "// Fail closed: no documented anchor, no render — never body-append.",
+      "pfTrack('derm_endorsements', 'click');",
+      "if (!/\\S/.test(headTpl)) headTpl = pfStr(s, total === 1 ? 'one' : 'other');",
+      // The endoInit CALL SITE — without these two lines the whole badge
+      // feature dies silently while every function-level check stays
+      // green (review catch: the wiring was validated nowhere).
+      "var badge = endoBadgeBuild(isl.conf, data);",
+      "if (badge) endoBadgeMount(badge);",
+      // Occurrence-safe @@N@@ substitution (merchant overrides may carry
+      // {n} more than once; Liquid's replace is global, so the JS side
+      // must be too — v8.18 the shared parts builder owns it).
+      "function endoBadgeHeadParts(el, tpl, total, boldN) {",
+      "var parts = String(tpl).split('@@N@@');",
+    ]) {
+      ok(
+        proofJs.includes(anchor17),
+        `v8.17: badge code present in cellexia-proof.js: ${anchor17.slice(0, 56)}`,
+      );
+    }
+    // All 18 locale files carry the four new endo keys. el.json is the
+    // DOCUMENTED byte exception (6B under the 15,000 budget): its
+    // badge_headline/badge_alt ship blank and the JS falls back to
+    // count_headline — every other file must carry real strings.
+    const EL_BLANK_OK = "el.json";
+    for (const lf of listFiles("extensions/cellexia-booster/locales", ".json")) {
+      const loc = JSON.parse(read(`extensions/cellexia-booster/locales/${lf}`));
+      const endo = loc.endo ?? {};
+      ok(
+        typeof endo.description === "string" &&
+          typeof endo.badge_link === "string" &&
+          typeof endo.badge_alt === "string" &&
+          typeof endo.badge_headline === "object",
+        `v8.17: ${lf} carries the four new endo keys`,
+      );
+      const bhOther = endo.badge_headline?.other ?? "";
+      if (lf === EL_BLANK_OK) {
+        ok(
+          /\S/.test(endo.description ?? "") && /\S/.test(endo.badge_link ?? ""),
+          "v8.17: el keeps real description + badge_link (only bh/alt are the byte exception)",
+        );
+        // The byte-cap contract needs PRESENT BLANK STRINGS — null or a
+        // missing form is a MISSING translation to Shopify (falls back to
+        // English) instead of the blank that triggers the JS
+        // bh -> count_headline fallback.
+        ok(
+          typeof endo.badge_headline?.one === "string" &&
+            typeof endo.badge_headline?.other === "string" &&
+            typeof endo.badge_alt === "string",
+          "v8.17: el ships badge_headline forms + badge_alt as blank STRINGS, never null/missing",
+        );
+      } else {
+        ok(
+          /\S/.test(endo.description ?? "") &&
+            /\S/.test(endo.badge_link ?? "") &&
+            /\S/.test(endo.badge_alt ?? "") &&
+            /\S/.test(bhOther) &&
+            bhOther.includes("{{ n }}"),
+          `v8.17: ${lf} endo badge strings are real (badge_headline.other keeps {{ n }})`,
+        );
+      }
+      ok(
+        /\S/.test(endo.count_headline?.other ?? "") &&
+          (endo.count_headline?.other ?? "").includes("{{ n }}"),
+        `v8.17: ${lf} count_headline.other keeps {{ n }}`,
+      );
+    }
+    ok(
+      read("scripts/gen-ships-from-grammar.mjs").includes(
+        'const MINIFIED_LOCALES = ["ar.json", "el.json"];',
+      ),
+      "v8.17: ar.json rides MINIFIED_LOCALES (regeneration keeps it under the byte cap)",
+    );
+    const endoTab17 = read("app/routes/app.proof.endorsements.tsx");
+    ok(
+      endoTab17.includes("Buy-box badge & section copy") &&
+        endoTab17.includes("const displayFetcher = useFetcher") &&
+        endoTab17.includes("Save badge & copy") &&
+        endoTab17.includes(
+          "if (displayState[key] !== display[key]) section[key] = displayState[key];",
+        ),
+      "v8.17: endorsements tab carries the badge/copy card (own fetcher, changed-only patch)",
+    );
+    ok(
+      read("extensions/cellexia-booster/assets/cellexia-booster.css").includes(
+        '[dir="rtl"] .cx-endo-badge__link::after',
+      ),
+      "v8.17: the badge link arrow flips under RTL",
+    );
+  }
+
+  // v8.18: FOUR badge designs (badgeStyle) + the credential chip. Behavior
+  // is pinned by sims/proof-gallery BST-cases + mutants m21/m22 and the
+  // settings-derivation v8.18 checks.
+  {
+    const settingsSrc18 = read("app/models/settings.server.ts");
+    ok(
+      settingsSrc18.includes(
+        'export const BADGE_STYLES = [\n  "classic",\n  "choice",\n  "slim",\n  "choice_compact",\n] as const;',
+      ) &&
+        settingsSrc18.includes("badgeStyle: BadgeStyle;") &&
+        settingsSrc18.includes('badgeStyle: "classic",') &&
+        settingsSrc18.includes("copyBadgeChip: string;") &&
+        settingsSrc18.includes('["copyBadgeChip", 120],'),
+      "v8.18: badgeStyle enum + copyBadgeChip in the settings model",
+    );
+    ok(
+      proofLiquid.includes(
+        '{% if cfg.dermEndorsements.badgeStyle == "choice" %},"bst":1{% elsif cfg.dermEndorsements.badgeStyle == "slim" %},"bst":2{% elsif cfg.dermEndorsements.badgeStyle == "choice_compact" %},"bst":3{% endif %}',
+      ),
+      "v8.18: endo island emits the lean bst style code",
+    );
+    ok(
+      proofLiquid.includes(`"chip":{{'endo.badge_chip'|t|json}}`) &&
+        proofLiquid.includes(
+          `"oc":{{cfg.dermEndorsements.copyBadgeChip|json}}`,
+        ),
+      "v8.18: endo island emits the chip default + override members",
+    );
+    for (const anchor18 of [
+      "var style = conf.bst === 1 ? 'choice' : conf.bst === 2 ? 'slim' : conf.bst === 3 ? 'choice-c' : '';",
+      "function endoBadgeCrown(s, withLaurel) {",
+      "function endoBadgeChip(s) {",
+      "plus.textContent = '+' + String(total - av.shown);",
+    ]) {
+      ok(
+        proofJs.includes(anchor18),
+        `v8.18: badge-design code present in cellexia-proof.js: ${anchor18.slice(0, 56)}`,
+      );
+    }
+    // Admin style picker stays in sync with the server enum (client-safe
+    // literal mirror, v8.3 lesson) — parse both live.
+    const endoTab18 = read("app/routes/app.proof.endorsements.tsx");
+    const serverStyles = ["classic", "choice", "slim", "choice_compact"];
+    // TWO-WAY set equality, scoped to the actual option-array literal —
+    // a substring probe over the whole route would miss a bogus
+    // admin-only option (review catch: one-way checks are half a check).
+    const optStart = endoTab18.indexOf("const BADGE_STYLE_OPTIONS = [");
+    const optEnd = endoTab18.indexOf("] as const;", optStart);
+    const optSlice =
+      optStart !== -1 && optEnd !== -1
+        ? endoTab18.slice(optStart, optEnd)
+        : "";
+    const mirrorValues = [...optSlice.matchAll(/value: "([a-z_]+)"/g)].map(
+      (m) => m[1],
+    );
+    ok(
+      optSlice !== "" &&
+        mirrorValues.length === serverStyles.length &&
+        serverStyles.every((v) => mirrorValues.includes(v)) &&
+        mirrorValues.every((v) => serverStyles.includes(v)) &&
+        endoTab18.includes('label="Badge design"') &&
+        endoTab18.includes("Badge chip text"),
+      "v8.18: admin BADGE_STYLE_OPTIONS is set-equal to BADGE_STYLES (both directions) + chip field present",
+    );
+    // Every locale carries a REAL badge_chip (el included — funded by the
+    // v8.18 description trim; the chip is a Choice-design load-bearing
+    // string).
+    for (const lf of listFiles("extensions/cellexia-booster/locales", ".json")) {
+      const loc = JSON.parse(read(`extensions/cellexia-booster/locales/${lf}`));
+      ok(
+        /\S/.test(loc.endo?.badge_chip ?? ""),
+        `v8.18: ${lf} carries a real endo.badge_chip`,
+      );
+    }
+  }
+
+  // v8.19: merchant COPY overrides ride the DeepL proof-translation system
+  // ("copy" scope) and the proxy serves them per page locale. Behavior is
+  // pinned by sims/proof-translation C-cases + mutant m4 and the
+  // proof-gallery CP-cases.
+  {
+    const ptSrc19 = read("app/services/proof-translation.server.ts");
+    ok(
+      ptSrc19.includes('export const COPY_RESOURCE_ID = "dermEndorsements";') &&
+        ptSrc19.includes('export type ProofScope = ProofType | "copy";') &&
+        ptSrc19.includes('copy: [\n    "copyEyebrow",\n    "copyHeadline",\n    "copyDescription",\n    "copyBadgeHeadline",\n    "copyBadgeLink",\n    "copyBadgeNoLink",\n    "copyBadgeChip",\n  ],') &&
+        ptSrc19.includes('copy: "copy",'),
+      "v8.19: the copy scope exists with the seven copy fields",
+    );
+    // The emission mapping is a PURE service function (behaviorally pinned
+    // by sims/proof-translation C7); here: all seven code literals + the
+    // @@N@@ mirror live in the service, and the proxy consumes the
+    // function behind the page-1 gate with graceful degradation.
+    ok(
+      ptSrc19.includes('copyEyebrow: "oe",') &&
+        ptSrc19.includes('copyHeadline: "oh",') &&
+        ptSrc19.includes('copyDescription: "od",') &&
+        ptSrc19.includes('copyBadgeHeadline: "ob",') &&
+        ptSrc19.includes('copyBadgeLink: "ol",') &&
+        ptSrc19.includes('copyBadgeNoLink: "on",') &&
+        ptSrc19.includes('copyBadgeChip: "oc",') &&
+        ptSrc19.includes('value = value.split("{n}").join("@@N@@");') &&
+        ptSrc19.includes("export function copyOverlayToIslandCodes(") &&
+        ptSrc19.includes("export async function deleteCopyTranslationsForFields("),
+      "v8.19b: all seven island codes + @@N@@ mirror + blank-cleanup live in the service",
+    );
+    const proxySrc19 = read("app/routes/proxy.proof.tsx");
+    ok(
+      proxySrc19.includes("if (locale && page === 1 && payload.items.length > 0) {") &&
+        proxySrc19.includes("const copy = copyOverlayToIslandCodes(fields, sources);") &&
+        proxySrc19.includes("(payload as Record<string, unknown>).copy = copy;") &&
+        proxySrc19.includes('sources[field] = typeof text === "string" ? text : "";'),
+      "v8.19b: proxy gates copy on the page-1 init fetch and passes ALL sources (blanks included)",
+    );
+    ok(
+      (proxySrc19.match(/\} catch \{\n(?:\s*)\/\/ untranslated payload serves/g) ?? [])
+        .length >= 4,
+      "v8.19b: every overlay enhancement degrades to the untranslated payload",
+    );
+    for (const anchor19 of [
+      "function endoApplyCopy(conf, data) {",
+      "var keys = ['oe', 'oh', 'od', 'ob', 'ol', 'on', 'oc'];",
+      // ORDERING pin (review catch: presence alone let the merge move
+      // after the build) — the merge must precede endoBuildSection.
+      "endoApplyCopy(isl.conf, data);\n          var node = endoBuildSection(isl.conf, data);",
+    ]) {
+      ok(
+        proofJs.includes(anchor19),
+        `v8.19: storefront copy merge present: ${anchor19.slice(0, 48)}`,
+      );
+    }
+    const endoTab19 = read("app/routes/app.proof.endorsements.tsx");
+    ok(
+      endoTab19.includes('["endorsements", "copy"],') &&
+        endoTab19.includes('const COPY_ID = "dermEndorsements";') &&
+        endoTab19.includes(
+          'const scope = id === COPY_RESOURCE_ID ? ("copy" as const) : ("endorsements" as const);',
+        ) &&
+        endoTab19.includes("copyTouchedRef.current") &&
+        endoTab19.includes("submitTranslation(COPY_ID, locale, field, value)"),
+      "v8.19: endorsements tab wires copy translation (scope routing, auto-fire, manual editor)",
+    );
+    // v8.19b review catches: blank-save cleanup, own auto-translate
+    // fetcher, translate fires even when only the metafield sync failed,
+    // manual saves reject non-target locales.
+    ok(
+      endoTab19.includes("await deleteCopyTranslationsForFields(shop, blanked);") &&
+        endoTab19.includes("const copyTranslateFetcher = useFetcher") &&
+        endoTab19.includes("copyTranslateFetcher.submit(formData, { method: \"post\" });") &&
+        endoTab19.includes("if (!validTargets.includes(locale.trim().toLowerCase())) {"),
+      "v8.19b: blank-cleanup + dedicated copy fetcher + sync-failure fire + locale gate",
+    );
+    ok(
+      !endoTab19.includes("it is not auto-translated"),
+      "v8.19: the stale not-auto-translated helpText is gone",
+    );
+    ok(
+      endoTab19.includes("auto-translates into every") &&
+        endoTab19.includes("survives translation"),
+      "v8.19: the copy card explains DeepL auto-translation + {n} survival",
     );
   }
 
@@ -1581,6 +1910,108 @@ const EVIDENCE = {
       "v8.3: compact results suppress the desktop grid (flex rail-not-grid >=900px)",
     );
   }
+
+  // ---- v10 US delivery promise by state (SPEC-v10) ------------------------
+  // Per-US-state overrides ride delivery_estimate as the usStates sub-module
+  // (the boughtOnCards precedent — NO new FeatureKey, none of the 35-count
+  // pins move), the self-hosted IP→state proxy answers from the GeoStateDb
+  // table, and the theme JS carries the byte-twinned deliveryUs* overlay +
+  // "Deliver to" selector. Runtime behavior is proven by
+  // sims/us-state-delivery.mjs (twins, 4-way federal parity, overlay
+  // matrix, geo unit, selector DOM, mutants) plus the extended
+  // delivery-businessdays / checkout-delivery-engine / checkout-trust
+  // suites; these pins keep the cross-file wiring from silently regressing.
+  {
+    // Geo proxy: route exists, never cacheable (the answer is per-IP — any
+    // shared cache would cross-serve one visitor's state to everyone), and
+    // the buyer IP comes from x-forwarded-for (never stored, never echoed).
+    ok(exists("app/routes/proxy.geo.tsx"), "v10: proxy.geo route present");
+    const geoProxySrc = read("app/routes/proxy.geo.tsx");
+    ok(
+      geoProxySrc.includes(`"Cache-Control": "no-store"`),
+      "v10: geo proxy carries the literal no-store Cache-Control value",
+    );
+    ok(
+      geoProxySrc.includes("x-forwarded-for"),
+      "v10: geo proxy reads the client IP from x-forwarded-for",
+    );
+    // GeoStateDb by NAME in both schemas — the section-10 recomputed-twin
+    // parity already proves the files match; these pins only keep the
+    // model itself from being dropped on both sides at once.
+    for (const schema of ["prisma/schema.prisma", "prisma/schema.postgres.prisma"]) {
+      ok(
+        read(schema).includes("model GeoStateDb {"),
+        `v10: ${schema} declares model GeoStateDb`,
+      );
+    }
+    // The three delivery-bearing islands: the module gate + the conditional
+    // nested "us" member INSIDE the delivery member (nested ⇒ no new
+    // top-level cfg key) + the deliver_to deliveryStrings line (NOT one of
+    // the 7 required keys — a missing string hides only the selector).
+    for (const block of ["pdp-booster", "cart-booster", "amazon-booster"]) {
+      const src = read(`${EXT}/blocks/${block}.liquid`);
+      ok(
+        src.includes("if cx_country == 'US' and cx_de.usStates.enabled == true"),
+        `v10: blocks/${block}.liquid gates cx_us on country US + usStates.enabled`,
+      );
+      ok(
+        src.includes(`{% if cx_us %}, "us": {{ cx_us | json }}{% endif %}},`),
+        `v10: blocks/${block}.liquid delivery member carries the conditional nested us member`,
+      );
+      ok(
+        src.includes(`"delivery.deliver_to": {{ 'delivery.deliver_to' | t | json }}`),
+        `v10: blocks/${block}.liquid deliveryStrings carries delivery.deliver_to`,
+      );
+    }
+    // delivery.deliver_to in ALL 18 theme locale files, non-empty (the JS
+    // appends NBSP + the place name to this label).
+    const locales10 = listFiles(`${EXT}/locales`, ".json");
+    ok(locales10.length === 18, `v10: 18 theme locale files (${locales10.length})`);
+    for (const lf of locales10) {
+      const v = JSON.parse(read(`${EXT}/locales/${lf}`)).delivery?.deliver_to;
+      ok(
+        typeof v === "string" && v.length > 0,
+        `v10: ${lf} carries a non-empty delivery.deliver_to`,
+      );
+    }
+    // The two [hidden]-toggled selector elements need the v6.8.1 display
+    // guard (base display rules would defeat the hidden attribute).
+    const css10 = read(CSS);
+    ok(
+      css10.includes(".cx-usloc__pop[hidden] {\n  display: none !important;\n}"),
+      "v10: .cx-usloc__pop[hidden] display guard present in the CSS",
+    );
+    ok(
+      css10.includes(".cx-usloc__attr[hidden] {\n  display: none !important;\n}"),
+      "v10: .cx-usloc__attr[hidden] display guard present in the CSS",
+    );
+    // Persistence + proxy-path literals in BOTH theme JS twins (the sim
+    // byte-compares the functions; these pin the exact storage contract).
+    for (const jf of [CART_JS, PDP_JS]) {
+      const src10 = read(jf);
+      for (const lit of ["'cx_geo:1'", "'cx:us_state'", "'apps/cellexia/geo'"]) {
+        ok(src10.includes(lit), `v10: ${jf} carries the pinned literal ${lit}`);
+      }
+    }
+    // Settings model: the usStates sub-object resolves in the REAL
+    // emission and arrives with the safe defaults (module OFF; selector +
+    // federal calendar pre-armed for the day it is switched on).
+    for (const p of [
+      "deliveryEstimate.usStates.enabled",
+      "deliveryEstimate.usStates.selector",
+      "deliveryEstimate.usStates.federalHolidays",
+      "deliveryEstimate.usStates.extraHolidays",
+      "deliveryEstimate.usStates.byState",
+    ]) {
+      ok(resolves(p), `v10: cfg path resolves in the real emission: ${p}`);
+    }
+    ok(
+      DEF.deliveryEstimate?.usStates?.enabled === false &&
+        DEF.deliveryEstimate?.usStates?.selector === true &&
+        DEF.deliveryEstimate?.usStates?.federalHolidays === true,
+      "v10: usStates module arrives OFF with selector + federal defaults on",
+    );
+  }
 }
 
 // ================================================= 6. ESCAPE DISCIPLINE
@@ -1993,12 +2424,23 @@ const EVIDENCE = {
     trSrcB.includes('ignore_tags: ["cx"]') && !trSrcB.includes('ignore_tags: "cx"'),
     "v8.13c: ignore_tags sent as a JSON array, never the form-encoded string",
   );
-  ok(
-    read("app/services/proof-translation.server.ts").includes(
-      "{ protectPlaceholders: false }",
-    ),
-    "v8.13b: the proof-translation path opts out of placeholder freezing",
-  );
+  // v8.19 refined the v8.13b opt-out: PROSE batches stay unprotected
+  // (brace-styled quote words must translate) while the merchant COPY
+  // batches protect the {n} count token — pinned as the two group
+  // literals, never a single flag.
+  {
+    const ptSrc = read("app/services/proof-translation.server.ts");
+    ok(
+      ptSrc.includes(
+        'rows: pending.filter((source) => source.resourceType !== "copy"),\n        protect: false,',
+      ) &&
+        ptSrc.includes(
+          'rows: pending.filter((source) => source.resourceType === "copy"),\n        protect: true,',
+        ) &&
+        ptSrc.includes("{ protectPlaceholders: group.protect }"),
+      "v8.13b/v8.19: prose batches unprotected, copy batches protect {n}",
+    );
+  }
   // Save-time canonicalization: {Name}/{ name }/{{name}}/{{ name }} collapse
   // to the exact token Liquid substitutes — in BOTH text funnels (review F5).
   ok(

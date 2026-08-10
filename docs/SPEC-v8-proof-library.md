@@ -257,6 +257,63 @@ number-in-string; CLDR plural only for endo.count_headline. Age ranges/countries
 as data (country via Intl.DisplayNames like az ships-from).
 Compact additions: `survey.more_outcomes` ("+ @@N@@ more outcomes").
 
+v8.17 endo rewrite + additions (last keys of the group): eyebrow is now
+"Dermatologist recommended", count_headline is now "{{ n }} dermatologists recommend
+Cellexia" (+ CLDR one; pl/ro/ar/ja keep their form sets); NEW `endo.description`
+("Verified recommendations from licensed dermatologists. Read what they have to say
+about the product, Cellexia and its approach to skincare." — rendered under the wall
+headline, full density only), `endo.badge_headline` (CLDR, "Recommended by {{ n }}
+dermatologists"), `endo.badge_link` ("Read their professional assessments"),
+`endo.badge_alt` ("Verified professional assessments" — the non-link line when
+badgeShowLink is off). BYTE EXCEPTION: el.json sits 6B under the 15,000B locale
+budget (Shopify hard cap 15,360B) — el ships badge_headline as blank strings (the JS
+falls back to count_headline, still native Greek) and a blank badge_alt; the NEXT
+Greek addition must trim existing el copy first. ar.json is minified via
+MINIFIED_LOCALES in scripts/gen-ships-from-grammar.mjs (el precedent).
+Settings additions (dermEndorsements, v8.17): badgeEnabled (false) / badgeShowLink
+(true) + six copy overrides copyEyebrow/copyHeadline/copyDescription/
+copyBadgeHeadline/copyBadgeLink/copyBadgeNoLink ("" = translated default; served as
+entered in every language; {n} in the two headline fields = the live endorsement
+total). Island members: "bd":1 / "bk":0 (lean, non-default only) + str
+desc/bh1/bh2/bl/bv defaults and oe/oh/od/ob/ol/on overrides. The badge mounts before
+`.pdp__info .pdp__images--mobile` (see theme-integration.md), product pages only,
+only after the wall mounted (its link smooth-scrolls to the wall), impression rides
+the existing derm_endorsements beacon (link clicks send type "click").
+
+v8.18 BADGE DESIGNS: dermEndorsements.badgeStyle (BADGE_STYLES = classic |
+choice | slim | choice_compact, default classic = the v8.17 look, island lean
+member "bst" 1/2/3). "choice" = the Dermatologists' Choice panel (cream tint,
+laurel + caduceus serif title — the TITLE REUSES endo.eyebrow/copyEyebrow, one
+phrase two surfaces, zero extra locale bytes — bold <strong> count, underlined
+ink link, credential chip as a centered line under the crown: the buy-box column
+is 300-470px, a mock-style absolute top-right chip cannot fit); "slim" = one-line
+pill bar (3 portraits + "+N" spillover counter = total minus shown, numeric only,
+no locale string); "choice_compact" = two tight rows (caduceus + title left, chip
+right, then portraits + body). ONE new locale key `endo.badge_chip` ("Licensed
+dermatologists" ×18; el REAL — funded by trimming the el description + a terser
+link label; el.json 14,993B of the 15,000 budget: el is a HARD WALL now) +
+settings copyBadgeChip override ("" = catalog default; blank catalog string
+hides the chip). All copy substitution shared through endoBadgeHeadParts
+(global @@N@@, <strong> wrap for the choice styles).
+
+v8.19 COPY TRANSLATIONS: the seven merchant copy overrides ride the v8.11
+DeepL system as the "copy" scope — resourceType "copy", fixed resourceId
+COPY_RESOURCE_ID ("dermEndorsements"), sources loaded from getSettings (the
+same canonical funnel the island emits, so digests agree). Copy batches run
+WITH protectPlaceholders ({n} survives DeepL); prose batches stay unprotected
+— never mix the two in one batch. Serving: the endorsements proxy, when
+?locale= is present and any copy override is set, overlays fresh translations
+and emits them as the lean payload.copy member under the ISLAND'S OWN o*
+codes (oh/ob get the {n}→@@N@@ replace mirrored from Liquid); the storefront
+merges via endoApplyCopy (whitelist, non-blank strings) before building, so
+wall + badge render the page-locale text. Digest-stale rows are skipped —
+an edited field serves its new primary text until re-translated. Admin: the
+copy card fires translate-on-save (copyTouchedRef — only when copy text
+changed), the tab's Translate button + header coverage include the copy
+scope, and a ProofTranslationsSection under the card gives per-locale manual
+review (manual rows never overwritten; blank deletes). Zero locale-file and
+zero Liquid bytes — translations ship via proxy JSON only.
+
 ## 7. Validation
 
 - New sims: `proof-gallery.cjs` (vm-extract cellexia-proof.js renderers: press rotate,

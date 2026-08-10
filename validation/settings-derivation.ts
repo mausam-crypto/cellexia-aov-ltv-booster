@@ -1,5 +1,5 @@
 /**
- * Settings-derivation + 33-key flip proof (repo-resident port of the
+ * Settings-derivation + 35-key flip proof (repo-resident port of the
  * surviving scratchpad proof v68-settings-derivation-proof.ts — the rest
  * of that suite was wiped by OS tmp cleanup, which is why this file lives
  * in validation/ now).
@@ -7,7 +7,7 @@
  * Executes the REAL app/models/settings.server.ts (loaded live via
  * validation/lib/settings-loader.ts, prisma stubbed with a throwing proxy
  * — no mocks of the model itself) and proves:
- *   1. FEATURE_KEYS has 33 keys (v8: press + derm_endorsements),
+ *   1. FEATURE_KEYS has 35 keys (v9: checkout_customs + checkout_tracked),
  *      az_ships_from right after az_stock_line;
  *   2. AMAZON_FLAG_FIELDS carries shipsFrom in the FEATURE_KEYS az_* order;
  *   3. DEFAULT_SETTINGS.amazon.shipsFrom === false (safe-by-default) and
@@ -17,8 +17,8 @@
  *      .mode/.markets, plus the untouched shared warehouse paths);
  *   5. sanitize: non-boolean shipsFrom falls back to false; a boolean
  *      survives; marketScopes.az_ships_from selected-mode round-trips;
- *   6. FEATURE_DEFS get/set round-trip + FEATURE_RAW_FIELD arm for ALL 33
- *      keys (the flip-test count tripwire, 31 -> 33 in v8);
+ *   6. FEATURE_DEFS get/set round-trip + FEATURE_RAW_FIELD arm for ALL 35
+ *      keys (the flip-test count tripwire, 31 -> 33 in v8, 33 -> 35 in v9);
  *   7. snapshotFlags/restoreFlags round-trips shipsFrom, and an older
  *      snapshot without amazonFlags leaves shipsFrom untouched;
  *   8. mergeSettings over a stored pre-v6.8 blob yields shipsFrom:false
@@ -56,13 +56,22 @@ function ok(cond: boolean, label: string) {
 const clone = <T,>(x: T): T => structuredClone(x);
 
 // --- 1. key inventory ------------------------------------------------------
-ok(FEATURE_KEYS.length === 33, `FEATURE_KEYS has 33 keys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 35, `FEATURE_KEYS has 35 keys (got ${FEATURE_KEYS.length})`);
 ok(FEATURE_KEYS.includes("az_ships_from"), "az_ships_from is a FeatureKey");
 ok(
   FEATURE_KEYS.indexOf("az_ships_from") === FEATURE_KEYS.indexOf("az_stock_line") + 1,
   "az_ships_from sits right after az_stock_line",
 );
-ok(new Set(FEATURE_KEYS).size === 33, "FEATURE_KEYS has no duplicates");
+ok(new Set(FEATURE_KEYS).size === 35, "FEATURE_KEYS has no duplicates");
+// v9 trust-module V2 rows sit right after the module key, mirroring the
+// checkout block's order in the union.
+ok(
+  FEATURE_KEYS.indexOf("checkout_customs") ===
+    FEATURE_KEYS.indexOf("checkout_trust") + 1 &&
+    FEATURE_KEYS.indexOf("checkout_tracked") ===
+      FEATURE_KEYS.indexOf("checkout_customs") + 1,
+  "checkout_customs / checkout_tracked sit right after checkout_trust",
+);
 
 // --- 2. amazon flag fields mirror the az_* order ---------------------------
 const azKeys = FEATURE_KEYS.filter((k: string) => k.startsWith("az_"));
@@ -111,8 +120,48 @@ for (const path of [
   "marketScopes.az_ships_from.mode",
   "marketScopes.az_ships_from.markets",
   "marketScopes.az_stock_line.mode",
+  // v9: the checkout-trust V2 gates read these from the shop metafield
+  // (full-settings spread — same emission object).
+  "checkoutTrust.showCustoms",
+  "checkoutTrust.showTracked",
+  "marketScopes.checkout_customs.mode",
+  "marketScopes.checkout_customs.markets",
+  "marketScopes.checkout_tracked.mode",
 ]) {
   ok(resolves(path), `cfg path resolves in the real emission: ${path}`);
+}
+
+// --- 4b. v9 checkout-trust V2 row flags -------------------------------------
+{
+  ok(
+    DEFAULT_SETTINGS.checkoutTrust.showCustoms === false &&
+      DEFAULT_SETTINGS.checkoutTrust.showTracked === false,
+    "v9 rows default OFF (a pre-V2 store upgrades with zero new checkout content)",
+  );
+  // Back-compat: a stored pre-v9 blob (no row keys) merges to the off
+  // defaults — existing stores keep today's module untouched.
+  const stored = clone(DEFAULT_SETTINGS) as any;
+  stored.checkoutTrust.enabled = true;
+  delete stored.checkoutTrust.showCustoms;
+  delete stored.checkoutTrust.showTracked;
+  const merged = mergeSettings(clone(DEFAULT_SETTINGS), stored);
+  ok(
+    merged.checkoutTrust.showCustoms === false &&
+      merged.checkoutTrust.showTracked === false &&
+      merged.checkoutTrust.enabled === true,
+    "pre-v9 store merges to rows-off with the master preserved",
+  );
+  // Non-boolean garbage coerces back to the defaults through the merge
+  // typeof guard (the checkoutTrust slice has no bespoke sanitize block).
+  const dirty = clone(DEFAULT_SETTINGS) as any;
+  dirty.checkoutTrust.showCustoms = "yes";
+  dirty.checkoutTrust.showTracked = 1;
+  const cleaned = mergeSettings(clone(DEFAULT_SETTINGS), dirty);
+  ok(
+    cleaned.checkoutTrust.showCustoms === false &&
+      cleaned.checkoutTrust.showTracked === false,
+    "non-boolean v9 row flags coerce to the off defaults",
+  );
 }
 
 // --- 5. sanitize -----------------------------------------------------------
@@ -210,6 +259,153 @@ for (const path of [
     "pre-v8.15 store merges to the end-of-page default",
   );
 }
+// v8.17: endorsement badge flags + merchant copy overrides.
+{
+  ok(
+    DEFAULT_SETTINGS.dermEndorsements.badgeEnabled === false &&
+      DEFAULT_SETTINGS.dermEndorsements.badgeShowLink === true,
+    "badge defaults: off, link on",
+  );
+  const copyFields = [
+    "copyEyebrow",
+    "copyHeadline",
+    "copyDescription",
+    "copyBadgeHeadline",
+    "copyBadgeLink",
+    "copyBadgeNoLink",
+    "copyBadgeChip",
+  ] as const;
+  for (const field of copyFields) {
+    ok(
+      (DEFAULT_SETTINGS.dermEndorsements as any)[field] === "",
+      `dermEndorsements.${field} defaults to '' (translated built-in copy)`,
+    );
+    const dirty = clone(DEFAULT_SETTINGS) as any;
+    dirty.dermEndorsements[field] = 7;
+    ok(
+      sanitizeSettings(dirty, DEFAULT_SETTINGS).dermEndorsements[field] === "",
+      `sanitize: non-string ${field} -> ''`,
+    );
+    const padded = clone(DEFAULT_SETTINGS) as any;
+    padded.dermEndorsements[field] = "  padded copy  ";
+    ok(
+      sanitizeSettings(padded, DEFAULT_SETTINGS).dermEndorsements[field] ===
+        "padded copy",
+      `sanitize: ${field} is trimmed`,
+    );
+  }
+  for (const flag of ["badgeEnabled", "badgeShowLink"] as const) {
+    const dirty = clone(DEFAULT_SETTINGS) as any;
+    dirty.dermEndorsements[flag] = "yes";
+    ok(
+      sanitizeSettings(dirty, DEFAULT_SETTINGS).dermEndorsements[flag] ===
+        DEFAULT_SETTINGS.dermEndorsements[flag],
+      `sanitize: non-boolean ${flag} -> default`,
+    );
+  }
+  // {n} canonicalization on the two headline fields ONLY: {N}/{ n }/{{n}}/
+  // {{ N }} all self-heal to the exact token Liquid substitutes; the same
+  // variants in the non-headline fields are merchant text, left alone.
+  const variants = clone(DEFAULT_SETTINGS) as any;
+  variants.dermEndorsements.copyHeadline = "{N} experts, { n } fans, {{n}} docs, {{ N }} pros";
+  variants.dermEndorsements.copyBadgeHeadline = "Backed by {{ n }} experts";
+  variants.dermEndorsements.copyBadgeLink = "See all { n } reviews";
+  const healed = sanitizeSettings(variants, DEFAULT_SETTINGS).dermEndorsements;
+  ok(
+    healed.copyHeadline === "{n} experts, {n} fans, {n} docs, {n} pros",
+    "sanitize: copyHeadline brace variants canonicalize to {n}",
+  );
+  ok(
+    healed.copyBadgeHeadline === "Backed by {n} experts",
+    "sanitize: copyBadgeHeadline brace variants canonicalize to {n}",
+  );
+  ok(
+    healed.copyBadgeLink === "See all { n } reviews",
+    "sanitize: non-headline copy keeps its braces verbatim",
+  );
+  // {name} tokens must NOT be eaten by the {n} regex.
+  const named = clone(DEFAULT_SETTINGS) as any;
+  named.dermEndorsements.copyHeadline = "{n} recommend {name}";
+  ok(
+    sanitizeSettings(named, DEFAULT_SETTINGS).dermEndorsements.copyHeadline ===
+      "{n} recommend {name}",
+    "sanitize: {name} survives the {n} canonicalization",
+  );
+  // Caps: single-line 120/160/200, description 1000.
+  const capped = clone(DEFAULT_SETTINGS) as any;
+  capped.dermEndorsements.copyEyebrow = "x".repeat(500);
+  capped.dermEndorsements.copyHeadline = "x".repeat(500);
+  capped.dermEndorsements.copyBadgeHeadline = "x".repeat(500);
+  capped.dermEndorsements.copyDescription = "x".repeat(5000);
+  const cut = sanitizeSettings(capped, DEFAULT_SETTINGS).dermEndorsements;
+  ok(
+    cut.copyEyebrow.length === 120 &&
+      cut.copyHeadline.length === 200 &&
+      cut.copyBadgeHeadline.length === 160 &&
+      cut.copyDescription.length === 1000,
+    "sanitize: copy caps enforced (120/200/160/1000)",
+  );
+  // The cap counts CODE POINTS: an astral char (emoji) straddling the cap
+  // boundary must never be split into a lone surrogate — that would make
+  // the settings blob unserializable as metafield JSON (review catch).
+  const emoji = clone(DEFAULT_SETTINGS) as any;
+  emoji.dermEndorsements.copyEyebrow = "x".repeat(119) + "💜💜";
+  const kept = sanitizeSettings(emoji, DEFAULT_SETTINGS).dermEndorsements
+    .copyEyebrow;
+  ok(
+    Array.from(kept).length === 120 &&
+      kept.endsWith("💜") &&
+      JSON.parse(JSON.stringify(kept)) === kept,
+    "sanitize: caps count code points — no lone surrogate at the boundary",
+  );
+  // Back-compat: a stored pre-v8.17 blob (none of the new fields) merges
+  // to the safe defaults — badge stays OFF, copy stays built-in.
+  const stored = clone(DEFAULT_SETTINGS) as any;
+  delete stored.dermEndorsements.badgeEnabled;
+  delete stored.dermEndorsements.badgeShowLink;
+  for (const field of copyFields) delete stored.dermEndorsements[field];
+  const merged = mergeSettings(clone(DEFAULT_SETTINGS), stored).dermEndorsements;
+  ok(
+    merged.badgeEnabled === false &&
+      merged.badgeShowLink === true &&
+      merged.copyEyebrow === "",
+    "pre-v8.17 store merges to badge-off + built-in copy",
+  );
+  // v8.18 badge design enum — closed set, fail-closed to classic.
+  ok(
+    DEFAULT_SETTINGS.dermEndorsements.badgeStyle === "classic",
+    "badgeStyle defaults to classic",
+  );
+  for (const style of ["choice", "slim", "choice_compact"] as const) {
+    const pick = clone(DEFAULT_SETTINGS) as any;
+    pick.dermEndorsements.badgeStyle = style;
+    ok(
+      sanitizeSettings(pick, DEFAULT_SETTINGS).dermEndorsements.badgeStyle ===
+        style,
+      `sanitize: badgeStyle "${style}" survives`,
+    );
+  }
+  for (const bad of ["fancy", 7, null, "", "CHOICE"] as const) {
+    const dirty = clone(DEFAULT_SETTINGS) as any;
+    dirty.dermEndorsements.badgeStyle = bad;
+    ok(
+      sanitizeSettings(dirty, DEFAULT_SETTINGS).dermEndorsements.badgeStyle ===
+        "classic",
+      `sanitize: badgeStyle ${JSON.stringify(bad)} -> classic`,
+    );
+  }
+  const storedStyle = clone(DEFAULT_SETTINGS) as any;
+  delete storedStyle.dermEndorsements.badgeStyle;
+  delete storedStyle.dermEndorsements.copyBadgeChip;
+  const mergedStyle = mergeSettings(
+    clone(DEFAULT_SETTINGS),
+    storedStyle,
+  ).dermEndorsements;
+  ok(
+    mergedStyle.badgeStyle === "classic" && mergedStyle.copyBadgeChip === "",
+    "pre-v8.18 store merges to classic + built-in chip",
+  );
+}
 {
   const scoped = clone(DEFAULT_SETTINGS);
   scoped.marketScopes.az_ships_from = { mode: "selected", markets: ["switzerland"] };
@@ -239,7 +435,171 @@ for (const path of [
   );
 }
 
-// --- 6. the 33-key flip round-trip (rebuilt flip-test tripwire) -------------
+// --- 5b. v10 deliveryEstimate.usStates (US state delivery sub-module) -------
+// The state layer rides delivery_estimate as a SUB-module (the boughtOnCards
+// precedent — no FeatureKey, none of the 35-count pins move). Sanitize is
+// shape-only by SPEC design: '02-30'-style calendar-impossible dates pass
+// (same philosophy as the cutoff regex), keys are any AA..ZZ code (never
+// checked against a state list server-side), and the resolvers — not the
+// sanitizer — own the fail-OPEN discard of incoherent merged windows.
+{
+  // Inert defaults: module OFF, selector + federal calendar pre-armed.
+  const us = DEFAULT_SETTINGS.deliveryEstimate.usStates;
+  ok(
+    us.enabled === false &&
+      us.selector === true &&
+      us.federalHolidays === true &&
+      Array.isArray(us.extraHolidays) &&
+      us.extraHolidays.length === 0 &&
+      typeof us.byState === "object" &&
+      Object.keys(us.byState).length === 0,
+    "v10: usStates defaults are the inert module (off / selector on / federal on / no extras / no states)",
+  );
+  for (const path of [
+    "deliveryEstimate.usStates.enabled",
+    "deliveryEstimate.usStates.selector",
+    "deliveryEstimate.usStates.federalHolidays",
+    "deliveryEstimate.usStates.extraHolidays",
+    "deliveryEstimate.usStates.byState",
+  ]) {
+    ok(resolves(path), `v10: cfg path resolves in the real emission: ${path}`);
+  }
+
+  // Module switches: non-boolean garbage coerces back to the defaults;
+  // module extraHolidays keep only shape-valid dates ('02-30' passes by
+  // design, '13-40'/junk/non-strings drop, empty array is a real value).
+  {
+    const dirty = clone(DEFAULT_SETTINGS) as any;
+    dirty.deliveryEstimate.usStates.enabled = "yes";
+    dirty.deliveryEstimate.usStates.selector = 1;
+    dirty.deliveryEstimate.usStates.federalHolidays = "false";
+    dirty.deliveryEstimate.usStates.extraHolidays = [
+      "13-40",
+      "01-15",
+      "02-30",
+      "2026-02-30",
+      "2026-13-01",
+      "junk",
+      7,
+    ];
+    const cleaned = sanitizeSettings(dirty, DEFAULT_SETTINGS);
+    ok(
+      cleaned.deliveryEstimate.usStates.enabled === false &&
+        cleaned.deliveryEstimate.usStates.selector === true &&
+        cleaned.deliveryEstimate.usStates.federalHolidays === true,
+      "v10 sanitize: non-boolean module switches -> defaults",
+    );
+    ok(
+      JSON.stringify(cleaned.deliveryEstimate.usStates.extraHolidays) ===
+        JSON.stringify(["01-15", "02-30", "2026-02-30"]),
+      "v10 sanitize: module extraHolidays shape-validated ('02-30' passes, junk drops)",
+    );
+  }
+
+  // byState entries: per-field keep-if-valid, PARTIAL by design.
+  {
+    const dirty = clone(DEFAULT_SETTINGS) as any;
+    dirty.deliveryEstimate.usStates.byState = {
+      ca: { minDays: 1, cutoff: "25:00" }, // lowercase key + invalid cutoff
+      C: { minDays: 1 }, // 1-letter key
+      NY: { minDays: 1.5, cutoff: "12:30" }, // fractional min dropped, cutoff kept
+      TX: { minDays: 5, maxDays: 2 }, // within-entry repair
+      FL: {}, // empty entry
+      WA: { minDays: "3", maxDays: 99 }, // nothing valid left
+      AK: { extraHolidays: [] }, // ONLY an empty extras array: a real value
+      NV: { extraHolidays: ["13-01", "02-30", "2026-05-06", "junk"] },
+    };
+    const by = sanitizeSettings(dirty, DEFAULT_SETTINGS).deliveryEstimate
+      .usStates.byState;
+    ok(
+      JSON.stringify(by.CA) === JSON.stringify({ minDays: 1 }) && !("ca" in by),
+      "v10 sanitize: lowercase key upcased, bad cutoff dropped from the entry",
+    );
+    ok(!("C" in by), "v10 sanitize: 1-letter key dropped");
+    ok(
+      JSON.stringify(by.NY) === JSON.stringify({ cutoff: "12:30" }),
+      "v10 sanitize: fractional minDays dropped while the valid cutoff survives",
+    );
+    ok(
+      JSON.stringify(by.TX) === JSON.stringify({ minDays: 5, maxDays: 5 }),
+      "v10 sanitize: within-entry maxDays repaired up to minDays",
+    );
+    ok(!("FL" in by), "v10 sanitize: empty entry dropped");
+    ok(!("WA" in by), "v10 sanitize: entry with nothing valid left dropped");
+    ok(
+      JSON.stringify(by.AK) === JSON.stringify({ extraHolidays: [] }),
+      "v10 sanitize: an entry with ONLY extraHolidays: [] is KEPT (a real value)",
+    );
+    ok(
+      JSON.stringify(by.NV) === JSON.stringify({ extraHolidays: ["02-30", "2026-05-06"] }),
+      "v10 sanitize: per-entry extraHolidays shape-validated ('02-30' passes)",
+    );
+  }
+
+  // extraHolidays caps (review fix C6): shape-filter FIRST, then slice —
+  // 60 US-wide / 40 per state, so the settings blob can never grow past the
+  // json-metafield value cap through these lists (invalid entries never
+  // consume cap slots).
+  {
+    const dirty = clone(DEFAULT_SETTINGS) as any;
+    const dates = (n: number, junkFirst: boolean) => {
+      const out: string[] = junkFirst ? ["junk", "13-40"] : [];
+      for (let i = 0; i < n; i += 1) {
+        out.push(`${2030 + Math.floor(i / 28)}-01-${String((i % 28) + 1).padStart(2, "0")}`);
+      }
+      return out;
+    };
+    dirty.deliveryEstimate.usStates.extraHolidays = dates(61, true);
+    dirty.deliveryEstimate.usStates.byState = { CA: { extraHolidays: dates(41, true) } };
+    const capped = sanitizeSettings(dirty, DEFAULT_SETTINGS).deliveryEstimate.usStates;
+    ok(
+      capped.extraHolidays.length === 60 &&
+        capped.extraHolidays[0] === "2030-01-01" &&
+        capped.extraHolidays[59] === "2032-01-04",
+      "v10 sanitize: module extraHolidays capped at 60 AFTER shape filtering (first 60 valid kept, junk costs nothing)",
+    );
+    ok(
+      (capped.byState.CA.extraHolidays as string[]).length === 40 &&
+        (capped.byState.CA.extraHolidays as string[])[39] === "2031-01-12",
+      "v10 sanitize: per-state extraHolidays capped at 40 AFTER shape filtering",
+    );
+  }
+
+  // byState is a DYNAMIC_RECORD_KEYS record: the merge replaces it
+  // WHOLESALE (editors always send the FULL map) — never per-key deep.
+  {
+    const base = clone(DEFAULT_SETTINGS) as any;
+    base.deliveryEstimate.usStates.byState = {
+      CA: { minDays: 2, maxDays: 9 },
+      NY: { minDays: 3 },
+    };
+    const patch = clone(DEFAULT_SETTINGS) as any;
+    patch.deliveryEstimate.usStates.byState = { CA: { maxDays: 5 } };
+    const merged = mergeSettings(base, patch);
+    ok(
+      JSON.stringify(merged.deliveryEstimate.usStates.byState) ===
+        JSON.stringify({ CA: { maxDays: 5 } }),
+      "v10 merge: byState replaced wholesale (stale NY row and CA.minDays gone)",
+    );
+  }
+
+  // Back-compat: a stored pre-v10 blob (no usStates at all) merges to the
+  // inert defaults — existing stores upgrade with the module OFF.
+  {
+    const stored = clone(DEFAULT_SETTINGS) as any;
+    delete stored.deliveryEstimate.usStates;
+    const merged = mergeSettings(clone(DEFAULT_SETTINGS), stored);
+    ok(
+      merged.deliveryEstimate.usStates.enabled === false &&
+        merged.deliveryEstimate.usStates.selector === true &&
+        merged.deliveryEstimate.usStates.federalHolidays === true &&
+        Object.keys(merged.deliveryEstimate.usStates.byState).length === 0,
+      "v10: pre-v10 store merges to the inert usStates defaults",
+    );
+  }
+}
+
+// --- 6. the 35-key flip round-trip (rebuilt flip-test tripwire) -------------
 for (const key of FEATURE_KEYS) {
   const s = clone(DEFAULT_SETTINGS);
   FEATURE_DEFS[key].set(s, true);
@@ -294,4 +654,4 @@ if (failures > 0) {
   console.error(`\n${failures}/${checks} CHECKS FAILED`);
   process.exit(1);
 }
-console.log(`ALL ${checks} CHECKS PASSED (settings derivation + 33-key flip proof)`);
+console.log(`ALL ${checks} CHECKS PASSED (settings derivation + 35-key flip proof)`);

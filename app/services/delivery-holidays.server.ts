@@ -94,3 +94,58 @@ export const GLOBAL_DELIVERY_EXCLUSIONS: readonly string[] = [
   "12-31",
   "01-01",
 ];
+
+/**
+ * US federal holiday calendar for the v10 US-state delivery module (applied
+ * only while deliveryEstimate.usStates is enabled with federalHolidays on).
+ *
+ * SCOPE — the calendar splits in two. The FIXED dates below are deliberately
+ * identical to the US row of DELIVERY_HOLIDAYS (Dec 25 and Jan 1 are omitted
+ * because the global exclusions above already cover them) but the two lists
+ * stay independent — never reference one from the other. The six MOVABLE
+ * nth-weekday holidays are computed by usFederalMovable(): the v5.9 "no
+ * movable feasts" rule stands for the 25-country table, but nth-weekday-of-
+ * month is exact calendar arithmetic, not an approximation, so the US module
+ * may compute these safely.
+ *
+ * MIRRORING — this calendar (data + computation) is mirrored in FOUR places
+ * the validation harness byte-/behavior-compares: the ES5 twins
+ * `deliveryUsFederal` in cellexia-pdp.js and cellexia-cart.js, and the
+ * `usFederalMovable` helper in extensions/checkout-delivery/src/delivery-engine.ts
+ * plus its byte-identical copy in extensions/checkout-trust/src/
+ * delivery-engine.ts. Change one, change all.
+ */
+/** Fixed-date US federal holidays not already globally excluded. MM-DD. */
+export const US_FEDERAL_FIXED = ["06-19", "07-04", "11-11"];
+/** Movable federal holidays as [month(1-12), weekday(ISO 1-7), ordinal] — ordinal 5 = last. */
+export const US_FEDERAL_RULES: Array<[number, number, number]> = [
+  [1, 1, 3], // MLK — 3rd Monday of January
+  [2, 1, 3], // Presidents' Day — 3rd Monday of February
+  [5, 1, 5], // Memorial Day — LAST Monday of May
+  [9, 1, 1], // Labor Day — 1st Monday of September
+  [10, 1, 2], // Columbus / Indigenous Peoples' Day — 2nd Monday of October
+  [11, 4, 4], // Thanksgiving — 4th Thursday of November
+];
+
+/**
+ * The six movable US federal holidays of `year` as "YYYY-MM-DD" strings, in
+ * US_FEDERAL_RULES order. Pure UTC calendar math (Date.UTC + getUTC* only —
+ * no Intl, no timezone: an nth-weekday-of-month date is the same in every
+ * zone).
+ */
+export function usFederalMovable(year: number): string[] {
+  const dates: string[] = [];
+  for (const [month, weekday, ordinal] of US_FEDERAL_RULES) {
+    // ISO weekday (1=Mon .. 7=Sun) of the 1st of the month.
+    const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay() || 7;
+    let day = 1 + ((weekday - first + 7) % 7) + (ordinal - 1) * 7;
+    // Ordinal 5 = "last": only there can `day` overflow the month; step back
+    // a week until it fits (day 0 of the next month = this month's length).
+    const monthDays = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    while (day > monthDays) day -= 7;
+    const mm = month < 10 ? `0${month}` : `${month}`;
+    const dd = day < 10 ? `0${day}` : `${day}`;
+    dates.push(`${year}-${mm}-${dd}`);
+  }
+  return dates;
+}

@@ -70,6 +70,31 @@
       "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
       "reason": "v8.13b {name} placeholder in custom text (merchant catch: 'Tested on {name} itself' rendered the literal braces): the 14 merchant-entered text substitution sites of the survey island (title/question/intro/outcome statements/methodology, plus verifier via a single assign-site replace covering both its emissions) and study island (title/concern/subject/footnote/result labels/result suffixes/lab name/instruments) gain `| replace: '{name}', cx_pname` before | json, so custom copy can interpolate the per-language display name exactly like the built-in lines. No-op for text without the token.",
       "wave": "v8.13b"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+      "reason": "v10 US delivery by state: new cx_us assign gated on cx_country == 'US' and cx_de.usStates.enabled == true; the delivery member gains the conditional nested us member ({% if cx_us %}, \"us\": {{ cx_us | json }}{% endif %} — nested, so no new top-level cfg key) and deliveryStrings gains \"delivery.deliver_to\" (label only, NOT a required key — a missing string hides only the selector). Pinned by harness section-5 v10 pins + sims/us-state-delivery.mjs.",
+      "wave": "v10"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+      "reason": "v10 US delivery by state: new cx_us assign gated on cx_country == 'US' and cx_de.usStates.enabled == true; the delivery member gains the conditional nested us member ({% if cx_us %}, \"us\": {{ cx_us | json }}{% endif %}) and deliveryStrings gains \"delivery.deliver_to\" — the exact twin of the pdp-booster emission. Pinned by harness section-5 v10 pins + sims/us-state-delivery.mjs.",
+      "wave": "v10"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
+      "reason": "v10 US delivery by state: the az standalone delivery member gains the same cx_us gate + conditional nested us member ({% if cx_us %}, \"us\": {{ cx_us | json }}{% endif %}) and its deliveryStrings map gains \"delivery.deliver_to\", so az-only pages keep the state promise (azGapFillConfig copies cfg.delivery wholesale — the nested us rides along). Pinned by harness section-5 v10 pins + sims/us-state-delivery.mjs.",
+      "wave": "v10"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+      "reason": "v10 US state overlay: deliveryConfig gains the fail-OPEN state layer (per-field keep-if-valid candidate merge, whole-entry discard on an incoherent window, hidden:true -> null, cutoff -> cutoffMinutes + dispatchDays partial dispatch override, dc.extra/dc.usFederal/dc.us) and deliveryQualifies the dc.extra + dc.usFederal clauses; new byte-twinned US_STATE_NAMES + deliveryUs* region (deliveryUsFederal movable-holiday math, choice/geo persistence via localStorage 'cx:us_state' + sessionStorage 'cx_geo:1' 6h TTL, single-flight geo kick to 'apps/cellexia/geo', 'Deliver to' selector built createElement/textContent-only); dispatchSchedule substitutes the RESOLVED state cutoff/dispatchDays; CX_AZ_ICONS gains 'pin'; mountDelivery/azMountDeliveryLine attach the selector + geo kick. v10 fix wave adds byte-twinned deliveryUsPrime (synchronous pre-mount state resolution, called at init() top before any mount/beacon), deliveryUsBroadcast + deliveryUsEventToken (the 'cx:us-state' cross-bundle fan-out) and deliveryUsPointerCoarse (coarse-close / fine-stay-open selector change semantics), plus the hidden-state option filter and the stored-hidden-choice auto-clear. Pinned by sims/us-state-delivery.mjs (twins, 4-way federal parity, overlay matrix, geo + prime units, dispatchSchedule coherence, selector DOM incl. pointer split + fan-out, mutants M1-M8), sims/delivery-businessdays.mjs FUNCS extraction and harness v10 pins.",
+      "wave": "v10"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+      "reason": "v10 US state overlay, byte-twin of the cellexia-pdp.js change: deliveryConfig state layer + deliveryQualifies dc.extra/dc.usFederal clauses, the US_STATE_NAMES + deliveryUs* twin region ('cx:us_state'/'cx_geo:1'/'apps/cellexia/geo' literals, selector, geo kick), dispatchSchedule resolved-state cutoff/dispatchDays substitution, CX_AZ_ICONS 'pin' entry; renderDelivery attaches the selector and kicks the geo hint. v10 fix wave adds the byte-twinned deliveryUsPrime (called at renderInto() top before the render decisions), deliveryUsBroadcast + deliveryUsEventToken 'cx:us-state' fan-out and deliveryUsPointerCoarse close split, plus the hidden-state option filter + stored-hidden-choice auto-clear. First allowlist entry for this file (baseline-clean before v10). Pinned by sims/us-state-delivery.mjs per-symbol twin byte-identity + behavioral matrix on BOTH bundles (incl. the pdp+cart shared-document fan-out pairing), sims/delivery-businessdays.mjs and harness v10 pins.",
+      "wave": "v10"
     }
   ]
 }

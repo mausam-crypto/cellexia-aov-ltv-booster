@@ -35,7 +35,7 @@ under ~3 minutes.
   wave, never as a side effect.
 - **harness.mjs** — structural tripwires, each self-checking against
   vacuity: Liquid byte budget (≤95,000 own budget under Shopify's 102,400
-  cap) + per-file floor/ceiling; PREVIEW COVERAGE (all 33 FEATURE_KEYS
+  cap) + per-file floor/ceiling; PREVIEW COVERAGE (all 35 FEATURE_KEYS
   parsed live from settings.server.ts, each pinned to real storefront
   markers / checkout gates); PICKER COVERAGE (FEATURE_GROUPS, GROUPS,
   CONFIGURE_URL, fallback-group code); CLASS COVERAGE (every emitted cx-*
@@ -59,10 +59,10 @@ under ~3 minutes.
   INVENTORY (manifest-enforced file floors + the pending→required
   ratchet).
 - **settings-derivation.ts** — port of the surviving v6.8 proof: executes
-  the REAL settings.server.ts and proves the 33-key inventory, amazon-flag
+  the REAL settings.server.ts and proves the 35-key inventory, amazon-flag
   mirroring, safe defaults, cfg-path resolution, sanitize round-trips,
-  the 33-key flip tripwire, snapshot/restore, and pre-v6.8 merge
-  back-compat (112 checks).
+  the 35-key flip tripwire, snapshot/restore, and pre-v6.8 merge
+  back-compat .
 - **lib/** — shared helpers: `util.mjs` (normalization, checker,
   live FEATURE_KEYS parser), `settings-loader.ts` (loads the real settings
   model with prisma stubbed into `lib/.gen/`, regenerated from the current
@@ -71,16 +71,22 @@ under ~3 minutes.
 - **sims/** — engine/feature suites that vm-extract the REAL shipped
   functions (never re-implementations) and print `ALL-N-PASSED`:
   dispatch-tz, delivery-businessdays, checkout-delivery-engine,
-  native-dates, plurals, translation-service, crosssell-pipeline, fbt,
-  badge-cards, az-split, subscribed-upgrade, survey-methodology,
-  proof-gallery, proof-server, threshold-snap, flip-test.
-  The eight most safety-critical (dispatch-tz, delivery, plurals,
-  crosssell, az-split, survey-methodology, proof-gallery, proof-server)
-  are mutation-tested: 3+ targeted mutants each, applied to a COPY, all
-  must be caught; the mutants are recorded in each suite's header
-  comment.
+  checkout-trust, native-dates, plurals, translation-service,
+  crosssell-pipeline, fbt, badge-cards, az-split, subscribed-upgrade,
+  survey-methodology, proof-gallery, proof-server, threshold-snap,
+  flip-test.
+  The nine most safety-critical (dispatch-tz, delivery, plurals,
+  crosssell, az-split, survey-methodology, proof-gallery, proof-server,
+  checkout-trust) are mutation-tested: 3+ targeted mutants each, applied
+  to a COPY, all must be caught; the mutants are recorded in each suite's
+  header comment.
 
   Feature batch, two lines each:
+  - **checkout-trust.ts** — v9 trust module V2: delivery-engine twin BYTE
+    parity, row flags fail-closed (pre-V2 configs render unchanged), market
+    gates, compact tracked-date formatter vs an independent Intl path across
+    all 18 languages, 7-key locale parity + V2 copy contract, component
+    pins. Mutation-tested (7 mutants, header comment).
   - **translation-service.ts** — real translation.server.ts vs mock DeepL +
     admin: allowlists, scoped metafield admission, incremental/outdated-only
     runs, manual-edit preservation, per-language independence, quota dedupe.
@@ -134,7 +140,7 @@ under ~3 minutes.
   - **threshold-snap.ts** — real shipping.server.ts vs a mock Admin client:
     the 60.01→60 snap matrix, zone rate rules, lowest-per-market attribution,
     rest-of-world/unmatched zones, never-throw error paths.
-  - **flip-test.ts** — all 33 FeatureKeys through the real settings model:
+  - **flip-test.ts** — all 35 FeatureKeys through the real settings model:
     flip round-trips, market scoping, applyFlipForMarket isolation,
     snapshot/restore, selective restore + the cart overlap group.
   - **sims/lib/** — shared vm-extraction helpers (`extract.cjs`), the

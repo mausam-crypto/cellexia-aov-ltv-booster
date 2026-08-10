@@ -1,7 +1,15 @@
 {
-  "guarantee_title": "{{days}} Tage Geld-zurück-Garantie",
-  "guarantee_body": "Überzeugende Ergebnisse oder Ihr Geld zurück – ganz ohne Rückfragen.",
-  "secure": "Sicherer, SSL-verschlüsselter Checkout",
+  "guarantee_title": {
+    "one": "{{days}} Tag Geld-zurück-Garantie",
+    "other": "{{days}} Tage Geld-zurück-Garantie"
+  },
+  "guarantee_body": {
+    "one": "Nicht zufrieden? Erhalten Sie Ihr Geld innerhalb von einem Tag zurück.",
+    "other": "Nicht zufrieden? Erhalten Sie Ihr Geld innerhalb von {{days}} Tagen zurück."
+  },
+  "secure": "Sicherer, verschlüsselter Checkout",
   "clinical": "Klinisch bestätigte Formeln",
-  "trustpilot": "{{rating}}/5 · {{count}} Bewertungen auf Trustpilot"
+  "trustpilot": "{{rating}}/5 · {{count}} Bewertungen auf Trustpilot",
+  "customs": "Keine Zollgebühren oder zusätzlichen Kosten bei der Lieferung.",
+  "tracked": "Versand mit Sendungsverfolgung · Zustellung garantiert bis {{date}}"
 }

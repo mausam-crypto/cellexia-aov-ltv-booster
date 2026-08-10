@@ -151,7 +151,12 @@ const EXTRACTED = extractAll(SRC, {
     "pfPosInt", "pfPageLocale", "pfRegionName", "pfQuery", "pfProductParams",
     "pfPreviewVerified", "pfBeaconsOff", "pfWhenAllowed", // v8.2: preview contract (V)
     "pressItems", "pressBuildWall", "pressBuildSection",
-    "endoInitials", "endoValidItems", "endoBuildCard", "endoBuildSection",
+    "endoInitials", "endoValidItems", "endoText", "endoBuildCard",
+    "endoBuildSection", // v8.17 badge + v8.18 design builders:
+    "endoBadgeShield", "endoBadgeBuild", "endoBadgeMount",
+    "endoBadgeHeadParts", "endoBadgeAvatars", "endoBadgeOutlineShield",
+    "endoBadgeCaduceus", "endoBadgeLaurel", "endoBadgeCrown",
+    "endoBadgeChip", "endoBadgeTail", "endoApplyCopy",
     "resultsBannerData", "resultsFacetLabel", "resultsParams",
     "resultsValidItems", "resultsMetaLine", "resultsBadges",
     "resultsBuildFrame", "resultsBuildCard", "resultsBuildLightbox",
@@ -220,6 +225,14 @@ const ENDO_STR = {
   shown: "Showing @@SHOWN@@ of @@TOTAL@@",
   more: "Show more",
   read: "Read full endorsement",
+  // v8.17 additions as the island ships them (desc + badge strings; the
+  // o* merchant overrides ride the same map and default to null/blank).
+  desc: "Verified recommendations from licensed dermatologists.",
+  bh1: "Recommended by @@N@@ dermatologist",
+  bh2: "Recommended by @@N@@ dermatologists",
+  bl: "Read their professional assessments",
+  bv: "Verified professional assessments",
+  chip: "Licensed dermatologists", // v8.18 credential chip
 };
 
 const PRESS_STR = { eyebrow: "As seen in the press", aria: "As seen in the press", read: "Read the article" };
@@ -1238,6 +1251,354 @@ function resetPreviewWorld() {
   resetPreviewWorld();
 }
 
+// ==================================================== endorsement badge (B, v8.17)
+//
+// The buy-box badge: same payload as the wall, product ctx only, real
+// portraits only (cap 5), headline chain ob -> bh1/bh2 -> one/other,
+// link vs no-link line, and the documented .pdp__info anchor chain with
+// the fail-closed guarantee (never body-append).
+
+function badgeConf(extra) {
+  const conf = { ctx: "product", pid: 9, bd: 1, str: ENDO_STR };
+  return Object.assign(conf, extra || {});
+}
+
+// --- B1: build — avatars capped at 5, photo rows only, headline from total ----------
+{
+  const badge = S.endoBadgeBuild(badgeConf(), { total: 73, items: endoFixture(24, 0) });
+  ok(!!badge && badge.getAttribute("data-cx-feature") === "derm_endorsements",
+    "B1: badge root carries the derm_endorsements marker");
+  // endoFixture alternates imageUrl (12 of 24 have one) — the strip keeps
+  // photo rows ONLY and caps at five.
+  ok(badge.querySelectorAll(".cx-endo-badge__avatar").length === 5,
+    "B1: exactly five portrait avatars (photo rows only, capped)");
+  ok(badge.querySelector(".cx-endo-badge__headline").textContent === "Recommended by 73 dermatologists",
+    "B1: badge headline carries the API total via bh2");
+  ok(!!badge.querySelector(".cx-endo-badge__shield"), "B1: shield icon present");
+  const link = badge.querySelector(".cx-endo-badge__link");
+  ok(!!link && link.textContent === "Read their professional assessments",
+    "B1: link renders with the bl catalog string");
+  ok(!badge.querySelector(".cx-endo-badge__alt"), "B1: no alt line while the link is on");
+}
+
+// --- B2: gates — bd flag and product ctx are both required --------------------------
+ok(S.endoBadgeBuild({ ctx: "product", pid: 9, str: ENDO_STR }, { total: 5, items: endoFixture(5, 0) }) === null,
+  "B2: no bd member -> no badge (the merchant toggle)");
+ok(S.endoBadgeBuild(badgeConf({ ctx: "brand", pid: 0 }), { total: 5, items: endoFixture(5, 0) }) === null,
+  "B2: brand/home ctx -> no badge (product pages only)");
+ok(S.endoBadgeBuild(badgeConf(), { total: 0, items: [] }) === null,
+  "B2: empty payload -> no badge (fails closed with the wall)");
+
+// --- B3: portraitless payload keeps the badge, drops the strip ----------------------
+{
+  const bare = endoFixture(6, 0).map((it) => Object.assign({}, it, { imageUrl: null }));
+  const badge = S.endoBadgeBuild(badgeConf(), { total: 6, items: bare });
+  ok(!!badge && !badge.querySelector(".cx-endo-badge__strip"),
+    "B3: no portraits -> no avatar strip (never monogram filler)");
+  ok(!!badge.querySelector(".cx-endo-badge__headline"), "B3: headline still renders");
+}
+
+// --- B4: link toggle off -> the no-link line ----------------------------------------
+{
+  const badge = S.endoBadgeBuild(badgeConf({ bk: 0 }), { total: 73, items: endoFixture(24, 0) });
+  ok(!badge.querySelector(".cx-endo-badge__link"), "B4: bk:0 -> no link");
+  const alt = badge.querySelector(".cx-endo-badge__alt");
+  ok(!!alt && alt.textContent === "Verified professional assessments",
+    "B4: bv catalog string takes the row instead");
+}
+
+// --- B5: merchant overrides win on every surface ------------------------------------
+{
+  const str = Object.assign({}, ENDO_STR, {
+    oe: "Trusted by skin experts",
+    oh: "@@N@@ experts back this cream",
+    od: "Custom description.",
+    ob: "Backed by @@N@@ experts",
+    ol: "See the expert reviews",
+  });
+  const wall = S.endoBuildSection({ ctx: "product", pid: 9, str }, { total: 73, items: endoFixture(24, 0) });
+  ok(wall.querySelector(".cx-proof__eyebrow").textContent === "Trusted by skin experts",
+    "B5: oe override drives the wall eyebrow");
+  ok(wall.querySelector(".cx-endo__headline").textContent === "73 experts back this cream",
+    "B5: oh override drives the wall headline with the live total");
+  ok(wall.querySelector(".cx-endo__desc").textContent === "Custom description.",
+    "B5: od override drives the description");
+  const badge = S.endoBadgeBuild({ ctx: "product", pid: 9, bd: 1, str }, { total: 73, items: endoFixture(24, 0) });
+  ok(badge.querySelector(".cx-endo-badge__headline").textContent === "Backed by 73 experts",
+    "B5: ob override drives the badge headline");
+  ok(badge.querySelector(".cx-endo-badge__link").textContent === "See the expert reviews",
+    "B5: ol override drives the link text");
+  const noLink = S.endoBadgeBuild({ ctx: "product", pid: 9, bd: 1, bk: 0, str: Object.assign({}, ENDO_STR, { on: "Assessed by experts" }) }, { total: 3, items: endoFixture(3, 0) });
+  ok(noLink.querySelector(".cx-endo-badge__alt").textContent === "Assessed by experts",
+    "B5: on override drives the no-link line");
+  // Merchant overrides may carry {n} MORE THAN ONCE (Liquid's replace is
+  // global) — every occurrence must substitute (review catch: string
+  // .replace only did the first).
+  const twice = Object.assign({}, ENDO_STR, { ob: "@@N@@ experts — all @@N@@ verified", oh: "@@N@@ of @@N@@ agree" });
+  const badge2 = S.endoBadgeBuild({ ctx: "product", pid: 9, bd: 1, str: twice }, { total: 73, items: endoFixture(24, 0) });
+  ok(badge2.querySelector(".cx-endo-badge__headline").textContent === "73 experts — all 73 verified",
+    "B5b: EVERY @@N@@ occurrence substitutes in the badge headline");
+  const wall2 = S.endoBuildSection({ ctx: "product", pid: 9, str: twice }, { total: 73, items: endoFixture(24, 0) });
+  ok(wall2.querySelector(".cx-endo__headline").textContent === "73 of 73 agree",
+    "B5b: EVERY @@N@@ occurrence substitutes in the wall headline");
+  const ultra2 = S.endoBuildSection({ ctx: "product", pid: 9, cm: 2, str: Object.assign({}, twice, { shown: "" }) }, { total: 73, items: endoFixture(24, 0) });
+  ok(ultra2.querySelector(".cx-endo__headline").textContent === "73 of 73 agree",
+    "B5b: EVERY @@N@@ occurrence substitutes in the composed head line");
+}
+
+// --- B6: blank badge_headline falls back to the wall headline (the el path) ---------
+{
+  const str = Object.assign({}, ENDO_STR, { bh1: "", bh2: "" });
+  const badge = S.endoBadgeBuild(badgeConf({ str }), { total: 73, items: endoFixture(24, 0) });
+  ok(!!badge && badge.querySelector(".cx-endo-badge__headline").textContent === "Endorsed by 73 dermatologists",
+    "B6: blank bh strings fall back to count_headline (locale byte-cap contract)");
+}
+
+// --- B7: description is a full-density-only line ------------------------------------
+{
+  const full = S.endoBuildSection({ ctx: "brand", pid: 0, str: ENDO_STR }, { total: 8, items: endoFixture(8, 0) });
+  ok(full.querySelector(".cx-endo__desc").textContent === "Verified recommendations from licensed dermatologists.",
+    "B7: full density renders the description under the headline");
+  const ultra = S.endoBuildSection({ ctx: "brand", pid: 0, cm: 2, str: ENDO_STR }, { total: 8, items: endoFixture(8, 0) });
+  ok(!ultra.querySelector(".cx-endo__desc"), "B7: ultra keeps its tight head (no description)");
+  const compact = S.endoBuildSection({ ctx: "brand", pid: 0, cm: 1, str: ENDO_STR }, { total: 8, items: endoFixture(8, 0) });
+  ok(!compact.querySelector(".cx-endo__desc"), "B7: compact keeps its tight head (no description)");
+  const noDesc = S.endoBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, ENDO_STR, { desc: "" }) }, { total: 8, items: endoFixture(8, 0) });
+  ok(!noDesc.querySelector(".cx-endo__desc"), "B7: blank desc skips the paragraph");
+}
+
+// --- B8: mount anchor chain + fail-closed -------------------------------------------
+function pdpFixture(parts) {
+  const info = S.document.createElement("div");
+  info.setAttribute("class", "pdp__info");
+  const made = {};
+  for (const part of parts) {
+    const el = S.document.createElement("div");
+    if (part === "desc") {
+      el.setAttribute("id", "persona-description");
+      el.setAttribute("class", "pdp__description");
+    } else if (part === "gallery") {
+      el.setAttribute("class", "pdp__images pdp__images--default pdp__images--mobile");
+    } else {
+      el.setAttribute("class", "pdp__" + part);
+    }
+    info.appendChild(el);
+    made[part] = el;
+  }
+  S.document.body.appendChild(info);
+  return { info, made };
+}
+function unmountFixture(info) {
+  S.document.body.removeChild(info);
+  const stray = S.document.querySelector(".cx-endo-badge");
+  if (stray && stray.parentNode) stray.parentNode.removeChild(stray);
+}
+{
+  const { info, made } = pdpFixture(["price", "gallery", "desc"]);
+  const badge = S.endoBadgeBuild(badgeConf(), { total: 73, items: endoFixture(24, 0) });
+  ok(S.endoBadgeMount(badge) === true, "B8: mounts on the full pdp fixture");
+  ok(badge.nextSibling === made.gallery && badge.previousElementSibling === made.price,
+    "B8: badge sits between the price and the mobile gallery");
+  ok(S.endoBadgeMount(S.endoBadgeBuild(badgeConf(), { total: 73, items: endoFixture(24, 0) })) === true &&
+    S.document.querySelectorAll(".cx-endo-badge").length === 1,
+    "B8: second mount is idempotent (one badge ever)");
+  unmountFixture(info);
+}
+{
+  const { info, made } = pdpFixture(["price", "desc"]);
+  const badge = S.endoBadgeBuild(badgeConf(), { total: 73, items: endoFixture(24, 0) });
+  ok(S.endoBadgeMount(badge) === true && badge.nextSibling === made.desc,
+    "B8: no mobile gallery -> badge lands right above the description");
+  unmountFixture(info);
+}
+{
+  const { info, made } = pdpFixture(["price"]);
+  const badge = S.endoBadgeBuild(badgeConf(), { total: 73, items: endoFixture(24, 0) });
+  ok(S.endoBadgeMount(badge) === true && badge.previousElementSibling === made.price,
+    "B8: price-only fixture -> badge lands right after the price");
+  unmountFixture(info);
+}
+{
+  const badge = S.endoBadgeBuild(badgeConf(), { total: 73, items: endoFixture(24, 0) });
+  ok(S.endoBadgeMount(badge) === false && badge.parentNode === null &&
+    !S.document.querySelector(".cx-endo-badge"),
+    "B8: no anchors -> mount refuses, node never reaches the document (fail closed)");
+}
+
+// --- B9: link click scrolls to the wall + click beacon ------------------------------
+{
+  const { info } = pdpFixture(["price", "gallery", "desc"]);
+  const wall = S.endoBuildSection({ ctx: "product", pid: 9, str: ENDO_STR }, { total: 73, items: endoFixture(24, 0) });
+  S.document.body.appendChild(wall);
+  const scrolls = [];
+  wall.scrollIntoView = function (opts) { scrolls.push(opts || null); };
+  const badge = S.endoBadgeBuild(badgeConf(), { total: 73, items: endoFixture(24, 0) });
+  S.endoBadgeMount(badge);
+  S.PF_TRACKS.length = 0;
+  let prevented = 0;
+  badge.querySelector(".cx-endo-badge__link")._fire("click", {
+    target: badge, preventDefault() { prevented++; },
+  });
+  ok(prevented === 1, "B9: link click prevents the default jump");
+  ok(scrolls.length === 1 && scrolls[0] && scrolls[0].behavior === "smooth",
+    "B9: click smooth-scrolls to the wall section");
+  ok(S.PF_TRACKS.length === 1 && S.PF_TRACKS[0][0] === "derm_endorsements" && S.PF_TRACKS[0][1] === "click",
+    "B9: click beacon rides the existing derm_endorsements key");
+  S.document.body.removeChild(wall);
+  unmountFixture(info);
+}
+
+// --- B10: total can never undercut the visible rows ---------------------------------
+{
+  const badge = S.endoBadgeBuild(badgeConf(), { total: 3, items: endoFixture(24, 0) });
+  ok(badge.querySelector(".cx-endo-badge__headline").textContent === "Recommended by 24 dermatologists",
+    "B10: badge never claims fewer than it shows");
+}
+
+// ============================================ badge designs (BST, v8.18)
+//
+// Four looks behind the lean "bst" island code: absent = classic (the
+// exact v8.17 markup), 1 = choice, 2 = slim, 3 = choice_compact.
+
+// --- BST1: choice — crown title, chip, bold count, no blue shield -------------------
+{
+  const badge = S.endoBadgeBuild(badgeConf({ bst: 1 }), { total: 73, items: endoFixture(24, 0) });
+  ok(badge.className === "cx-endo-badge cx-endo-badge--choice",
+    "BST1: choice root modifier");
+  const bst1Title = badge.querySelector(".cx-endo-badge__title");
+  ok(!!bst1Title && bst1Title.textContent === "Dermatologist endorsements",
+    "BST1: the crown title reuses the eyebrow string (zero extra locale bytes)");
+  ok(badge.querySelectorAll(".cx-endo-badge__laurel").length === 2 &&
+    !!badge.querySelector(".cx-endo-badge__laurel--flip") &&
+    !!badge.querySelector(".cx-endo-badge__cadu"),
+    "BST1: laurel pair (one mirrored) + caduceus in the crown");
+  const chip = badge.querySelector(".cx-endo-badge__chip");
+  ok(!!chip && chip.querySelector(".cx-endo-badge__chip-text").textContent === "Licensed dermatologists" &&
+    !!chip.querySelector(".cx-endo-badge__chip-shield"),
+    "BST1: credential chip with outline shield + chip string");
+  const head = badge.querySelector(".cx-endo-badge__headline");
+  ok(head.querySelector("strong") && head.querySelector("strong").textContent === "73",
+    "BST1: the count is a bold <strong> in the choice headline");
+  ok(head.textContent === "Recommended by 73 dermatologists",
+    "BST1: headline text intact around the bold count");
+  ok(!head.querySelector(".cx-endo-badge__shield"),
+    "BST1: no blue shield inside the choice headline");
+  ok(badge.querySelectorAll(".cx-endo-badge__avatar").length === 5,
+    "BST1: choice keeps the five portraits");
+  ok(!!badge.querySelector(".cx-endo-badge__row"),
+    "BST1: portraits + body ride the row wrapper");
+}
+
+// --- BST2: slim — 3 portraits, +N spillover, shield kept, link kept ------------------
+{
+  const badge = S.endoBadgeBuild(badgeConf({ bst: 2 }), { total: 73, items: endoFixture(24, 0) });
+  ok(badge.className === "cx-endo-badge cx-endo-badge--slim", "BST2: slim root modifier");
+  ok(badge.querySelectorAll(".cx-endo-badge__avatar").length === 3,
+    "BST2: slim shows three portraits");
+  const bst2Plus = badge.querySelector(".cx-endo-badge__plus");
+  ok(!!bst2Plus && bst2Plus.textContent === "+70",
+    "BST2: the spillover counter is total minus SHOWN portraits");
+  ok(!!badge.querySelector(".cx-endo-badge__headline .cx-endo-badge__shield"),
+    "BST2: slim keeps the blue shield");
+  ok(!!badge.querySelector(".cx-endo-badge__link"), "BST2: link present");
+  ok(!badge.querySelector(".cx-endo-badge__crown") && !badge.querySelector(".cx-endo-badge__chip"),
+    "BST2: no crown, no chip on the slim bar");
+  const allPhoto = endoFixture(3, 0).map((it, i) =>
+    Object.assign({}, it, { imageUrl: "https://cdn/x" + i + ".jpg" }));
+  const tiny = S.endoBadgeBuild(badgeConf({ bst: 2 }), { total: 3, items: allPhoto });
+  ok(!tiny.querySelector(".cx-endo-badge__plus"),
+    "BST2: no counter when the total does not exceed the shown portraits");
+}
+
+// --- BST3: choice_compact — top row (title + chip), 4 portraits ---------------------
+{
+  const badge = S.endoBadgeBuild(badgeConf({ bst: 3 }), { total: 73, items: endoFixture(24, 0) });
+  ok(badge.className === "cx-endo-badge cx-endo-badge--choice-c", "BST3: choice-c root modifier");
+  const top = badge.querySelector(".cx-endo-badge__top");
+  ok(!!top && !!top.querySelector(".cx-endo-badge__crown") && !!top.querySelector(".cx-endo-badge__chip"),
+    "BST3: top row carries the compact crown + chip");
+  ok(top.querySelectorAll(".cx-endo-badge__laurel").length === 0,
+    "BST3: compact crown drops the laurels (caduceus + title only)");
+  ok(badge.querySelectorAll(".cx-endo-badge__avatar").length === 4,
+    "BST3: compact shows four portraits");
+  ok(!!badge.querySelector(".cx-endo-badge__headline strong"),
+    "BST3: bold count in the compact headline");
+}
+
+// --- BST4: classic stays byte-for-byte the v8.17 markup -----------------------------
+{
+  const badge = S.endoBadgeBuild(badgeConf(), { total: 73, items: endoFixture(24, 0) });
+  ok(badge.className === "cx-endo-badge", "BST4: no bst -> no design modifier");
+  ok(!badge.querySelector(".cx-endo-badge__row") && !badge.querySelector(".cx-endo-badge__crown") &&
+    !badge.querySelector(".cx-endo-badge__chip") && !badge.querySelector(".cx-endo-badge__plus"),
+    "BST4: classic has no v8.18 structure (strip + body directly on the root)");
+  ok(!!badge.querySelector(".cx-endo-badge__headline .cx-endo-badge__shield") &&
+    !badge.querySelector(".cx-endo-badge__headline strong"),
+    "BST4: classic keeps the shield and a plain-text count");
+}
+
+// --- BST5: chip resolution — override wins, blank catalog hides (el path) -----------
+{
+  const over = S.endoBadgeBuild(badgeConf({ bst: 1, str: Object.assign({}, ENDO_STR, { oc: "Board-certified MDs" }) }), { total: 8, items: endoFixture(8, 0) });
+  const bst5Chip = over.querySelector(".cx-endo-badge__chip-text");
+  ok(!!bst5Chip && bst5Chip.textContent === "Board-certified MDs",
+    "BST5: oc override drives the chip text");
+  const blank = S.endoBadgeBuild(badgeConf({ bst: 1, str: Object.assign({}, ENDO_STR, { chip: "" }) }), { total: 8, items: endoFixture(8, 0) });
+  ok(!blank.querySelector(".cx-endo-badge__chip"),
+    "BST5: blank chip catalog string hides the chip entirely");
+}
+
+// --- BST6: slim + link off -> alt line takes the right slot -------------------------
+{
+  const badge = S.endoBadgeBuild(badgeConf({ bst: 2, bk: 0 }), { total: 73, items: endoFixture(24, 0) });
+  ok(!badge.querySelector(".cx-endo-badge__link") &&
+    badge.querySelector(".cx-endo-badge__alt").textContent === "Verified professional assessments",
+    "BST6: slim honors the link toggle with the alt line");
+}
+
+// ============================================ localized copy merge (CP, v8.19)
+//
+// The proxy serves DeepL-translated merchant copy as data.copy under the
+// island's own o* codes; endoApplyCopy merges it (whitelist, non-blank
+// strings only) BEFORE the wall/badge build, so both surfaces render the
+// page-locale text.
+
+// --- CP1: whitelisted merge, junk ignored -------------------------------------------
+{
+  const conf = { ctx: "product", pid: 9, bd: 1, str: Object.assign({}, ENDO_STR) };
+  S.endoApplyCopy(conf, { copy: {
+    oe: "Recommandé par les experts",
+    ob: "Approuvé par @@N@@ experts",
+    zz: "never merged",
+    oh: "",            // blank -> ignored
+    od: 7,             // non-string -> ignored
+  } });
+  ok(conf.str.oe === "Recommandé par les experts" && conf.str.ob === "Approuvé par @@N@@ experts",
+    "CP1: translated overrides land in the island str map");
+  ok(!("zz" in conf.str), "CP1: unknown keys never merge (whitelist)");
+  ok(conf.str.oh === undefined && conf.str.od === undefined,
+    "CP1: blank/non-string values never merge");
+  const badge = S.endoBadgeBuild(conf, { total: 73, items: endoFixture(24, 0) });
+  ok(badge.querySelector(".cx-endo-badge__headline").textContent === "Approuvé par 73 experts",
+    "CP1: the badge renders the LOCALIZED override with the live count");
+  const wall = S.endoBuildSection(conf, { total: 73, items: endoFixture(24, 0) });
+  ok(wall.querySelector(".cx-proof__eyebrow").textContent === "Recommandé par les experts",
+    "CP1: the wall eyebrow renders the localized override");
+}
+
+// --- CP2: no payload copy -> conf untouched; degenerate confs never throw -----------
+{
+  const conf = { ctx: "product", pid: 9, str: Object.assign({}, ENDO_STR) };
+  const snapshot = JSON.stringify(conf.str);
+  S.endoApplyCopy(conf, { total: 5, items: [] });
+  ok(JSON.stringify(conf.str) === snapshot, "CP2: absent data.copy is a no-op");
+  S.endoApplyCopy(null, { copy: { oe: "x" } });
+  S.endoApplyCopy({ ctx: "product" }, { copy: { oe: "x" } });
+  S.endoApplyCopy(conf, null);
+  S.endoApplyCopy(conf, { copy: "not-an-object" });
+  ok(true, "CP2: degenerate inputs never throw");
+}
+
 // ---------------------------------------------------------------- mutants
 if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
   const failedMutants = runMutants({
@@ -1316,6 +1677,52 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m15-press-first-quote-lost",
         find: "    show(quoted[0]);\n    return root;",
         replace: "    show(0);\n    return root;",
+      },
+      {
+        // v8.17: badge leaks onto home/collection contexts.
+        name: "m16-badge-ctx-gate-dropped",
+        find: "    if (conf.bd !== 1 || conf.ctx !== 'product') return null;",
+        replace: "    if (conf.bd !== 1) return null;",
+      },
+      {
+        // v8.17: the five-portrait cap silently dropped.
+        name: "m17-badge-avatar-cap-dropped",
+        find: "    for (var i = 0; i < items.length && shown < max; i++) {",
+        replace: "    for (var i = 0; i < items.length; i++) {",
+      },
+      {
+        // v8.17: anchorless pages get a body-appended badge (the exact
+        // fail-open the mount contract forbids).
+        name: "m18-badge-fail-open-body",
+        find: "    // Fail closed: no documented anchor, no render — never body-append.\n    return false;",
+        replace: "    document.body.appendChild(node);\n    return true;",
+      },
+      {
+        // v8.17: the count_headline fallback dropped — locales that ship
+        // badge_headline blank (el) would lose the badge entirely.
+        name: "m19-badge-headline-fallback-dropped",
+        find: "    if (!/\\S/.test(headTpl)) headTpl = pfStr(s, total === 1 ? 'one' : 'other');\n    if (!/\\S/.test(headTpl)) return null; // no headline, no badge",
+        replace: "    if (!/\\S/.test(headTpl)) return null; // no headline, no badge",
+      },
+      {
+        // v8.17b: single-occurrence substitution regression (the exact
+        // pre-review bug) — B5b catches the leftover @@N@@.
+        name: "m20-badge-n-first-only",
+        find: "    var parts = String(tpl).split('@@N@@');",
+        replace: "    var parts = [String(tpl).replace('@@N@@', String(total))];",
+      },
+      {
+        // v8.18: the design gate dropped — every style renders classic.
+        name: "m21-badge-style-gate-dropped",
+        find: "    var style = conf.bst === 1 ? 'choice' : conf.bst === 2 ? 'slim' : conf.bst === 3 ? 'choice-c' : '';",
+        replace: "    var style = '';",
+      },
+      {
+        // v8.18: the slim counter counts the whole pool instead of the
+        // spillover — "+73" over three visible portraits misstates.
+        name: "m22-badge-plus-overcounts",
+        find: "      plus.textContent = '+' + String(total - av.shown);",
+        replace: "      plus.textContent = '+' + String(total);",
       },
       {
         name: "m9-preview-always-verified",

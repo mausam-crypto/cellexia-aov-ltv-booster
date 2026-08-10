@@ -1,7 +1,17 @@
 {
-  "guarantee_title": "Garanția banilor înapoi în {{days}} de zile",
-  "guarantee_body": "Bucură-te de rezultate sau primești banii înapoi — fără întrebări.",
-  "secure": "Plată securizată, criptată SSL",
+  "guarantee_title": {
+    "one": "Garanția banilor înapoi într-o zi",
+    "few": "Garanția banilor înapoi în {{days}} zile",
+    "other": "Garanția banilor înapoi în {{days}} de zile"
+  },
+  "guarantee_body": {
+    "one": "Nu ești mulțumit? Primești banii înapoi într-o zi.",
+    "few": "Nu ești mulțumit? Primești banii înapoi în {{days}} zile.",
+    "other": "Nu ești mulțumit? Primești banii înapoi în {{days}} de zile."
+  },
+  "secure": "Plată sigură și criptată",
   "clinical": "Formule dovedite clinic",
-  "trustpilot": "{{rating}}/5 · {{count}} de recenzii pe Trustpilot"
+  "trustpilot": "{{rating}}/5 · {{count}} de recenzii pe Trustpilot",
+  "customs": "Fără taxe vamale sau costuri suplimentare la livrare.",
+  "tracked": "Livrare cu urmărire · Garantată cel târziu {{date}}"
 }

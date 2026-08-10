@@ -1,7 +1,14 @@
 {
   "guarantee_title": "{{days}}-dniowa gwarancja zwrotu pieniędzy",
-  "guarantee_body": "Pokochaj efekty albo odzyskaj pieniądze — bez zbędnych pytań.",
-  "secure": "Bezpieczna płatność szyfrowana SSL",
+  "guarantee_body": {
+    "one": "Produkt nie spełnia oczekiwań? Zwrócimy Ci pieniądze w ciągu {{days}} dnia.",
+    "few": "Produkt nie spełnia oczekiwań? Zwrócimy Ci pieniądze w ciągu {{days}} dni.",
+    "many": "Produkt nie spełnia oczekiwań? Zwrócimy Ci pieniądze w ciągu {{days}} dni.",
+    "other": "Produkt nie spełnia oczekiwań? Zwrócimy Ci pieniądze w ciągu {{days}} dni."
+  },
+  "secure": "Bezpieczna, szyfrowana płatność",
   "clinical": "Klinicznie potwierdzone formuły",
-  "trustpilot": "{{rating}}/5 · {{count}} opinii w serwisie Trustpilot"
+  "trustpilot": "{{rating}}/5 · {{count}} opinii w serwisie Trustpilot",
+  "customs": "Bez opłat celnych i dodatkowych kosztów przy dostawie.",
+  "tracked": "Przesyłka ze śledzeniem · Gwarantowana dostawa najpóźniej: {{date}}"
 }

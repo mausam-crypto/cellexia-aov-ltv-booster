@@ -23,6 +23,33 @@ original text is preserved verbatim below.
 > PDP surface, or market-scoped out. `azGapFillConfig()` still prefers the
 > classic `#cx-pdp-config` island when both emit; the az copies carry no
 > `live` field, so they can never mount the classic widgets.
+>
+> **v10 US state layer (delivery/dispatch islands):** all three
+> delivery-bearing islands — the pdp-booster and cart-booster delivery
+> members plus the az standalone delivery member above — gain a `"us"`
+> member INSIDE the existing `"delivery"` object: `{{ cx_us | json }}`, the
+> raw `cfg.deliveryEstimate.usStates` sub-object, emitted ONLY when
+> `localization.country.iso_code == 'US'` AND the module master is on
+> (any other page renders byte-identical output). Each island's
+> `deliveryStrings` map gains ONE key, `"delivery.deliver_to"` (t, no
+> params) — a missing / "Translation missing" value hides only the
+> selector, never the promise. Liquid can NEVER see a buyer state
+> (localization exposes the country only), so unlike the country byCountry
+> row — resolved once server-side with its hidden flag gating live AND
+> draft — the state override ships raw and is resolved CLIENT-side by the
+> twin engines, fail-open to the US-wide promise: explicit visitor choice
+> (localStorage `cx:us_state`) > IP geo (`/apps/cellexia/geo` via the app
+> proxy, sessionStorage-cached 6 h including negative verdicts) > none.
+> Checkout resolves the state from the typed shipping address
+> `provinceCode` instead — no geo there. The "Deliver to: California ▾"
+> selector is 100% JS-built (`.cx-usloc`, createElement/textContent,
+> appended as the last child of each mounted delivery node) and is
+> re-created idempotently across cart re-renders — selection state lives
+> in storage/module vars, never the DOM; its DB-IP attribution link is
+> always present in the popover and toggled via the `hidden` attribute
+> (visible only while a geo-detected state is in use). `azGapFillConfig()`
+> copies `cfg.delivery` wholesale, so the `us` member rides along on
+> az-only pages automatically.
 
 ## pdp-booster
 

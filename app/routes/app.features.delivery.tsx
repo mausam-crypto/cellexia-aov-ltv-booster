@@ -4,6 +4,7 @@ import {
   useActionData,
   useLoaderData,
   useNavigation,
+  useRevalidator,
   useSubmit,
 } from "@remix-run/react";
 import {
@@ -33,11 +34,20 @@ import {
   type BoosterSettings,
   type DeepPartial,
   type DeliveryCountryOverride,
+  type DeliveryStateOverride,
 } from "../models/settings.server";
 import {
   DELIVERY_HOLIDAYS,
   GLOBAL_DELIVERY_EXCLUSIONS,
+  US_FEDERAL_FIXED,
+  usFederalMovable,
 } from "../services/delivery-holidays.server";
+import {
+  buildGeoStateDb,
+  GEO_ATTRIBUTION,
+  getGeoStatus,
+  lookupUsState,
+} from "../services/geo.server";
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import { listMarkets } from "../services/markets.server";
 import { FeaturePageHeader } from "../components/FeaturePageHeader";
@@ -50,6 +60,13 @@ import { FeaturePageHeader } from "../components/FeaturePageHeader";
  * wholesale byCountry save semantics, and the same credibility stance — the
  * storefront widget NEVER shows a date it cannot stand behind; any
  * inconsistency fails closed to hidden.
+ *
+ * v10 adds the optional United States state module (deliveryEstimate.usStates
+ * — no FeatureKey of its own): per-state overrides, US-wide extra days off,
+ * the movable federal holidays, and the self-hosted IP→state database card.
+ * The STATE layer fails OPEN, deliberately unlike everything above: a state
+ * entry that resolves inconsistently is IGNORED and the buyer keeps the
+ * US-wide promise — a state problem must never hide the widget.
  */
 
 interface AdminGraphqlClient {
@@ -59,9 +76,17 @@ interface AdminGraphqlClient {
   ) => Promise<Response>;
 }
 
+/** "Download & build" / "Test lookup" responses (geoIntent posts). They ride
+ *  the same {ok, syncErrors} envelope so the shared toast/Banner contract
+ *  holds; the geo card renders them and the save toast skips them. */
+type GeoActionResult =
+  | { intent: "build" }
+  | { intent: "test"; ip: string; state: string | null; error?: string };
+
 interface SettingsSaveResult {
   ok: boolean;
   syncErrors: string[];
+  geo?: GeoActionResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +94,21 @@ interface SettingsSaveResult {
 // ---------------------------------------------------------------------------
 
 const ISO2_PATTERN = /^[A-Z]{2}$/;
+
+/** Mirrors the dispatch sanitizer in settings.server.ts. */
+const CUTOFF_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Extra day off: "MM-DD" (repeats every year) or "YYYY-MM-DD" (one-off).
+ *  Mirrors the usStates sanitizer in settings.server.ts. */
+const EXTRA_DATE_PATTERN = /^(\d{4}-)?(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+/** Extra-days-off count caps — mirror the sanitizer's slice limits in
+ *  settings.server.ts: the settings blob rides two json metafields capped at
+ *  65,536 chars on ApiVersion.October25, and 60 US-wide + 40 per state keeps
+ *  the worst-case blob near ~47 KB. Validation here fails LOUD; the
+ *  sanitizer's slice only backstops payloads that bypass this form. */
+const US_EXTRA_DATES_MAX = 60;
+const STATE_EXTRA_DATES_MAX = 40;
 
 /**
  * The four widget formats (client-safe literal mirror of the server-only
@@ -270,6 +310,144 @@ function validateDeliveryPatch(patch: DeepPartial<BoosterSettings>): string[] {
       }
     }
   }
+  if (delivery.usStates !== undefined) {
+    const us = delivery.usStates;
+    if (typeof us !== "object" || us === null || Array.isArray(us)) {
+      errors.push("The US state module payload must be an object.");
+      return errors;
+    }
+    if (us.enabled !== undefined && typeof us.enabled !== "boolean") {
+      errors.push("The US state module switch is malformed.");
+    }
+    if (us.selector !== undefined && typeof us.selector !== "boolean") {
+      errors.push("The “Deliver to” selector switch is malformed.");
+    }
+    if (
+      us.federalHolidays !== undefined &&
+      typeof us.federalHolidays !== "boolean"
+    ) {
+      errors.push("The federal holidays switch is malformed.");
+    }
+    if (us.extraHolidays !== undefined) {
+      if (!Array.isArray(us.extraHolidays)) {
+        errors.push("US-wide extra days off must be a list of dates.");
+      } else {
+        if (us.extraHolidays.length > US_EXTRA_DATES_MAX) {
+          errors.push(
+            `US-wide extra days off can list at most ${US_EXTRA_DATES_MAX} dates.`,
+          );
+        }
+        for (const day of us.extraHolidays) {
+          if (typeof day !== "string" || !EXTRA_DATE_PATTERN.test(day)) {
+            errors.push(
+              `"${String(day)}" is not a valid US-wide extra day off — use MM-DD or YYYY-MM-DD.`,
+            );
+          }
+        }
+      }
+    }
+    if (us.byState !== undefined) {
+      if (
+        typeof us.byState !== "object" ||
+        us.byState === null ||
+        Array.isArray(us.byState)
+      ) {
+        errors.push("State overrides must be a map of USPS state codes.");
+        return errors;
+      }
+      for (const [code, entry] of Object.entries(us.byState)) {
+        const upper = code.toUpperCase();
+        const label = US_STATE_OPTIONS[upper]
+          ? `${US_STATE_OPTIONS[upper]} (${upper})`
+          : ISO2_PATTERN.test(upper)
+            ? upper
+            : code;
+        if (!ISO2_PATTERN.test(upper)) {
+          errors.push(
+            `"${code}" is not a two-letter USPS state code (e.g. CA, NY).`,
+          );
+        }
+        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+          errors.push(`The override for ${label} is malformed.`);
+          continue;
+        }
+        const override = entry as DeliveryStateOverride;
+        if (
+          override.minDays !== undefined &&
+          !isIntInRange(override.minDays, 0, 30)
+        ) {
+          errors.push(
+            `The minimum delivery time for ${label} must be 0–30 business days.`,
+          );
+        }
+        if (
+          override.maxDays !== undefined &&
+          !isIntInRange(override.maxDays, 1, 30)
+        ) {
+          errors.push(
+            `The maximum delivery time for ${label} must be 1–30 business days.`,
+          );
+        }
+        if (
+          isIntInRange(override.minDays, 0, 30) &&
+          isIntInRange(override.maxDays, 1, 30) &&
+          (override.maxDays as number) < Math.max(1, override.minDays as number)
+        ) {
+          errors.push(
+            `The maximum delivery time for ${label} cannot be shorter than its minimum.`,
+          );
+        }
+        if (
+          override.deliveryDays !== undefined &&
+          !isValidDaysArray(override.deliveryDays)
+        ) {
+          errors.push(`Pick at least one delivery weekday for ${label}.`);
+        }
+        if (
+          override.holidaysEnabled !== undefined &&
+          typeof override.holidaysEnabled !== "boolean"
+        ) {
+          errors.push(`The holiday setting for ${label} is malformed.`);
+        }
+        if (override.hidden !== undefined && typeof override.hidden !== "boolean") {
+          errors.push(`The hide setting for ${label} is malformed.`);
+        }
+        if (
+          override.cutoff !== undefined &&
+          (typeof override.cutoff !== "string" ||
+            !CUTOFF_PATTERN.test(override.cutoff))
+        ) {
+          errors.push(
+            `The dispatch cutoff for ${label} must be a 24-hour "HH:MM" time.`,
+          );
+        }
+        if (
+          override.dispatchDays !== undefined &&
+          !isValidDaysArray(override.dispatchDays)
+        ) {
+          errors.push(`Pick at least one dispatch day for ${label}.`);
+        }
+        if (override.extraHolidays !== undefined) {
+          if (!Array.isArray(override.extraHolidays)) {
+            errors.push(`Extra days off for ${label} must be a list of dates.`);
+          } else {
+            if (override.extraHolidays.length > STATE_EXTRA_DATES_MAX) {
+              errors.push(
+                `Extra days off for ${label} can list at most ${STATE_EXTRA_DATES_MAX} dates.`,
+              );
+            }
+            for (const day of override.extraHolidays) {
+              if (typeof day !== "string" || !EXTRA_DATE_PATTERN.test(day)) {
+                errors.push(
+                  `"${String(day)}" is not a valid extra day off for ${label} — use MM-DD or YYYY-MM-DD.`,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+  }
   return errors;
 }
 
@@ -404,7 +582,8 @@ function zonedNow(
 }
 
 interface DeliveryExample {
-  /** ISO2 code, or "" for "every other country" (defaults only). */
+  /** ISO2 code, "US-XX" for a US state (v10), or "" for "every other
+   *  country" (defaults only). */
   code: string;
   ships: string | null;
   from: string | null;
@@ -412,19 +591,36 @@ interface DeliveryExample {
   hiddenReason: string | null;
 }
 
+/** Month → movable-federal-holiday name (the six US_FEDERAL_RULES rows) —
+ *  keyed by month so the helpText survives any ordering of
+ *  usFederalMovable's output. */
+const US_FEDERAL_MOVABLE_NAMES: Record<number, string> = {
+  1: "Martin Luther King Jr. Day",
+  2: "Presidents’ Day",
+  5: "Memorial Day",
+  9: "Labor Day",
+  10: "Columbus / Indigenous Peoples’ Day",
+  11: "Thanksgiving",
+};
+
 /**
  * Computes the example a buyer in `country` would see right now, with the
  * exact storefront rules: dispatch date from the dispatch schedule (incl.
  * its byCountry override), then business-day counting in the destination
- * country (deliveryDays + global exclusions + fixed-date holidays).
+ * country (deliveryDays + global exclusions + fixed-date holidays). With
+ * `state` (v10), the US state layer is applied on top with the storefront's
+ * fail-OPEN semantics — an entry that merges into an invalid window is
+ * ignored and the US-wide values stay.
  */
 function computeExample(
   settings: BoosterSettings,
   country: string,
   now: Date,
+  state?: string,
 ): DeliveryExample {
+  const code = state ? `${country}-${state}` : country;
   const hidden = (hiddenReason: string): DeliveryExample => ({
-    code: country,
+    code,
     ships: null,
     from: null,
     to: null,
@@ -437,10 +633,10 @@ function computeExample(
   if (override.hidden === true) {
     return hidden("hidden for this country by your override");
   }
-  const minDays = override.minDays ?? de.minDays;
-  const maxDays = override.maxDays ?? de.maxDays;
-  const deliveryDays = override.deliveryDays ?? de.deliveryDays;
-  const holidaysEnabled = override.holidaysEnabled ?? de.holidaysEnabled;
+  let minDays = override.minDays ?? de.minDays;
+  let maxDays = override.maxDays ?? de.maxDays;
+  let deliveryDays = override.deliveryDays ?? de.deliveryDays;
+  let holidaysEnabled = override.holidaysEnabled ?? de.holidaysEnabled;
   if (
     !isIntInRange(minDays, 0, 30) ||
     !isIntInRange(maxDays, 1, 30) ||
@@ -450,11 +646,47 @@ function computeExample(
     return hidden("the resolved delivery window is invalid — fails closed");
   }
 
+  // v10 US state layer, applied AFTER the country resolution validated.
+  // hidden hides deliberately; anything else fails OPEN: invalid fields are
+  // skipped, and an entry whose merged window is impossible is discarded
+  // WHOLE (extras, cutoff and dispatch days included) — the buyer keeps the
+  // US-wide promise.
+  const us = de.usStates;
+  const usModule = country === "US" && us.enabled === true;
+  let entry: DeliveryStateOverride =
+    usModule && state ? (us.byState[state] ?? {}) : {};
+  if (entry.hidden === true) {
+    return hidden("hidden for this state by your override");
+  }
+  const entryMin = isIntInRange(entry.minDays, 0, 30) ? entry.minDays : undefined;
+  const entryMax = isIntInRange(entry.maxDays, 1, 30) ? entry.maxDays : undefined;
+  const candidateMin = entryMin ?? minDays;
+  const candidateMax = entryMax ?? maxDays;
+  if (candidateMax >= Math.max(1, candidateMin)) {
+    minDays = candidateMin;
+    maxDays = candidateMax;
+    if (isValidDaysArray(entry.deliveryDays)) deliveryDays = entry.deliveryDays;
+    if (typeof entry.holidaysEnabled === "boolean") {
+      holidaysEnabled = entry.holidaysEnabled;
+    }
+  } else {
+    entry = {};
+  }
+
   // 1. Dispatch day, from the dispatch schedule (warehouse config — used
-  //    even while the dispatch_countdown feature itself is off).
+  //    even while the dispatch_countdown feature itself is off). A state
+  //    entry overrides cutoff/dispatch days PARTIALLY; the warehouse
+  //    timezone always inherits (one physical warehouse).
   const schedule =
     (country ? settings.dispatch.byCountry[country] : undefined) ??
     settings.dispatch;
+  const cutoff =
+    typeof entry.cutoff === "string" && CUTOFF_PATTERN.test(entry.cutoff)
+      ? entry.cutoff
+      : schedule.cutoff;
+  const dispatchDays = isValidDaysArray(entry.dispatchDays)
+    ? entry.dispatchDays
+    : schedule.days;
   const zoned = zonedNow(schedule.timezone, now);
   if (!zoned) {
     return hidden(
@@ -462,10 +694,10 @@ function computeExample(
     );
   }
   const cutoffMinutes =
-    Number(schedule.cutoff.slice(0, 2)) * 60 + Number(schedule.cutoff.slice(3, 5));
+    Number(cutoff.slice(0, 2)) * 60 + Number(cutoff.slice(3, 5));
   let dispatchMs: number | null = null;
   if (
-    schedule.days.includes(zoned.isoDay) &&
+    dispatchDays.includes(zoned.isoDay) &&
     Number.isFinite(cutoffMinutes) &&
     zoned.minutes < cutoffMinutes
   ) {
@@ -473,7 +705,7 @@ function computeExample(
   } else {
     for (let offset = 1; offset <= 14; offset += 1) {
       const candidate = zoned.dateMs + offset * MS_DAY;
-      if (schedule.days.includes(isoWeekdayUtc(candidate))) {
+      if (dispatchDays.includes(isoWeekdayUtc(candidate))) {
         dispatchMs = candidate;
         break;
       }
@@ -484,14 +716,36 @@ function computeExample(
   }
 
   // 2. Delivery dates — count business days in the destination country.
+  //    v10: merchant extra days off (module-wide + per-state) and the
+  //    movable federal holidays ride the same extra/usFederal split the
+  //    storefront and checkout engines use — module extras apply to EVERY
+  //    US buyer while the module is on, state or not.
   const holidays =
     holidaysEnabled && country ? (DELIVERY_HOLIDAYS[country] ?? []) : [];
+  const extra: string[] = [];
+  if (usModule) {
+    for (const day of us.extraHolidays) {
+      if (EXTRA_DATE_PATTERN.test(day)) extra.push(day);
+    }
+    for (const day of entry.extraHolidays ?? []) {
+      if (EXTRA_DATE_PATTERN.test(day)) extra.push(day);
+    }
+  }
+  const usFederal = usModule && us.federalHolidays !== false && holidaysEnabled;
   const qualifies = (ms: number): boolean => {
     const mmdd = mmddUtc(ms);
+    const full = `${new Date(ms).getUTCFullYear()}-${mmdd}`;
     return (
       deliveryDays.includes(isoWeekdayUtc(ms)) &&
       !GLOBAL_DELIVERY_EXCLUSIONS.includes(mmdd) &&
-      !holidays.includes(mmdd)
+      !holidays.includes(mmdd) &&
+      !extra.includes(mmdd) &&
+      !extra.includes(full) &&
+      !(
+        usFederal &&
+        (US_FEDERAL_FIXED.includes(mmdd) ||
+          usFederalMovable(new Date(ms).getUTCFullYear()).includes(full))
+      )
     );
   };
   const advance = (target: number): number | null => {
@@ -519,7 +773,7 @@ function computeExample(
     return hidden("no qualifying delivery day within 60 days — fails closed");
   }
   return {
-    code: country,
+    code,
     ships: formatExampleDate(dispatchMs),
     from: formatExampleDate(minMs),
     to: formatExampleDate(maxMs),
@@ -529,18 +783,45 @@ function computeExample(
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
-  const [settings, markets] = await Promise.all([
+  const [settings, markets, geo] = await Promise.all([
     getSettings(session.shop),
     listMarkets(admin),
+    getGeoStatus(session.shop),
   ]);
   const now = new Date();
+  const usStates = settings.deliveryEstimate.usStates;
   const exampleCodes = [
     ...new Set([
       ...Object.keys(DELIVERY_HOLIDAYS),
       ...Object.keys(settings.deliveryEstimate.byCountry),
       ...Object.keys(settings.dispatch.byCountry),
+      // v10: configured US states ride along as "US-XX" while the module is
+      // on — the sorted union lands them right after "US".
+      ...(usStates.enabled
+        ? Object.keys(usStates.byState).map((code) => `US-${code}`)
+        : []),
     ]),
   ].sort();
+  // This year's movable federal dates for the checkbox helpText — computed
+  // HERE so the render path never touches new Date().
+  const usFederalYear = now.getUTCFullYear();
+  const usFederalNote = usFederalMovable(usFederalYear)
+    .map((date) => {
+      const month = Number(date.slice(5, 7));
+      const label = formatExampleDate(
+        Date.UTC(
+          Number(date.slice(0, 4)),
+          month - 1,
+          Number(date.slice(8, 10)),
+        ),
+      );
+      return `${US_FEDERAL_MOVABLE_NAMES[month] ?? date} (${label})`;
+    })
+    .join(", ");
+  // Geo card view-model (merged DB row + the in-progress build's live
+  // counters — getGeoStatus owns the shape). Dates become fixed labels
+  // HERE, never in render.
+  const builtAt = geo.builtAt;
   return {
     settings,
     markets,
@@ -549,18 +830,81 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // never import the .server module directly.
     holidayTable: DELIVERY_HOLIDAYS,
     globalExclusions: [...GLOBAL_DELIVERY_EXCLUSIONS],
-    // "Ordering right now" examples per country, computed SERVER-SIDE with
-    // the exact storefront rules, from the SAVED settings.
+    usFederalYear,
+    usFederalNote,
+    geoAttribution: GEO_ATTRIBUTION,
+    geoStatus: {
+      status: geo.status,
+      source: geo.source,
+      builtAtLabel: builtAt
+        ? `${MONTH_SHORT[builtAt.getUTCMonth()]} ${builtAt.getUTCDate()}, ${builtAt.getUTCFullYear()}`
+        : null,
+      rangesV4: geo.rangesV4,
+      rangesV6: geo.rangesV6,
+      error: geo.error,
+      rowsScanned: geo.progress ? geo.progress.rowsScanned : null,
+      usRowsKept: geo.progress ? geo.progress.usRowsKept : null,
+    },
+    // "Ordering right now" examples per country (and US state), computed
+    // SERVER-SIDE with the exact storefront rules, from the SAVED settings.
     examples: [
       computeExample(settings, "", now),
-      ...exampleCodes.map((code) => computeExample(settings, code, now)),
+      ...exampleCodes.map((code) =>
+        code.startsWith("US-")
+          ? computeExample(settings, "US", now, code.slice(3))
+          : computeExample(settings, code, now),
+      ),
     ],
   };
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
+export const action = async ({
+  request,
+}: ActionFunctionArgs): Promise<SettingsSaveResult> => {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
+  // v10 geo intents branch BEFORE the settings-patch path — neither touches
+  // settings.
+  const geoIntent = formData.get("geoIntent");
+  if (geoIntent === "build") {
+    // Fire-and-forget: the build streams the whole DB-IP monthly CSV, so it
+    // must outlive this response. Progress and failures land in the
+    // GeoStateDb status row the geo card polls — never in this response.
+    buildGeoStateDb(session.shop).catch(() => {});
+    return { ok: true, syncErrors: [], geo: { intent: "build" } };
+  }
+  if (geoIntent === "test") {
+    const rawIp = formData.get("ip");
+    const ip = typeof rawIp === "string" ? rawIp.trim() : "";
+    if (ip === "") {
+      return {
+        ok: true,
+        syncErrors: [],
+        geo: {
+          intent: "test",
+          ip,
+          state: null,
+          error: "Enter an IP address to test.",
+        },
+      };
+    }
+    try {
+      const state = await lookupUsState(session.shop, ip);
+      return { ok: true, syncErrors: [], geo: { intent: "test", ip, state } };
+    } catch (error) {
+      return {
+        ok: true,
+        syncErrors: [],
+        geo: {
+          intent: "test",
+          ip,
+          state: null,
+          error:
+            error instanceof Error ? error.message : "The lookup failed.",
+        },
+      };
+    }
+  }
   return applySettingsPatch(session.shop, admin, formData.get("patch"));
 };
 
@@ -739,6 +1083,76 @@ function countryLabel(code: string): string {
   return COUNTRY_NAMES[code] ? `${COUNTRY_NAMES[code]} (${code})` : code;
 }
 
+/** USPS code → English name, the 50 states + DC (client-safe literal — the
+ *  storefront assets carry their own byte-twinned US_STATE_NAMES copy).
+ *  Territories (PR, GU, VI, AS, MP) are deliberately not part of v10. */
+const US_STATE_OPTIONS: Record<string, string> = {
+  AL: "Alabama",
+  AK: "Alaska",
+  AZ: "Arizona",
+  AR: "Arkansas",
+  CA: "California",
+  CO: "Colorado",
+  CT: "Connecticut",
+  DE: "Delaware",
+  DC: "District of Columbia",
+  FL: "Florida",
+  GA: "Georgia",
+  HI: "Hawaii",
+  ID: "Idaho",
+  IL: "Illinois",
+  IN: "Indiana",
+  IA: "Iowa",
+  KS: "Kansas",
+  KY: "Kentucky",
+  LA: "Louisiana",
+  ME: "Maine",
+  MD: "Maryland",
+  MA: "Massachusetts",
+  MI: "Michigan",
+  MN: "Minnesota",
+  MS: "Mississippi",
+  MO: "Missouri",
+  MT: "Montana",
+  NE: "Nebraska",
+  NV: "Nevada",
+  NH: "New Hampshire",
+  NJ: "New Jersey",
+  NM: "New Mexico",
+  NY: "New York",
+  NC: "North Carolina",
+  ND: "North Dakota",
+  OH: "Ohio",
+  OK: "Oklahoma",
+  OR: "Oregon",
+  PA: "Pennsylvania",
+  RI: "Rhode Island",
+  SC: "South Carolina",
+  SD: "South Dakota",
+  TN: "Tennessee",
+  TX: "Texas",
+  UT: "Utah",
+  VT: "Vermont",
+  VA: "Virginia",
+  WA: "Washington",
+  WV: "West Virginia",
+  WI: "Wisconsin",
+  WY: "Wyoming",
+};
+
+function stateLabel(code: string): string {
+  return US_STATE_OPTIONS[code] ? `${US_STATE_OPTIONS[code]} (${code})` : code;
+}
+
+/** "US-CA" -> "United States — California"; anything else via countryLabel. */
+function exampleLabel(code: string): string {
+  if (code.startsWith("US-")) {
+    const state = code.slice(3);
+    return `United States — ${US_STATE_OPTIONS[state] ?? state}`;
+  }
+  return countryLabel(code);
+}
+
 /** "03-17" -> "Mar 17" (client-safe, no Date involved). */
 function mmddLabel(mmdd: string): string {
   const month = Number(mmdd.slice(0, 2));
@@ -764,6 +1178,27 @@ interface OverrideRowState {
   showHolidays: boolean;
 }
 
+interface UsStateRowState {
+  /** Client-only stable list key — never persisted, stripped from compares. */
+  id: number;
+  /** USPS code — fixed at add time (the Select covers all 51), never edited. */
+  state: string;
+  /** "" = inherit the effective US-wide value. */
+  minDays: string;
+  /** "" = inherit the effective US-wide value. */
+  maxDays: string;
+  overrideDays: boolean;
+  deliveryDays: number[];
+  holidays: HolidayMode;
+  /** "" = inherit the US dispatch cutoff (timezone always inherits). */
+  cutoff: string;
+  overrideDispatchDays: boolean;
+  dispatchDays: number[];
+  /** Comma-separated MM-DD / YYYY-MM-DD entries, free text. */
+  extraHolidays: string;
+  hidden: boolean;
+}
+
 interface DeliveryFormState {
   enabled: boolean;
   minDays: string;
@@ -777,6 +1212,11 @@ interface DeliveryFormState {
   showInCart: boolean;
   showInCheckout: boolean;
   overrides: OverrideRowState[];
+  usEnabled: boolean;
+  usSelector: boolean;
+  usFederalHolidays: boolean;
+  usExtraHolidays: string;
+  usOverrides: UsStateRowState[];
   scopes: {
     delivery_estimate: ScopeState;
   };
@@ -805,6 +1245,41 @@ function initialFormState(settings: BoosterSettings): DeliveryFormState {
       hidden: entry.hidden === true,
       showHolidays: false,
     }));
+  const us = delivery.usStates;
+  // Rows without a delivery-days override seed from the EFFECTIVE US-wide
+  // weekdays (the US country override when it sets them, else the defaults)
+  // so opening the checkbox starts from what the state actually inherits.
+  const usDeliveryDays =
+    delivery.byCountry.US?.deliveryDays ?? delivery.deliveryDays;
+  const usDispatchDays =
+    settings.dispatch.byCountry.US?.days ?? settings.dispatch.days;
+  const usOverrides: UsStateRowState[] = Object.entries(us.byState)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([stateCode, entry], index) => ({
+      id: index,
+      state: stateCode,
+      minDays: entry.minDays !== undefined ? String(entry.minDays) : "",
+      maxDays: entry.maxDays !== undefined ? String(entry.maxDays) : "",
+      overrideDays: entry.deliveryDays !== undefined,
+      deliveryDays:
+        entry.deliveryDays !== undefined
+          ? [...entry.deliveryDays]
+          : [...usDeliveryDays],
+      holidays:
+        entry.holidaysEnabled === undefined
+          ? "inherit"
+          : entry.holidaysEnabled
+            ? "on"
+            : "off",
+      cutoff: entry.cutoff ?? "",
+      overrideDispatchDays: entry.dispatchDays !== undefined,
+      dispatchDays:
+        entry.dispatchDays !== undefined
+          ? [...entry.dispatchDays]
+          : [...usDispatchDays],
+      extraHolidays: (entry.extraHolidays ?? []).join(", "),
+      hidden: entry.hidden === true,
+    }));
   return {
     enabled: delivery.enabled,
     minDays: String(delivery.minDays),
@@ -818,6 +1293,11 @@ function initialFormState(settings: BoosterSettings): DeliveryFormState {
     showInCart: delivery.showInCart,
     showInCheckout: delivery.showInCheckout,
     overrides,
+    usEnabled: us.enabled,
+    usSelector: us.selector,
+    usFederalHolidays: us.federalHolidays,
+    usExtraHolidays: us.extraHolidays.join(", "),
+    usOverrides,
     scopes: {
       delivery_estimate: toScopeState(settings.marketScopes.delivery_estimate),
     },
@@ -833,6 +1313,26 @@ function rowToOverride(row: OverrideRowState): DeliveryCountryOverride {
   }
   if (row.holidays !== "inherit") override.holidaysEnabled = row.holidays === "on";
   if (row.hidden) override.hidden = true;
+  return override;
+}
+
+/** Country-row convention: only SET fields are emitted — an omitted field
+ *  inherits (delivery byState entries are PARTIAL, unlike dispatch's). */
+function rowToStateOverride(row: UsStateRowState): DeliveryStateOverride {
+  const override: DeliveryStateOverride = {};
+  if (row.minDays.trim() !== "") override.minDays = Number(row.minDays);
+  if (row.maxDays.trim() !== "") override.maxDays = Number(row.maxDays);
+  if (row.overrideDays) {
+    override.deliveryDays = [...row.deliveryDays].sort((a, b) => a - b);
+  }
+  if (row.holidays !== "inherit") override.holidaysEnabled = row.holidays === "on";
+  if (row.hidden) override.hidden = true;
+  if (row.cutoff.trim() !== "") override.cutoff = row.cutoff.trim();
+  if (row.overrideDispatchDays) {
+    override.dispatchDays = [...row.dispatchDays].sort((a, b) => a - b);
+  }
+  const extraHolidays = parseExtraHolidays(row.extraHolidays);
+  if (extraHolidays.length > 0) override.extraHolidays = extraHolidays;
   return override;
 }
 
@@ -855,6 +1355,16 @@ function serializeForCompare(state: DeliveryFormState): string {
       country: row.country.trim().toUpperCase(),
       ...rowToOverride(row),
     })),
+    usStates: {
+      enabled: state.usEnabled,
+      selector: state.usSelector,
+      federalHolidays: state.usFederalHolidays,
+      extraHolidays: parseExtraHolidays(state.usExtraHolidays),
+      overrides: state.usOverrides.map((row) => ({
+        state: row.state,
+        ...rowToStateOverride(row),
+      })),
+    },
     scopes: { delivery_estimate: toScopePatch(state.scopes.delivery_estimate) },
   });
 }
@@ -864,6 +1374,24 @@ function parseDaysField(value: string): number | null {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null;
   return parsed;
+}
+
+/** "06-19, 2026-11-27" -> ["06-19", "2026-11-27"] (trimmed, empties
+ *  dropped) — the canonical form saved AND compared, so "a, b" vs "a,b" is
+ *  never dirty. */
+function parseExtraHolidays(value: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
+}
+
+/** Client mirror of the action's extra-day validation. */
+function extraHolidaysError(value: string): string | undefined {
+  const bad = parseExtraHolidays(value).find(
+    (entry) => !EXTRA_DATE_PATTERN.test(entry),
+  );
+  return bad === undefined ? undefined : `“${bad}” — use MM-DD or YYYY-MM-DD`;
 }
 
 interface WindowErrors {
@@ -1095,11 +1623,22 @@ function FormatMiniPreview({ format, ships, from, to }: FormatPreviewProps) {
 // ---------------------------------------------------------------------------
 
 export default function DeliveryFeaturesPage() {
-  const { settings, markets, headerEnabled, holidayTable, globalExclusions, examples } =
-    useLoaderData<typeof loader>();
+  const {
+    settings,
+    markets,
+    headerEnabled,
+    holidayTable,
+    globalExclusions,
+    usFederalYear,
+    usFederalNote,
+    geoAttribution,
+    geoStatus,
+    examples,
+  } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
+  const revalidator = useRevalidator();
   const shopify = useAppBridge();
 
   const [state, setState] = useState<DeliveryFormState>(() =>
@@ -1109,16 +1648,47 @@ export default function DeliveryFeaturesPage() {
   const [nextRowId, setNextRowId] = useState(
     () => Object.keys(settings.deliveryEstimate.byCountry).length,
   );
+  const [nextUsRowId, setNextUsRowId] = useState(
+    () => Object.keys(settings.deliveryEstimate.usStates.byState).length,
+  );
   const [addCountrySelect, setAddCountrySelect] = useState("");
+  const [addStateSelect, setAddStateSelect] = useState("");
   const [exampleCountry, setExampleCountry] = useState("");
+  const [testIp, setTestIp] = useState("");
+
+  /** The geo poll below revalidates the loader every 3 s during a build,
+   *  which gives `settings` a fresh OBJECT IDENTITY with unchanged content —
+   *  the form must reset on saved CONTENT only, or the poll would wipe
+   *  unsaved edits. */
+  const settingsKey = useMemo(() => JSON.stringify(settings), [settings]);
 
   useEffect(() => {
     setState(initialFormState(settings));
     setNextRowId(Object.keys(settings.deliveryEstimate.byCountry).length);
-  }, [settings]);
+    setNextUsRowId(Object.keys(settings.deliveryEstimate.usStates.byState).length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsKey]);
+
+  // 3 s status polling while a geo build runs — pure revalidation, stopped
+  // as soon as the status leaves "building".
+  useEffect(() => {
+    if (geoStatus.status !== "building") return;
+    const timer = setInterval(() => {
+      if (revalidator.state === "idle") revalidator.revalidate();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [geoStatus.status, revalidator]);
 
   useEffect(() => {
     if (!actionData) return;
+    // Geo intents ride the save envelope but are not saves: the build gets
+    // one ack toast (the card polls the rest), test results render inline.
+    if (actionData.geo) {
+      if (actionData.geo.intent === "build") {
+        shopify.toast.show("Download started — building in the background");
+      }
+      return;
+    }
     if (!actionData.ok) {
       shopify.toast.show("Could not save settings", { isError: true });
     } else if (actionData.syncErrors.length > 0) {
@@ -1132,8 +1702,14 @@ export default function DeliveryFeaturesPage() {
 
   const initial = useMemo(() => initialFormState(settings), [settings]);
   const dirty = serializeForCompare(state) !== serializeForCompare(initial);
+  const pendingGeoIntent =
+    navigation.state !== "idle" && navigation.formMethod === "POST"
+      ? navigation.formData?.get("geoIntent") ?? null
+      : null;
   const isSaving =
-    navigation.state !== "idle" && navigation.formMethod === "POST";
+    navigation.state !== "idle" &&
+    navigation.formMethod === "POST" &&
+    pendingGeoIntent === null;
 
   // --- Validation ----------------------------------------------------------
   const defaultWindowErrors: WindowErrors = {
@@ -1163,6 +1739,64 @@ export default function DeliveryFeaturesPage() {
         : undefined;
     return { country, ...window, days };
   });
+  // Effective US-wide values (defaults overlaid by the US country override,
+  // from the LIVE editor state) — what an empty state field inherits, shown
+  // as the placeholders. The dispatch pair is edited on the Dispatch page,
+  // so its effective values come from the SAVED settings.
+  const usCountryRow = state.overrides.find(
+    (row) => row.country.trim().toUpperCase() === "US",
+  );
+  const usEffectiveMin =
+    usCountryRow && usCountryRow.minDays.trim() !== ""
+      ? usCountryRow.minDays
+      : state.minDays;
+  const usEffectiveMax =
+    usCountryRow && usCountryRow.maxDays.trim() !== ""
+      ? usCountryRow.maxDays
+      : state.maxDays;
+  const usEffectiveHolidays =
+    usCountryRow && usCountryRow.holidays !== "inherit"
+      ? usCountryRow.holidays === "on"
+      : state.holidaysEnabled;
+  const usEffectiveCutoff =
+    settings.dispatch.byCountry.US?.cutoff ?? settings.dispatch.cutoff;
+  const usDispatchDaysDefault =
+    settings.dispatch.byCountry.US?.days ?? settings.dispatch.days;
+
+  const usExtraError = extraHolidaysError(state.usExtraHolidays);
+  const usOverrideErrors = state.usOverrides.map((row) => {
+    const window = windowErrors(row.minDays, row.maxDays, false);
+    const days =
+      row.overrideDays && row.deliveryDays.length === 0
+        ? "Pick at least one delivery weekday."
+        : undefined;
+    const dispatchDays =
+      row.overrideDispatchDays && row.dispatchDays.length === 0
+        ? "Pick at least one dispatch day."
+        : undefined;
+    const cutoff =
+      row.cutoff.trim() !== "" && !CUTOFF_PATTERN.test(row.cutoff.trim())
+        ? "24-hour time, e.g. 14:00"
+        : undefined;
+    const extraHolidays = extraHolidaysError(row.extraHolidays);
+    return { ...window, days, dispatchDays, cutoff, extraHolidays };
+  });
+  // Cross-inheritance is deliberately NOT an error: the server accepts it
+  // and the storefront fails OPEN (ignores the entry). The caution below
+  // tells the merchant so instead of silently letting a dead override sit.
+  const usMergeCautions = state.usOverrides.map((row, index) => {
+    const errors = usOverrideErrors[index];
+    if (errors.minDays || errors.maxDays) return null;
+    const min = parseDaysField(
+      row.minDays.trim() === "" ? usEffectiveMin : row.minDays,
+    );
+    const max = parseDaysField(
+      row.maxDays.trim() === "" ? usEffectiveMax : row.maxDays,
+    );
+    if (min === null || max === null) return null;
+    if (max >= Math.max(1, min)) return null;
+    return `Merged with the US-wide window this reads minimum ${min} / maximum ${max} — an impossible window, so the storefront ignores this override and buyers in ${US_STATE_OPTIONS[row.state] ?? row.state} keep the US-wide promise.`;
+  });
   const hasErrors =
     Boolean(
       defaultWindowErrors.minDays ||
@@ -1171,6 +1805,16 @@ export default function DeliveryFeaturesPage() {
     ) ||
     overrideErrors.some(
       (errors) => errors.country || errors.minDays || errors.maxDays || errors.days,
+    ) ||
+    Boolean(usExtraError) ||
+    usOverrideErrors.some(
+      (errors) =>
+        errors.minDays ||
+        errors.maxDays ||
+        errors.days ||
+        errors.dispatchDays ||
+        errors.cutoff ||
+        errors.extraHolidays,
     );
 
   // --- Handlers ------------------------------------------------------------
@@ -1207,6 +1851,67 @@ export default function DeliveryFeaturesPage() {
       overrides: previous.overrides.filter((row) => row.id !== id),
     }));
 
+  const setUsRow = (id: number, next: UsStateRowState) =>
+    setState((previous) => ({
+      ...previous,
+      usOverrides: previous.usOverrides.map((row) =>
+        row.id === id ? next : row,
+      ),
+    }));
+
+  const addUsOverride = (stateCode: string) => {
+    setState((previous) => {
+      // Day pickers seed from the EFFECTIVE US-wide days so opening either
+      // checkbox starts from what the state actually inherits.
+      const usRow = previous.overrides.find(
+        (row) => row.country.trim().toUpperCase() === "US",
+      );
+      return {
+        ...previous,
+        usOverrides: [
+          ...previous.usOverrides,
+          {
+            id: nextUsRowId,
+            state: stateCode,
+            minDays: "",
+            maxDays: "",
+            overrideDays: false,
+            deliveryDays:
+              usRow && usRow.overrideDays
+                ? [...usRow.deliveryDays]
+                : [...previous.deliveryDays],
+            holidays: "inherit",
+            cutoff: "",
+            overrideDispatchDays: false,
+            dispatchDays: [...usDispatchDaysDefault],
+            extraHolidays: "",
+            hidden: false,
+          },
+        ],
+      };
+    });
+    setNextUsRowId((id) => id + 1);
+  };
+
+  const removeUsOverride = (id: number) =>
+    setState((previous) => ({
+      ...previous,
+      usOverrides: previous.usOverrides.filter((row) => row.id !== id),
+    }));
+
+  const submitGeoBuild = () => {
+    const formData = new FormData();
+    formData.set("geoIntent", "build");
+    submit(formData, { method: "post" });
+  };
+
+  const submitGeoTest = () => {
+    const formData = new FormData();
+    formData.set("geoIntent", "test");
+    formData.set("ip", testIp.trim());
+    submit(formData, { method: "post" });
+  };
+
   const toggleDefaultDay = (iso: number, checked: boolean) => {
     setState((previous) => {
       const set = new Set(previous.deliveryDays);
@@ -1217,13 +1922,17 @@ export default function DeliveryFeaturesPage() {
   };
 
   const handleSave = () => {
-    // byCountry is a dynamic record replaced WHOLESALE by the settings merge
-    // — always send the full map (an empty object clears every override).
+    // byCountry AND usStates.byState are dynamic records replaced WHOLESALE
+    // by the settings merge — always send the full maps (an empty object
+    // clears every override).
     const byCountry = Object.fromEntries(
       state.overrides.map((row) => [
         row.country.trim().toUpperCase(),
         rowToOverride(row),
       ]),
+    );
+    const byState = Object.fromEntries(
+      state.usOverrides.map((row) => [row.state, rowToStateOverride(row)]),
     );
     const patch: DeepPartial<BoosterSettings> = {
       deliveryEstimate: {
@@ -1239,6 +1948,13 @@ export default function DeliveryFeaturesPage() {
         showInCart: state.showInCart,
         showInCheckout: state.showInCheckout,
         byCountry,
+        usStates: {
+          enabled: state.usEnabled,
+          selector: state.usSelector,
+          federalHolidays: state.usFederalHolidays,
+          extraHolidays: parseExtraHolidays(state.usExtraHolidays),
+          byState,
+        },
       },
       marketScopes: {
         delivery_estimate: toScopePatch(state.scopes.delivery_estimate),
@@ -1255,12 +1971,16 @@ export default function DeliveryFeaturesPage() {
     ...examples
       .filter((example) => example.code !== "")
       .map((example) => ({
-        label: countryLabel(example.code),
+        label: exampleLabel(example.code),
         value: example.code,
       })),
   ];
   const selectedExample =
     examples.find((example) => example.code === exampleCountry) ?? examples[0];
+
+  // --- Geo card ------------------------------------------------------------
+  const geoTest =
+    actionData?.geo && actionData.geo.intent === "test" ? actionData.geo : null;
 
   // Sample dates for the format mini previews: the real computed defaults
   // when available, otherwise a clearly generic placeholder.
@@ -1853,6 +2573,410 @@ export default function DeliveryFeaturesPage() {
                     />
                   </Box>
                 </InlineStack>
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  United States — delivery by state
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  A quiet upgrade on top of the US-wide promise: buyers
+                  resolved to a state get state-accurate dates, and anything
+                  the state layer cannot resolve keeps the US-wide promise —
+                  unlike everything above, this layer never fails to hidden.
+                </Text>
+                <Checkbox
+                  label="Enable per-state delivery promises for US buyers"
+                  helpText="Product page and cart use the buyer’s detected or chosen state (build the detection database below); checkout always uses the typed shipping address. The widget never disappears because of a state problem — it falls back to the US-wide promise instead."
+                  checked={state.usEnabled}
+                  onChange={(usEnabled) =>
+                    setState((previous) => ({ ...previous, usEnabled }))
+                  }
+                />
+                {state.usEnabled ? (
+                  <Box paddingInlineStart="600">
+                    <BlockStack gap="300">
+                      <Checkbox
+                        label="Show a “Deliver to” state selector on the widget"
+                        helpText="Amazon’s location-picker pattern: visitors can correct the detected state, or pick one when detection has nothing. When the shown state came from IP detection, the selector carries the required “IP Geolocation by DB-IP” attribution link."
+                        checked={state.usSelector}
+                        onChange={(usSelector) =>
+                          setState((previous) => ({ ...previous, usSelector }))
+                        }
+                      />
+                      <Checkbox
+                        label="Skip US federal holidays when counting delivery days"
+                        helpText={`Adds the six movable federal holidays the fixed-date table cannot carry — in ${usFederalYear}: ${usFederalNote}. Juneteenth, Independence Day and Veterans Day are already in the US holiday table; both lists apply only where holiday skipping is on.`}
+                        checked={state.usFederalHolidays}
+                        onChange={(usFederalHolidays) =>
+                          setState((previous) => ({
+                            ...previous,
+                            usFederalHolidays,
+                          }))
+                        }
+                      />
+                      <Box maxWidth="360px">
+                        <TextField
+                          label="US-wide extra days off"
+                          value={state.usExtraHolidays}
+                          onChange={(usExtraHolidays) =>
+                            setState((previous) => ({
+                              ...previous,
+                              usExtraHolidays,
+                            }))
+                          }
+                          error={usExtraError}
+                          placeholder="11-27, 2026-12-23"
+                          helpText={`Comma-separated, at most ${US_EXTRA_DATES_MAX} dates. MM-DD repeats every year, YYYY-MM-DD is a one-off — carrier strikes, warehouse closures, Black Friday backlog. These days never count as delivery days for any US buyer while the module is on.`}
+                          autoComplete="off"
+                        />
+                      </Box>
+                      <Divider />
+                      <BlockStack gap="100">
+                        <Text as="h3" variant="headingSm">
+                          State overrides
+                        </Text>
+                        <Text as="p" tone="subdued" variant="bodySm">
+                          Fields left empty inherit the effective US-wide
+                          values — the defaults above overlaid by the US
+                          country override when one exists. Every other US
+                          buyer keeps the US-wide promise.
+                        </Text>
+                      </BlockStack>
+                      {state.usOverrides.length === 0 ? (
+                        <Text as="p" tone="subdued" variant="bodySm">
+                          No state overrides — every US buyer gets the
+                          US-wide window (plus the days off above).
+                        </Text>
+                      ) : null}
+                      {state.usOverrides.map((row, index) => {
+                        const errors = usOverrideErrors[index] ?? {};
+                        const caution = usMergeCautions[index];
+                        return (
+                          <BlockStack key={row.id} gap="300">
+                            {index > 0 ? <Divider /> : null}
+                            <InlineStack
+                              gap="300"
+                              blockAlign="start"
+                              align="space-between"
+                              wrap
+                            >
+                              <Text as="h3" variant="headingSm">
+                                {stateLabel(row.state)}
+                              </Text>
+                              <Button
+                                variant="plain"
+                                tone="critical"
+                                onClick={() => removeUsOverride(row.id)}
+                              >
+                                Remove
+                              </Button>
+                            </InlineStack>
+                            <InlineStack gap="300" blockAlign="start" wrap>
+                              <Box width="160px">
+                                <TextField
+                                  label="Minimum (days)"
+                                  type="number"
+                                  value={row.minDays}
+                                  onChange={(minDays) =>
+                                    setUsRow(row.id, { ...row, minDays })
+                                  }
+                                  error={errors.minDays}
+                                  placeholder={`US-wide: ${usEffectiveMin || "?"}`}
+                                  autoComplete="off"
+                                />
+                              </Box>
+                              <Box width="160px">
+                                <TextField
+                                  label="Maximum (days)"
+                                  type="number"
+                                  value={row.maxDays}
+                                  onChange={(maxDays) =>
+                                    setUsRow(row.id, { ...row, maxDays })
+                                  }
+                                  error={errors.maxDays}
+                                  placeholder={`US-wide: ${usEffectiveMax || "?"}`}
+                                  autoComplete="off"
+                                />
+                              </Box>
+                              <Box width="220px">
+                                <Select
+                                  label="Public holidays"
+                                  options={[
+                                    {
+                                      label: `Inherit (${usEffectiveHolidays ? "skip" : "don’t skip"})`,
+                                      value: "inherit",
+                                    },
+                                    { label: "Skip holidays", value: "on" },
+                                    {
+                                      label: "Don’t skip holidays",
+                                      value: "off",
+                                    },
+                                  ]}
+                                  value={row.holidays}
+                                  onChange={(holidays) =>
+                                    setUsRow(row.id, {
+                                      ...row,
+                                      holidays: holidays as HolidayMode,
+                                    })
+                                  }
+                                />
+                              </Box>
+                              <Box width="160px">
+                                <TextField
+                                  label="Dispatch cutoff"
+                                  value={row.cutoff}
+                                  onChange={(cutoff) =>
+                                    setUsRow(row.id, { ...row, cutoff })
+                                  }
+                                  error={errors.cutoff}
+                                  placeholder={`US-wide: ${usEffectiveCutoff}`}
+                                  helpText="24-hour clock, warehouse time"
+                                  autoComplete="off"
+                                />
+                              </Box>
+                            </InlineStack>
+                            <Checkbox
+                              label="Custom delivery weekdays for this state"
+                              checked={row.overrideDays}
+                              onChange={(overrideDays) =>
+                                setUsRow(row.id, { ...row, overrideDays })
+                              }
+                            />
+                            {row.overrideDays ? (
+                              <BlockStack gap="100">
+                                <InlineStack gap="300" wrap>
+                                  {DAY_OPTIONS.map((day) => (
+                                    <Checkbox
+                                      key={day.iso}
+                                      label={day.label}
+                                      checked={row.deliveryDays.includes(
+                                        day.iso,
+                                      )}
+                                      onChange={(checked) => {
+                                        const set = new Set(row.deliveryDays);
+                                        if (checked) set.add(day.iso);
+                                        else set.delete(day.iso);
+                                        setUsRow(row.id, {
+                                          ...row,
+                                          deliveryDays: [...set].sort(
+                                            (a, b) => a - b,
+                                          ),
+                                        });
+                                      }}
+                                    />
+                                  ))}
+                                </InlineStack>
+                                {errors.days ? (
+                                  <Text as="p" tone="critical" variant="bodySm">
+                                    {errors.days}
+                                  </Text>
+                                ) : null}
+                              </BlockStack>
+                            ) : null}
+                            <Checkbox
+                              label="Custom dispatch days for this state"
+                              helpText="With the cutoff above, a PARTIAL dispatch override — the warehouse timezone always inherits (one physical warehouse)."
+                              checked={row.overrideDispatchDays}
+                              onChange={(overrideDispatchDays) =>
+                                setUsRow(row.id, {
+                                  ...row,
+                                  overrideDispatchDays,
+                                })
+                              }
+                            />
+                            {row.overrideDispatchDays ? (
+                              <BlockStack gap="100">
+                                <InlineStack gap="300" wrap>
+                                  {DAY_OPTIONS.map((day) => (
+                                    <Checkbox
+                                      key={day.iso}
+                                      label={day.label}
+                                      checked={row.dispatchDays.includes(
+                                        day.iso,
+                                      )}
+                                      onChange={(checked) => {
+                                        const set = new Set(row.dispatchDays);
+                                        if (checked) set.add(day.iso);
+                                        else set.delete(day.iso);
+                                        setUsRow(row.id, {
+                                          ...row,
+                                          dispatchDays: [...set].sort(
+                                            (a, b) => a - b,
+                                          ),
+                                        });
+                                      }}
+                                    />
+                                  ))}
+                                </InlineStack>
+                                {errors.dispatchDays ? (
+                                  <Text as="p" tone="critical" variant="bodySm">
+                                    {errors.dispatchDays}
+                                  </Text>
+                                ) : null}
+                              </BlockStack>
+                            ) : null}
+                            <Box maxWidth="360px">
+                              <TextField
+                                label="Extra days off for this state"
+                                value={row.extraHolidays}
+                                onChange={(extraHolidays) =>
+                                  setUsRow(row.id, { ...row, extraHolidays })
+                                }
+                                error={errors.extraHolidays}
+                                placeholder="08-27, 2026-09-14"
+                                helpText={`Comma-separated, at most ${STATE_EXTRA_DATES_MAX} dates — on top of the US-wide days off above.`}
+                                autoComplete="off"
+                              />
+                            </Box>
+                            <Checkbox
+                              label="Hide the delivery widget for buyers in this state"
+                              helpText="For destinations where no date can honestly be guaranteed. Buyers resolved to this state see nothing — no estimate, no badge — on every surface, checkout included."
+                              checked={row.hidden}
+                              onChange={(hidden) =>
+                                setUsRow(row.id, { ...row, hidden })
+                              }
+                            />
+                            {caution ? (
+                              <Text as="p" tone="caution" variant="bodySm">
+                                {caution}
+                              </Text>
+                            ) : null}
+                          </BlockStack>
+                        );
+                      })}
+                      <InlineStack gap="300" blockAlign="end" wrap>
+                        <Box width="280px">
+                          <Select
+                            label="Add a state override"
+                            options={[
+                              { label: "Pick a state…", value: "" },
+                              ...Object.keys(US_STATE_OPTIONS)
+                                .filter(
+                                  (candidate) =>
+                                    !state.usOverrides.some(
+                                      (row) => row.state === candidate,
+                                    ),
+                                )
+                                .sort((a, b) =>
+                                  US_STATE_OPTIONS[a].localeCompare(
+                                    US_STATE_OPTIONS[b],
+                                  ),
+                                )
+                                .map((candidate) => ({
+                                  label: stateLabel(candidate),
+                                  value: candidate,
+                                })),
+                            ]}
+                            value={addStateSelect}
+                            onChange={(value) => {
+                              setAddStateSelect("");
+                              if (value === "") return;
+                              addUsOverride(value);
+                            }}
+                          />
+                        </Box>
+                      </InlineStack>
+                    </BlockStack>
+                  </Box>
+                ) : null}
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  State detection database
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Powers product-page and cart state detection: a self-hosted
+                  IP→state table served by your own app. The visitor’s IP is
+                  checked against it in memory — never stored, never logged,
+                  never sent to a third party.
+                </Text>
+                {geoStatus.status === "empty" ? (
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Not built yet — US buyers keep the US-wide promise on the
+                    product page and in the cart (a state picked in the
+                    selector still works).
+                  </Text>
+                ) : null}
+                {geoStatus.status === "building" ? (
+                  <Text as="p" variant="bodySm">
+                    Building —{" "}
+                    {geoStatus.rowsScanned !== null
+                      ? `${geoStatus.rowsScanned} rows scanned, ${geoStatus.usRowsKept ?? 0} US rows kept so far.`
+                      : "downloading and compiling the DB-IP table."}{" "}
+                    This card refreshes automatically.
+                  </Text>
+                ) : null}
+                {geoStatus.status === "ready" ? (
+                  <Text as="p" variant="bodySm">
+                    Ready — {geoStatus.source || "state table"}:{" "}
+                    {geoStatus.rangesV4} IPv4 + {geoStatus.rangesV6} IPv6
+                    ranges
+                    {geoStatus.builtAtLabel
+                      ? `, built ${geoStatus.builtAtLabel}`
+                      : ""}
+                    .
+                  </Text>
+                ) : null}
+                {geoStatus.status === "error" ? (
+                  <Text as="p" tone="critical" variant="bodySm">
+                    The last build failed: {geoStatus.error || "unknown error"}.
+                    Fix the cause (usually connectivity) and run it again.
+                  </Text>
+                ) : null}
+                <InlineStack gap="300" blockAlign="center" wrap>
+                  <Button
+                    variant="primary"
+                    onClick={submitGeoBuild}
+                    loading={pendingGeoIntent === "build"}
+                    disabled={geoStatus.status === "building"}
+                  >
+                    Download &amp; build
+                  </Button>
+                </InlineStack>
+                <InlineStack gap="300" blockAlign="end" wrap>
+                  <Box width="220px">
+                    <TextField
+                      label="Test lookup"
+                      value={testIp}
+                      onChange={setTestIp}
+                      placeholder="203.0.113.7"
+                      autoComplete="off"
+                    />
+                  </Box>
+                  <Button
+                    onClick={submitGeoTest}
+                    loading={pendingGeoIntent === "test"}
+                    disabled={geoStatus.status !== "ready"}
+                  >
+                    Test
+                  </Button>
+                </InlineStack>
+                {geoTest ? (
+                  <Text
+                    as="p"
+                    variant="bodySm"
+                    tone={geoTest.error ? "critical" : undefined}
+                  >
+                    {geoTest.error
+                      ? geoTest.error
+                      : geoTest.state
+                        ? `${geoTest.ip} → ${stateLabel(geoTest.state)}`
+                        : `${geoTest.ip} → no state resolved (that buyer keeps the US-wide promise)`}
+                  </Text>
+                ) : null}
+                <Text as="p" tone="subdued" variant="bodySm">
+                  {geoAttribution}. DB-IP publishes a new City Lite table
+                  every month — rebuild monthly to stay accurate. Without
+                  this database the product page simply falls back to the
+                  US-wide promise; the checkout state promise works
+                  regardless — it uses the typed shipping address.
+                </Text>
               </BlockStack>
             </Card>
 

@@ -211,6 +211,12 @@ interface FeatureDefinition {
    * sub-flag (isEnabled/buildPatch).
    */
   statusFlagKey?: FeatureKey;
+  /**
+   * Title of the master feature a dormant sub-flag card is waiting on —
+   * shown in the "Waiting for …" badge. Required for any card whose
+   * statusFlagKey combined state involves a master switch.
+   */
+  masterTitle?: string;
   isEnabled: (settings: BoosterSettings) => boolean;
   buildPatch: (enabled: boolean) => DeepPartial<BoosterSettings>;
 }
@@ -265,6 +271,7 @@ const FEATURES: FeatureDefinition[] = [
     configureUrl: "/app/features/cart",
     scopeKeys: ["free_shipping_bar"],
     statusFlagKey: "free_shipping_bar",
+    masterTitle: "Cart upsells",
     isEnabled: (settings) => settings.cartUpsell.showFreeShippingBar,
     buildPatch: (enabled) => ({
       cartUpsell: { showFreeShippingBar: enabled },
@@ -278,6 +285,7 @@ const FEATURES: FeatureDefinition[] = [
     configureUrl: "/app/features/cart",
     scopeKeys: ["cart_subscription_upsell"],
     statusFlagKey: "cart_subscription_upsell",
+    masterTitle: "Cart upsells",
     isEnabled: (settings) => settings.cartUpsell.showSubscriptionUpsell,
     buildPatch: (enabled) => ({
       cartUpsell: { showSubscriptionUpsell: enabled },
@@ -396,6 +404,32 @@ const FEATURES: FeatureDefinition[] = [
     isEnabled: (settings) => settings.checkoutTrust.enabled,
     buildPatch: (enabled) => ({ checkoutTrust: { enabled } }),
   },
+  // v9 trust module V2 rows — sub-flags of the trust module (shown only
+  // while it is active), each with its own per-market scope.
+  {
+    key: "checkout_customs",
+    title: "Customs-free delivery line",
+    description:
+      "“No customs or additional fees on delivery.” row in the trust module. Shown only while Checkout trust is active.",
+    configureUrl: "/app/features/checkout",
+    scopeKeys: ["checkout_customs"],
+    statusFlagKey: "checkout_customs",
+    masterTitle: "Checkout trust",
+    isEnabled: (settings) => settings.checkoutTrust.showCustoms,
+    buildPatch: (enabled) => ({ checkoutTrust: { showCustoms: enabled } }),
+  },
+  {
+    key: "checkout_tracked",
+    title: "Tracked delivery line",
+    description:
+      "“Tracked Delivery · Guaranteed by …” row with the Delivery guarantee's date, in the buyer's language. Shown only while Checkout trust is active (independent of the Delivery guarantee switch — only the schedule is shared).",
+    configureUrl: "/app/features/checkout",
+    scopeKeys: ["checkout_tracked"],
+    statusFlagKey: "checkout_tracked",
+    masterTitle: "Checkout trust",
+    isEnabled: (settings) => settings.checkoutTrust.showTracked,
+    buildPatch: (enabled) => ({ checkoutTrust: { showTracked: enabled } }),
+  },
 ];
 
 /**
@@ -497,7 +531,7 @@ function FeatureToggleRow({
                 {live
                   ? "Active"
                   : waiting
-                    ? "Waiting for Cart upsells"
+                    ? `Waiting for ${feature.masterTitle ?? "master feature"}`
                     : "Off"}
               </Badge>
             </InlineStack>

@@ -150,14 +150,22 @@
     "read_article": "Olvasd el a cikket"
   },
   "endo": {
-    "eyebrow": "Bőrgyógyászok ajánlásai",
+    "eyebrow": "Bőrgyógyászok által ajánlott",
     "count_headline": {
-      "one": "{{ n }} bőrgyógyász ajánlja",
-      "other": "{{ n }} bőrgyógyász ajánlja"
+      "one": "{{ n }} bőrgyógyász ajánlja a Cellexiát",
+      "other": "{{ n }} bőrgyógyász ajánlja a Cellexiát"
     },
     "shown_of": "Megjelenítve: @@SHOWN@@ / @@TOTAL@@",
     "show_more": "Továbbiak megjelenítése",
-    "read_full": "Olvasd el a teljes ajánlást"
+    "read_full": "Olvasd el a teljes ajánlást",
+    "description": "Engedéllyel rendelkező bőrgyógyászok ellenőrzött ajánlásai. Olvasd el, mit mondanak a termékről, a Cellexiáról és a bőrápolási megközelítéséről.",
+    "badge_headline": {
+      "one": "{{ n }} bőrgyógyász ajánlja",
+      "other": "{{ n }} bőrgyógyász ajánlja"
+    },
+    "badge_link": "Olvasd el a szakmai véleményüket",
+    "badge_alt": "Ellenőrzött szakmai vélemények",
+    "badge_chip": "Bőrgyógyász szakorvosok"
   },
   "results": {
     "banner_verified": "Nézd meg {{ count }} igazolt Cellexia-vásárló eredményeit.",
@@ -196,7 +204,8 @@
     "box_title": "Garantált kézbesítés legkésőbb: {{ date }}",
     "box_sub": "…különben visszatérítjük a pénzed, vagy ingyen küldünk egy csereterméket.",
     "badge": "Kézbesítési garancia",
-    "tooltip": "Kézbesítés legkésőbb: {{ date }} – különben visszatérítjük a pénzed, vagy ingyen küldünk egy csereterméket."
+    "tooltip": "Kézbesítés legkésőbb: {{ date }} – különben visszatérítjük a pénzed, vagy ingyen küldünk egy csereterméket.",
+    "deliver_to": "Szállítás ide:"
   },
   "amazon": {
     "in_stock": "Készleten",

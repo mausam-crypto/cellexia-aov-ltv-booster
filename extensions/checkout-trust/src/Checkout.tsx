@@ -1,4 +1,4 @@
-import {useMemo} from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import {
   BlockStack,
   Icon,
@@ -10,37 +10,60 @@ import {
   useApi,
   useAppMetafields,
   useAttributeValues,
+  useLanguage,
   useLocalizationMarket,
+  useShippingAddress,
   useTranslate,
 } from '@shopify/ui-extensions-react/checkout';
+import {
+  computeDelivery,
+  resolveDeliveryConfig,
+  type DeliveryResult,
+} from './delivery-engine';
+import {
+  isAllowedInMarket,
+  parseCellexiaConfig,
+  resolveConfig,
+  resolvePreview,
+  trustFormatDateCompact,
+  trustPreviewDiagnosis,
+  type PreviewConfig,
+} from './trust-logic';
 
 /**
- * Cellexia AOV & LTV Booster — Checkout Trust module.
+ * Cellexia AOV & LTV Booster — Checkout Trust module V2 (v9).
  *
- * Pure display block: money-back guarantee, secure-checkout line, clinical
- * claim and Trustpilot rating (v5.5: the subscription-savings hint was
- * removed on merchant request). All values come from the shop metafield
- * ($app:cellexia / config); no cart mutations, no network calls.
+ * Display block: secure-checkout line, money-back guarantee, the two v9
+ * per-market rows — customs-free delivery (checkout_customs) and tracked
+ * delivery with the guaranteed-by date (checkout_tracked) — plus the
+ * clinical claim and Trustpilot rating. No cart mutations, no network
+ * calls. All pure logic lives in ./trust-logic.ts (sim-tested); the date
+ * math for the tracked row comes from ./delivery-engine.ts, the
+ * BYTE-IDENTICAL twin of checkout-delivery's engine, so the tracked row
+ * always promises exactly the delivery_estimate guarantee date.
  *
  * SAFE BY DEFAULT: a missing/unparsable config metafield, a missing
  * `checkoutTrust` section, or anything but an explicit `enabled: true`
  * renders nothing. Market targeting is enforced against the checkout's
  * localization market and FAILS CLOSED (mode "selected" + unknown market →
- * hidden): the whole module respects `marketScopes.checkout_trust`.
+ * hidden). The module respects `marketScopes.checkout_trust`; the customs
+ * and tracked ROWS additionally respect their OWN scopes
+ * (`marketScopes.checkout_customs` / `marketScopes.checkout_tracked`), so
+ * each can be turned on or off per market independently of the module.
  *
- * PREVIEW (v5): the cart's `_cx_preview` attribute carries the SHA-256 HEX
- * digest of the preview token, computed server-side by the app — so the
- * preview gate is a plain synchronous string comparison against the
- * (non-empty) `preview.tokenHash` from the shop metafield. No SubtleCrypto
- * dependency (v4 hashed the raw token inside the extension; SubtleCrypto's
- * silent unavailability in some checkout sandboxes disabled preview
- * entirely). When the metafield carries `preview.armed: true` AND the
- * attribute equals the hash, the module additionally counts as enabled when
- * `preview.draftFlags.checkout_trust === true` — bypassing its market gate
- * for the draft grant only (the preview cart belongs to the merchant).
- * Outside preview mode every
- * gate is unchanged — all preview logic sits behind the single
- * `previewActive` boolean.
+ * TRACKED ROW FAIL-CLOSED CHAIN: no shipping country yet, an uncomputable
+ * delivery date, or an unformattable label each hide ONLY the tracked row —
+ * the rest of the module renders normally. The row re-computes on a 30s
+ * tick (crossing the warehouse cutoff mid-checkout shifts the date, and a
+ * stale "guaranteed by" promise is worse than none).
+ *
+ * PREVIEW (v5 contract): the cart's `_cx_preview` attribute carries the
+ * SHA-256 HEX digest of the preview token; the gate is a plain synchronous
+ * string comparison against `preview.tokenHash` from the shop metafield.
+ * When verified, `preview.draftFlags.checkout_trust` draft-enables the
+ * module, and `checkout_customs` / `checkout_tracked` draft-enable their
+ * rows (implying the module for the draft grant only — the preview cart
+ * belongs to the merchant). Outside preview mode every gate is unchanged.
  *
  * PREVIEW DIAGNOSTICS: when `_cx_preview` is present (merchant preview
  * carts only — real buyers never carry it) and this module would otherwise
@@ -48,222 +71,6 @@ import {
  * attribute is absent, behavior is byte-identical to before: every
  * diagnostic path sits behind the attribute-present check.
  */
-
-/** Mirrors the relevant slices of DEFAULT_SETTINGS in app/models/settings.server.ts. */
-const DEFAULT_CONFIG: TrustModuleConfig = {
-  checkoutTrust: {
-    enabled: false,
-    showGuarantee: true,
-    showTrustpilot: true,
-    showClinical: false,
-    showBadges: true,
-  },
-  guarantee: {days: 60},
-  trustpilot: {
-    rating: 4.8,
-    reviewCount: 1000,
-    profileUrl: 'https://www.trustpilot.com/review/cellexia.com',
-    // Default/missing = linked — matches DEFAULT_SETTINGS.trustpilot.showLink,
-    // so configs written before the flag existed behave byte-identically.
-    showLink: true,
-  },
-};
-
-interface TrustModuleConfig {
-  checkoutTrust: {
-    enabled: boolean;
-    showGuarantee: boolean;
-    showTrustpilot: boolean;
-    showClinical: boolean;
-    showBadges: boolean;
-  };
-  guarantee: {days: number};
-  trustpilot: {
-    rating: number;
-    reviewCount: number;
-    profileUrl: string;
-    /** false = render the rating as plain text instead of a Link. */
-    showLink: boolean;
-  };
-}
-
-interface PreviewConfig {
-  armed: boolean;
-  draftFlags: Record<string, boolean>;
-  tokenHash: string;
-}
-
-/** Inert preview default: disarmed, no draft flags, empty (never-matching) token hash. */
-const DEFAULT_PREVIEW: PreviewConfig = {armed: false, draftFlags: {}, tokenHash: ''};
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readBoolean(source: unknown, key: string, fallback: boolean): boolean {
-  if (isPlainObject(source) && typeof source[key] === 'boolean') {
-    return source[key] as boolean;
-  }
-  return fallback;
-}
-
-function readNumber(source: unknown, key: string, fallback: number): number {
-  if (isPlainObject(source)) {
-    const value = source[key];
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-  }
-  return fallback;
-}
-
-function readString(source: unknown, key: string, fallback: string): string {
-  if (isPlainObject(source) && typeof source[key] === 'string') {
-    return source[key] as string;
-  }
-  return fallback;
-}
-
-/**
- * Locates the `config` JSON metafield among the app metafield entries.
- * The namespace is declared as `$app:cellexia`; at runtime it may surface as
- * `$app:cellexia`, `cellexia` or `app--<id>--cellexia`, so we match on the
- * `cellexia` suffix as the stable part.
- */
-function parseCellexiaConfig(
-  entries: ReadonlyArray<{
-    metafield: {namespace: string; key: string; value: string | number | boolean};
-  }>,
-): Record<string, unknown> | undefined {
-  for (const entry of entries) {
-    const metafield = entry?.metafield;
-    if (!metafield || metafield.key !== 'config') continue;
-    const namespace =
-      typeof metafield.namespace === 'string' ? metafield.namespace : '';
-    if (!namespace.endsWith('cellexia')) continue;
-    const raw: unknown = metafield.value;
-    if (typeof raw === 'string') {
-      try {
-        const parsed: unknown = JSON.parse(raw);
-        if (isPlainObject(parsed)) return parsed;
-      } catch {
-        return undefined;
-      }
-    } else if (isPlainObject(raw)) {
-      return raw;
-    }
-  }
-  return undefined;
-}
-
-function resolveConfig(root: Record<string, unknown> | undefined): TrustModuleConfig {
-  if (!root) return DEFAULT_CONFIG;
-  const trust = root.checkoutTrust;
-  const guarantee = root.guarantee;
-  const trustpilot = root.trustpilot;
-  const defaults = DEFAULT_CONFIG;
-  return {
-    checkoutTrust: {
-      // Safe default: ON only when the metafield explicitly says
-      // `enabled: true`. Missing, malformed or falsy values all mean OFF.
-      enabled: isPlainObject(trust) && trust.enabled === true,
-      showGuarantee: readBoolean(
-        trust,
-        'showGuarantee',
-        defaults.checkoutTrust.showGuarantee,
-      ),
-      showTrustpilot: readBoolean(
-        trust,
-        'showTrustpilot',
-        defaults.checkoutTrust.showTrustpilot,
-      ),
-      showClinical: readBoolean(
-        trust,
-        'showClinical',
-        defaults.checkoutTrust.showClinical,
-      ),
-      showBadges: readBoolean(trust, 'showBadges', defaults.checkoutTrust.showBadges),
-    },
-    guarantee: {
-      days: Math.max(1, Math.round(readNumber(guarantee, 'days', defaults.guarantee.days))),
-    },
-    trustpilot: {
-      rating: Math.min(
-        5,
-        Math.max(0, readNumber(trustpilot, 'rating', defaults.trustpilot.rating)),
-      ),
-      reviewCount: Math.max(
-        0,
-        Math.round(
-          readNumber(trustpilot, 'reviewCount', defaults.trustpilot.reviewCount),
-        ),
-      ),
-      profileUrl: readString(trustpilot, 'profileUrl', defaults.trustpilot.profileUrl),
-      // Missing/malformed = true (linked): behavior is byte-identical for
-      // every config written before this flag existed.
-      showLink: readBoolean(trustpilot, 'showLink', defaults.trustpilot.showLink),
-    },
-  };
-}
-
-/**
- * Resolves the `preview` section from the shop metafield config (v5). Safe
- * default: preview is INERT (disarmed, no flags, empty token hash) whenever
- * the section is missing or malformed. Only the SHA-256 hex digest of the
- * preview token (`tokenHash`) ever reaches the checkout: the shop metafield
- * carries it here, and the merchant's `_cx_preview` cart attribute carries
- * the same digest (computed server-side) — the raw token never leaves the
- * app. A legacy `preview.token` field, if present, is ignored.
- */
-function resolvePreview(root: Record<string, unknown> | undefined): PreviewConfig {
-  if (!root || !isPlainObject(root.preview)) return DEFAULT_PREVIEW;
-  const section = root.preview;
-  const armed = section.armed === true;
-  const tokenHash =
-    typeof section.tokenHash === 'string' ? section.tokenHash : '';
-  const draftFlags: Record<string, boolean> = {};
-  if (isPlainObject(section.draftFlags)) {
-    for (const [key, value] of Object.entries(section.draftFlags)) {
-      if (typeof value === 'boolean') draftFlags[key] = value;
-    }
-  }
-  return {armed, draftFlags, tokenHash};
-}
-
-/**
- * Builds the merchant-facing reason shown when a preview cart (the
- * `_cx_preview` attribute is present) would otherwise see nothing here.
- * Checks run in order, most fundamental first. Hardcoded English on
- * purpose: this line renders only on merchant preview carts — real buyers
- * never carry the attribute — so it is a merchant tool, not buyer copy.
- */
-function trustPreviewDiagnosis(input: {
-  configFound: boolean;
-  preview: PreviewConfig;
-  attributeValue: string | undefined;
-  featureVisible: boolean;
-}): string {
-  if (!input.configFound) {
-    return 'config metafield not found — save Settings once in the app and check Setup & health';
-  }
-  if (!input.preview.armed) {
-    return "preview is not armed — arm it in the app's Preview page";
-  }
-  if (input.attributeValue !== input.preview.tokenHash) {
-    return 'preview link is stale — reopen the preview from the app (token rotated?)';
-  }
-  if (!input.featureVisible) {
-    return 'the checkout trust feature is not draft-enabled for this preview';
-  }
-  return 'all trust module elements are toggled off';
-}
-
-/** Single subdued diagnostic line, prefixed so merchants can spot it. */
-function PreviewDiagnostic({reason}: {reason: string}) {
-  return (
-    <Text size="small" appearance="subdued">
-      {`Cellexia preview: ${reason}`}
-    </Text>
-  );
-}
 
 /**
  * Caption rendered ONLY inside the checkout editor (`extension.editor` set),
@@ -278,30 +85,13 @@ function EditorPreviewCaption() {
   );
 }
 
-/**
- * Evaluates `cfg.marketScopes[featureKey]` against the buyer's market.
- * Mirrors `isFeatureOnForMarket` in app/models/settings.server.ts: a missing
- * or malformed scope, or mode "all", is visible everywhere (flags
- * permitting); mode "selected" is visible ONLY when the buyer's market
- * handle is known AND listed. Unknown market + "selected" FAILS CLOSED
- * (hidden) — Google Ads compliance: never show a feature in a market it
- * wasn't enabled for.
- */
-function isAllowedInMarket(
-  root: Record<string, unknown> | undefined,
-  featureKey: string,
-  marketHandle: string | undefined,
-): boolean {
-  if (!root) return true;
-  const scopes = root.marketScopes;
-  if (!isPlainObject(scopes)) return true;
-  const scope = scopes[featureKey];
-  if (!isPlainObject(scope)) return true;
-  if (scope.mode !== 'selected') return true;
-  if (!marketHandle) return false;
-  const markets = scope.markets;
-  if (!Array.isArray(markets)) return false;
-  return markets.includes(marketHandle);
+/** Single subdued diagnostic line, prefixed so merchants can spot it. */
+function PreviewDiagnostic({reason}: {reason: string}) {
+  return (
+    <Text size="small" appearance="subdued">
+      {`Cellexia preview: ${reason}`}
+    </Text>
+  );
 }
 
 export default reactExtension('purchase.checkout.block.render', () => <Extension />);
@@ -326,6 +116,18 @@ function Extension() {
   const {i18n, extension} = useApi();
   const metafieldEntries = useAppMetafields();
   const market = useLocalizationMarket();
+  // v9 tracked row: the checkout's own localization language (reactive
+  // isoCode like "fr" / "pt-PT") — the same source the delivery extension
+  // uses. NOT the checkout i18n date formatter: the compact DATE_STYLE spec
+  // needs structure control (see trustFormatDateCompact in trust-logic.ts).
+  const language = useLanguage();
+  // Buyer country comes ONLY from the shipping address — undefined means
+  // "not entered yet" and the tracked row stays hidden (never guess a
+  // country). v10: the US state rides the SAME contract (typed
+  // provinceCode only) but fails OPEN in the engine — no/unknown state on
+  // a US order keeps the US-wide promise. Same contract as
+  // checkout-delivery.
+  const shippingAddress = useShippingAddress();
 
   // CHECKOUT EDITOR detection (v4.9): `extension.editor` is `{type:
   // 'checkout'}` only while the merchant is inside the checkout editor and
@@ -347,13 +149,29 @@ function Extension() {
     'checkout_trust',
     marketHandle,
   );
+  // v9 per-market row gates — each row has its own FeatureKey scope, so a
+  // market can carry the customs promise without the tracked one and vice
+  // versa. Same fail-closed semantics as the module gate.
+  const customsAllowedInMarket = isAllowedInMarket(
+    configRoot,
+    'checkout_customs',
+    marketHandle,
+  );
+  const trackedAllowedInMarket = isAllowedInMarket(
+    configRoot,
+    'checkout_tracked',
+    marketHandle,
+  );
   // v5 preview: the single gate for ALL preview behavior. The `_cx_preview`
   // cart attribute (set by the merchant's preview hub) carries the SHA-256
   // hex digest of the preview token, computed server-side — so the gate is
   // a plain synchronous string comparison with no SubtleCrypto dependency.
   // `useAttributeValues` yields `undefined` while the attribute is absent,
   // which can never match a non-empty hash.
-  const preview = useMemo(() => resolvePreview(configRoot), [configRoot]);
+  const preview: PreviewConfig = useMemo(
+    () => resolvePreview(configRoot),
+    [configRoot],
+  );
   const [previewAttributeValue] = useAttributeValues(['_cx_preview']);
   const previewActive =
     preview.armed === true &&
@@ -362,12 +180,66 @@ function Extension() {
   // Draft grants: in preview mode a feature counts as enabled when its draft
   // flag is explicitly true — market gating is bypassed for the draft grant
   // only (the preview cart is the merchant's own). The live paths are
-  // untouched: live stays live.
+  // untouched: live stays live. A row grant implies the module chrome so
+  // the merchant can actually see the drafted row.
   const trustDraftEnabled =
     previewActive && preview.draftFlags.checkout_trust === true;
+  const customsDraftEnabled =
+    previewActive && preview.draftFlags.checkout_customs === true;
+  const trackedDraftEnabled =
+    previewActive && preview.draftFlags.checkout_tracked === true;
 
+  const moduleLive = config.checkoutTrust.enabled && trustAllowedInMarket;
   const trustVisible =
-    (config.checkoutTrust.enabled && trustAllowedInMarket) || trustDraftEnabled;
+    moduleLive || trustDraftEnabled || customsDraftEnabled || trackedDraftEnabled;
+
+  const {showGuarantee, showTrustpilot, showClinical, showBadges} =
+    config.checkoutTrust;
+
+  // v9 row visibility: live = module visible AND the row's flag AND the
+  // row's own market gate; a verified draft grant shows the row regardless
+  // (merchant preview). The tracked row additionally needs a computable,
+  // formattable date — resolved below.
+  const customsVisible =
+    (trustVisible && config.checkoutTrust.showCustoms && customsAllowedInMarket) ||
+    customsDraftEnabled;
+  const trackedWanted =
+    (trustVisible && config.checkoutTrust.showTracked && trackedAllowedInMarket) ||
+    trackedDraftEnabled;
+
+  // Tracked-row delivery date: the delivery_estimate engine twin, driven by
+  // the shipping-address country. Re-run every 30s (the delivery widget's
+  // tick): crossing the warehouse cutoff mid-checkout shifts the date.
+  const countryCode = shippingAddress?.countryCode;
+  const provinceCode = shippingAddress?.provinceCode;
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+  const deliveryResult: DeliveryResult | null = useMemo(() => {
+    if (!trackedWanted && !inEditor) return null; // never compute unused dates
+    if (!countryCode) return null;
+    const dc = resolveDeliveryConfig(configRoot, countryCode, provinceCode);
+    if (!dc) return null;
+    return computeDelivery(dc, now);
+  }, [configRoot, countryCode, provinceCode, now, trackedWanted, inEditor]);
+
+  // Representative sample for the editor when nothing real is computable:
+  // guaranteed in 5 days (calendar stamps only — the sample renders
+  // exclusively inside the checkout editor, mirroring checkout-delivery).
+  const guaranteedUt = deliveryResult
+    ? deliveryResult.max
+    : inEditor
+      ? Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) +
+        5 * 86400000
+      : null;
+  const trackedDateLabel =
+    guaranteedUt !== null
+      ? trustFormatDateCompact(guaranteedUt, language.isoCode)
+      : '';
+  // Fail closed on any unformatted date — never show a half-filled promise.
+  const trackedVisible = trackedWanted && trackedDateLabel !== '';
 
   // Merchant preview diagnostics: `_cx_preview` present means a merchant
   // preview cart (real buyers never carry it). Precompute the reason we
@@ -382,6 +254,9 @@ function Extension() {
         preview,
         attributeValue: previewAttributeValue,
         featureVisible: trustVisible,
+        trackedWanted,
+        countryCode,
+        trackedDateLabel,
       })
     : undefined;
 
@@ -391,14 +266,13 @@ function Extension() {
     return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
   }
 
-  const {showGuarantee, showTrustpilot, showClinical, showBadges} =
-    config.checkoutTrust;
-
   if (
     !showGuarantee &&
     !showTrustpilot &&
     !showClinical &&
     !showBadges &&
+    !customsVisible &&
+    !trackedVisible &&
     !inEditor
   ) {
     return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
@@ -407,11 +281,14 @@ function Extension() {
   // CHECKOUT EDITOR: force every display row on so the merchant always has
   // something to place and move; values still come from the resolved
   // config (real merchant values where present, defaults otherwise — the
-  // sample "4.8/5" Trustpilot fallback surfaces ONLY here, never live).
-  // When `inEditor` is false each row renders exactly per its live
-  // toggle, as before.
+  // sample "4.8/5" Trustpilot fallback and the sample tracked date surface
+  // ONLY here, never live). When `inEditor` is false each row renders
+  // exactly per its live toggle, as before.
   const renderBadges = showBadges || inEditor;
   const renderGuarantee = showGuarantee || inEditor;
+  const renderCustoms = customsVisible || inEditor;
+  const renderTracked =
+    trackedVisible || (inEditor && trackedDateLabel !== '');
   const renderClinical = showClinical || inEditor;
   const renderTrustpilot = showTrustpilot || inEditor;
 
@@ -453,13 +330,34 @@ function Extension() {
         <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="start">
           <Icon source="success" appearance="subdued" size="small" />
           <BlockStack spacing="none">
+            {/* v9.1: `count` drives CLDR plural selection in the locales
+                whose day-word inflects (ro/ar/pl/… ship plural objects);
+                {{days}} stays the interpolated number in every form. */}
             <Text size="small" emphasis="bold">
-              {translate('guarantee_title', {days: config.guarantee.days})}
+              {translate('guarantee_title', {
+                days: config.guarantee.days,
+                count: config.guarantee.days,
+              })}
             </Text>
             <Text size="small" appearance="subdued">
-              {translate('guarantee_body')}
+              {translate('guarantee_body', {
+                days: config.guarantee.days,
+                count: config.guarantee.days,
+              })}
             </Text>
           </BlockStack>
+        </InlineLayout>
+      ) : null}
+      {renderCustoms ? (
+        <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
+          <Icon source="orderBox" appearance="subdued" size="small" />
+          <Text size="small">{translate('customs')}</Text>
+        </InlineLayout>
+      ) : null}
+      {renderTracked ? (
+        <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
+          <Icon source="truck" appearance="subdued" size="small" />
+          <Text size="small">{translate('tracked', {date: trackedDateLabel})}</Text>
         </InlineLayout>
       ) : null}
       {renderClinical ? (

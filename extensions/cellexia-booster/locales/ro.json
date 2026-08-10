@@ -152,15 +152,24 @@
     "read_article": "Citește articolul"
   },
   "endo": {
-    "eyebrow": "Recomandările dermatologilor",
+    "eyebrow": "Recomandat de dermatologi",
     "count_headline": {
-      "one": "Recomandat de {{ n }} dermatolog",
-      "few": "Recomandat de {{ n }} dermatologi",
-      "other": "Recomandat de dermatologi: {{ n }}"
+      "one": "{{ n }} dermatolog recomandă Cellexia",
+      "few": "Dermatologii recomandă Cellexia — {{ n }} în total",
+      "other": "Dermatologii recomandă Cellexia — {{ n }} în total"
     },
     "shown_of": "Se afișează @@SHOWN@@ din @@TOTAL@@",
     "show_more": "Vezi mai multe",
-    "read_full": "Citește recomandarea completă"
+    "read_full": "Citește recomandarea completă",
+    "description": "Recomandări verificate de la dermatologi autorizați. Citește ce spun despre produs, despre Cellexia și despre abordarea sa în îngrijirea pielii.",
+    "badge_headline": {
+      "one": "Recomandat de {{ n }} dermatolog",
+      "few": "Recomandat de dermatologi — {{ n }} în total",
+      "other": "Recomandat de dermatologi — {{ n }} în total"
+    },
+    "badge_link": "Citește evaluările lor profesionale",
+    "badge_alt": "Evaluări profesionale verificate",
+    "badge_chip": "Dermatologi autorizați"
   },
   "results": {
     "banner_verified": "Vezi rezultatele obținute de clienți Cellexia verificați — {{ count }} în total.",
@@ -199,7 +208,8 @@
     "box_title": "Livrare garantată cel târziu {{ date }}",
     "box_sub": "…sau îți returnăm banii ori îți trimitem gratuit un produs de înlocuire.",
     "badge": "Garanția livrării",
-    "tooltip": "Livrat cel târziu {{ date }} — altfel îți returnăm banii sau îți trimitem gratuit un produs de înlocuire."
+    "tooltip": "Livrat cel târziu {{ date }} — altfel îți returnăm banii sau îți trimitem gratuit un produs de înlocuire.",
+    "deliver_to": "Livrare în:"
   },
   "amazon": {
     "in_stock": "În stoc",

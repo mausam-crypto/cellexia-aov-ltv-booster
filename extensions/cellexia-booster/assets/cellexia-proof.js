@@ -849,6 +849,15 @@
     return out;
   }
 
+  function endoText(s, over, key) {
+    // v8.17 merchant copy override: the island carries blank-or-null "o*"
+    // members next to the translated defaults — a non-blank override wins
+    // (served as entered in EVERY language; settings copy is never
+    // machine-translated), anything else falls back to the locale string.
+    var o = pfStr(s, over);
+    return /\S/.test(o) ? o : pfStr(s, key);
+  }
+
   function endoBuildCard(item, s) {
     var card = pfEl('div', 'cx-endo__card');
     pfSp(card);
@@ -929,8 +938,8 @@
       // Compact head-row composition — both parts optional, joined with
       // the creds-line middot so a missing string degrades per part.
       var bits = [];
-      var ht = pfStr(s, total === 1 ? 'one' : 'other');
-      if (/\S/.test(ht)) bits.push(ht.replace('@@N@@', String(total)));
+      var ht = endoText(s, 'oh', total === 1 ? 'one' : 'other');
+      if (/\S/.test(ht)) bits.push(ht.split('@@N@@').join(String(total)));
       var st = pfStr(s, 'shown');
       if (/\S/.test(st)) bits.push(st.replace('@@SHOWN@@', String(shown)).replace('@@TOTAL@@', String(total)));
       return bits.join(' · ');
@@ -939,7 +948,7 @@
     var root = pfEl('section', 'cx-proof cx-endo' + (ultra ? ' cx-endo--ultra' : compact ? ' cx-endo--compact' : ''), ['data-cx-feature', 'derm_endorsements']);
     pfSp(root);
     var eyebrow = pfEl('p', 'cx-proof__eyebrow eyebrow eyebrow--sm');
-    eyebrow.textContent = pfStr(s, 'eyebrow');
+    eyebrow.textContent = endoText(s, 'oe', 'eyebrow');
     if (!compact && !ultra) { // compact/ultra: the head line carries the section
       root.appendChild(eyebrow);
       pfSp(root);
@@ -956,11 +965,21 @@
         pfSp(root);
       }
     } else {
-      var headTpl = pfStr(s, total === 1 ? 'one' : 'other');
+      var headTpl = endoText(s, 'oh', total === 1 ? 'one' : 'other');
       if (/\S/.test(headTpl)) {
         headline = pfEl('h2', 'cx-endo__headline');
-        headline.textContent = headTpl.replace('@@N@@', String(total));
+        headline.textContent = headTpl.split('@@N@@').join(String(total));
         root.appendChild(headline);
+        pfSp(root);
+      }
+      // v8.17 section description — full tier only (the compact/ultra
+      // tiers exist to stay short); blank default AND blank override
+      // both skip the paragraph entirely.
+      var descText = endoText(s, 'od', 'desc');
+      if (/\S/.test(descText)) {
+        var desc = pfEl('p', 'cx-endo__desc');
+        desc.textContent = descText;
+        root.appendChild(desc);
         pfSp(root);
       }
     }
@@ -1023,6 +1042,298 @@
     return root;
   }
 
+  function endoBadgeShield() {
+    // Decorative shield-check, built via createElementNS (the asset's
+    // zero-innerHTML rule) — the badge headline text carries the meaning.
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'cx-endo-badge__shield');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    var shield = document.createElementNS(NS, 'path');
+    shield.setAttribute('d', 'M12 1.7l8.3 3.1v6.1c0 5.2-3.5 9-8.3 11.4C7.2 19.9 3.7 16.1 3.7 10.9V4.8L12 1.7z');
+    var check = document.createElementNS(NS, 'path');
+    check.setAttribute('class', 'cx-endo-badge__check');
+    check.setAttribute('d', 'M8.1 12.3l2.5 2.5 5.3-5.6');
+    svg.appendChild(shield);
+    svg.appendChild(check);
+    return svg;
+  }
+
+  // -------------------------------------------- endorsement badge (v8.17)
+  //
+  // THE BADGE: an optional compact strip mounted early in the buy box —
+  // REAL endorsement portraits (no monogram filler), a "Recommended by N
+  // dermatologists" line built from the same product+brand total the wall
+  // shows, and either a link that smooth-scrolls to the wall
+  // (badgeShowLink, default) or a static reassurance line. Product pages
+  // only; built from the SAME payload as the wall (one fetch, one truth)
+  // and only after the wall mounted, so the link always has a destination.
+  // v8.18: FOUR designs via the lean island member "bst" (absent =
+  // classic): 1 = "choice" (laurel + caduceus serif title, cream panel,
+  // bold count, credential chip), 2 = "slim" (one-line bar, 3 portraits +
+  // "+N" spillover counter), 3 = "choice_compact" (Choice condensed to
+  // two tight rows).
+
+  function endoBadgeHeadParts(el, tpl, total, boldN) {
+    // EVERY @@N@@ occurrence substitutes (Liquid's replace is global, so
+    // merchant overrides may carry several); the Choice designs wrap the
+    // number in <strong> for the bold-count emphasis.
+    var parts = String(tpl).split('@@N@@');
+    for (var i = 0; i < parts.length; i++) {
+      if (i > 0) {
+        if (boldN) {
+          var b = document.createElement('strong');
+          b.textContent = String(total);
+          el.appendChild(b);
+        } else {
+          el.appendChild(document.createTextNode(String(total)));
+        }
+      }
+      if (parts[i]) el.appendChild(document.createTextNode(parts[i]));
+    }
+  }
+
+  function endoBadgeAvatars(items, max, size) {
+    var strip = pfEl('div', 'cx-endo-badge__strip', ['aria-hidden', 'true']);
+    var shown = 0;
+    for (var i = 0; i < items.length && shown < max; i++) {
+      if (!items[i].img) continue; // real portraits only — no monogram filler
+      var img = pfEl('img', 'cx-endo-badge__avatar', ['alt', '', 'loading', 'lazy', 'width', String(size), 'height', String(size)]);
+      img.src = items[i].img;
+      strip.appendChild(img);
+      shown += 1;
+    }
+    return shown > 0 ? { strip: strip, shown: shown } : null;
+  }
+
+  function endoBadgeOutlineShield() {
+    // The credential chip's outline shield-check (stroke-only twin of
+    // endoBadgeShield; paths styled via the svg class, no extra tokens).
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'cx-endo-badge__chip-shield');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    var shield = document.createElementNS(NS, 'path');
+    shield.setAttribute('d', 'M12 2.4l7.6 2.8v5.7c0 4.8-3.2 8.3-7.6 10.5-4.4-2.2-7.6-5.7-7.6-10.5V5.2L12 2.4z');
+    var check = document.createElementNS(NS, 'path');
+    check.setAttribute('d', 'M8.6 12.1l2.3 2.3 4.7-5');
+    svg.appendChild(shield);
+    svg.appendChild(check);
+    return svg;
+  }
+
+  function endoBadgeCaduceus() {
+    // Simplified caduceus (staff, orb, wings, twin serpents) — decorative.
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'cx-endo-badge__cadu');
+    svg.setAttribute('viewBox', '0 0 24 26');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    var orb = document.createElementNS(NS, 'circle');
+    orb.setAttribute('cx', '12');
+    orb.setAttribute('cy', '3.1');
+    orb.setAttribute('r', '1.5');
+    var staff = document.createElementNS(NS, 'path');
+    staff.setAttribute('d', 'M12 5.4v19.2');
+    var wings = document.createElementNS(NS, 'path');
+    wings.setAttribute('d', 'M12 7.2C10.2 5.2 7.3 5.3 6.1 6.7c1.6.3 2.8 1.1 3.6 2.3M12 7.2c1.8-2 4.7-1.9 5.9-.5-1.6.3-2.8 1.1-3.6 2.3');
+    var snakes = document.createElementNS(NS, 'path');
+    snakes.setAttribute('d', 'M8.7 10.2c0 1.6 6.6 1.9 6.6 3.7 0 1.7-6.6 2-6.6 3.7 0 1.6 6.6 1.9 6.6 3.6M15.3 10.2c0 1.6-6.6 1.9-6.6 3.7 0 1.7 6.6 2 6.6 3.7 0 1.6-6.6 1.9-6.6 3.6');
+    svg.appendChild(orb);
+    svg.appendChild(staff);
+    svg.appendChild(wings);
+    svg.appendChild(snakes);
+    return svg;
+  }
+
+  function endoBadgeLaurel(flip) {
+    // One laurel branch; the right-hand one mirrors via the --flip class.
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'cx-endo-badge__laurel' + (flip ? ' cx-endo-badge__laurel--flip' : ''));
+    svg.setAttribute('viewBox', '0 0 18 28');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    var stem = document.createElementNS(NS, 'path');
+    stem.setAttribute('d', 'M14.5 26.5C9.5 22.5 7 16.5 8.2 8.2');
+    var leaves = document.createElementNS(NS, 'path');
+    leaves.setAttribute('d', 'M8.2 8.2C6 7.2 4.8 5.3 4.8 3.2c1.9.4 3.3 1.7 3.9 3.4M7.6 12.4c-2.5-.5-4.2-2-4.9-4 2-.1 3.7.9 4.7 2.4M7.9 16.3c-2.6 0-4.6-1.2-5.7-3 2-.4 3.9.2 5.2 1.5M9.2 20.1c-2.5.4-4.7-.4-6.1-2 1.9-.7 3.9-.4 5.4.7M11.2 23.4c-2.3.9-4.6.5-6.3-.8 1.7-1 3.7-1.1 5.4-.3');
+    svg.appendChild(stem);
+    svg.appendChild(leaves);
+    return svg;
+  }
+
+  function endoBadgeCrown(s, withLaurel) {
+    // The Choice title row — merchant eyebrow override, then the eyebrow
+    // catalog string (deliberately shared with the wall: one phrase, two
+    // surfaces, zero extra locale bytes). No title, no crown.
+    var t = endoText(s, 'oe', 'eyebrow');
+    if (!/\S/.test(t)) return null;
+    var crown = pfEl('div', 'cx-endo-badge__crown');
+    if (withLaurel) crown.appendChild(endoBadgeLaurel(false));
+    crown.appendChild(endoBadgeCaduceus());
+    var title = pfEl('p', 'cx-endo-badge__title');
+    title.textContent = t;
+    crown.appendChild(title);
+    if (withLaurel) crown.appendChild(endoBadgeLaurel(true));
+    return crown;
+  }
+
+  function endoBadgeChip(s) {
+    // Credential chip ("Licensed dermatologists"): merchant override, then
+    // the catalog string; a blank catalog string hides the chip
+    // (defensive — all 18 locales currently ship it non-blank).
+    var t = endoText(s, 'oc', 'chip');
+    if (!/\S/.test(t)) return null;
+    var chip = pfEl('div', 'cx-endo-badge__chip');
+    chip.appendChild(endoBadgeOutlineShield());
+    var label = pfEl('span', 'cx-endo-badge__chip-text');
+    label.textContent = t;
+    chip.appendChild(label);
+    return chip;
+  }
+
+  function endoBadgeBuild(conf, data) {
+    if (conf.bd !== 1 || conf.ctx !== 'product') return null;
+    var items = endoValidItems(data);
+    if (items.length === 0) return null; // fail closed with the wall
+    var s = conf.str || {};
+    var total = pfPosInt(data.total) ? data.total : items.length;
+    if (total < items.length) total = items.length;
+    // Headline resolution: merchant override, then the badge_headline
+    // catalog string, then the WALL headline (count_headline) — the last
+    // step is load-bearing for locales that ship badge_headline blank to
+    // fit Shopify's 15,360B locale-file cap (el does, v8.17).
+    var headTpl = pfStr(s, 'ob');
+    if (!/\S/.test(headTpl)) headTpl = pfStr(s, total === 1 ? 'bh1' : 'bh2');
+    if (!/\S/.test(headTpl)) headTpl = pfStr(s, total === 1 ? 'one' : 'other');
+    if (!/\S/.test(headTpl)) return null; // no headline, no badge
+    var style = conf.bst === 1 ? 'choice' : conf.bst === 2 ? 'slim' : conf.bst === 3 ? 'choice-c' : '';
+    var choicey = style === 'choice' || style === 'choice-c';
+    var root = pfEl('aside', 'cx-endo-badge' + (style ? ' cx-endo-badge--' + style : ''), ['data-cx-feature', 'derm_endorsements']);
+    var av = endoBadgeAvatars(items, style === 'slim' ? 3 : style === 'choice-c' ? 4 : 5, style === 'slim' ? 32 : style === 'choice-c' ? 40 : 48);
+    var chip = choicey ? endoBadgeChip(s) : null;
+    var row = null;
+    if (style === 'choice') {
+      var crown = endoBadgeCrown(s, true);
+      if (crown) root.appendChild(crown);
+      if (chip) root.appendChild(chip); // flows as a centered line under the crown (the 300-470px buy-box column cannot fit the mock's absolute top-right chip — see CSS)
+      row = pfEl('div', 'cx-endo-badge__row');
+    } else if (style === 'choice-c') {
+      var crownC = endoBadgeCrown(s, false);
+      if (crownC || chip) {
+        var top = pfEl('div', 'cx-endo-badge__top');
+        if (crownC) top.appendChild(crownC);
+        if (chip) top.appendChild(chip);
+        root.appendChild(top);
+      }
+      row = pfEl('div', 'cx-endo-badge__row');
+    }
+    var host = row || root;
+    if (av) host.appendChild(av.strip);
+    if (style === 'slim' && av && total > av.shown) {
+      // "+70" spillover counter: says "there are many more" at a glance —
+      // numeric only, so no locale string is needed.
+      var plus = pfEl('span', 'cx-endo-badge__plus', ['aria-hidden', 'true']);
+      plus.textContent = '+' + String(total - av.shown);
+      host.appendChild(plus);
+    }
+    var body = pfEl('div', 'cx-endo-badge__body');
+    var head = pfEl('p', 'cx-endo-badge__headline');
+    if (!choicey) head.appendChild(endoBadgeShield());
+    endoBadgeHeadParts(head, headTpl, total, choicey);
+    body.appendChild(head);
+    endoBadgeTail(conf, s, body);
+    host.appendChild(body);
+    if (row) root.appendChild(row);
+    return root;
+  }
+
+  function endoBadgeTail(conf, s, body) {
+    if (conf.bk === 0) {
+      // Link toggled off: the quiet non-link line takes the row instead.
+      var altText = endoText(s, 'on', 'bv');
+      if (/\S/.test(altText)) {
+        var alt = pfEl('p', 'cx-endo-badge__alt');
+        alt.textContent = altText;
+        body.appendChild(alt);
+      }
+    } else {
+      var linkText = endoText(s, 'ol', 'bl');
+      if (/\S/.test(linkText)) {
+        var link = pfEl('a', 'cx-endo-badge__link', ['href', '#']);
+        link.textContent = linkText;
+        link.addEventListener('click', function (ev) {
+          try { ev.preventDefault(); } catch (e) { /* noop */ }
+          var wall = document.querySelector('.cx-endo');
+          if (wall) {
+            // Smooth only when motion is welcome: programmatic smooth
+            // scroll is NOT reduced by the browser under
+            // prefers-reduced-motion (unlike CSS scroll-behavior).
+            var reduce = false;
+            try {
+              reduce = !!(window.matchMedia &&
+                window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+            } catch (e) { /* noop */ }
+            try { wall.scrollIntoView(reduce ? { block: 'start' } : { behavior: 'smooth', block: 'start' }); }
+            catch (e) { try { wall.scrollIntoView(); } catch (e2) { /* noop */ } }
+          }
+          pfTrack('derm_endorsements', 'click');
+        });
+        body.appendChild(link);
+      }
+    }
+  }
+
+  function endoBadgeMount(node) {
+    // v8.17 anchors (documented in theme-integration.md): the badge sits
+    // right under the price — BEFORE the duplicate mobile gallery the
+    // Sleepify pdp renders between price and description. That single
+    // spot is "after the price, before the photos" on mobile AND "right
+    // above the description" on desktop (the mobile gallery is
+    // display:none there). The gallery anchor is deliberately first:
+    // az_buy_box MOVES .pdp__price into .pdp__grey but never touches the
+    // mobile gallery, so this spot stays put under every az layout.
+    if (document.querySelector('.cx-endo-badge')) return true; // idempotent
+    var anchor = document.querySelector('.pdp__info .pdp__images--mobile');
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(node, anchor);
+      return true;
+    }
+    anchor = document.querySelector('#persona-description') ||
+      document.querySelector('.pdp__info .pdp__description');
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(node, anchor);
+      return true;
+    }
+    anchor = document.querySelector('.pdp__info .pdp__price');
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(node, anchor.nextSibling);
+      return true;
+    }
+    // Fail closed: no documented anchor, no render — never body-append.
+    return false;
+  }
+
+  function endoApplyCopy(conf, data) {
+    // v8.19: the proxy serves LOCALIZED merchant-copy overrides (data.copy,
+    // DeepL-translated per page locale) using the island's own o* codes —
+    // a fresh translation overrides the primary-language override the
+    // island carries. Whitelisted keys only; the catalog defaults and the
+    // fallback chains behind endoText are untouched.
+    if (!conf || !conf.str || !data || !data.copy || typeof data.copy !== 'object') return;
+    var keys = ['oe', 'oh', 'od', 'ob', 'ol', 'on', 'oc'];
+    for (var i = 0; i < keys.length; i++) {
+      var value = data.copy[keys[i]];
+      if (typeof value === 'string' && /\S/.test(value)) conf.str[keys[i]] = value;
+    }
+  }
+
   function endoInit() {
     var isl = pfIsland('cx-endo-config');
     if (!isl) return;
@@ -1031,9 +1342,31 @@
       proofFetch('endorsements', pfProductParams(isl.conf, { page: 1, per: 24 }), function (data) {
         try {
           if (document.querySelector('.cx-endo')) return;
+          endoApplyCopy(isl.conf, data);
           var node = endoBuildSection(isl.conf, data);
           if (!node) return;
-          if (pfMount('endorsements', isl.el, node, isl.conf)) pfTrack('derm_endorsements');
+          if (pfMount('endorsements', isl.el, node, isl.conf)) {
+            pfTrack('derm_endorsements');
+            // v8.17: the badge rides the same payload and mounts only
+            // when the wall did — its scroll link always has a target.
+            var badge = endoBadgeBuild(isl.conf, data);
+            if (badge) endoBadgeMount(badge);
+            // Theme editor only: a pdp section re-render destroys the
+            // JS-inserted badge (its anchors live inside the section
+            // wrapper; the wall band outside survives). Re-mount from
+            // the cached payload so merchants never see it vanish while
+            // tweaking settings. Storefront path stays single-shot.
+            if (badge && window.Shopify && window.Shopify.designMode) {
+              document.addEventListener('shopify:section:load', function () {
+                try {
+                  if (document.querySelector('.cx-endo') && !document.querySelector('.cx-endo-badge')) {
+                    var again = endoBadgeBuild(isl.conf, data);
+                    if (again) endoBadgeMount(again);
+                  }
+                } catch (e) { /* noop */ }
+              });
+            }
+          }
         } catch (e) { /* fail closed */ }
       });
     });

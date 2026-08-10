@@ -576,6 +576,13 @@ function deliveryReadiness(settings: BoosterSettings): FeatureReadiness {
     hiddenCountries.length > 0
       ? `Hidden by country override for ${hiddenCountries.join(", ")} — buyers there never see the widget; everyone else gets real dates.`
       : "Estimates render for every country (any without a fixed-date holiday table just skip the global Dec 24/25/31 + Jan 1 exclusions).";
+  // v10 US state module — static wording only (featureReadiness stays sync,
+  // never reads the database); the live geo-database status lives on the
+  // Delivery page itself.
+  const usStates = settings.deliveryEstimate.usStates;
+  const usStatesNote = usStates.enabled
+    ? ` US state module on — ${Object.keys(usStates.byState ?? {}).length} state overrides; product-page detection needs the IP database (build it on the Delivery page).`
+    : "";
   // The dispatch schedule anchors every delivery date; if its warehouse
   // timezone cannot be evaluated the storefront fails closed to hidden.
   let scheduleWarning = "";
@@ -586,7 +593,10 @@ function deliveryReadiness(settings: BoosterSettings): FeatureReadiness {
   } catch {
     scheduleWarning = ` Warning: the warehouse timezone ("${settings.dispatch.timezone}") on the Dispatch countdown page cannot be resolved — the delivery widget fails closed (renders nothing) until it is fixed.`;
   }
-  return { ready: true, reason: surfaceNote + hiddenNote + scheduleWarning };
+  return {
+    ready: true,
+    reason: surfaceNote + hiddenNote + usStatesNote + scheduleWarning,
+  };
 }
 
 function contentReadiness(
@@ -704,6 +714,35 @@ export function featureReadiness(
   };
   readiness.dispatch_countdown = dispatchReadiness(settings.dispatch);
   readiness.delivery_estimate = deliveryReadiness(settings);
+
+  // --- v9 checkout-trust V2 rows ------------------------------------------
+  // Both render inside the checkout-trust module block (placed once in the
+  // checkout editor); a preview draft grant on a row implies the module
+  // chrome, so they stay previewable even while the module master is off.
+  readiness.checkout_customs = {
+    ready: true,
+    reason:
+      "Renders as a row inside the Checkout trust module block — the trust module block must be placed once in the checkout editor. Enable it only for markets where you genuinely cover customs and import fees.",
+  };
+  {
+    // The tracked row shares the delivery guarantee's date engine, so its
+    // honesty mirrors deliveryReadiness: an unresolvable warehouse timezone
+    // fails the row closed.
+    let scheduleWarning = "";
+    try {
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: settings.dispatch.timezone,
+      }).format(new Date());
+    } catch {
+      scheduleWarning = ` Warning: the warehouse timezone ("${settings.dispatch.timezone}") on the Dispatch countdown page cannot be resolved — the tracked-delivery row fails closed (renders nothing) until it is fixed.`;
+    }
+    readiness.checkout_tracked = {
+      ready: true,
+      reason:
+        "Renders inside the Checkout trust module block with the Delivery guarantee's guaranteed-by date (same schedule, country overrides and holidays), in the buyer's language. The row appears only after the buyer enters a shipping address whose country a date can be computed for. It stands alone: it keeps rendering even while the Delivery guarantee feature is off — turn this row off to stop the promise." +
+        scheduleWarning,
+    };
+  }
 
   // --- Amazon-pattern features (v6.1) --------------------------------------
   // The eight PDP az_* widgets ship in the separate "Cellexia Amazon

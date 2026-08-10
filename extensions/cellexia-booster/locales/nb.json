@@ -150,14 +150,22 @@
     "read_article": "Les artikkelen"
   },
   "endo": {
-    "eyebrow": "Anbefalinger fra hudleger",
+    "eyebrow": "Anbefalt av hudleger",
     "count_headline": {
-      "one": "Anbefalt av {{ n }} hudlege",
-      "other": "Anbefalt av {{ n }} hudleger"
+      "one": "{{ n }} hudlege anbefaler Cellexia",
+      "other": "{{ n }} hudleger anbefaler Cellexia"
     },
     "shown_of": "Viser @@SHOWN@@ av @@TOTAL@@",
     "show_more": "Vis flere",
-    "read_full": "Les hele anbefalingen"
+    "read_full": "Les hele anbefalingen",
+    "description": "Verifiserte anbefalinger fra autoriserte hudleger. Les hva de sier om produktet, Cellexia og dens tilnærming til hudpleie.",
+    "badge_headline": {
+      "one": "Anbefalt av {{ n }} hudlege",
+      "other": "Anbefalt av {{ n }} hudleger"
+    },
+    "badge_link": "Les deres faglige vurderinger",
+    "badge_alt": "Verifiserte faglige vurderinger",
+    "badge_chip": "Autoriserte hudleger"
   },
   "results": {
     "banner_verified": "Se resultater fra {{ count }} verifiserte Cellexia-kunder.",
@@ -196,7 +204,8 @@
     "box_title": "Garantert levering senest {{ date }}",
     "box_sub": "… ellers refunderer vi deg eller sender deg en gratis erstatning.",
     "badge": "Leveringsgaranti",
-    "tooltip": "Levert senest {{ date }} – ellers refunderer vi deg eller sender deg en gratis erstatning."
+    "tooltip": "Levert senest {{ date }} – ellers refunderer vi deg eller sender deg en gratis erstatning.",
+    "deliver_to": "Leveres til:"
   },
   "amazon": {
     "in_stock": "På lager",

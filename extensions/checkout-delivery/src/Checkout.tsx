@@ -41,7 +41,9 @@ import {
  * preview (`preview.draftFlags.delivery_estimate === true`). The buyer
  * country comes ONLY from the shipping address — no address yet means no
  * widget (we never guess a country), and any invalid config / uncomputable
- * date renders nothing.
+ * date renders nothing. The v10 US state promise reads the TYPED
+ * provinceCode from the same address under the same never-guess rule, but
+ * fails OPEN: no/unknown state on a US order keeps the US-wide promise.
  *
  * GUARANTEE EXPLAINER — checkout has no hover tooltips, so instead of the
  * storefront's badge tooltip:
@@ -377,7 +379,11 @@ function Extension() {
 
   // Buyer country comes ONLY from the shipping address — undefined means
   // "not entered yet" and the widget stays hidden (never guess a country).
+  // v10: the US state rides the SAME contract (typed provinceCode only,
+  // never geo-guessed) but fails OPEN in the engine — an absent/unknown
+  // provinceCode on a US order means the US-wide promise, never hidden.
   const countryCode = shippingAddress?.countryCode;
+  const provinceCode = shippingAddress?.provinceCode;
 
   // Re-run the whole computation every 30s (the storefront widget's tick
   // interval): crossing the warehouse cutoff mid-checkout shifts every
@@ -390,10 +396,10 @@ function Extension() {
 
   const result: DeliveryResult | null = useMemo(() => {
     if (!countryCode) return null;
-    const dc = resolveDeliveryConfig(configRoot, countryCode);
+    const dc = resolveDeliveryConfig(configRoot, countryCode, provinceCode);
     if (!dc) return null;
     return computeDelivery(dc, now);
-  }, [configRoot, countryCode, now]);
+  }, [configRoot, countryCode, provinceCode, now]);
 
   // Preview diagnostics: only reachable when the merchant's preview cart
   // attribute is present — real buyers never carry it.

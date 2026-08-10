@@ -400,10 +400,15 @@ interface CheckoutFormState {
   showTrustpilot: boolean;
   showClinical: boolean;
   showBadges: boolean;
+  /** v9 trust rows — FeatureKeys with their own market scopes below. */
+  showCustoms: boolean;
+  showTracked: boolean;
   scopes: {
     checkout_upsell: ScopeState;
     checkout_protection: ScopeState;
     checkout_trust: ScopeState;
+    checkout_customs: ScopeState;
+    checkout_tracked: ScopeState;
   };
 }
 
@@ -431,12 +436,16 @@ function initialFormState(settings: BoosterSettings): CheckoutFormState {
     showTrustpilot: settings.checkoutTrust.showTrustpilot,
     showClinical: settings.checkoutTrust.showClinical,
     showBadges: settings.checkoutTrust.showBadges,
+    showCustoms: settings.checkoutTrust.showCustoms,
+    showTracked: settings.checkoutTrust.showTracked,
     scopes: {
       checkout_upsell: toScopeState(settings.marketScopes.checkout_upsell),
       checkout_protection: toScopeState(
         settings.marketScopes.checkout_protection,
       ),
       checkout_trust: toScopeState(settings.marketScopes.checkout_trust),
+      checkout_customs: toScopeState(settings.marketScopes.checkout_customs),
+      checkout_tracked: toScopeState(settings.marketScopes.checkout_tracked),
     },
   };
 }
@@ -701,6 +710,8 @@ export default function CheckoutFeaturesPage() {
         showTrustpilot: state.showTrustpilot,
         showClinical: state.showClinical,
         showBadges: state.showBadges,
+        showCustoms: state.showCustoms,
+        showTracked: state.showTracked,
       },
       marketScopes: scopesToPatch(state.scopes),
     };
@@ -1251,6 +1262,22 @@ export default function CheckoutFeaturesPage() {
                     setState((previous) => ({ ...previous, showBadges }))
                   }
                 />
+                <Checkbox
+                  label="“No customs or additional fees” line"
+                  helpText="V2 row with its own market targeting below — enable it only for markets where you genuinely cover customs and import fees."
+                  checked={state.showCustoms}
+                  onChange={(showCustoms) =>
+                    setState((previous) => ({ ...previous, showCustoms }))
+                  }
+                />
+                <Checkbox
+                  label="Tracked delivery line with the guaranteed date"
+                  helpText="V2 row: “Tracked Delivery · Guaranteed by …” — the date is the SAME guaranteed-by date as the Delivery guarantee (its schedule, country overrides and holidays), shown in the buyer's language. Hidden automatically until the buyer's shipping country is known and a date is computable. Own market targeting below. Stands alone: the row keeps rendering even while the Delivery guarantee feature is switched off (only the schedule values are shared) — turn this row off to stop the promise."
+                  checked={state.showTracked}
+                  onChange={(showTracked) =>
+                    setState((previous) => ({ ...previous, showTracked }))
+                  }
+                />
               </BlockStack>
             </Card>
 
@@ -1271,6 +1298,18 @@ export default function CheckoutFeaturesPage() {
               markets={markets}
               scope={state.scopes.checkout_trust}
               onChange={(scope) => setScope("checkout_trust", scope)}
+            />
+            <MarketScopeCard
+              title="Markets — Customs-free delivery line"
+              markets={markets}
+              scope={state.scopes.checkout_customs}
+              onChange={(scope) => setScope("checkout_customs", scope)}
+            />
+            <MarketScopeCard
+              title="Markets — Tracked delivery line"
+              markets={markets}
+              scope={state.scopes.checkout_tracked}
+              onChange={(scope) => setScope("checkout_tracked", scope)}
             />
           </BlockStack>
         </Layout.Section>

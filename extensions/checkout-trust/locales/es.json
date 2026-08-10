@@ -1,7 +1,15 @@
 {
-  "guarantee_title": "Garantía de reembolso de {{days}} días",
-  "guarantee_body": "Resultados que te encanten o te devolvemos el dinero, sin preguntas.",
-  "secure": "Pago seguro con cifrado SSL",
+  "guarantee_title": {
+    "one": "Garantía de reembolso de {{days}} día",
+    "other": "Garantía de reembolso de {{days}} días"
+  },
+  "guarantee_body": {
+    "one": "¿No te convence? Recupera tu dinero en un plazo de {{days}} día.",
+    "other": "¿No te convence? Recupera tu dinero en un plazo de {{days}} días."
+  },
+  "secure": "Pago seguro y cifrado",
   "clinical": "Fórmulas clínicamente probadas",
-  "trustpilot": "{{rating}}/5 · {{count}} reseñas en Trustpilot"
+  "trustpilot": "{{rating}}/5 · {{count}} reseñas en Trustpilot",
+  "customs": "Sin aranceles ni gastos adicionales en la entrega.",
+  "tracked": "Envío con seguimiento · Entrega garantizada el {{date}} o antes"
 }

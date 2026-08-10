@@ -65,6 +65,8 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   checkout_upsell: "/app/features/checkout",
   checkout_protection: "/app/features/checkout",
   checkout_trust: "/app/features/checkout",
+  checkout_customs: "/app/features/checkout",
+  checkout_tracked: "/app/features/checkout",
   clinical_study: "/app/products",
   verified_before_after: "/app/proof/results",
   batch_transparency: "/app/products",
@@ -125,8 +127,14 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
   {
     title: "Checkout",
     description:
-      "Checkout UI extensions (Shopify Plus): last-step upsells, order protection and the reassurance module.",
-    keys: ["checkout_upsell", "checkout_protection", "checkout_trust"],
+      "Checkout UI extensions (Shopify Plus): last-step upsells, order protection and the reassurance module with its per-market customs-free and tracked-delivery rows.",
+    keys: [
+      "checkout_upsell",
+      "checkout_protection",
+      "checkout_trust",
+      "checkout_customs",
+      "checkout_tracked",
+    ],
   },
   {
     title: "Amazon patterns",

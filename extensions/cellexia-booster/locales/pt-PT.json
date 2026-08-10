@@ -150,14 +150,22 @@
     "read_article": "Ler o artigo"
   },
   "endo": {
-    "eyebrow": "Recomendações de dermatologistas",
+    "eyebrow": "Recomendado por dermatologistas",
     "count_headline": {
-      "one": "Recomendado por {{ n }} dermatologista",
-      "other": "Recomendado por {{ n }} dermatologistas"
+      "one": "{{ n }} dermatologista recomenda a Cellexia",
+      "other": "{{ n }} dermatologistas recomendam a Cellexia"
     },
     "shown_of": "A mostrar @@SHOWN@@ de @@TOTAL@@",
     "show_more": "Mostrar mais",
-    "read_full": "Ler a recomendação completa"
+    "read_full": "Ler a recomendação completa",
+    "description": "Recomendações verificadas de dermatologistas certificados. Leia o que dizem sobre o produto, a Cellexia e a sua abordagem ao cuidado da pele.",
+    "badge_headline": {
+      "one": "Recomendado por {{ n }} dermatologista",
+      "other": "Recomendado por {{ n }} dermatologistas"
+    },
+    "badge_link": "Leia as suas avaliações profissionais",
+    "badge_alt": "Avaliações profissionais verificadas",
+    "badge_chip": "Dermatologistas certificados"
   },
   "results": {
     "banner_verified": "Veja os resultados de {{ count }} clientes Cellexia com compra verificada.",
@@ -196,7 +204,8 @@
     "box_title": "Entrega garantida até {{ date }}",
     "box_sub": "…ou reembolsamos o valor ou enviamos gratuitamente um produto de substituição.",
     "badge": "Garantia de entrega",
-    "tooltip": "Entregue o mais tardar até {{ date }} — caso contrário, reembolsamos o valor ou enviamos gratuitamente um produto de substituição."
+    "tooltip": "Entregue o mais tardar até {{ date }} — caso contrário, reembolsamos o valor ou enviamos gratuitamente um produto de substituição.",
+    "deliver_to": "Entregar em:"
   },
   "amazon": {
     "in_stock": "Em stock",

@@ -1,7 +1,15 @@
 {
-  "guarantee_title": "Garanzia soddisfatti o rimborsati di {{days}} giorni",
-  "guarantee_body": "Ama i tuoi risultati, o ti rimborsiamo — senza domande.",
-  "secure": "Pagamento sicuro con crittografia SSL",
+  "guarantee_title": {
+    "one": "Garanzia soddisfatti o rimborsati di {{days}} giorno",
+    "other": "Garanzia soddisfatti o rimborsati di {{days}} giorni"
+  },
+  "guarantee_body": {
+    "one": "Non sei soddisfatto? Ti rimborsiamo entro {{days}} giorno.",
+    "other": "Non sei soddisfatto? Ti rimborsiamo entro {{days}} giorni."
+  },
+  "secure": "Pagamento sicuro e crittografato",
   "clinical": "Formule clinicamente provate",
-  "trustpilot": "{{rating}}/5 · {{count}} recensioni su Trustpilot"
+  "trustpilot": "{{rating}}/5 · {{count}} recensioni su Trustpilot",
+  "customs": "Nessun dazio doganale né costi aggiuntivi alla consegna.",
+  "tracked": "Spedizione tracciata · Consegna garantita entro il {{date}}"
 }

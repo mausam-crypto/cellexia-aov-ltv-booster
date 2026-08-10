@@ -2096,6 +2096,119 @@ body.customer--b2b .cx-sub-remove {
   gap: 2px;
 }
 
+/* ------------------------------------------- "Deliver to" selector (v10) */
+
+/* US state module (SPEC-v10): the Amazon location-line pattern — a quiet
+   small line under the promise (pin + "Deliver to: California" + caret)
+   opening a hairline popover holding a native <select> (= the native
+   mobile picker for free) and, only while the state came from the geo
+   hint, the CC BY 4.0 DB-IP attribution link. Logical properties only
+   (RTL-safe); no animation, reduced-motion safe by construction. Subdued
+   #565959 ink under the #1d1d1b promise, #d5d9d9 hairline. */
+.cx-usloc {
+  position: relative;
+  flex: 1 0 100%;
+  margin-block-start: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #565959;
+}
+
+.cx-usloc__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.cx-usloc__btn .cx-icon {
+  flex: 0 0 auto;
+}
+
+.cx-usloc__btn:hover .cx-usloc__label {
+  text-decoration: underline;
+}
+
+.cx-usloc__btn:focus-visible {
+  outline: 2px solid #1d1d1b;
+  outline-offset: 1px;
+}
+
+/* Touch hit floor (the house 44px rule): padding buys the target
+   height while the visual stays the quiet 12px line. Fine pointers
+   keep the compact inline look. */
+@media (pointer: coarse) {
+  .cx-usloc__btn {
+    min-height: 44px;
+    padding-block: 14px;
+  }
+}
+
+.cx-usloc__label {
+  min-width: 0;
+}
+
+.cx-usloc__caret {
+  font-size: 10px;
+}
+
+.cx-usloc__pop {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 10px;
+  border: 1px solid #d5d9d9;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(29, 29, 27, 0.15);
+}
+
+/* The v6.8.1 guard rule: the base rule above sets display, which would
+   defeat the [hidden] attribute the popover toggle relies on. */
+.cx-usloc__pop[hidden] {
+  display: none !important;
+}
+
+/* 16px floor: iOS Safari auto-zooms (and stays zoomed on) any focused
+   form control under 16px — the buy box must never zoom. The theme's
+   own selects hold the same 16px line; the width-capped popover
+   absorbs the larger control. */
+.cx-usloc__select {
+  max-width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d5d9d9;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1d1d1b;
+  font-size: 16px;
+}
+
+.cx-usloc__attr {
+  color: #565959;
+  font-size: 10px;
+  text-decoration: underline;
+}
+
+/* Same guard shape for the attribution link (shown only for a
+   geo-sourced state) — future display rules must never defeat it. */
+.cx-usloc__attr[hidden] {
+  display: none !important;
+}
+
 /* --------------------------------------------- dispatch countdown (v5.0) */
 
 .cx-dispatch {
@@ -3251,6 +3364,433 @@ body.customer--b2b .cx-sub-remove {
 @media (min-width: 1280px) {
   .cx-endo__wall {
     columns: 4;
+  }
+}
+
+/* v8.17 wall description — full tier only; rides the wall's centered
+   text-align, pulled up under the 22px headline margin. */
+.cx-endo__desc {
+  margin: -6px auto 26px;
+  max-inline-size: 640px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #1d1d1b;
+}
+
+/* --------------------------------------- endorsement badge (v8.17) */
+/* Compact buy-box strip: overlapping real portraits, shield-check +
+   "Recommended by N dermatologists", optional scroll link to the wall.
+   Sits between .pdp__price and the mobile gallery/description. */
+
+.cx-endo-badge {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  border: 1px solid #d8d8d8;
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px 16px;
+  margin: 4px 0 18px;
+}
+
+.cx-endo-badge__strip {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.cx-endo-badge__avatar {
+  box-sizing: border-box; /* never lean on the theme's global reset */
+  inline-size: 48px;
+  block-size: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #f4f4f4;
+  border: 2px solid #fff;
+  flex: 0 0 auto;
+}
+
+.cx-endo-badge__avatar + .cx-endo-badge__avatar {
+  margin-inline-start: -12px;
+}
+
+.cx-endo-badge__body {
+  min-inline-size: 0;
+  flex: 1 1 200px;
+}
+
+.cx-endo-badge__headline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #1d1d1b;
+}
+
+.cx-endo-badge__shield {
+  inline-size: 20px;
+  block-size: 20px;
+  flex: 0 0 auto;
+  fill: #1d4fd8;
+}
+
+.cx-endo-badge__check {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cx-endo-badge__link {
+  display: inline-block;
+  margin: 3px 0 0;
+  margin-inline-start: 28px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: #1d4fd8;
+  text-decoration: none;
+}
+
+/* State pins at (0,2,0): the badge sits in the theme-owned .pdp__info
+   column, and href="#" always matches :visited — a theme a:visited/
+   a:hover (0,1,1) rule must never repaint the brand blue. */
+.cx-endo-badge__link:link,
+.cx-endo-badge__link:visited {
+  color: #1d4fd8;
+  text-decoration: none;
+}
+
+.cx-endo-badge__link::after {
+  content: "\00a0\2192"; /* nbsp keeps the arrow glued to the last word */
+}
+
+[dir="rtl"] .cx-endo-badge__link::after {
+  content: "\00a0\2190";
+}
+
+.cx-endo-badge__link:hover,
+.cx-endo-badge__link:focus-visible,
+.cx-endo-badge__link:active {
+  color: #1d4fd8;
+  text-decoration: underline;
+}
+
+.cx-endo-badge__alt {
+  margin: 3px 0 0;
+  margin-inline-start: 28px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #808080;
+}
+
+@media (max-width: 480px) {
+  /* Keep the mock's one-row shape on phones: 5 overlapped 40px avatars
+     (~152px) + a 140px-basis text column fit a 375px viewport. */
+  .cx-endo-badge__avatar {
+    inline-size: 40px;
+    block-size: 40px;
+  }
+
+  .cx-endo-badge__avatar + .cx-endo-badge__avatar {
+    margin-inline-start: -14px;
+  }
+
+  .cx-endo-badge {
+    padding: 11px 13px;
+    gap: 8px 10px;
+  }
+
+  .cx-endo-badge__body {
+    flex-basis: 140px;
+  }
+
+  .cx-endo-badge__headline {
+    font-size: 14px;
+    gap: 6px;
+  }
+
+  .cx-endo-badge__link,
+  .cx-endo-badge__alt {
+    margin-inline-start: 24px;
+  }
+
+  .cx-endo-badge__shield {
+    inline-size: 18px;
+    block-size: 18px;
+  }
+}
+
+/* ------------------- v8.18 badge designs (badgeStyle, island "bst") */
+/* "choice" = the Dermatologists' Choice panel: cream tint, laurel +
+   caduceus serif title, bold count, credential chip top-right.
+   "choice-c" = the same look condensed to two tight rows.
+   "slim" = a one-line conversion bar with a "+N" spillover counter. */
+
+.cx-endo-badge--choice,
+.cx-endo-badge--choice-c {
+  flex-direction: column;
+  align-items: stretch;
+  background: #f6f3ee;
+  border-color: #e9e4da;
+}
+
+.cx-endo-badge--choice {
+  gap: 10px;
+  padding: 16px 18px 15px;
+}
+
+.cx-endo-badge--choice-c {
+  gap: 9px;
+  padding: 12px 14px;
+}
+
+.cx-endo-badge__crown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-inline-size: 0;
+}
+
+.cx-endo-badge--choice-c .cx-endo-badge__crown {
+  justify-content: flex-start;
+  gap: 7px;
+}
+
+.cx-endo-badge__title {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 21px;
+  line-height: 1.2;
+  color: #2c2b28;
+  min-inline-size: 0;
+}
+
+.cx-endo-badge--choice-c .cx-endo-badge__title {
+  font-size: 16px;
+}
+
+.cx-endo-badge__laurel {
+  inline-size: 15px;
+  block-size: 23px;
+  fill: none;
+  stroke: #6f6d67;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+}
+
+.cx-endo-badge__laurel--flip {
+  transform: scaleX(-1);
+}
+
+/* RTL mirrors the flex row, so the flip assignment swaps with it —
+   without this both branches face away from the title. */
+[dir="rtl"] .cx-endo-badge__laurel {
+  transform: scaleX(-1);
+}
+
+[dir="rtl"] .cx-endo-badge__laurel--flip {
+  transform: none;
+}
+
+.cx-endo-badge__cadu {
+  inline-size: 19px;
+  block-size: 21px;
+  fill: none;
+  stroke: #4c4a45;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+}
+
+.cx-endo-badge__cadu circle {
+  fill: #4c4a45;
+  stroke: none;
+}
+
+.cx-endo-badge--choice-c .cx-endo-badge__cadu {
+  inline-size: 15px;
+  block-size: 17px;
+}
+
+.cx-endo-badge__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cx-endo-badge__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.cx-endo-badge__chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #4c4a45;
+  font-size: 13px;
+  line-height: 1.25;
+  flex: 0 0 auto;
+}
+
+/* The buy-box column is ~300-470px — a mock-style absolute top-right
+   chip would collide with the centered title, so the chip flows as a
+   centered credential line right under the crown. */
+.cx-endo-badge--choice .cx-endo-badge__chip {
+  justify-content: center;
+  margin-block-start: -4px;
+  font-size: 12px;
+}
+
+.cx-endo-badge--choice .cx-endo-badge__chip-shield {
+  inline-size: 17px;
+  block-size: 19px;
+}
+
+.cx-endo-badge--choice-c .cx-endo-badge__chip {
+  font-size: 12px;
+  /* the __top row never wraps — a long merchant chip must shrink and
+     let its text wrap instead of overflowing the cream panel */
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
+
+.cx-endo-badge__chip-shield {
+  inline-size: 21px;
+  block-size: 23px;
+  fill: none;
+  stroke: #6f6d67;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+}
+
+.cx-endo-badge--choice-c .cx-endo-badge__chip-shield {
+  inline-size: 17px;
+  block-size: 19px;
+}
+
+.cx-endo-badge__chip-text {
+  min-inline-size: 0;
+}
+
+.cx-endo-badge--choice .cx-endo-badge__headline,
+.cx-endo-badge--choice-c .cx-endo-badge__headline {
+  display: block;
+  font-weight: 400;
+  font-size: 16px;
+  color: #2c2b28;
+}
+
+/* The bold count is the design's point — never lean on the theme's
+   default strong weight (minimal-reset themes set it to inherit). */
+.cx-endo-badge__headline strong {
+  font-weight: 700;
+}
+
+.cx-endo-badge--choice-c .cx-endo-badge__headline {
+  font-size: 15px;
+}
+
+.cx-endo-badge--choice .cx-endo-badge__link:link,
+.cx-endo-badge--choice .cx-endo-badge__link:visited,
+.cx-endo-badge--choice-c .cx-endo-badge__link:link,
+.cx-endo-badge--choice-c .cx-endo-badge__link:visited {
+  margin: 5px 0 0;
+  color: #2c2b28;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.cx-endo-badge--choice .cx-endo-badge__alt,
+.cx-endo-badge--choice-c .cx-endo-badge__alt {
+  margin: 5px 0 0;
+}
+
+.cx-endo-badge--choice-c .cx-endo-badge__avatar {
+  inline-size: 40px;
+  block-size: 40px;
+}
+
+.cx-endo-badge--slim {
+  padding: 9px 14px;
+  gap: 6px 12px;
+  border-radius: 999px;
+}
+
+.cx-endo-badge--slim .cx-endo-badge__avatar {
+  inline-size: 32px;
+  block-size: 32px;
+}
+
+.cx-endo-badge--slim .cx-endo-badge__avatar + .cx-endo-badge__avatar {
+  margin-inline-start: -10px;
+}
+
+/* The plus circle is a ROOT-level sibling of the strip, so the root's
+   12px column-gap sits between them — compensate for it AND the 10px
+   tuck so the counter overlaps the last portrait like a fourth ring. */
+.cx-endo-badge--slim .cx-endo-badge__plus {
+  margin-inline-start: -22px;
+}
+
+.cx-endo-badge__plus {
+  box-sizing: border-box;
+  inline-size: 32px;
+  block-size: 32px;
+  border-radius: 50%;
+  background: #eef3fb;
+  border: 2px solid #fff;
+  color: #1d4fd8;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.cx-endo-badge--slim .cx-endo-badge__body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+}
+
+.cx-endo-badge--slim .cx-endo-badge__headline {
+  font-size: 14px;
+}
+
+.cx-endo-badge--slim .cx-endo-badge__shield {
+  inline-size: 17px;
+  block-size: 17px;
+}
+
+.cx-endo-badge--slim .cx-endo-badge__link,
+.cx-endo-badge--slim .cx-endo-badge__alt {
+  margin: 0;
+  margin-inline-start: auto;
+}
+
+@media (max-width: 559px) {
+  .cx-endo-badge--choice {
+    gap: 8px;
+  }
+
+  .cx-endo-badge__title {
+    font-size: 18px;
   }
 }
 

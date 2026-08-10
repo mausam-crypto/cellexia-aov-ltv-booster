@@ -154,16 +154,26 @@
     "read_article": "Przeczytaj artykuł"
   },
   "endo": {
-    "eyebrow": "Rekomendacje dermatologów",
+    "eyebrow": "Polecane przez dermatologów",
     "count_headline": {
+      "one": "{{ n }} dermatolog poleca Cellexię",
+      "few": "{{ n }} dermatologów poleca Cellexię",
+      "many": "{{ n }} dermatologów poleca Cellexię",
+      "other": "{{ n }} dermatologów poleca Cellexię"
+    },
+    "shown_of": "Wyświetlono @@SHOWN@@ z @@TOTAL@@",
+    "show_more": "Pokaż więcej",
+    "read_full": "Przeczytaj całą rekomendację",
+    "description": "Zweryfikowane rekomendacje od licencjonowanych dermatologów. Przeczytaj, co mówią o produkcie, Cellexii i jej podejściu do pielęgnacji skóry.",
+    "badge_headline": {
       "one": "Polecany przez {{ n }} dermatologa",
       "few": "Polecany przez {{ n }} dermatologów",
       "many": "Polecany przez {{ n }} dermatologów",
       "other": "Polecany przez {{ n }} dermatologów"
     },
-    "shown_of": "Wyświetlono @@SHOWN@@ z @@TOTAL@@",
-    "show_more": "Pokaż więcej",
-    "read_full": "Przeczytaj całą rekomendację"
+    "badge_link": "Przeczytaj ich profesjonalne oceny",
+    "badge_alt": "Zweryfikowane profesjonalne oceny",
+    "badge_chip": "Licencjonowani dermatolodzy"
   },
   "results": {
     "banner_verified": "Zobacz efekty {{ count }} zweryfikowanych klientów Cellexii.",
@@ -202,7 +212,8 @@
     "box_title": "Gwarantowana dostawa najpóźniej: {{ date }}",
     "box_sub": "…albo zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt.",
     "badge": "Gwarancja dostawy",
-    "tooltip": "Dostawa najpóźniej: {{ date }}. W przeciwnym razie zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt."
+    "tooltip": "Dostawa najpóźniej: {{ date }}. W przeciwnym razie zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt.",
+    "deliver_to": "Dostawa do:"
   },
   "amazon": {
     "in_stock": "Dostępny",

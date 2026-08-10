@@ -9,10 +9,13 @@ variant-based volume pricing, Joy selling plans, design tokens) that every widge
   JSON) and mirrored on every save to metafields (see below). Analytics via `Event`/`OrderStat`.
 - **Theme app extension** (`extensions/cellexia-booster/`): app embeds + app blocks for the
   storefront (cart drawer widgets, PDP badges, clinical results, subscription nudge).
-- **3 Checkout UI extensions** (Shopify Plus): `checkout-upsell`, `checkout-protection`,
-  `checkout-trust`.
-- **App proxy** (`/apps/cellexia/*` → `/proxy/*`): `track` (analytics beacon) and `cart-data`
-  (application/liquid — storefront-rendered JSON with variant tiers + selling plans, buyer currency).
+- **4 Checkout UI extensions** (Shopify Plus): `checkout-upsell`, `checkout-protection`,
+  `checkout-trust`, `checkout-delivery` (v6.0).
+- **App proxy** (`/apps/cellexia/*` → `/proxy/*`): `track` (analytics beacon), `cart-data`
+  (application/liquid — storefront-rendered JSON with variant tiers + selling plans, buyer
+  currency) and `geo` (v10 — self-hosted IP→US-state lookup for the delivery promise; answers
+  `{"s":"CA"}` / `{"s":null}`, always `Cache-Control: no-store`, fail-open: every error path
+  is a 200 `{"s":null}` and the storefront keeps the US-wide promise).
 
 ## Settings contract
 
@@ -116,6 +119,16 @@ Translators (locale agents) translate EXACTLY these keys. Builders use EXACTLY t
 }
 ```
 
+(v10, 2026-08-08: the `delivery` locale group — added by the v5.9/v6.0 waves
+after this catalog froze; the locale files themselves are its canonical
+catalog — gains ONE key, `delivery.deliver_to` (en `"Deliver to:"`): the
+label of the optional US "Deliver to" state selector. Label ONLY — the
+storefront JS appends the state/country name; each language's colon
+convention lives inside the string (fr carries an NBSP before the colon; ja
+deliberately uses the ASCII colon since a Latin state name follows). All 18
+theme locale files, last key of the group; nb stays a byte-copy of no.
+Checkout locale files unchanged.)
+
 ### Checkout upsell — `extensions/checkout-upsell/locales/en.default.json`
 
 ```json
@@ -147,16 +160,37 @@ Translators (locale agents) translate EXACTLY these keys. Builders use EXACTLY t
 ```json
 {
   "guarantee_title": "{{days}}-Day Money-Back Guarantee",
-  "guarantee_body": "Love your results or your money back — no questions asked.",
-  "secure": "Secure SSL-encrypted checkout",
+  "guarantee_body": {
+    "one": "Not satisfied? Get your money back within {{days}} day.",
+    "other": "Not satisfied? Get your money back within {{days}} days."
+  },
+  "secure": "Secure Encrypted Checkout",
   "clinical": "Clinically proven formulas",
-  "trustpilot": "{{rating}}/5 · {{count}} reviews on Trustpilot"
+  "trustpilot": "{{rating}}/5 · {{count}} reviews on Trustpilot",
+  "customs": "No customs or additional fees on delivery.",
+  "tracked": "Tracked Delivery · Guaranteed by {{date}}"
 }
 ```
 
 (v5.5: the `subscription_hint` line — "Continuous Treatment Plan members
 save {{percent}}% on every delivery." — was removed from the checkout trust
 module on merchant request, including its key in all 18 locale files.)
+
+(v9 trust module V2, 2026-08-08, merchant request: `secure` re-worded —
+"Secure SSL-encrypted checkout" → "Secure Encrypted Checkout" — and
+`guarantee_body` re-worded from "Love your results or your money back — no
+questions asked."; the body now carries the `{{days}}` token. Two NEW keys:
+`customs` (the per-market customs-free guarantee row) and `tracked` (the
+per-market tracked-delivery row; `{{date}}` is the delivery guarantee's
+guaranteed-by date, formatted by `trustFormatDateCompact` — day + long
+month, locale verbatim, fr `1er` rule — in the checkout language). All 18
+locale files carry the same 7-key set; nb stays a byte-copy of no.
+PLURALS: `guarantee_title`/`guarantee_body` may be CLDR plural OBJECTS —
+the component passes `count: guarantee.days` alongside `days`, so locales
+whose day-word inflects carry `one/other` (and `few/many` for pl, `few` for
+ro, the full `one/two/few/many/other` set for ar); every `other` form keeps
+the `{{days}}` token, while `one`/`two` forms may spell the number out (ro
+"într-o zi", ar "يوم واحد"). fi/hu/ja stay invariant flat strings.)
 
 ## Theme app extension spec (`extensions/cellexia-booster/`)
 
@@ -309,10 +343,15 @@ when off. All components from `@shopify/ui-extensions-react/checkout`. Use `useT
    OFF → `removeCartLine`. If `defaultOn` and not yet in cart and buyer hasn't interacted this
    session, auto-add once (guard with useRef; never re-add after manual removal). Detect existing
    protection line by merchandiseId. Render null if variantId missing.
-3. **checkout-trust**: reads `checkoutTrust`, `guarantee`, `trustpilot`, `subscriptionNudge`
-   config; renders a compact trust module: guarantee line (shield icon), secure checkout line
-   (lock icon), Trustpilot line (stars + `trustpilot` string), optional subscription hint when
-   cart has no subscription lines. Pure display, no mutations.
+3. **checkout-trust** (V2 since v9): reads `checkoutTrust`, `guarantee`, `trustpilot` config
+   plus — for the tracked row — `deliveryEstimate`/`dispatch`; renders a compact trust module:
+   secure checkout line (lock icon), guarantee line, the two v9 PER-MARKET rows — customs-free
+   delivery (`checkout_customs` FeatureKey, own marketScopes) and tracked delivery with the
+   guaranteed-by date (`checkout_tracked`; date from the BYTE-IDENTICAL delivery-engine.ts twin
+   of checkout-delivery, compact native format via `trustFormatDateCompact`, country ONLY from
+   the shipping address, fails closed row-locally) — clinical line and Trustpilot line. Pure
+   display, no mutations, no network calls. Pure logic lives in `src/trust-logic.ts`
+   (sim-tested by `validation/sims/checkout-trust.ts`). (v5.5 removed the subscription hint.)
 
 ## Admin dashboard spec (`app/routes/`)
 

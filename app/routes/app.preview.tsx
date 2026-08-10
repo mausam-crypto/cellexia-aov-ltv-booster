@@ -114,7 +114,13 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
   },
   {
     title: "Checkout",
-    keys: ["checkout_upsell", "checkout_protection", "checkout_trust"],
+    keys: [
+      "checkout_upsell",
+      "checkout_protection",
+      "checkout_trust",
+      "checkout_customs",
+      "checkout_tracked",
+    ],
   },
   {
     title: "Amazon patterns",
@@ -203,6 +209,14 @@ const NOT_READY_FIX_LINKS: Partial<
     label: "Configure on the Checkout features page",
   },
   checkout_protection: {
+    url: "/app/features/checkout",
+    label: "Configure on the Checkout features page",
+  },
+  checkout_customs: {
+    url: "/app/features/checkout",
+    label: "Configure on the Checkout features page",
+  },
+  checkout_tracked: {
     url: "/app/features/checkout",
     label: "Configure on the Checkout features page",
   },

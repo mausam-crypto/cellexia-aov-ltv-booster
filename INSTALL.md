@@ -145,10 +145,16 @@ Any Node host works (Fly.io, Render, Railway, Heroku, a VPS). A `Dockerfile` is 
    `cellexia-order-protection` product, publishes it to the Online Store channel, and
    stores its variant. (Keep it published; hide it from search/collections via theme
    if desired — do NOT remove it from the Online Store channel.)
-6. **Setup & health green** — open **Setup & health** in the app and fix anything red
+6. **Only if using the US state-level delivery module** — App → Features → **Delivery
+   guarantee** → "State detection database" card → **Download & build**. This compiles
+   the self-hosted IP→state lookup table (~84 MB download from DB-IP, a few minutes,
+   live progress on the card; refresh monthly from the same button). Until it's built,
+   product page + cart simply show the US-wide promise (state detection is fail-open);
+   checkout's typed-address state promise works without it.
+7. **Setup & health green** — open **Setup & health** in the app and fix anything red
    (it verifies the steps above programmatically, including whether the app embeds are
    really enabled in the published theme).
-7. **Preview, then go live** — on the **Preview** page: pick features → Arm → open the
+8. **Preview, then go live** — on the **Preview** page: pick features → Arm → open the
    preview link (new tab) to see them rendered on the real site (only you can see them;
    simulated market supported; checkout preview included) → back in the app, **Go live**
    for the market(s) you choose. Or flip features directly on the dashboard/Markets page.
@@ -195,6 +201,11 @@ translate overrides in Translate & Adapt like any theme content.
   `shopify.app.toml` and `npm run deploy`. Verify by opening
   `https://<store>/apps/cellexia/track` — it must answer
   `{"ok":true,"service":"cellexia-booster"}`.
+- **`/apps/cellexia/geo` answers `{"s":null}`**: that is the HEALTHY fail-open answer,
+  not a breakage. The endpoint returns a state code only for a US IP found in the
+  compiled state database (§5.6); non-US visitors, VPNs, unknown ranges and a
+  not-yet-built database all answer `{"s":null}`, and the storefront keeps showing the
+  US-wide delivery promise.
 - **Widgets don't render**: (a) feature enabled? (b) Settings saved at least once?
   (c) app embeds enabled in THE PUBLISHED theme? (d) market scope includes the market
   you're viewing? (e) for PDP content widgets — product has content AND its per-product

@@ -8,7 +8,13 @@ import {
   getPublicPress,
   getPublicResults,
 } from "../services/proof.server";
-import { getProofTranslationOverlay } from "../services/proof-translation.server";
+import {
+  COPY_FIELD_ISLAND_CODES,
+  COPY_RESOURCE_ID,
+  copyOverlayToIslandCodes,
+  getProofTranslationOverlay,
+} from "../services/proof-translation.server";
+import { getSettings } from "../models/settings.server";
 import type { PublicResultsFilters } from "../services/proof.server";
 
 /**
@@ -112,13 +118,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // fallback (a missing translation can never blank a quote).
         const locale = normalizeLocaleParam(url.searchParams.get("locale"));
         if (locale && payload.items.length > 0) {
-          const overlay = await getProofTranslationOverlay(
-            shop, "press", payload.items.map((item) => item.id), locale,
-            new Map(payload.items.map((item) => [item.id, { quote: item.quote }])),
-          );
-          for (const item of payload.items) {
-            const fields = overlay.get(item.id);
-            if (fields?.quote) item.quote = fields.quote;
+          try {
+            const overlay = await getProofTranslationOverlay(
+              shop, "press", payload.items.map((item) => item.id), locale,
+              new Map(payload.items.map((item) => [item.id, { quote: item.quote }])),
+            );
+            for (const item of payload.items) {
+              const fields = overlay.get(item.id);
+              if (fields?.quote) item.quote = fields.quote;
+            }
+          } catch {
+            // untranslated payload serves
           }
         }
         return jsonResponse(payload, true);
@@ -126,20 +136,62 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       case "endorsements": {
         const payload = await getPublicEndorsements(shop, product, page, per);
         const locale = normalizeLocaleParam(url.searchParams.get("locale"));
+        // Translation overlays are ENHANCEMENTS: any failure inside them
+        // must degrade to the untranslated payload, never 500 a feed that
+        // was already built (the widgets fail closed on errors).
         if (locale && payload.items.length > 0) {
-          const overlay = await getProofTranslationOverlay(
-            shop, "endorsements", payload.items.map((item) => item.id), locale,
-            new Map(payload.items.map((item) => [
-              item.id,
-              { quote: item.quote, credentials: item.credentials ?? "" },
-            ])),
-          );
-          for (const item of payload.items) {
-            const fields = overlay.get(item.id);
-            if (fields?.quote) item.quote = fields.quote;
-            if (fields?.credentials && item.credentials) {
-              item.credentials = fields.credentials;
+          try {
+            const overlay = await getProofTranslationOverlay(
+              shop, "endorsements", payload.items.map((item) => item.id), locale,
+              new Map(payload.items.map((item) => [
+                item.id,
+                { quote: item.quote, credentials: item.credentials ?? "" },
+              ])),
+            );
+            for (const item of payload.items) {
+              const fields = overlay.get(item.id);
+              if (fields?.quote) item.quote = fields.quote;
+              if (fields?.credentials && item.credentials) {
+                item.credentials = fields.credentials;
+              }
             }
+          } catch {
+            // untranslated payload serves
+          }
+        }
+        // v8.19: localized MERCHANT COPY overrides ("copy" scope). Only
+        // the page-1 init fetch consumes payload.copy (endoApplyCopy runs
+        // once, before the build), so later pages skip the settings +
+        // overlay reads entirely. Sources carry ALL seven fields with
+        // blanks as "" — a blanked override digest-mismatches its stored
+        // rows AND is filtered from emission, so it can never resurrect
+        // its old translation (review catch); an edited field serves its
+        // new primary text until re-translated.
+        if (locale && page === 1 && payload.items.length > 0) {
+          try {
+            const endo = (await getSettings(shop)).dermEndorsements;
+            const sources: Record<string, string> = {};
+            let anySet = false;
+            for (const field of Object.keys(COPY_FIELD_ISLAND_CODES)) {
+              const text = (endo as unknown as Record<string, unknown>)[field];
+              sources[field] = typeof text === "string" ? text : "";
+              if (/\S/.test(sources[field])) anySet = true;
+            }
+            if (anySet) {
+              const copyOverlay = await getProofTranslationOverlay(
+                shop, "copy", [COPY_RESOURCE_ID], locale,
+                new Map([[COPY_RESOURCE_ID, sources]]),
+              );
+              const fields = copyOverlay.get(COPY_RESOURCE_ID);
+              if (fields) {
+                const copy = copyOverlayToIslandCodes(fields, sources);
+                if (Object.keys(copy).length > 0) {
+                  (payload as Record<string, unknown>).copy = copy;
+                }
+              }
+            }
+          } catch {
+            // untranslated payload serves
           }
         }
         return jsonResponse(payload, true);
@@ -159,18 +211,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const payload = await getPublicResults(shop, product, filters, page, per);
         const locale = normalizeLocaleParam(url.searchParams.get("locale"));
         if (locale && payload.items.length > 0) {
-          const overlay = await getProofTranslationOverlay(
-            shop, "results", payload.items.map((item) => item.id), locale,
-            new Map(payload.items.map((item) => [
-              item.id,
-              { testimonial: item.testimonial ?? "" },
-            ])),
-          );
-          for (const item of payload.items) {
-            const fields = overlay.get(item.id);
-            if (fields?.testimonial && item.testimonial) {
-              item.testimonial = fields.testimonial;
+          try {
+            const overlay = await getProofTranslationOverlay(
+              shop, "results", payload.items.map((item) => item.id), locale,
+              new Map(payload.items.map((item) => [
+                item.id,
+                { testimonial: item.testimonial ?? "" },
+              ])),
+            );
+            for (const item of payload.items) {
+              const fields = overlay.get(item.id);
+              if (fields?.testimonial && item.testimonial) {
+                item.testimonial = fields.testimonial;
+              }
             }
+          } catch {
+            // untranslated payload serves
           }
         }
         return jsonResponse(payload, true);

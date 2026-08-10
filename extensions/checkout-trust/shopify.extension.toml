@@ -1,11 +1,10 @@
 api_version = "2025-07"
-uid = "419757f0-789f-d169-ffa6-a9276f7489a4d79a4ba7"
 
 [[extensions]]
 name = "Cellexia Checkout Trust"
 handle = "cellexia-checkout-trust"
 type = "ui_extension"
-description = "Compact trust module (guarantee, secure checkout, Trustpilot, subscription hint) rendered as a checkout block."
+description = "Compact trust module V2 (guarantee, secure checkout, per-market customs-free + tracked-delivery rows, Trustpilot) rendered as a checkout block."
 
   # Merchant-positioned block placement (drag anywhere in the editor).
   [[extensions.targeting]]

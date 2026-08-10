@@ -1,7 +1,12 @@
 {
   "guarantee_title": "{{days}}-Day Money-Back Guarantee",
-  "guarantee_body": "Love your results or your money back — no questions asked.",
-  "secure": "Secure SSL-encrypted checkout",
+  "guarantee_body": {
+    "one": "Not satisfied? Get your money back within {{days}} day.",
+    "other": "Not satisfied? Get your money back within {{days}} days."
+  },
+  "secure": "Secure Encrypted Checkout",
   "clinical": "Clinically proven formulas",
-  "trustpilot": "{{rating}}/5 · {{count}} reviews on Trustpilot"
+  "trustpilot": "{{rating}}/5 · {{count}} reviews on Trustpilot",
+  "customs": "No customs or additional fees on delivery.",
+  "tracked": "Tracked Delivery · Guaranteed by {{date}}"
 }

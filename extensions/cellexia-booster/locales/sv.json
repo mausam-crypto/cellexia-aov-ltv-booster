@@ -150,14 +150,22 @@
     "read_article": "Läs artikeln"
   },
   "endo": {
-    "eyebrow": "Rekommendationer från dermatologer",
+    "eyebrow": "Rekommenderas av dermatologer",
     "count_headline": {
-      "one": "Rekommenderas av {{ n }} dermatolog",
-      "other": "Rekommenderas av {{ n }} dermatologer"
+      "one": "{{ n }} dermatolog rekommenderar Cellexia",
+      "other": "{{ n }} dermatologer rekommenderar Cellexia"
     },
     "shown_of": "Visar @@SHOWN@@ av @@TOTAL@@",
     "show_more": "Visa fler",
-    "read_full": "Läs hela rekommendationen"
+    "read_full": "Läs hela rekommendationen",
+    "description": "Verifierade rekommendationer från legitimerade dermatologer. Läs vad de säger om produkten, Cellexia och dess syn på hudvård.",
+    "badge_headline": {
+      "one": "Rekommenderas av {{ n }} dermatolog",
+      "other": "Rekommenderas av {{ n }} dermatologer"
+    },
+    "badge_link": "Läs deras professionella bedömningar",
+    "badge_alt": "Verifierade professionella bedömningar",
+    "badge_chip": "Legitimerade dermatologer"
   },
   "results": {
     "banner_verified": "Se resultat från {{ count }} verifierade Cellexia-kunder.",
@@ -196,7 +204,8 @@
     "box_title": "Garanterad leverans senast {{ date }}",
     "box_sub": "… annars återbetalar vi dig eller skickar en gratis ersättningsprodukt.",
     "badge": "Leveransgaranti",
-    "tooltip": "Levererat senast {{ date }} – annars återbetalar vi dig eller skickar en gratis ersättningsprodukt."
+    "tooltip": "Levererat senast {{ date }} – annars återbetalar vi dig eller skickar en gratis ersättningsprodukt.",
+    "deliver_to": "Leverans till:"
   },
   "amazon": {
     "in_stock": "I lager",

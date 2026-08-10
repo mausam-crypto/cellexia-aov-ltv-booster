@@ -276,7 +276,12 @@ async function loadProofModel(): Promise<any> {
     .replace(PT_IMPORT, PT_STUB);
   const genDir = path.join(ROOT, "validation", "lib", ".gen");
   fs.mkdirSync(genDir, { recursive: true });
-  const outPath = path.join(genDir, "proof.server.real.ts");
+  // Mutant child runs write a SEPARATE basename so the repo-resident
+  // proof.server.real.ts never ends up carrying a mutant's source (v9 fix).
+  const outPath = path.join(
+    genDir,
+    process.env.CX_SIM_SRC ? "proof.server.mutant.ts" : "proof.server.real.ts",
+  );
   if (!fs.existsSync(outPath) || fs.readFileSync(outPath, "utf8") !== stubbed) {
     fs.writeFileSync(outPath, stubbed);
   }
@@ -740,6 +745,12 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
   if (failedMutants > 0) {
     console.error(`\n${failedMutants} MUTANT(S) NOT CAUGHT`);
     process.exit(1);
+  }
+  // The mutant children wrote their own .gen basename — remove the residue.
+  try {
+    fs.unlinkSync(path.join(ROOT, "validation", "lib", ".gen", "proof.server.mutant.ts"));
+  } catch {
+    // best-effort cleanup
   }
 }
 

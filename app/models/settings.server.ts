@@ -60,6 +60,8 @@ export type FeatureKey =
   | "checkout_upsell"
   | "checkout_protection"
   | "checkout_trust"
+  | "checkout_customs"
+  | "checkout_tracked"
   | "clinical_study"
   | "verified_before_after"
   | "batch_transparency"
@@ -95,6 +97,8 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "checkout_upsell",
   "checkout_protection",
   "checkout_trust",
+  "checkout_customs",
+  "checkout_tracked",
   "clinical_study",
   "verified_before_after",
   "batch_transparency",
@@ -239,6 +243,19 @@ export type ProofPlacement = (typeof PROOF_PLACEMENTS)[number];
  * inherently compact, so the density tiers are ignored).
  */
 export const PRESS_LAYOUTS = ["featured", "wall"] as const;
+
+/** v8.18 endorsement-badge designs: "classic" = shield + blue link (the
+ *  v8.17 look), "choice" = Dermatologists' Choice (laurel + caduceus serif
+ *  title, cream panel, bold count, credential chip), "slim" = one-line
+ *  conversion bar (3 portraits + "+N" spillover counter), and
+ *  "choice_compact" = the Choice look condensed to two tight rows. */
+export const BADGE_STYLES = [
+  "classic",
+  "choice",
+  "slim",
+  "choice_compact",
+] as const;
+export type BadgeStyle = (typeof BADGE_STYLES)[number];
 export type PressLayout = (typeof PRESS_LAYOUTS)[number];
 
 /** The four merchant-selectable delivery-estimate widget formats (v5.9). */
@@ -262,6 +279,28 @@ export interface DeliveryCountryOverride {
   deliveryDays?: number[];
   holidaysEnabled?: boolean;
   hidden?: boolean;
+}
+
+/**
+ * Per-US-state delivery override (v10). Every field is OPTIONAL — an entry
+ * overrides only what it sets and inherits the rest from the resolved US
+ * country config (deliveryEstimate defaults + byCountry.US, dispatch
+ * defaults + dispatch.byCountry.US). `hidden: true` means the widget is
+ * never shown to buyers resolved to that state (checkout included).
+ * `cutoff` ("HH:MM" 24h, warehouse time) and `dispatchDays` (ISO weekdays
+ * 1=Mon .. 7=Sun) are PARTIAL dispatch overrides — the timezone always
+ * inherits (one physical warehouse). `extraHolidays` entries are "MM-DD"
+ * (every year) or "YYYY-MM-DD" (one-off).
+ */
+export interface DeliveryStateOverride {
+  minDays?: number;
+  maxDays?: number;
+  deliveryDays?: number[];
+  holidaysEnabled?: boolean;
+  hidden?: boolean;
+  cutoff?: string;
+  dispatchDays?: number[];
+  extraHolidays?: string[];
 }
 
 export interface MarketScope {
@@ -411,6 +450,13 @@ export interface BoosterSettings {
     showTrustpilot: boolean;
     showClinical: boolean;
     showBadges: boolean;
+    /**
+     * v9 trust module V2 rows. Unlike the four legacy show* flags these two
+     * ARE FeatureKeys (checkout_customs / checkout_tracked) with their own
+     * marketScopes, so each row is per-market targetable. Both ship OFF.
+     */
+    showCustoms: boolean;
+    showTracked: boolean;
   };
   /**
    * PDP trust boosters (SPEC v3). Content lives in per-product metaobjects
@@ -557,6 +603,33 @@ export interface BoosterSettings {
     density: ProofDensity;
     /** v8.9 product-page placement (PROOF_PLACEMENTS). */
     placement: ProofPlacement;
+    /** v8.17 endorsement BADGE — a compact strip early in the buy box
+     *  (product pages only: before the mobile gallery / above the
+     *  description) with real endorsement portraits, the dynamic
+     *  product+brand endorsement total, and an optional link that scrolls
+     *  to the wall. Renders only while the derm_endorsements feature
+     *  itself is live (it rides the same island + payload). */
+    badgeEnabled: boolean;
+    /** Show the badge's "read their assessments" scroll link; false
+     *  swaps in the non-link reassurance line (copyBadgeNoLink). */
+    badgeShowLink: boolean;
+    /** v8.18 badge design (BADGE_STYLES; default "classic"). */
+    badgeStyle: BadgeStyle;
+    /** v8.17 merchant copy overrides — blank = built-in translated
+     *  default from the extension locale catalogs. NON-BLANK TEXT IS
+     *  SERVED AS ENTERED IN EVERY LANGUAGE (settings copy is never
+     *  machine-translated; the methodology precedent). {n} in the two
+     *  headline fields is replaced with the live endorsement total. */
+    copyEyebrow: string;
+    copyHeadline: string;
+    copyDescription: string;
+    copyBadgeHeadline: string;
+    copyBadgeLink: string;
+    copyBadgeNoLink: string;
+    /** v8.18: the credential-chip text of the Choice designs ("" =
+     *  translated "Licensed dermatologists" default; blank catalog string
+     *  hides the chip). */
+    copyBadgeChip: string;
   };
   /**
    * Dispatch countdown ("Order within 2h 14m for same-day dispatch").
@@ -631,6 +704,34 @@ export interface BoosterSettings {
     showInCheckout: boolean;
     /** Per-country (ISO2) overrides; `hidden: true` = never show there. */
     byCountry: Record<string, DeliveryCountryOverride>;
+    /**
+     * United States state-level module (v10). Rides delivery_estimate — no
+     * FeatureKey of its own (the boughtOnCards precedent) — and only ever
+     * REFINES the US promise: the storefront always renders the US-wide
+     * widget first and quietly upgrades it when a state resolves (saved
+     * buyer choice, then the self-hosted IP lookup); checkout takes the
+     * state ONLY from the typed shipping address. The state layer fails
+     * OPEN — any resolution problem degrades to the US-wide promise and
+     * must never hide or corrupt the country-level widget (only an explicit
+     * per-state `hidden: true` hides).
+     */
+    usStates: {
+      /** Module master switch (default false — safe-by-default). */
+      enabled: boolean;
+      /** Amazon-style "Deliver to" state selector on the widget (v10
+       *  sub-flag convention: default true so the master alone lights it). */
+      selector: boolean;
+      /** Skip the built-in US federal holiday calendar (fixed dates + the
+       *  six computed movable holidays — services/delivery-holidays.server.ts)
+       *  when counting delivery days. */
+      federalHolidays: boolean;
+      /** US-wide extra days off: "MM-DD" (every year) or "YYYY-MM-DD"
+       *  (one-off). */
+      extraHolidays: string[];
+      /** Per-state (USPS code, /^[A-Z]{2}$/) overrides; `hidden: true` =
+       *  never show there. */
+      byState: Record<string, DeliveryStateOverride>;
+    };
   };
   /**
    * Amazon-pattern features (v6.1; eleven flags since the v6.8
@@ -840,6 +941,10 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     showTrustpilot: true,
     showClinical: false,
     showBadges: true,
+    // v9: the two per-market rows are opt-in — a store upgrading to V2 sees
+    // zero new checkout content until it enables them explicitly.
+    showCustoms: false,
+    showTracked: false,
   },
   clinicalStudy: {
     enabled: false,
@@ -887,6 +992,16 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     compact: false,
     density: "full",
     placement: "below_tabs",
+    badgeEnabled: false,
+    badgeShowLink: true,
+    badgeStyle: "classic",
+    copyEyebrow: "",
+    copyHeadline: "",
+    copyDescription: "",
+    copyBadgeHeadline: "",
+    copyBadgeLink: "",
+    copyBadgeNoLink: "",
+    copyBadgeChip: "",
   },
   dispatch: {
     enabled: false,
@@ -911,6 +1026,13 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     showInCart: true,
     showInCheckout: true,
     byCountry: {},
+    usStates: {
+      enabled: false,
+      selector: true,
+      federalHolidays: true,
+      extraHolidays: [],
+      byState: {},
+    },
   },
   amazon: {
     buyBox: false,
@@ -965,6 +1087,10 @@ const DYNAMIC_RECORD_KEYS = new Set([
   // merge would silently empty it otherwise; sanitizeSettings re-validates
   // every entry).
   "shipsFromByCountry",
+  // deliveryEstimate.usStates.byState — USPS-code keyed, default {} (v10).
+  // Matching is by BARE key name anywhere in the tree, so any future record
+  // named byState is wholesale-replaced too.
+  "byState",
 ]);
 
 /** Deep-merge stored/partial settings over defaults so new fields added in
@@ -1417,6 +1543,83 @@ export function sanitizeSettings(
       if (Object.keys(clean).length > 0) cleanByCountry[code] = clean;
     }
     de.byCountry = cleanByCountry;
+    // v10 US state module (rides delivery_estimate — no FeatureKey).
+    const us = de.usStates;
+    const cutoffOk = /^([01]\d|2[0-3]):[0-5]\d$/;
+    // Extra days off: "MM-DD" (every year) or "YYYY-MM-DD" (one-off).
+    // Invalid entries are dropped, valid ones kept verbatim — an empty
+    // array is a real value ("no extra days off"), never rewritten. Counts
+    // are capped AFTER filtering (60 US-wide, 40 per state): the settings
+    // blob rides two json metafields capped at 65,536 chars on
+    // ApiVersion.October25, and 60 + 51×40 dates keeps the worst-case blob
+    // near ~47 KB. validateDeliveryPatch fails LOUD at the same numbers;
+    // this slice is the silent backstop for payloads that bypass the form.
+    const extraDateOk = /^(\d{4}-)?(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+    const cleanExtraDates = (raw: unknown, max: number): string[] =>
+      Array.isArray(raw)
+        ? raw
+            .filter(
+              (d): d is string => typeof d === "string" && extraDateOk.test(d),
+            )
+            .slice(0, max)
+        : [];
+    if (typeof us.enabled !== "boolean") {
+      us.enabled = DEFAULT_SETTINGS.deliveryEstimate.usStates.enabled;
+    }
+    if (typeof us.selector !== "boolean") {
+      us.selector = DEFAULT_SETTINGS.deliveryEstimate.usStates.selector;
+    }
+    if (typeof us.federalHolidays !== "boolean") {
+      us.federalHolidays =
+        DEFAULT_SETTINGS.deliveryEstimate.usStates.federalHolidays;
+    }
+    us.extraHolidays = cleanExtraDates(us.extraHolidays, 60);
+    // byState is a DYNAMIC_RECORD_KEYS record (replaced wholesale by the
+    // merge) — every entry re-validated field by field; entries are PARTIAL
+    // by design, like byCountry above. Keys are any uppercase two-letter
+    // code, NOT checked against a state list — unknown codes are harmless
+    // because the storefront and checkout only consult codes they resolve.
+    const cleanByState: Record<string, DeliveryStateOverride> = {};
+    for (const [state, entry] of Object.entries(us.byState ?? {})) {
+      const code = state.toUpperCase();
+      if (!iso2.test(code) || !isPlainObject(entry)) continue;
+      const clean: DeliveryStateOverride = {};
+      const minDays = intInRange(entry.minDays, 0, 30);
+      if (minDays !== null) clean.minDays = minDays;
+      let maxDays = intInRange(entry.maxDays, 1, 30);
+      if (maxDays !== null) {
+        // Within-entry consistency only. Cross-inheritance inconsistencies
+        // (e.g. a state minDays above the inherited US-wide maxDays) are
+        // NOT rewritten here, and — unlike the country layer, which fails
+        // closed to hidden — the resolvers IGNORE a state entry that merges
+        // into an invalid window and keep the US-wide promise: the state
+        // layer fails OPEN by doctrine, it must never hide the widget.
+        if (clean.minDays !== undefined) {
+          maxDays = Math.max(maxDays, Math.max(1, clean.minDays));
+        }
+        clean.maxDays = maxDays;
+      }
+      const entryDays = cleanDeliveryDays(entry.deliveryDays);
+      if (Array.isArray(entry.deliveryDays) && entryDays.length > 0) {
+        clean.deliveryDays = entryDays;
+      }
+      if (typeof entry.holidaysEnabled === "boolean") {
+        clean.holidaysEnabled = entry.holidaysEnabled;
+      }
+      if (typeof entry.hidden === "boolean") clean.hidden = entry.hidden;
+      if (typeof entry.cutoff === "string" && cutoffOk.test(entry.cutoff)) {
+        clean.cutoff = entry.cutoff;
+      }
+      const dispatchDays = cleanDeliveryDays(entry.dispatchDays);
+      if (Array.isArray(entry.dispatchDays) && dispatchDays.length > 0) {
+        clean.dispatchDays = dispatchDays;
+      }
+      if (Array.isArray(entry.extraHolidays)) {
+        clean.extraHolidays = cleanExtraDates(entry.extraHolidays, 40);
+      }
+      if (Object.keys(clean).length > 0) cleanByState[code] = clean;
+    }
+    us.byState = cleanByState;
   }
 
   if (typeof next.trustpilot.showLink !== "boolean") {
@@ -1506,6 +1709,52 @@ export function sanitizeSettings(
   if (!PROOF_DENSITIES.includes(next.beforeAfter.density as ProofDensity)) {
     next.beforeAfter.density =
       next.beforeAfter.compact === true ? "ultra" : "full";
+  }
+  // v8.17 endorsement badge flags + merchant copy overrides. Booleans keep
+  // the typeof discipline; copy fields keep the methodology discipline
+  // (typeof-string guard, trim, hard cap) and the two headline fields get
+  // the same brace-variant canonicalization as {name} — {N}/{ n }/{{n}}
+  // self-heal to the exact "{n}" token the storefront substitutes.
+  if (typeof next.dermEndorsements.badgeEnabled !== "boolean") {
+    next.dermEndorsements.badgeEnabled =
+      DEFAULT_SETTINGS.dermEndorsements.badgeEnabled;
+  }
+  if (typeof next.dermEndorsements.badgeShowLink !== "boolean") {
+    next.dermEndorsements.badgeShowLink =
+      DEFAULT_SETTINGS.dermEndorsements.badgeShowLink;
+  }
+  if (
+    !BADGE_STYLES.includes(next.dermEndorsements.badgeStyle as BadgeStyle)
+  ) {
+    next.dermEndorsements.badgeStyle =
+      DEFAULT_SETTINGS.dermEndorsements.badgeStyle;
+  }
+  {
+    const endo = next.dermEndorsements;
+    const copyCaps = [
+      ["copyEyebrow", 120],
+      ["copyHeadline", 200],
+      ["copyDescription", 1000],
+      ["copyBadgeHeadline", 160],
+      ["copyBadgeLink", 120],
+      ["copyBadgeNoLink", 120],
+      ["copyBadgeChip", 120],
+    ] as const;
+    for (const [field, cap] of copyCaps) {
+      if (typeof endo[field] !== "string") {
+        endo[field] = "";
+      } else {
+        let value = endo[field];
+        if (field === "copyHeadline" || field === "copyBadgeHeadline") {
+          value = value.replace(/\{\{?\s*n\s*\}?\}/gi, "{n}");
+        }
+        // Cap on CODE POINTS, not UTF-16 units: a plain slice can split a
+        // surrogate pair (emoji at the boundary) and the resulting lone
+        // surrogate makes the metafield JSON unparseable on Shopify's
+        // side — the whole settings save would fail.
+        endo[field] = Array.from(value.trim()).slice(0, cap).join("");
+      }
+    }
   }
   next.dermSurvey.outOf = Math.round(
     clampNumber(next.dermSurvey.outOf, 1, 100, DEFAULT_SETTINGS.dermSurvey.outOf),
@@ -1783,6 +2032,28 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     },
     siblings: [],
   },
+  // v9 trust rows: cart-style master+sub-flag semantics — enabling a row
+  // raises the module master so `set(true)` always resolves live (the
+  // flip-test contract). siblings stay [] deliberately: the sibling
+  // machinery in applyFlipForMarket is cartUpsell-specific.
+  checkout_customs: {
+    label: "Customs-free delivery line",
+    get: (s) => s.checkoutTrust.enabled && s.checkoutTrust.showCustoms,
+    set: (s, on) => {
+      if (on) s.checkoutTrust.enabled = true;
+      s.checkoutTrust.showCustoms = on;
+    },
+    siblings: [],
+  },
+  checkout_tracked: {
+    label: "Tracked delivery line",
+    get: (s) => s.checkoutTrust.enabled && s.checkoutTrust.showTracked,
+    set: (s, on) => {
+      if (on) s.checkoutTrust.enabled = true;
+      s.checkoutTrust.showTracked = on;
+    },
+    siblings: [],
+  },
   clinical_study: {
     label: "Clinical study (PDP)",
     get: (s) => s.clinicalStudy.enabled,
@@ -1976,6 +2247,19 @@ export function isFeatureOnForMarket(
   marketHandle: string,
 ): boolean {
   if (!resolveFeatureFlag(settings, key)) return false;
+  // v9: the checkout-trust rows render INSIDE the module, so the extension
+  // gates them on BOTH the module's scope and the row's own scope
+  // (Checkout.tsx: moduleLive && row gate). Mirror that here so reach
+  // labels, the experiment wizard and the preview agree with the storefront.
+  if (FEATURE_RAW_FIELD[key].kind === "checkoutTrust") {
+    const moduleScope = scopeFor(settings, "checkout_trust");
+    if (
+      moduleScope.mode !== "all" &&
+      !moduleScope.markets.includes(marketHandle)
+    ) {
+      return false;
+    }
+  }
   const scope = scopeFor(settings, key);
   return scope.mode === "all" || scope.markets.includes(marketHandle);
 }
@@ -1988,6 +2272,19 @@ export const CART_SUB_FLAG_FIELDS = [
   "showTrustRow",
 ] as const;
 export type CartSubFlagField = (typeof CART_SUB_FLAG_FIELDS)[number];
+
+/**
+ * v9 checkout-trust row sub-flags stored raw in a FlagsSnapshot.
+ * Deliberately EXCLUDES the four legacy show* rows (guarantee/trustpilot/
+ * clinical/badges) — those are not FeatureKeys and must stay out of flip
+ * snapshots (the bestsellerOnCards precedent).
+ */
+export const CHECKOUT_TRUST_SUB_FLAG_FIELDS = [
+  "showCustoms",
+  "showTracked",
+] as const;
+export type CheckoutTrustSubFlagField =
+  (typeof CHECKOUT_TRUST_SUB_FLAG_FIELDS)[number];
 
 /** Settings sections with their own standalone `enabled` master flag. */
 export const STANDALONE_SECTION_FIELDS = [
@@ -2022,6 +2319,7 @@ export const FEATURE_RAW_FIELD: Record<
   | { kind: "cart"; field: CartSubFlagField }
   | { kind: "section"; field: StandaloneSectionField }
   | { kind: "amazon"; field: AmazonFlagField }
+  | { kind: "checkoutTrust"; field: CheckoutTrustSubFlagField }
 > = {
   cart_volume_upsell: { kind: "cart", field: "showVolumeUpsell" },
   free_shipping_bar: { kind: "cart", field: "showFreeShippingBar" },
@@ -2035,6 +2333,8 @@ export const FEATURE_RAW_FIELD: Record<
   checkout_upsell: { kind: "section", field: "checkoutUpsell" },
   checkout_protection: { kind: "section", field: "checkoutProtection" },
   checkout_trust: { kind: "section", field: "checkoutTrust" },
+  checkout_customs: { kind: "checkoutTrust", field: "showCustoms" },
+  checkout_tracked: { kind: "checkoutTrust", field: "showTracked" },
   clinical_study: { kind: "section", field: "clinicalStudy" },
   verified_before_after: { kind: "section", field: "beforeAfter" },
   batch_transparency: { kind: "section", field: "batchTransparency" },
@@ -2076,6 +2376,9 @@ export interface FlagsSnapshot {
    *  persisted by older app versions predate the section — restores skip
    *  what is absent (a pre-v6.8 snapshot simply never touches shipsFrom). */
   amazonFlags?: Record<AmazonFlagField, boolean>;
+  /** The two v9 checkout-trust row sub-flags. Optional for the same
+   *  old-snapshot back-compat reason as amazonFlags. */
+  checkoutTrustSubFlags?: Record<CheckoutTrustSubFlagField, boolean>;
   marketScopes: Record<FeatureKey, MarketScope>;
 }
 
@@ -2094,6 +2397,12 @@ export function snapshotFlags(settings: BoosterSettings): FlagsSnapshot {
     amazonFlags: Object.fromEntries(
       AMAZON_FLAG_FIELDS.map((field) => [field, settings.amazon[field]]),
     ) as Record<AmazonFlagField, boolean>,
+    checkoutTrustSubFlags: Object.fromEntries(
+      CHECKOUT_TRUST_SUB_FLAG_FIELDS.map((field) => [
+        field,
+        settings.checkoutTrust[field],
+      ]),
+    ) as Record<CheckoutTrustSubFlagField, boolean>,
     marketScopes: structuredClone(settings.marketScopes),
   };
 }
@@ -2115,6 +2424,11 @@ export function restoreFlags(
     const value = snapshot.amazonFlags?.[field];
     if (typeof value === "boolean") settings.amazon[field] = value;
   }
+  // Same skip-if-absent contract for pre-v9 snapshots.
+  for (const field of CHECKOUT_TRUST_SUB_FLAG_FIELDS) {
+    const value = snapshot.checkoutTrustSubFlags?.[field];
+    if (typeof value === "boolean") settings.checkoutTrust[field] = value;
+  }
   settings.marketScopes = structuredClone(snapshot.marketScopes);
   return settings;
 }
@@ -2123,8 +2437,9 @@ export function restoreFlags(
  * Restores ONLY the raw flags + scopes belonging to `keys` from a snapshot —
  * the rollback primitive for per-market concurrent experiments. Because
  * startExperiment forbids flip-key overlap between running experiments (and
- * treats all cart_* keys as one overlap group — shared master), touching only
- * these fields can never clobber another running experiment's state.
+ * treats all cart_* keys as one overlap group — shared master — plus, v9,
+ * checkout_trust + its two rows as a second group), touching only these
+ * fields can never clobber another running experiment's state.
  *
  * Any cart_* key restores the cart master AND all four cart sub-flags (the
  * flip may have force-isolated dormant siblings when it turned the master on).
@@ -2156,6 +2471,29 @@ export function restoreFlagsSelective(
     if (raw?.kind === "amazon") {
       const value = snapshot.amazonFlags?.[raw.field];
       if (typeof value === "boolean") settings.amazon[raw.field] = value;
+    }
+    if (raw?.kind === "checkoutTrust") {
+      // The row flip may have force-isolated the dormant SIBLING row, raised
+      // the shared master and restricted/widened the MODULE's market scope —
+      // put all of it back, not just this key's own flag. Safe: the
+      // checkout-trust family is one experiment overlap group, so no
+      // concurrent experiment can own any of these fields.
+      for (const field of CHECKOUT_TRUST_SUB_FLAG_FIELDS) {
+        const value = snapshot.checkoutTrustSubFlags?.[field];
+        if (typeof value === "boolean") settings.checkoutTrust[field] = value;
+      }
+      const master = snapshot.sectionEnabled?.checkoutTrust;
+      if (typeof master === "boolean") {
+        settings.checkoutTrust.enabled = master;
+      }
+      const moduleScope = snapshot.marketScopes?.checkout_trust;
+      if (
+        moduleScope &&
+        (moduleScope.mode === "all" || moduleScope.mode === "selected") &&
+        Array.isArray(moduleScope.markets)
+      ) {
+        settings.marketScopes.checkout_trust = structuredClone(moduleScope);
+      }
     }
     const scope = snapshot.marketScopes?.[key];
     if (
@@ -2200,7 +2538,49 @@ export function applyFlipForMarket(
         }
       }
     }
+    // v9 checkout-trust rows live inside the module: making a row
+    // effectively on in `market` needs checkoutTrust.enabled (raised by
+    // def.set below) AND the module's scope to allow the market. Captured
+    // BEFORE def.set so we can tell master-off from master-on.
+    const raw = FEATURE_RAW_FIELD[key];
+    const trustMasterWasOff =
+      raw.kind === "checkoutTrust" && !settings.checkoutTrust.enabled;
+    if (trustMasterWasOff) {
+      // The module was live NOWHERE: force the dormant SIBLING row off so
+      // raising the master cannot resurrect it (the cart-guard convention;
+      // the legacy show* rows are not FeatureKeys — their exposure is
+      // contained by the module-scope restriction below).
+      for (const field of CHECKOUT_TRUST_SUB_FLAG_FIELDS) {
+        if (field !== raw.field) settings.checkoutTrust[field] = false;
+      }
+    }
     def.set(settings, true);
+    if (raw.kind === "checkoutTrust") {
+      if (trustMasterWasOff) {
+        // Module was effectively off everywhere — restricting its scope to
+        // the flip target leaves every other market's state untouched.
+        settings.marketScopes.checkout_trust =
+          market === "all"
+            ? { mode: "all", markets: [] }
+            : { mode: "selected", markets: [market] };
+      } else if (market === "all") {
+        settings.marketScopes.checkout_trust = { mode: "all", markets: [] };
+      } else {
+        const moduleScope = scopeFor(settings, "checkout_trust");
+        if (
+          moduleScope.mode === "selected" &&
+          !moduleScope.markets.includes(market)
+        ) {
+          settings.marketScopes.checkout_trust = {
+            mode: "selected",
+            markets: [...moduleScope.markets, market],
+          };
+        }
+      }
+      // restoreFlagsSelective restores the master, BOTH row flags and the
+      // module scope; the family is one experiment overlap group, so this
+      // widened write set can never clobber a concurrent experiment.
+    }
     if (market === "all") {
       settings.marketScopes[key] = { mode: "all", markets: [] };
     } else if (!wasOn) {

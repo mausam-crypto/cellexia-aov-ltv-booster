@@ -70,6 +70,8 @@ An in-cart "upgrade to 2/3 units" therefore means **swapping the cart line to th
 ## PDP structure (`sections/pdp.liquid` + `templates/product.liquid`)
 - ATC button: `button[sm-rc-add-to-cart].btn.btn--primary.btn--atc` inside `.pdp__grey > .pdp__actions--flex`; stock row `.stock-msg` follows inside `.pdp__grey`.
 - **Trust badge injection point: inside `.pdp__grey`, immediately after `.stock-msg`** (grey `#f4f4f4` panel).
+- Buy-box column `.pdp__info` child order: `.pdp__heading` → `.pdp__blurb` → `.pdp__reviews` → `.pdp__price` → `.pdp__images--mobile` (a full DUPLICATE gallery rendered inside the info column; the desktop gallery `.pdp__images--desktop` sits before `.pdp__info`; the theme flips them at 768px) → `#persona-description.pdp__description` → `.pdp__options` → `.pdp__grey` → `.pdp__accordions`.
+- **Endorsement-badge injection point (v8.17): before `.pdp__info .pdp__images--mobile`** (fallbacks: before `#persona-description`/`.pdp__info .pdp__description`, then after `.pdp__info .pdp__price`) — one spot that is "after the price, before the photos" on mobile and "right above the description" on desktop. Anchoring on the mobile gallery is deliberate: az_buy_box MOVES `.pdp__price` into `.pdp__grey` but never touches the gallery.
 - Below hero: `<section class="pdp__tabs">` (tabs incl. a "science" tab with `.persona-science-target`), then `pdp-related`, videos, opinions, reviews.
 - **Clinical results injection point: after `{% section 'pdp' %}` / before `.pdp__tabs`**, or inside the science tab.
 - The `pdp` section schema does NOT accept `@app` blocks — PDP widgets are auto-injected by our app embed JS at the selectors above (with graceful no-op if selectors are missing).

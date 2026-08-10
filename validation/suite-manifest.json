@@ -62,7 +62,22 @@
       "phase": "required"
     },
     {
+      "file": "validation/sims/us-state-delivery.mjs",
+      "floorBytes": 8000,
+      "phase": "required"
+    },
+    {
       "file": "validation/sims/checkout-delivery-engine.ts",
+      "floorBytes": 5000,
+      "phase": "required"
+    },
+    {
+      "file": "validation/sims/checkout-trust.ts",
+      "floorBytes": 9000,
+      "phase": "required"
+    },
+    {
+      "file": "validation/sims/geo-lookup.ts",
       "floorBytes": 5000,
       "phase": "required"
     },

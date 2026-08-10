@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import {
   MaxPartSizeExceededError,
@@ -23,7 +23,9 @@ import {
   Divider,
   InlineStack,
   Pagination,
+  Select,
   Text,
+  TextField,
   Thumbnail,
 } from "@shopify/polaris";
 import { PersonIcon } from "@shopify/polaris-icons";
@@ -49,6 +51,8 @@ import {
   type EndorsementInput,
 } from "../services/proof.server";
 import {
+  COPY_RESOURCE_ID,
+  deleteCopyTranslationsForFields,
   getProofSourceText,
   translatableProofTargets,
   listProofTranslationsForMany,
@@ -109,6 +113,23 @@ async function applySettingsPatch(
     return { ok: false, syncErrors: ["Settings payload was not valid JSON."] };
   }
   const next = await saveSettings(shop, patch);
+  // v8.19b: a save that BLANKED copy fields must also drop their stored
+  // translations — dead rows would otherwise keep serving the old text on
+  // localized storefronts (invisible to the admin reviewer, which hides
+  // blank-source fields).
+  const patchedEndo = patch.dermEndorsements;
+  if (patchedEndo && typeof patchedEndo === "object") {
+    const blanked = Object.keys(patchedEndo).filter(
+      (field) =>
+        field.startsWith("copy") &&
+        !/\S/.test(
+          (next.dermEndorsements as unknown as Record<string, string>)[field] ?? "",
+        ),
+    );
+    if (blanked.length > 0) {
+      await deleteCopyTranslationsForFields(shop, blanked);
+    }
+  }
   try {
     const sync = await syncSettingsToMetafields(admin, next);
     return { ok: true, syncErrors: sync.errors };
@@ -125,6 +146,27 @@ async function applySettingsPatch(
 }
 
 const PAGE_STATUSES = ["approved", "hidden"] as const;
+
+// Client-safe literal of COPY_RESOURCE_ID in proof-translation.server.ts
+// (never import a .server VALUE into client code — the v8.3 build-break
+// lesson). The harness pins the two in sync.
+const COPY_ID = "dermEndorsements";
+
+// Client-safe mirror of BADGE_STYLES in settings.server.ts (never import a
+// .server VALUE into client code — the v8.3 build-break lesson). The
+// harness pins the two in sync.
+const BADGE_STYLE_OPTIONS = [
+  { label: "Classic — shield, portraits and link", value: "classic" },
+  {
+    label: "Dermatologists' Choice — laurel title, credential chip",
+    value: "choice",
+  },
+  { label: "Slim bar — one line with a +N counter", value: "slim" },
+  {
+    label: "Choice compact — title and chip, two tight rows",
+    value: "choice_compact",
+  },
+] as const;
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -150,14 +192,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     locales.targets,
   );
   const localesUnavailable = (locales.errors?.length ?? 0) > 0;
-  const [translationStatus, itemTranslations] = await Promise.all([
-    proofTranslationStatusFor(session.shop, "endorsements", targetLocales),
-    listProofTranslationsForMany(
-      session.shop,
-      "endorsements",
-      list.items.map((item) => item.id),
-    ),
-  ]);
+  const [translationStatus, itemTranslations, copyStatus, copyTranslations] =
+    await Promise.all([
+      proofTranslationStatusFor(session.shop, "endorsements", targetLocales),
+      listProofTranslationsForMany(
+        session.shop,
+        "endorsements",
+        list.items.map((item) => item.id),
+      ),
+      // v8.19: the merchant copy overrides ride the same DeepL system.
+      proofTranslationStatusFor(session.shop, "copy", targetLocales),
+      listProofTranslationsForMany(session.shop, "copy", [COPY_RESOURCE_ID]),
+    ]);
   return {
     list,
     q,
@@ -168,9 +214,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         markets: [],
       },
     featureEnabled: settings.dermEndorsements.enabled,
+    // v8.17 badge + copy overrides (edited in the Display & copy card).
+    display: {
+      badgeEnabled: settings.dermEndorsements.badgeEnabled,
+      badgeShowLink: settings.dermEndorsements.badgeShowLink,
+      badgeStyle: settings.dermEndorsements.badgeStyle,
+      copyEyebrow: settings.dermEndorsements.copyEyebrow,
+      copyHeadline: settings.dermEndorsements.copyHeadline,
+      copyDescription: settings.dermEndorsements.copyDescription,
+      copyBadgeHeadline: settings.dermEndorsements.copyBadgeHeadline,
+      copyBadgeLink: settings.dermEndorsements.copyBadgeLink,
+      copyBadgeNoLink: settings.dermEndorsements.copyBadgeNoLink,
+      copyBadgeChip: settings.dermEndorsements.copyBadgeChip,
+    },
     targetLocales,
     translationStatus,
     itemTranslations: Object.fromEntries(itemTranslations),
+    copyStatus,
+    copyTranslations: copyTranslations.get(COPY_RESOURCE_ID) ?? [],
     localesUnavailable,
     hasDeeplKey: translationConfig.apiKey !== "",
     autoTranslate: translationConfig.autoOnSave,
@@ -299,12 +360,13 @@ export const action = async ({
       };
     }
     case "translate_proof": {
-      // optional id → the auto-on-save fast path (just the saved entry)
+      // optional id → the auto-on-save fast path (just the saved entry;
+      // COPY_RESOURCE_ID narrows to the v8.19 copy scope the same way)
       const onlyId = String(formData.get("id") ?? "");
       const result = await translateProofEntries(
         session.shop,
         admin,
-        ["endorsements"],
+        ["endorsements", "copy"],
         onlyId ? [onlyId] : undefined,
       );
       return {
@@ -322,13 +384,31 @@ export const action = async ({
       const locale = String(formData.get("locale") ?? "");
       const field = String(formData.get("field") ?? "");
       const value = String(formData.get("value") ?? "");
+      // v8.19: the copy scope's fixed id routes to the settings-backed
+      // sources; everything else stays an endorsement entry.
+      const scope = id === COPY_RESOURCE_ID ? ("copy" as const) : ("endorsements" as const);
+      // v8.19b (review catch): only real target locales may store rows —
+      // a primary-locale row would be served by the proxy but invisible
+      // to the admin reviewer (which lists target locales only).
+      const shopLocales = await getTargetLocales(admin);
+      const validTargets = translatableProofTargets(
+        shopLocales.primary,
+        shopLocales.targets,
+      );
+      if (!validTargets.includes(locale.trim().toLowerCase())) {
+        return {
+          intent: "save_translation",
+          ok: false,
+          errors: ["Not a published target language of this shop"],
+        };
+      }
       // source text read server-side — never trusted from the client
-      const source = await getProofSourceText(session.shop, "endorsements", id, field);
+      const source = await getProofSourceText(session.shop, scope, id, field);
       if (source === null) {
         return { intent: "save_translation", ok: false, errors: ["Entry not found"] };
       }
       const saved = await saveManualProofTranslation(
-        session.shop, "endorsements", id, locale, field, value, source,
+        session.shop, scope, id, locale, field, value, source,
       );
       return {
         intent: "save_translation",
@@ -583,9 +663,12 @@ export default function ProofEndorsementsTab() {
     markets,
     scope,
     featureEnabled,
+    display,
     targetLocales,
     translationStatus,
     itemTranslations,
+    copyStatus,
+    copyTranslations,
     localesUnavailable,
     hasDeeplKey,
     autoTranslate,
@@ -614,6 +697,29 @@ export default function ProofEndorsementsTab() {
   useEffect(() => {
     setScopeState(toScopeState(scope));
   }, [scope]);
+
+  // v8.17 badge + copy card. Its OWN fetcher (the v8.11b lesson: sharing
+  // rowFetcher would freeze moderation and cross-cancel saves).
+  const displayFetcher = useFetcher<EndorsementActionResult>();
+  // v8.19b: the copy auto-translate gets its OWN fetcher too — riding
+  // translateFetcher would client-abort an in-flight entry/all-languages
+  // DeepL run (the same v8.11b lesson one level deeper).
+  const copyTranslateFetcher = useFetcher<EndorsementActionResult>();
+  const [displayState, setDisplayState] = useState(display);
+  // v8.19: did the LAST copy-card save touch translatable text?
+  const copyTouchedRef = useRef(false);
+
+  // Resync on VALUE change, not loader-object identity: every fetcher on
+  // this page revalidates the loader (moderation, translate, scope saves,
+  // the background auto-translate), and an identity-keyed effect would
+  // clobber in-flight copy edits each time. Value-keyed, it fires only
+  // when the persisted settings actually changed (this card's own save
+  // landing its server-side trim/cap/{n} canonicalization included).
+  const displayJson = JSON.stringify(display);
+  useEffect(() => {
+    setDisplayState(JSON.parse(displayJson));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayJson]);
 
   const saving = saveFetcher.state !== "idle";
   const moderating = rowFetcher.state !== "idle";
@@ -686,6 +792,48 @@ export default function ProofEndorsementsTab() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeFetcher.data]);
+
+  useEffect(() => {
+    const data = displayFetcher.data;
+    if (!data || data.intent !== "save_settings") return;
+    if (!data.ok) {
+      shopify.toast.show("Could not save settings", { isError: true });
+      return;
+    }
+    // v8.19 auto-translation: fires on EVERY persisted save that touched
+    // copy text — including a save whose metafield sync failed (review
+    // catch: the DB text IS what feeds translation; skipping would leave
+    // no retrigger since the card is no longer dirty).
+    if (copyTouchedRef.current && autoTranslate && hasDeeplKey) {
+      const formData = new FormData();
+      formData.set("intent", "translate_proof");
+      formData.set("id", COPY_ID);
+      copyTranslateFetcher.submit(formData, { method: "post" });
+    }
+    copyTouchedRef.current = false;
+    if (data.errors.length > 0) {
+      shopify.toast.show("Saved, but the storefront sync failed", {
+        isError: true,
+      });
+    } else {
+      shopify.toast.show("Saved");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayFetcher.data]);
+
+  useEffect(() => {
+    const data = copyTranslateFetcher.data;
+    if (!data || data.intent !== "translate_proof") return;
+    if (!data.ok) {
+      shopify.toast.show(data.errors[0] ?? "Copy translation failed", {
+        isError: true,
+      });
+    }
+    // success is silent — the coverage line and Translations section
+    // revalidate on their own; a second "Translated N fields" toast right
+    // after "Saved" would just stack noise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [copyTranslateFetcher.data]);
 
   const submitSave = (values: EndorsementFormValues, id: string | null) => {
     const formData = new FormData();
@@ -772,6 +920,31 @@ export default function ProofEndorsementsTab() {
     scopeFetcher.submit(formData, { method: "post" });
   };
 
+  const displayDirty = useMemo(
+    () => JSON.stringify(displayState) !== JSON.stringify(display),
+    [displayState, display],
+  );
+  const saveDisplay = () => {
+    // Changed-only patch (the v8.6 stale-tab lesson: never rewrite
+    // untouched fields on save).
+    const section: Record<string, boolean | string> = {};
+    for (const key of Object.keys(display) as (keyof typeof display)[]) {
+      if (displayState[key] !== display[key]) section[key] = displayState[key];
+    }
+    if (Object.keys(section).length === 0) return;
+    copyTouchedRef.current = Object.keys(section).some((key) =>
+      key.startsWith("copy"),
+    );
+    const formData = new FormData();
+    formData.set("intent", "save_settings");
+    formData.set("patch", JSON.stringify({ dermEndorsements: section }));
+    displayFetcher.submit(formData, { method: "post" });
+  };
+  const setDisplayField = <K extends keyof typeof display>(
+    key: K,
+    value: (typeof display)[K],
+  ) => setDisplayState((previous) => ({ ...previous, [key]: value }));
+
   return (
     <BlockStack gap="400">
       {!list.ok ? (
@@ -834,7 +1007,7 @@ export default function ProofEndorsementsTab() {
               : targetLocales.length === 0
                 ? "Your shop has one published language — nothing to translate."
                 : hasDeeplKey
-                  ? `Quotes and credentials auto-translate into ${translationStatus.targetLocales} languages${autoTranslate ? " on save" : ""} — ${translationStatus.fresh} of ${translationStatus.expected} fields translated${translationStatus.outdated > 0 ? `, ${translationStatus.outdated} outdated` : ""}. Review per entry under “Translations”.`
+                  ? `Quotes, credentials and custom copy auto-translate into ${translationStatus.targetLocales} languages${autoTranslate ? " on save" : ""} — ${translationStatus.fresh + copyStatus.fresh} of ${translationStatus.expected + copyStatus.expected} fields translated${translationStatus.outdated + copyStatus.outdated > 0 ? `, ${translationStatus.outdated + copyStatus.outdated} outdated` : ""}. Review under “Translations”.`
                   : "Add a DeepL key on the Languages page to auto-translate into every published language."}
           </Text>
 
@@ -1033,6 +1206,142 @@ export default function ProofEndorsementsTab() {
               />
             </InlineStack>
           ) : null}
+        </BlockStack>
+      </Card>
+
+      <Card>
+        <BlockStack gap="300">
+          <BlockStack gap="100">
+            <Text as="h2" variant="headingMd">
+              Buy-box badge & section copy
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              The badge is a compact strip on product pages, right under the
+              price (above the description on desktop): real endorsement
+              portraits, the live endorsement count and an optional link
+              that scrolls to the wall. It renders only while the feature
+              above is enabled and the product has endorsements to show.
+            </Text>
+          </BlockStack>
+          <Checkbox
+            label="Show the endorsement badge on product pages"
+            checked={displayState.badgeEnabled}
+            onChange={(value) => setDisplayField("badgeEnabled", value)}
+          />
+          <Select
+            label="Badge design"
+            options={[...BADGE_STYLE_OPTIONS]}
+            value={displayState.badgeStyle}
+            onChange={(value) =>
+              setDisplayField(
+                "badgeStyle",
+                value as (typeof display)["badgeStyle"],
+              )
+            }
+            helpText="Classic keeps the blue shield look. The Choice designs use the cream panel with the laurel-and-caduceus title (the section eyebrow doubles as the title) and the credential chip. Slim is a single-line bar for the tightest buy box."
+          />
+          <Checkbox
+            label="Show the assessments link on the badge"
+            checked={displayState.badgeShowLink}
+            onChange={(value) => setDisplayField("badgeShowLink", value)}
+            helpText="Off: the badge shows the no-link line instead (edit it below)."
+          />
+          <Divider />
+          <BlockStack gap="100">
+            <Text as="h3" variant="headingSm">
+              Copy
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Blank fields use the built-in copy, translated into all 18
+              storefront languages. Custom text auto-translates into every
+              published language through DeepL (key on the Languages page)
+              when you save — review or hand-edit each language under
+              Translations below. {"{n}"} in the two headline fields inserts
+              the live endorsement count and survives translation.
+            </Text>
+          </BlockStack>
+          <TextField
+            label="Section eyebrow"
+            value={displayState.copyEyebrow}
+            onChange={(value) => setDisplayField("copyEyebrow", value)}
+            placeholder="Dermatologist recommended"
+            autoComplete="off"
+          />
+          <TextField
+            label="Section headline"
+            value={displayState.copyHeadline}
+            onChange={(value) => setDisplayField("copyHeadline", value)}
+            placeholder="{n} dermatologists recommend Cellexia"
+            helpText="Use {n} to insert the endorsement count."
+            autoComplete="off"
+          />
+          <TextField
+            label="Section description"
+            value={displayState.copyDescription}
+            onChange={(value) => setDisplayField("copyDescription", value)}
+            placeholder="Verified recommendations from licensed dermatologists. Read what they have to say about the product, Cellexia and its approach to skincare."
+            multiline={3}
+            helpText="Shown under the headline (full display density only)."
+            autoComplete="off"
+          />
+          <TextField
+            label="Badge headline"
+            value={displayState.copyBadgeHeadline}
+            onChange={(value) => setDisplayField("copyBadgeHeadline", value)}
+            placeholder="Recommended by {n} dermatologists"
+            helpText="Use {n} to insert the endorsement count."
+            autoComplete="off"
+          />
+          <TextField
+            label="Badge link text"
+            value={displayState.copyBadgeLink}
+            onChange={(value) => setDisplayField("copyBadgeLink", value)}
+            placeholder="Read their professional assessments"
+            autoComplete="off"
+          />
+          <TextField
+            label="Badge no-link text"
+            value={displayState.copyBadgeNoLink}
+            onChange={(value) => setDisplayField("copyBadgeNoLink", value)}
+            placeholder="Verified professional assessments"
+            helpText="Shown instead of the link when the link is off."
+            autoComplete="off"
+          />
+          <TextField
+            label="Badge chip text"
+            value={displayState.copyBadgeChip}
+            onChange={(value) => setDisplayField("copyBadgeChip", value)}
+            placeholder="Licensed dermatologists"
+            helpText="The credential chip on the Choice designs."
+            autoComplete="off"
+          />
+          <InlineStack gap="200">
+            <Button
+              variant="primary"
+              onClick={saveDisplay}
+              disabled={!displayDirty || displayFetcher.state !== "idle"}
+              loading={displayFetcher.state !== "idle"}
+            >
+              Save badge & copy
+            </Button>
+          </InlineStack>
+          <ProofTranslationsSection
+            fields={[
+              { field: "copyEyebrow", label: "Section eyebrow", sourceText: display.copyEyebrow },
+              { field: "copyHeadline", label: "Section headline", sourceText: display.copyHeadline },
+              { field: "copyDescription", label: "Section description", sourceText: display.copyDescription },
+              { field: "copyBadgeHeadline", label: "Badge headline", sourceText: display.copyBadgeHeadline },
+              { field: "copyBadgeLink", label: "Badge link text", sourceText: display.copyBadgeLink },
+              { field: "copyBadgeNoLink", label: "Badge no-link text", sourceText: display.copyBadgeNoLink },
+              { field: "copyBadgeChip", label: "Badge chip text", sourceText: display.copyBadgeChip },
+            ]}
+            targetLocales={targetLocales}
+            translations={copyTranslations}
+            onSave={(locale, field, value) =>
+              submitTranslation(COPY_ID, locale, field, value)
+            }
+            saving={manualSaving}
+          />
         </BlockStack>
       </Card>
 

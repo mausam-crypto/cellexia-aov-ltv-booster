@@ -23,6 +23,10 @@ const ALLOWED_FEATURES = new Set([
   "checkout_upsell",
   "checkout_protection",
   "checkout_trust",
+  // v9: checkout_customs / checkout_tracked are intentionally absent — the
+  // checkout-trust extension is pure display (no network calls), so its V2
+  // rows send no beacons (the az_cart_free_line precedent). Add them here
+  // AND to app.analytics.tsx FEATURE_LABELS if that ever changes.
   // PDP trust boosters (SPEC v3) — impression beacons from the five
   // product-page widgets.
   "clinical_study",

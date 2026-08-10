@@ -23,10 +23,22 @@
  *    pinned to each other through shared fixtures
  *  - holiday tables: DELIVERY_HOLIDAYS + GLOBAL_DELIVERY_EXCLUSIONS deep-
  *    equal the canonical app/services/delivery-holidays.server.ts tables
+ *  - v10 US state layer (SPEC §5): provinceCode third argument (typed
+ *    state only, case-insensitive, inert for non-US countries and when the
+ *    module is off), state override applied / hidden -> null / invalid or
+ *    inconsistent entry discarded (fail OPEN to the US-wide values),
+ *    per-state cutoff + dispatchDays PARTIAL dispatch override (timezone
+ *    inherited), merchant extra dates in both "MM-DD" and "YYYY-MM-DD"
+ *    forms, and the six movable US federal holidays via usFederalMovable
+ *    (2026 oracle incl. Thanksgiving 11-26)
  *  - deliveryFormatDate: byte-identity of behavior with the storefront
  *    twins via the shared independent generator
  *    (validation/lib/native-dates-gen.mjs) across representative locales,
  *    the fr 1er rule, the ja convention and the fallback chain
+ *  - Checkout.tsx source anchors: the typed provinceCode threads from the
+ *    shipping address into the 3-arg engine resolve (2-arg calls stay
+ *    type-valid, so only these pins keep the wiring — the checkout-trust
+ *    sim carries the same pair for ITS component)
  *
  * Offline, deterministic (injected `now`), node-only.
  */
@@ -37,6 +49,7 @@ import {
   deliveryAdvance,
   computeDelivery,
   deliveryFormatDate,
+  usFederalMovable,
   DELIVERY_HOLIDAYS,
   GLOBAL_DELIVERY_EXCLUSIONS,
   type ResolvedDeliveryConfig,
@@ -168,6 +181,103 @@ function baseRoot(): Record<string, unknown> {
   tap.eq('deliveryDays containing 8 -> null', resolveDeliveryConfig(root7, 'FR'), null);
 }
 
+// -------------------------------------- v10 US state layer (fail OPEN)
+function usRoot(): Record<string, unknown> {
+  const root = baseRoot();
+  (root.deliveryEstimate as Record<string, unknown>).usStates = {
+    enabled: true,
+    selector: true,
+    federalHolidays: true,
+    // '13-40' fails the date regex: dropped, never fails the layer.
+    extraHolidays: ['07-06', '2026-08-14', '13-40'],
+    byState: {
+      CA: { minDays: 1, maxDays: 3, cutoff: '11:00', extraHolidays: ['09-09'] },
+      NY: { hidden: true },
+      TX: { minDays: 25 }, // valid field, candidate 25 > inherited max 5
+      WA: { cutoff: 'late' }, // invalid field -> not merged
+      FL: { dispatchDays: [6, 7] },
+      NV: { holidaysEnabled: false },
+    },
+  };
+  return root;
+}
+
+{
+  const us = resolveDeliveryConfig(usRoot(), 'US', undefined);
+  tap.check('US module on, no provinceCode -> US-wide values, never hidden',
+    us !== null && us.minDays === 2 && us.maxDays === 5 && us.cutoffMinutes === 960);
+  tap.check('module extras validated (bad entry dropped) + federal flag on',
+    us !== null && JSON.stringify(us.extra) === '["07-06","2026-08-14"]' && us.usFederal === true);
+
+  const ca = resolveDeliveryConfig(usRoot(), 'US', 'CA');
+  tap.check('CA override applied: min/max + cutoff, timezone + days inherited',
+    ca !== null && ca.minDays === 1 && ca.maxDays === 3 && ca.cutoffMinutes === 660 &&
+    ca.timezone === 'America/New_York' && JSON.stringify(ca.dispatchDays) === '[1,2,3]');
+  tap.check('CA state extras ride behind the module extras',
+    ca !== null && JSON.stringify(ca.extra) === '["07-06","2026-08-14","09-09"]');
+  const caLower = resolveDeliveryConfig(usRoot(), 'US', 'ca');
+  tap.check('provinceCode is case-insensitive ("ca" == "CA")',
+    caLower !== null && caLower.minDays === 1 && caLower.cutoffMinutes === 660);
+
+  tap.eq('NY hidden state -> null (the one deliberate state hide)',
+    resolveDeliveryConfig(usRoot(), 'US', 'NY'), null);
+  const tx = resolveDeliveryConfig(usRoot(), 'US', 'TX');
+  tap.check('TX candidate min 25 > max 5 -> WHOLE entry discarded, US-wide stays',
+    tx !== null && tx.minDays === 2 && tx.maxDays === 5);
+  const wa = resolveDeliveryConfig(usRoot(), 'US', 'WA');
+  tap.check('WA invalid cutoff field ignored -> US-wide values',
+    wa !== null && wa.cutoffMinutes === 960 && wa.minDays === 2);
+  const fl = resolveDeliveryConfig(usRoot(), 'US', 'FL');
+  tap.check('FL PARTIAL dispatchDays override, cutoff inherited',
+    fl !== null && JSON.stringify(fl.dispatchDays) === '[6,7]' && fl.cutoffMinutes === 960);
+  const nv = resolveDeliveryConfig(usRoot(), 'US', 'NV');
+  tap.check('NV holidaysEnabled false -> usFederal off (federal rides holidays)',
+    nv !== null && nv.holidaysEnabled === false && nv.usFederal === false);
+
+  const fr = resolveDeliveryConfig(usRoot(), 'FR', 'CA');
+  tap.check('non-US country ignores provinceCode + carries no state members',
+    fr !== null && fr.minDays === 2 && fr.extra === undefined && fr.usFederal === undefined);
+  const plainUs = resolveDeliveryConfig(baseRoot(), 'US', 'CA');
+  tap.check('module absent -> provinceCode inert, no state members',
+    plainUs !== null && plainUs.extra === undefined && plainUs.usFederal === undefined);
+
+  tap.eq('usFederalMovable(2026) — the six movable dates',
+    usFederalMovable(2026),
+    ['2026-01-19', '2026-02-16', '2026-05-25', '2026-09-07', '2026-10-12', '2026-11-26']);
+  if (us && ca) {
+    tap.eq('qualify: Thanksgiving 2026-11-26 (Thu) excluded when usFederal',
+      deliveryQualifies(UT(2026, 10, 26), us), false);
+    tap.eq('qualify: Labor Day 2026-09-07 (Mon) excluded when usFederal',
+      deliveryQualifies(UT(2026, 8, 7), us), false);
+    tap.eq('qualify: module extra 07-06 recurs — 2026-07-06 (Mon) excluded',
+      deliveryQualifies(UT(2026, 6, 6), us), false);
+    tap.eq('qualify: module extra 07-06 recurs — 2027-07-06 (Tue) excluded',
+      deliveryQualifies(UT(2027, 6, 6), us), false);
+    tap.eq('qualify: one-off 2026-08-14 (Fri) excluded in its year',
+      deliveryQualifies(UT(2026, 7, 14), us), false);
+    tap.eq('qualify: one-off 2026-08-14 does NOT recur — 2028-08-14 (Mon) fine',
+      deliveryQualifies(UT(2028, 7, 14), us), true);
+    tap.eq('qualify: CA state extra 09-09 excluded with the entry adopted',
+      deliveryQualifies(UT(2026, 8, 9), ca), false);
+    tap.eq('qualify: state extra 09-09 does not leak into the no-state config',
+      deliveryQualifies(UT(2026, 8, 9), us), true);
+    // Mon 2026-07-20 17:00Z = 13:00 EDT: before the US-wide 16:00 cutoff,
+    // after CA's 11:00 — the state cutoff shifts dispatch to Tuesday.
+    tap.eq('dispatchUt: US-wide 16:00 cutoff not passed -> same-day dispatch',
+      deliveryDispatchUt(us, new Date(UT(2026, 6, 20, 17, 0, 0))), UT(2026, 6, 20));
+    tap.eq('dispatchUt: CA 11:00 cutoff passed -> next dispatch day',
+      deliveryDispatchUt(ca, new Date(UT(2026, 6, 20, 17, 0, 0))), UT(2026, 6, 21));
+  }
+  const offRoot = usRoot();
+  const offUsStates = (offRoot.deliveryEstimate as Record<string, unknown>)
+    .usStates as Record<string, unknown>;
+  offUsStates.federalHolidays = false;
+  const usOff = resolveDeliveryConfig(offRoot, 'US', undefined);
+  tap.check('federalHolidays false -> usFederal false, Thanksgiving qualifies',
+    usOff !== null && usOff.usFederal === false &&
+    deliveryQualifies(UT(2026, 10, 26), usOff));
+}
+
 // --------------------------------------------- engine + DST probes
 function dcFor(over: Partial<ResolvedDeliveryConfig>): ResolvedDeliveryConfig {
   return Object.assign(
@@ -265,6 +375,22 @@ for (const [label, nowMs, over, expected] of computeCases) {
   const ut = UT(2026, 6, 22);
   tap.eq('fallback: empty locale -> short form', deliveryFormatDate(ut, ''), expectedShortFallback(ut));
   tap.eq('fallback: rejected tag -> short form', deliveryFormatDate(ut, 'no way!'), expectedShortFallback(ut));
+}
+
+// ------------------------- Checkout.tsx pins (checkout-delivery component)
+{
+  // resolveDeliveryConfig keeps 2-arg calls type-valid (provinceCode is
+  // optional by design, SPEC §5), so tsc cannot catch a dropped third
+  // argument — a source anchor is the only guard that the PRIMARY checkout
+  // delivery widget threads the typed state. Mirrors checkout-trust's T5
+  // pair against ITS Checkout.tsx.
+  const src = readSource('extensions/checkout-delivery/src/Checkout.tsx');
+  for (const anchor of [
+    'resolveDeliveryConfig(configRoot, countryCode, provinceCode)',
+    'shippingAddress?.provinceCode',
+  ]) {
+    tap.check(`Checkout.tsx anchor present: ${anchor}`, src.includes(anchor));
+  }
 }
 
 tap.finish();

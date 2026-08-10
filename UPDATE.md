@@ -95,7 +95,11 @@ Postgres uses `db push`; the selector enforces this split automatically.
 Additions since the pre-v8 build: **four proof-library tables** — `PressItem`
 (incl. `marketHandles`), `DermEndorsement`, `CustomerResult` (incl. the
 `legacyGid` unique key that makes the before/after import exactly-once) and
-`ProofTranslation` (v8.11 — per-entry, per-locale translated text).
+`ProofTranslation` (v8.11 — per-entry, per-locale translated text) — plus
+v10's **`GeoStateDb`** (one row per shop: build status + the compiled,
+gzipped IP→US-state range tables behind the delivery promise's state
+detection; `db push` creates the empty table, the one-time in-app
+"Download & build" step in the §5 v10 note fills it).
 Earlier additions if you're further behind: `PreviewState` (+ `draftConfig`),
 `TranslationConfig`, `Experiment.startSyncErrors`, `Event.market`,
 `OrderStat.market`, `OrderStat.countryCode` (+ indexes). `db push` adds all of
@@ -243,8 +247,8 @@ identical. Nothing to do on your side beyond the normal extensions deploy.
 
 ## 4d. NEW: run the validation suite before every deploy
 
-The repo now ships its full validation suite at `validation/` (19 suites,
-4,400+ checks — `npm run validate` prints the live totals: equivalence prover vs a committed baseline, structural
+The repo now ships its full validation suite at `validation/` (24 suites,
+6,200+ checks — `npm run validate` prints the live totals: equivalence prover vs a committed baseline, structural
 tripwires incl. the Shopify Liquid-budget guard, and engine/feature
 simulations that execute the real shipped code — all offline, ~3s):
 
@@ -258,6 +262,151 @@ Run it after `npm ci` and before deploying; a red scoreboard means stop.
 strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
+
+v8.19 — ENDORSEMENT COPY SPEAKS EVERY LANGUAGE (2026-08-09): the seven
+custom copy fields of the endorsement section/badge (eyebrow, headline,
+description, badge headline, badge link, badge no-link, badge chip) now
+AUTO-TRANSLATE through the same DeepL system as quotes and testimonials:
+saving the copy card fires an incremental translate run (DeepL key on the
+Languages page; {n} survives translation), the storefront serves each
+page's language via the proof proxy, and a "Translations" reviewer under
+the copy card lets you hand-polish any language (manual edits are never
+overwritten; clearing one falls back). An edited field serves its new
+primary text everywhere until re-translated — never a translation of the
+old text. No DB change (the ProofTranslation table already fits), no new
+scopes, no locale-file or Liquid growth.
+
+v8.18 — FOUR BADGE DESIGNS (2026-08-09): the endorsement badge gained a
+"Badge design" picker (Proof library → Endorsements → "Buy-box badge &
+section copy"): CLASSIC (the shield + blue link look, unchanged default),
+DERMATOLOGISTS' CHOICE (cream panel, laurel-and-caduceus serif title —
+the section eyebrow doubles as the title — bold count, underlined link
+and a "Licensed dermatologists" credential chip), SLIM BAR (a one-line
+pill: three portraits, a "+N" spillover counter, shield and bold count)
+and CHOICE COMPACT (the Choice look condensed to two tight rows). One
+new locale key endo.badge_chip in all 18 languages + an editable "Badge
+chip text" field. No new feature key, scope, table or embed; existing
+stores keep the classic design until they pick another. NOTE: el.json is
+now 3B under the 15,000B locale budget — Greek copy additions of ANY
+kind must trim existing el strings first.
+
+v8.17 — ENDORSEMENT BADGE + EDITABLE WALL COPY (2026-08-09): the
+dermatologist-endorsement feature gains (1) an optional BUY-BOX BADGE on
+product pages — a compact strip right under the price (above the
+description on desktop) with up to five real endorsement portraits, a
+shield-check + "Recommended by N dermatologists" line (N = the same
+product+brand total the wall shows) and an optional link that
+smooth-scrolls to the wall; when the link is toggled off an editable
+non-link line shows instead — and (2) fully MERCHANT-EDITABLE section
+copy: eyebrow, headline ({n} = live count), a NEW description paragraph,
+badge headline, badge link text and badge no-link text, all edited on
+Proof library → Endorsements → "Buy-box badge & section copy" (blank =
+built-in copy, now "Dermatologist recommended" / "{n} dermatologists
+recommend Cellexia" / the new description, translated in all 18
+languages; custom text is served as entered in every language). Both
+ship OFF/blank; no new feature key, scope, table or embed — everything
+rides the existing proof embed + derm_endorsements flag and beacons.
+DEPLOY: extensions half + app server, no DB change. NOTE: el.json now
+sits 6B under the 15,000B locale budget (Shopify hard-caps locale files
+at 15,360B) — the NEXT Greek copy addition must trim existing el strings
+first; ar.json now ships minified (MINIFIED_LOCALES).
+
+v10 — US DELIVERY PROMISE BY STATE (2026-08-08): the Delivery guarantee
+gains an optional United States STATE-level module — per-state business-day
+windows, per-state days off and dispatch cutoffs, a built-in US federal
+holiday calendar (the six movable holidays; the fixed ones were already in
+the US table), an Amazon-style "Deliver to: California" selector on the
+product page and in the cart, self-hosted IP→state detection (the visitor's
+IP is looked up against a locally compiled table on YOUR server — never
+sent to a third party, never stored, never logged), and the exact
+typed-address state promise at checkout. No new feature key, no new scopes,
+no new surface: it all rides the existing Delivery guarantee, ships OFF,
+and quietly degrades to the current US-wide promise whenever a state cannot
+be resolved.
+
+DEPLOY STEPS SPECIFIC TO v10 (in addition to the §2 basics):
+1. DATABASE: `db push` per §2 — one new table, `GeoStateDb`.
+2. Deploy BOTH halves as usual (§3): the app server changed (settings,
+   the Delivery admin page, the geo pipeline + a new `/apps/cellexia/geo`
+   app-proxy endpoint) AND the extensions changed (theme JS/Liquid/CSS +
+   all 18 locale files, plus the checkout-delivery AND checkout-trust
+   extensions — their shared date engine learned the state layer). Scopes
+   UNCHANGED — no re-approval prompt. No new extension, no new
+   checkout-editor placement, no new app embed.
+3. ONE-TIME (only if you'll use the module): Features → Delivery
+   guarantee → "State detection database" card → **Download & build**.
+   Downloads the free DB-IP City Lite database (~84 MB) and compiles the
+   US ranges — takes a few minutes; the card shows live progress and the
+   rest of the app stays usable. Until it's built (or if you never build
+   it) the product page + cart simply keep the US-wide promise; checkout's
+   state promise works REGARDLESS — it reads the typed shipping address,
+   never the IP. Refresh MONTHLY from the same button (DB-IP publishes
+   monthly; a failed refresh keeps serving the previous good table). If a
+   build is interrupted (server restart/redeploy mid-download), the card
+   shows "build interrupted — run Download & build again" and the button
+   re-enables — recovery is that one click, no manual cleanup, and the
+   previous good table keeps serving throughout.
+4. ENABLE + CONFIGURE: same page → "United States — delivery by state"
+   card (ships OFF) → master switch on, then add per-state overrides
+   (min/max days, delivery weekdays, holidays inherit/on/off, per-state
+   cutoff + dispatch days — the warehouse timezone always inherits —
+   extra days off capped at 60 dates US-wide / 40 per state, or hide the
+   widget for a state entirely). The module is a sub-layer: the Delivery
+   guarantee itself must be enabled (and not hidden or market-scoped away)
+   for US buyers, or nothing shows at all.
+5. ATTRIBUTION (license requirement): state detection uses DB-IP City
+   Lite (CC BY 4.0). The storefront handles it automatically — whenever a
+   DETECTED state is in use, the selector popover shows the required
+   "IP Geolocation by DB-IP" link (it hides when the visitor picks a
+   state manually). Don't suppress it.
+6. HONEST EXPECTATIONS: IP state detection is ~90% accurate; mobile
+   visitors in particular can resolve to a neighboring state or not at
+   all. That is why the page ALWAYS renders the US-wide promise first (the
+   state layer is a quiet upgrade), why the selector lets visitors correct
+   the state, and why checkout NEVER guesses — its promise comes only from
+   the typed address.
+7. `npm run validate` totals DIFFER from v9's (two new v10 suites plus
+   extended pins) — the scoreboard's live counts are the authority; green
+   is what matters.
+
+v9 — CHECKOUT TRUST MODULE V2 (2026-08-08): the checkout reassurance module
+rebuilt with two new per-market rows and refreshed copy, in all 18
+languages.
+
+DEPLOY STEPS SPECIFIC TO v9 (in addition to the §2 basics):
+1. Deploy BOTH halves as usual (§3) — the checkout-trust extension changed,
+   and the app half carries two new feature keys. No new extension and no
+   new checkout-editor placement: the existing "Cellexia Checkout Trust"
+   block simply gains the new rows. If you use Translate & Adapt overrides
+   on the trust module strings, re-review them: `secure` and
+   `guarantee_body` changed in every language.
+2. COPY CHANGES (live immediately after deploy, all 18 languages):
+   "Secure SSL-encrypted checkout" → "Secure Encrypted Checkout", and the
+   guarantee sub-line is now "Not satisfied? Get your money back within
+   60 days." (the number follows your guarantee-days setting).
+3. NEW ROW — "No customs or additional fees on delivery." (OFF by
+   default): enable it on Features → Checkout ("No customs or additional
+   fees" line), then limit it per market with its own "Markets —
+   Customs-free delivery line" card (or the Markets page row "Customs-free
+   delivery line"). Turn it on only for markets where you genuinely cover
+   customs and import fees.
+4. NEW ROW — "Tracked Delivery · Guaranteed by ⟨date⟩" (OFF by default):
+   same switches one card down. The date is EXACTLY the Delivery
+   guarantee's guaranteed-by date (same dispatch schedule, country
+   overrides and holiday calendars — the extension ships a byte-identical
+   copy of the delivery date engine, enforced by the validation suite), so
+   whenever both render they can never disagree. The row STANDS ALONE,
+   though: it keeps rendering even while the Delivery guarantee feature is
+   switched off (only the schedule settings are shared) — turn the row off
+   to stop the promise. It renders in
+   the buyer's language with a native date in all 18 languages ("13
+   August" / "13 août" / "13. August" / "8月13日"), appears only once the
+   buyer's shipping country is known, and hides itself rather than ever
+   showing a wrong or half-computed date.
+5. Both rows are draft-previewable from the Preview Center (they imply the
+   module chrome in preview even while the module master is off) and
+   market-targetable before being enabled — scope selections save
+   immediately and apply when you switch a row on.
 
 v8 — THE PROOF LIBRARY (2026-08-02): three new trust surfaces backed by a
 database + public JSON API, compact display modes, and the before/after

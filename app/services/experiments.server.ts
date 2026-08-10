@@ -42,6 +42,9 @@ import { twoProportionZTest, welchTTest } from "./stats.server";
  *   2. No flip-key overlap — a feature flipped by a running experiment is
  *      locked for new experiments in ANY market, and all cart_* keys count
  *      as one overlap group because they share the cartUpsell master switch.
+ *      (v9: checkout_trust + checkout_customs + checkout_tracked form a
+ *      second overlap group — the rows share the checkoutTrust master and
+ *      a row flip also mutates the module's market scope.)
  *
  * Because flip keys never overlap between running experiments, rollback can
  * use restoreFlagsSelective (only the experiment's own raw flags + scopes)
@@ -949,6 +952,18 @@ const CART_GROUP_KEYS: FeatureKey[] = FEATURE_KEYS.filter(
 );
 
 /**
+ * v9: the checkout-trust family — one drift/lock group (the rows share the
+ * checkoutTrust.enabled master, and a row flip also mutates the MODULE's
+ * market scope via applyFlipForMarket). Unlike cart, the master here is its
+ * own flippable FeatureKey, so checkout_trust itself is a member: a module
+ * flip and a row flip must never run concurrently either.
+ */
+const CHECKOUT_TRUST_GROUP_KEYS: FeatureKey[] = FEATURE_KEYS.filter(
+  (key) =>
+    key === "checkout_trust" || FEATURE_RAW_FIELD[key].kind === "checkoutTrust",
+);
+
+/**
  * Canonical hashed object shared by the current and the previous
  * per-experiment hash compositions. `includeCartSiblingScopes` is the ONLY
  * difference between them: the previous composition hashed cart sibling
@@ -964,10 +979,22 @@ function hashCanonical(
   const hasCartKey = sortedKeys.some(
     (key) => FEATURE_RAW_FIELD[key]?.kind === "cart",
   );
-  const scopeKeys =
+  const hasTrustRowKey = sortedKeys.some(
+    (key) => FEATURE_RAW_FIELD[key]?.kind === "checkoutTrust",
+  );
+  let scopeKeys =
     hasCartKey && includeCartSiblingScopes
       ? [...new Set([...sortedKeys, ...CART_GROUP_KEYS])].sort()
       : sortedKeys;
+  // v9: a trust-row flip mutates the MODULE's scope too (applyFlipForMarket
+  // restricts/widens marketScopes.checkout_trust), and a module-scope edit
+  // changes the row's effective reach — hash the whole family's scopes.
+  // Rides BOTH compositions: no pre-v9 stored hash can cover these keys, so
+  // no migration path is needed, and experiments without v9 keys produce a
+  // byte-identical canonical object.
+  if (hasTrustRowKey) {
+    scopeKeys = [...new Set([...scopeKeys, ...CHECKOUT_TRUST_GROUP_KEYS])].sort();
+  }
   return {
     cartMaster: hasCartKey ? snapshot.cartMaster : null,
     cartSubFlags: hasCartKey
@@ -985,6 +1012,19 @@ function hashCanonical(
       if (raw?.kind === "amazon") {
         return [
           { field: raw.field, on: snapshot.amazonFlags?.[raw.field] ?? null },
+        ];
+      }
+      // v9 checkoutTrust-kind raw flags ride the same array (showCustoms/
+      // showTracked cannot collide with section/amazon field names); the
+      // shared module master rides as its section field name — flipping the
+      // module AND a row hashes it twice, deterministic and harmless.
+      if (raw?.kind === "checkoutTrust") {
+        return [
+          {
+            field: raw.field,
+            on: snapshot.checkoutTrustSubFlags?.[raw.field] ?? null,
+          },
+          { field: "checkoutTrust", on: snapshot.sectionEnabled.checkoutTrust },
         ];
       }
       return raw?.kind === "section"
@@ -1257,6 +1297,14 @@ export function lockedFeatureMap(
             locks[key] = lock;
           }
         }
+      } else if (CHECKOUT_TRUST_GROUP_KEYS.includes(flip.key)) {
+        // v9: any checkout-trust family member locks the whole family — the
+        // rows and the module share checkoutTrust.enabled and the module's
+        // market scope, so two experiments would fight over (and selectively
+        // restore) the same state.
+        for (const key of CHECKOUT_TRUST_GROUP_KEYS) {
+          if (!locks[key]) locks[key] = lock;
+        }
       } else if (!locks[flip.key]) {
         locks[flip.key] = lock;
       }
@@ -1297,6 +1345,9 @@ export function findStartConflict(
     if (!lock) continue;
     if (FEATURE_RAW_FIELD[key].kind === "cart") {
       return `Cart features share one master switch, so they count as a single group across experiments — “${lock.experimentName}” (${marketPhrase(lock.market)}) is already flipping a cart feature. Conclude it first, or drop the cart flips.`;
+    }
+    if (CHECKOUT_TRUST_GROUP_KEYS.includes(key)) {
+      return `The checkout trust module and its rows share one master switch, so they count as a single group across experiments — “${lock.experimentName}” (${marketPhrase(lock.market)}) is already flipping one of them. Conclude it first, or drop the checkout-trust flips.`;
     }
     return `“${FEATURE_DEFS[key].label}” is already being flipped by “${lock.experimentName}” (${marketPhrase(lock.market)}) — a feature can only be part of one running experiment at a time.`;
   }
@@ -1591,6 +1642,16 @@ export async function concludeExperiment(
             (raw) =>
               raw.kind === "section" &&
               typeof snapshot.sectionEnabled?.[raw.field] !== "boolean",
+          ) ||
+          // v9: a trust-row restore reads the row sub-flag AND the shared
+          // module master — both must be present and well-typed, or the
+          // "rollback" would silently restore nothing but the scope.
+          flippedRawFields.some(
+            (raw) =>
+              raw.kind === "checkoutTrust" &&
+              (typeof snapshot.checkoutTrustSubFlags?.[raw.field] !==
+                "boolean" ||
+                typeof snapshot.sectionEnabled?.checkoutTrust !== "boolean"),
           ) ||
           flippedKeys.some((key) => {
             const scope = snapshot.marketScopes?.[key];

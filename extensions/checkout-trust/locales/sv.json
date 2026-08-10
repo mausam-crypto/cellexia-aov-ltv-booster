@@ -1,7 +1,15 @@
 {
-  "guarantee_title": "{{days}} dagars pengarna-tillbaka-garanti",
-  "guarantee_body": "Älska dina resultat eller få pengarna tillbaka – utan frågor.",
-  "secure": "Säker SSL-krypterad kassa",
+  "guarantee_title": {
+    "one": "{{days}} dags pengarna-tillbaka-garanti",
+    "other": "{{days}} dagars pengarna-tillbaka-garanti"
+  },
+  "guarantee_body": {
+    "one": "Inte nöjd? Få pengarna tillbaka inom {{days}} dag.",
+    "other": "Inte nöjd? Få pengarna tillbaka inom {{days}} dagar."
+  },
+  "secure": "Säker, krypterad kassa",
   "clinical": "Kliniskt bevisade formler",
-  "trustpilot": "{{rating}}/5 · {{count}} omdömen på Trustpilot"
+  "trustpilot": "{{rating}}/5 · {{count}} omdömen på Trustpilot",
+  "customs": "Inga tullavgifter eller extra avgifter vid leverans.",
+  "tracked": "Spårbar frakt · Garanterad leverans senast {{date}}"
 }

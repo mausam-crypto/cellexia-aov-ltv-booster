@@ -1,9 +1,9 @@
 /**
- * Flip-test — the 33-FeatureKey flip / scope / snapshot / selective-restore
+ * Flip-test — the 35-FeatureKey flip / scope / snapshot / selective-restore
  * tripwire, executed against the REAL app/models/settings.server.ts
  * (imported directly — the prisma client is constructed but never queried).
  *
- * Per key (all 33):
+ * Per key (all 35):
  *  - FEATURE_DEFS get/set round-trip surfaces through resolveFeatureFlag;
  *  - FEATURE_RAW_FIELD arm exists and its raw field is the one the def
  *    actually flips;
@@ -47,7 +47,7 @@ const clone = <T>(x: T): T => structuredClone(x);
 const MARKETS = ["ch", "eu", "us"];
 
 // --- inventory ---------------------------------------------------------------
-ok(FEATURE_KEYS.length === 33, `33 FeatureKeys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 35, `35 FeatureKeys (got ${FEATURE_KEYS.length})`);
 ok(new Set(FEATURE_KEYS).size === FEATURE_KEYS.length, "no duplicate keys");
 ok(AMAZON_FLAG_FIELDS.length === FEATURE_KEYS.filter((k) => k.startsWith("az_")).length,
   "one amazon flag field per az_* key");
@@ -56,6 +56,8 @@ function rawValue(s: BoosterSettings, key: FeatureKey): boolean {
   const raw = FEATURE_RAW_FIELD[key];
   if (raw.kind === "cart") return s.cartUpsell[raw.field];
   if (raw.kind === "section") return s[raw.field].enabled;
+  // v9: the two checkout-trust row sub-flags live inside checkoutTrust.
+  if (raw.kind === "checkoutTrust") return s.checkoutTrust[raw.field];
   return s.amazon[raw.field];
 }
 
@@ -215,12 +217,65 @@ for (const key of FEATURE_KEYS) {
         ? typeof snap.cartSubFlags[raw.field] === "boolean"
         : raw.kind === "section"
           ? typeof snap.sectionEnabled[raw.field] === "boolean"
-          : typeof snap.amazonFlags?.[raw.field] === "boolean";
+          : raw.kind === "checkoutTrust"
+            ? typeof snap.checkoutTrustSubFlags?.[raw.field] === "boolean"
+            : typeof snap.amazonFlags?.[raw.field] === "boolean";
     ok(captured, `snapshot captures the raw field of ${key}`);
   }
   ok(typeof snap.cartMaster === "boolean", "snapshot captures the cart master");
   ok(Object.keys(snap.marketScopes).length === FEATURE_KEYS.length,
     "snapshot captures a scope for every key");
+}
+
+// --- v9 checkout-trust family: flip isolation + two-level market gate ----------
+{
+  // (a) Two-level gate: a row is on in a market ONLY when the MODULE's scope
+  // also allows it (the extension's moduleLive && row-gate composition).
+  const gated = clone(DEFAULT_SETTINGS);
+  gated.checkoutTrust.enabled = true;
+  gated.checkoutTrust.showCustoms = true;
+  gated.marketScopes.checkout_trust = { mode: "selected", markets: ["eu"] };
+  ok(isFeatureOnForMarket(gated, "checkout_customs", "eu") === true,
+    "v9: row on where module scope + row scope both allow");
+  ok(isFeatureOnForMarket(gated, "checkout_customs", "us") === false,
+    "v9: row OFF where the module scope excludes the market (two-level gate)");
+
+  // (b) Row flip from master-off: module restricted to the flip market,
+  // dormant sibling row forced off — no other market lights up.
+  const dark = clone(DEFAULT_SETTINGS);
+  dark.checkoutTrust.showTracked = true; // dormant leftover (master off)
+  const darkSnap = snapshotFlags(dark);
+  applyFlipForMarket(dark, "checkout_customs", "ch", true, MARKETS);
+  ok(resolveFeatureFlag(dark, "checkout_customs") === true &&
+     isFeatureOnForMarket(dark, "checkout_customs", "ch") === true,
+    "v9: row flip-on from master-off is live in the flip market");
+  ok(isFeatureOnForMarket(dark, "checkout_trust", "eu") === false &&
+     isFeatureOnForMarket(dark, "checkout_trust", "ch") === true,
+    "v9: raising the master restricted the MODULE scope to the flip market");
+  ok(dark.checkoutTrust.showTracked === false,
+    "v9: dormant sibling row was force-isolated by the master flip");
+
+  // (c) Selective restore puts back the master, BOTH row flags and the
+  // module scope the flip mutated.
+  restoreFlagsSelective(dark, darkSnap, ["checkout_customs"]);
+  ok(dark.checkoutTrust.enabled === false &&
+     dark.checkoutTrust.showCustoms === false &&
+     dark.checkoutTrust.showTracked === true &&
+     dark.marketScopes.checkout_trust.mode === "all",
+    "v9: selective restore round-trips master + both rows + module scope");
+
+  // (d) Row flip from master-ON widens the module scope by exactly the
+  // target market (the row cannot be live where the module is not).
+  const lit = clone(DEFAULT_SETTINGS);
+  lit.checkoutTrust.enabled = true;
+  lit.marketScopes.checkout_trust = { mode: "selected", markets: ["eu"] };
+  applyFlipForMarket(lit, "checkout_tracked", "ch", true, MARKETS);
+  ok(isFeatureOnForMarket(lit, "checkout_tracked", "ch") === true,
+    "v9: master-on row flip is live in the flip market");
+  ok(isFeatureOnForMarket(lit, "checkout_trust", "eu") === true &&
+     isFeatureOnForMarket(lit, "checkout_trust", "ch") === true &&
+     isFeatureOnForMarket(lit, "checkout_trust", "us") === false,
+    "v9: module scope widened by exactly the flip market");
 }
 
 // --- v8.3 legacy-density coercion: the REAL getSettings load-path composition --
@@ -262,4 +317,4 @@ if (failures > 0) {
   console.error(`\n${failures}/${checks} CHECKS FAILED`);
   process.exit(1);
 }
-console.log(`ALL ${checks} CHECKS PASSED (33-key flip/scope/snapshot/selective-restore vs the real settings.server.ts)`);
+console.log(`ALL ${checks} CHECKS PASSED (35-key flip/scope/snapshot/selective-restore vs the real settings.server.ts)`);

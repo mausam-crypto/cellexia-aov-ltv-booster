@@ -150,14 +150,22 @@
     "read_article": "Lees het artikel"
   },
   "endo": {
-    "eyebrow": "Aanbevelingen van dermatologen",
+    "eyebrow": "Aanbevolen door dermatologen",
     "count_headline": {
-      "one": "Aanbevolen door {{ n }} dermatoloog",
-      "other": "Aanbevolen door {{ n }} dermatologen"
+      "one": "{{ n }} dermatoloog beveelt Cellexia aan",
+      "other": "{{ n }} dermatologen bevelen Cellexia aan"
     },
     "shown_of": "@@SHOWN@@ van @@TOTAL@@ weergegeven",
     "show_more": "Toon meer",
-    "read_full": "Lees de volledige aanbeveling"
+    "read_full": "Lees de volledige aanbeveling",
+    "description": "Geverifieerde aanbevelingen van erkende dermatologen. Lees wat zij zeggen over het product, Cellexia en haar benadering van huidverzorging.",
+    "badge_headline": {
+      "one": "Aanbevolen door {{ n }} dermatoloog",
+      "other": "Aanbevolen door {{ n }} dermatologen"
+    },
+    "badge_link": "Lees hun professionele beoordelingen",
+    "badge_alt": "Geverifieerde professionele beoordelingen",
+    "badge_chip": "Erkende dermatologen"
   },
   "results": {
     "banner_verified": "Bekijk resultaten van {{ count }} geverifieerde Cellexia-klanten.",
@@ -196,7 +204,8 @@
     "box_title": "Gegarandeerd bezorgd uiterlijk {{ date }}",
     "box_sub": "… of je krijgt je geld terug of we sturen gratis een vervangend product.",
     "badge": "Bezorggarantie",
-    "tooltip": "Uiterlijk {{ date }} bezorgd – anders krijg je je geld terug of sturen we gratis een vervangend product."
+    "tooltip": "Uiterlijk {{ date }} bezorgd – anders krijg je je geld terug of sturen we gratis een vervangend product.",
+    "deliver_to": "Bezorgen in:"
   },
   "amazon": {
     "in_stock": "Op voorraad",

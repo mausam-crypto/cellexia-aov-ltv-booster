@@ -189,6 +189,10 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
       { key: "checkout_upsell", label: "Checkout upsell" },
       { key: "checkout_protection", label: "Order Protection" },
       { key: "checkout_trust", label: "Checkout trust module" },
+      // v9 trust module V2 rows — sub-flags of the trust module (shared
+      // checkoutTrust master, cart-style), each with its own market scope.
+      { key: "checkout_customs", label: "Customs-free delivery line" },
+      { key: "checkout_tracked", label: "Tracked delivery line" },
     ],
   },
 ];
@@ -503,6 +507,28 @@ export default function MarketsPage() {
     if (state.checkout_trust.on !== initial.checkout_trust.on) {
       patch.checkoutTrust = { enabled: state.checkout_trust.on };
     }
+    // v9 trust rows share the checkoutTrust master switch (the cart-rows
+    // contract above): turning a row on must set the master on + its
+    // show-flag; turning one off clears only its show-flag. Both show-flags
+    // are written together so a dormant row can't resurface when the master
+    // flips on. Spread order matters: a row newly turned ON wins over an
+    // `enabled: false` written by the module row above (FEATURE_DEFS set
+    // semantics — enabling a sub-feature implies its master).
+    const TRUST_ROW_KEYS = ["checkout_customs", "checkout_tracked"] as const;
+    const trustRowsChanged = TRUST_ROW_KEYS.some(
+      (key) => state[key].on !== initial[key].on,
+    );
+    if (trustRowsChanged) {
+      const anyRowTurnedOn = TRUST_ROW_KEYS.some(
+        (key) => state[key].on && !initial[key].on,
+      );
+      patch.checkoutTrust = {
+        ...(patch.checkoutTrust ?? {}),
+        ...(anyRowTurnedOn ? { enabled: true } : {}),
+        showCustoms: state.checkout_customs.on,
+        showTracked: state.checkout_tracked.on,
+      };
+    }
     if (state.cart_cross_sell.on !== initial.cart_cross_sell.on) {
       patch.cartCrossSell = { enabled: state.cart_cross_sell.on };
     }
@@ -567,8 +593,8 @@ export default function MarketsPage() {
     return (
       a.on !== b.on ||
       a.mode !== b.mode ||
-      [...a.markets].sort().join(" ") !==
-        [...b.markets].sort().join(" ")
+      [...a.markets].sort().join("\u0000") !==
+        [...b.markets].sort().join("\u0000")
     );
   };
 

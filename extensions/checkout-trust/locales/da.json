@@ -1,7 +1,15 @@
 {
-  "guarantee_title": "{{days}} dages pengene-tilbage-garanti",
-  "guarantee_body": "Elsk dine resultater – eller få pengene tilbage, uden spørgsmål.",
-  "secure": "Sikker SSL-krypteret checkout",
+  "guarantee_title": {
+    "one": "{{days}} dags pengene-tilbage-garanti",
+    "other": "{{days}} dages pengene-tilbage-garanti"
+  },
+  "guarantee_body": {
+    "one": "Ikke tilfreds? Få pengene tilbage inden for {{days}} dag.",
+    "other": "Ikke tilfreds? Få pengene tilbage inden for {{days}} dage."
+  },
+  "secure": "Sikker, krypteret betaling",
   "clinical": "Klinisk dokumenterede formler",
-  "trustpilot": "{{rating}}/5 · {{count}} anmeldelser på Trustpilot"
+  "trustpilot": "{{rating}}/5 · {{count}} anmeldelser på Trustpilot",
+  "customs": "Ingen told eller ekstra gebyrer ved levering.",
+  "tracked": "Forsendelse med sporing · Garanteret levering senest {{date}}"
 }

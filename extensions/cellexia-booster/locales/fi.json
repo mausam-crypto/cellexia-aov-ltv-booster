@@ -150,14 +150,22 @@
     "read_article": "Lue artikkeli"
   },
   "endo": {
-    "eyebrow": "Ihotautilääkärien suositukset",
+    "eyebrow": "Ihotautilääkärien suosittelema",
     "count_headline": {
-      "one": "{{ n }} ihotautilääkäri suosittelee",
-      "other": "{{ n }} ihotautilääkäriä suosittelee"
+      "one": "{{ n }} ihotautilääkäri suosittelee Cellexiaa",
+      "other": "{{ n }} ihotautilääkäriä suosittelee Cellexiaa"
     },
     "shown_of": "Näytetään @@SHOWN@@ / @@TOTAL@@",
     "show_more": "Näytä lisää",
-    "read_full": "Lue koko suositus"
+    "read_full": "Lue koko suositus",
+    "description": "Vahvistettuja suosituksia laillistetuilta ihotautilääkäreiltä. Lue, mitä he sanovat tuotteesta, Cellexiasta ja sen lähestymistavasta ihonhoitoon.",
+    "badge_headline": {
+      "one": "{{ n }} ihotautilääkärin suosittelema",
+      "other": "{{ n }} ihotautilääkärin suosittelema"
+    },
+    "badge_link": "Lue heidän ammatilliset arvionsa",
+    "badge_alt": "Vahvistetut ammatilliset arviot",
+    "badge_chip": "Laillistetut ihotautilääkärit"
   },
   "results": {
     "banner_verified": "Katso {{ count }} vahvistetun Cellexia-asiakkaan tulokset.",
@@ -196,7 +204,8 @@
     "box_title": "Taattu toimitus viimeistään: {{ date }}",
     "box_sub": "… tai palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle.",
     "badge": "Toimitustakuu",
-    "tooltip": "Perillä viimeistään: {{ date }}. Muussa tapauksessa palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle."
+    "tooltip": "Perillä viimeistään: {{ date }}. Muussa tapauksessa palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle.",
+    "deliver_to": "Toimitus:"
   },
   "amazon": {
     "in_stock": "Varastossa",

@@ -144,6 +144,8 @@ const db = makeStub();
 interface Capture {
   texts: string[];
   targetLang: string;
+  /** v8.19: the protectPlaceholders flag of this batch (copy=true, prose=false). */
+  protect: boolean | undefined;
 }
 const captures: Capture[] = [];
 let failLocales = new Set<string>();
@@ -152,8 +154,10 @@ let failLocales = new Set<string>();
     _key: string,
     texts: string[],
     targetLang: string,
+    _source?: unknown,
+    options?: { protectPlaceholders?: boolean },
   ) => {
-    captures.push({ texts: [...texts], targetLang });
+    captures.push({ texts: [...texts], targetLang, protect: options?.protectPlaceholders });
     const hook = (globalThis as any).__CX_PT_MIDRUN;
     if (hook) await hook(targetLang, texts);
     if (failLocales.has(targetLang)) {
@@ -194,6 +198,17 @@ let failLocales = new Set<string>();
   errors: undefined,
 };
 
+// v8.19: injectable settings blob for the copy scope — blank by default so
+// the T-series counts are untouched; the C-series sets fields explicitly.
+const copyState: Record<string, string> = {
+  copyEyebrow: "", copyHeadline: "", copyDescription: "",
+  copyBadgeHeadline: "", copyBadgeLink: "", copyBadgeNoLink: "",
+  copyBadgeChip: "",
+};
+(globalThis as any).__CX_PT_SETTINGS = async () => ({
+  dermEndorsements: { ...copyState },
+});
+
 // ------------------------------------------------------------------- loader
 const PRISMA_IMPORT = 'import prisma from "../db.server";';
 const PRISMA_STUB = [
@@ -230,9 +245,18 @@ const TRANSLATION_STUB = [
 const PROOF_TYPE_IMPORT = 'import type { ProofType } from "./proof.server";';
 const PROOF_TYPE_REPOINT = 'import type { ProofType } from "../../../app/services/proof.server";';
 
+// v8.19: the copy scope reads settings — inject an in-memory blob so the
+// sim controls the merchant copy sources.
+const SETTINGS_IMPORT = 'import { getSettings } from "../models/settings.server";';
+const SETTINGS_STUB = [
+  "// validation stub — the copy-scope sources come from an injectable blob",
+  "const getSettings: any = (globalThis as any).__CX_PT_SETTINGS;",
+  'if (!getSettings) throw new Error("validation: proof-translation settings stub not injected");',
+].join("\n");
+
 async function loadModel(): Promise<any> {
   const src = fs.readFileSync(SRC_PATH, "utf8");
-  for (const anchor of [PRISMA_IMPORT, TRANSLATION_IMPORT, PROOF_TYPE_IMPORT]) {
+  for (const anchor of [PRISMA_IMPORT, TRANSLATION_IMPORT, PROOF_TYPE_IMPORT, SETTINGS_IMPORT]) {
     if (!src.includes(anchor)) {
       throw new Error(
         "proof-translation loader: import anchor not found — update the loader: " + anchor,
@@ -242,10 +266,18 @@ async function loadModel(): Promise<any> {
   const stubbed = src
     .replace(PRISMA_IMPORT, PRISMA_STUB)
     .replace(TRANSLATION_IMPORT, TRANSLATION_STUB)
-    .replace(PROOF_TYPE_IMPORT, PROOF_TYPE_REPOINT);
+    .replace(PROOF_TYPE_IMPORT, PROOF_TYPE_REPOINT)
+    .replace(SETTINGS_IMPORT, SETTINGS_STUB);
   const genDir = path.join(ROOT, "validation", "lib", ".gen");
   fs.mkdirSync(genDir, { recursive: true });
-  const outPath = path.join(genDir, "proof-translation.server.real.ts");
+  // Mutant child runs write a SEPARATE basename so the repo-resident
+  // proof-translation.server.real.ts never carries a mutant's source (v9 fix).
+  const outPath = path.join(
+    genDir,
+    process.env.CX_SIM_SRC
+      ? "proof-translation.server.mutant.ts"
+      : "proof-translation.server.real.ts",
+  );
   if (!fs.existsSync(outPath) || fs.readFileSync(outPath, "utf8") !== stubbed) {
     fs.writeFileSync(outPath, stubbed);
   }
@@ -519,6 +551,151 @@ const result1 = db._seed("customerResult", {
     "T14d: same-base-as-primary targets excluded from admin coverage");
 }
 
+// ==================================================== copy scope (C, v8.19)
+//
+// The merchant endorsement-copy overrides ride the SAME system: settings-
+// backed sources, resourceType "copy", {n} protected through DeepL while
+// proof prose stays unprotected, digest staleness, manual saves.
+
+// --- C1: copy fields translate into every locale, {n} protected ---------------------
+{
+  copyState.copyHeadline = "Loved by {n} experts";
+  copyState.copyBadgeChip = "Certified specialists";
+  const before = db._tables.proofTranslation.length;
+  const run = await T.translateProofEntries(SHOP, ADMIN, ["copy"]);
+  ok(run.ok === true && run.failures.length === 0, "C1: copy run ok");
+  ok(db._tables.proofTranslation.length === before + 6,
+    "C1: 2 non-blank copy fields x 3 locales stored (got +" +
+    (db._tables.proofTranslation.length - before) + ")");
+  const frHead = db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceType === "copy" && r.resourceId === T.COPY_RESOURCE_ID &&
+      r.locale === "fr" && r.field === "copyHeadline");
+  ok(!!frHead && frHead.value === "[FR] Loved by {n} experts",
+    "C1: copy row stored under resourceType copy / the fixed resourceId");
+  ok(!!frHead && frHead.sourceDigest === T.proofSourceDigest("Loved by {n} experts"),
+    "C1: copy row carries the source digest");
+  const copyBatches = captures.filter((c) => c.texts.includes("Loved by {n} experts"));
+  ok(copyBatches.length === 3 && copyBatches.every((c) => c.protect === true),
+    "C1: copy batches run WITH placeholder protection ({n} must survive DeepL)");
+}
+
+// --- C2: incremental — an unchanged copy run sends nothing --------------------------
+{
+  const before = captures.length;
+  const run = await T.translateProofEntries(SHOP, ADMIN, ["copy"]);
+  ok(run.ok === true && captures.length === before,
+    "C2: unchanged copy run sends nothing to DeepL");
+}
+
+// --- C3: mixed run — prose stays UNprotected while copy is protected ----------------
+{
+  endo1.quote = "The {trial} data is rigorous."; // brace-styled PROSE word
+  copyState.copyBadgeHeadline = "Backed by {n} pros";
+  await T.translateProofEntries(SHOP, ADMIN, ["endorsements", "copy"]);
+  const proseBatch = captures.find((c) => c.texts.includes("The {trial} data is rigorous."));
+  const copyBatch = captures.find((c) => c.texts.includes("Backed by {n} pros"));
+  ok(!!proseBatch && proseBatch.protect === false,
+    "C3: prose batches stay unprotected (brace-styled words must translate)");
+  ok(!!copyBatch && copyBatch.protect === true, "C3: copy batches stay protected");
+  ok(!proseBatch || !proseBatch.texts.includes("Backed by {n} pros"),
+    "C3: prose and copy never share a batch");
+}
+
+// --- C4: overlay freshness — stale copy serves the new primary text -----------------
+{
+  const overlay = await T.getProofTranslationOverlay(
+    SHOP, "copy", [T.COPY_RESOURCE_ID], "fr",
+    new Map([[T.COPY_RESOURCE_ID, { copyHeadline: "Loved by {n} experts" }]]),
+  );
+  ok(overlay.get(T.COPY_RESOURCE_ID)?.copyHeadline === "[FR] Loved by {n} experts",
+    "C4: fresh copy translation serves");
+  const stale = await T.getProofTranslationOverlay(
+    SHOP, "copy", [T.COPY_RESOURCE_ID], "fr",
+    new Map([[T.COPY_RESOURCE_ID, { copyHeadline: "EDITED source" }]]),
+  );
+  ok(stale.get(T.COPY_RESOURCE_ID)?.copyHeadline === undefined,
+    "C4: digest-stale copy row is skipped (new primary text serves)");
+}
+
+// --- C5: manual copy translations — save, protect from auto, blank deletes ----------
+{
+  const saved = await T.saveManualProofTranslation(
+    SHOP, "copy", T.COPY_RESOURCE_ID, "fr", "copyHeadline",
+    "Adoré par {n} experts", "Loved by {n} experts");
+  ok(saved.ok === true, "C5: manual copy translation saves");
+  const before = captures.length;
+  copyState.copyHeadline = "Loved by {n} skin experts"; // source changes
+  await T.translateProofEntries(SHOP, ADMIN, ["copy"]);
+  const frRow = db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceType === "copy" && r.locale === "fr" && r.field === "copyHeadline");
+  ok(!!frRow && frRow.value === "Adoré par {n} experts" && frRow.manual === true,
+    "C5: manual copy row survives a source change + re-run");
+  ok(captures.length > before, "C5: the other locales still re-translated");
+  const bad = await T.saveManualProofTranslation(
+    SHOP, "copy", T.COPY_RESOURCE_ID, "fr", "badgeStyle", "x", "y");
+  ok(bad.ok === false, "C5: non-copy field rejected");
+  const cleared = await T.saveManualProofTranslation(
+    SHOP, "copy", T.COPY_RESOURCE_ID, "fr", "copyHeadline", "", "whatever");
+  ok(cleared.ok === true && !db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceType === "copy" && r.locale === "fr" && r.field === "copyHeadline"),
+    "C5: blank manual value deletes the row (source serves)");
+}
+
+// --- C7: emission mapping — island codes, @@N@@ mirror, blank-source guard ----------
+{
+  const sources = {
+    copyEyebrow: "Trusted", copyHeadline: "Loved by {n} of {n} experts",
+    copyDescription: "Desc", copyBadgeHeadline: "Backed by {n} pros",
+    copyBadgeLink: "See {n} reviews", copyBadgeNoLink: "Verified", copyBadgeChip: "Chip",
+  };
+  const translated = {
+    copyEyebrow: "FR-eyebrow", copyHeadline: "Aimé par {n} sur {n} experts",
+    copyDescription: "FR-desc", copyBadgeHeadline: "Soutenu par {n} pros",
+    copyBadgeLink: "Voir les {n} avis", copyBadgeNoLink: "FR-verified", copyBadgeChip: "FR-chip",
+  };
+  const out = T.copyOverlayToIslandCodes(translated, sources);
+  ok(JSON.stringify(Object.keys(out).sort()) === JSON.stringify(["ob", "oc", "od", "oe", "oh", "ol", "on"]),
+    "C7: every field emits under its island code");
+  ok(out.oh === "Aimé par @@N@@ sur @@N@@ experts" && out.ob === "Soutenu par @@N@@ pros",
+    "C7: BOTH headline fields mirror every {n} to @@N@@");
+  ok(out.ol === "Voir les {n} avis",
+    "C7: non-headline fields keep {n} verbatim (no consumer)");
+  const blankedOut = T.copyOverlayToIslandCodes(translated, { ...sources, copyHeadline: "" });
+  ok(blankedOut.oh === undefined && blankedOut.oe === "FR-eyebrow",
+    "C7: a BLANKED source field never emits (its old translation is dead)");
+  const blankValue = T.copyOverlayToIslandCodes({ ...translated, copyEyebrow: "   " }, sources);
+  ok(blankValue.oe === undefined, "C7: blank translated values never emit");
+}
+
+// --- C8: blanked source digest-mismatches its stored row (overlay belt) -------------
+{
+  const stale = await T.getProofTranslationOverlay(
+    SHOP, "copy", [T.COPY_RESOURCE_ID], "de",
+    new Map([[T.COPY_RESOURCE_ID, { copyBadgeChip: "" }]]),
+  );
+  ok(stale.get(T.COPY_RESOURCE_ID)?.copyBadgeChip === undefined,
+    "C8: blank-source digest mismatch skips the stored chip row");
+  const dead = await T.deleteCopyTranslationsForFields(SHOP, ["copyBadgeChip", "notAField"]);
+  ok(dead === undefined && !db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceType === "copy" && r.field === "copyBadgeChip"),
+    "C8: blank-save cleanup deletes the field's copy rows (unknown fields ignored)");
+}
+
+// --- C6: id narrowing keeps the fast paths disjoint ---------------------------------
+{
+  copyState.copyEyebrow = "Trusted by experts";
+  const before = captures.length;
+  await T.translateProofEntries(SHOP, ADMIN, ["endorsements", "copy"], [endo1.id]);
+  const sentAfter = captures.slice(before).flatMap((c) => c.texts).join("\n");
+  ok(!sentAfter.includes("Trusted by experts"),
+    "C6: an entry-scoped run never sends copy fields");
+  const before2 = captures.length;
+  await T.translateProofEntries(SHOP, ADMIN, ["endorsements", "copy"], [T.COPY_RESOURCE_ID]);
+  const sentAfter2 = captures.slice(before2).flatMap((c) => c.texts).join("\n");
+  ok(sentAfter2.includes("Trusted by experts") && !sentAfter2.includes("rigorous"),
+    "C6: a copy-scoped run sends only copy fields");
+}
+
 // ----------------------------------------------------------------- mutants
 if (!process.env.CX_SIM_SRC) {
   const { createRequire } = await import("node:module");
@@ -534,6 +711,19 @@ if (!process.env.CX_SIM_SRC) {
         name: "m1-digest-check-dropped",
         find: "row.sourceDigest === proofSourceDigest(source.text)",
         replace: "true",
+      },
+      {
+        // v8.19: copy loses its {n} protection — C1/C3 pin the flag.
+        name: "m4-copy-protect-dropped",
+        find: "        rows: pending.filter((source) => source.resourceType === \"copy\"),\n        protect: true,",
+        replace: "        rows: pending.filter((source) => source.resourceType === \"copy\"),\n        protect: false,",
+      },
+      {
+        // v8.19b: the blank-source emission guard dropped — a blanked
+        // override would resurrect its old translation (C7 catches).
+        name: "m5-copy-blank-source-emitted",
+        find: "    if (!/\\S/.test(sources[field] ?? \"\")) continue;",
+        replace: "",
       },
       {
         name: "m2-manual-flag-ignored",
@@ -553,6 +743,14 @@ if (!process.env.CX_SIM_SRC) {
     ],
   });
   if (failed > 0) process.exit(1);
+  // The mutant children wrote their own .gen basename — remove the residue.
+  try {
+    fs.unlinkSync(
+      path.join(ROOT, "validation", "lib", ".gen", "proof-translation.server.mutant.ts"),
+    );
+  } catch {
+    // best-effort cleanup
+  }
 }
 
 if (failures > 0) {

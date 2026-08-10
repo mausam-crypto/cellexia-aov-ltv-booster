@@ -1,7 +1,15 @@
 {
-  "guarantee_title": "{{days}} dagen geld-terug-garantie",
-  "guarantee_body": "Blij met je resultaten of je geld terug – zonder vragen.",
-  "secure": "Veilig afrekenen met SSL-versleuteling",
+  "guarantee_title": {
+    "one": "{{days}} dag geld-terug-garantie",
+    "other": "{{days}} dagen geld-terug-garantie"
+  },
+  "guarantee_body": {
+    "one": "Niet tevreden? Je krijgt je geld binnen {{days}} dag terug.",
+    "other": "Niet tevreden? Je krijgt je geld binnen {{days}} dagen terug."
+  },
+  "secure": "Veilig en versleuteld afrekenen",
   "clinical": "Klinisch bewezen formules",
-  "trustpilot": "{{rating}}/5 · {{count}} beoordelingen op Trustpilot"
+  "trustpilot": "{{rating}}/5 · {{count}} beoordelingen op Trustpilot",
+  "customs": "Geen douane- of extra kosten bij levering.",
+  "tracked": "Verzending met track & trace · Gegarandeerd bezorgd uiterlijk {{date}}"
 }
