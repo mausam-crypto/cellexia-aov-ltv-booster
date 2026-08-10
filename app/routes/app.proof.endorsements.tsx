@@ -152,6 +152,16 @@ const PAGE_STATUSES = ["approved", "hidden"] as const;
 // lesson). The harness pins the two in sync.
 const COPY_ID = "dermEndorsements";
 
+// Client-safe mirror of BADGE_LINK_ACTIONS in settings.server.ts (same
+// v8.3 rule; harness-pinned in sync).
+const BADGE_LINK_ACTION_OPTIONS = [
+  { label: "Scroll to the endorsement wall", value: "scroll" },
+  {
+    label: "Open the endorsements overlay (browse in place)",
+    value: "overlay",
+  },
+] as const;
+
 // Client-safe mirror of BADGE_STYLES in settings.server.ts (never import a
 // .server VALUE into client code — the v8.3 build-break lesson). The
 // harness pins the two in sync.
@@ -219,6 +229,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       badgeEnabled: settings.dermEndorsements.badgeEnabled,
       badgeShowLink: settings.dermEndorsements.badgeShowLink,
       badgeStyle: settings.dermEndorsements.badgeStyle,
+      badgeLinkAction: settings.dermEndorsements.badgeLinkAction,
       copyEyebrow: settings.dermEndorsements.copyEyebrow,
       copyHeadline: settings.dermEndorsements.copyHeadline,
       copyDescription: settings.dermEndorsements.copyDescription,
@@ -226,6 +237,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       copyBadgeLink: settings.dermEndorsements.copyBadgeLink,
       copyBadgeNoLink: settings.dermEndorsements.copyBadgeNoLink,
       copyBadgeChip: settings.dermEndorsements.copyBadgeChip,
+      copyOverlayNote: settings.dermEndorsements.copyOverlayNote,
     },
     targetLocales,
     translationStatus,
@@ -1246,6 +1258,19 @@ export default function ProofEndorsementsTab() {
             onChange={(value) => setDisplayField("badgeShowLink", value)}
             helpText="Off: the badge shows the no-link line instead (edit it below)."
           />
+          <Select
+            label="Link behavior"
+            options={[...BADGE_LINK_ACTION_OPTIONS]}
+            value={displayState.badgeLinkAction}
+            onChange={(value) =>
+              setDisplayField(
+                "badgeLinkAction",
+                value as (typeof display)["badgeLinkAction"],
+              )
+            }
+            disabled={!displayState.badgeShowLink}
+            helpText="The overlay opens a dialog right where the shopper is: your methodology note (below) plus every endorsement, browsable with Show more — no jump down the page."
+          />
           <Divider />
           <BlockStack gap="100">
             <Text as="h3" variant="headingSm">
@@ -1315,6 +1340,15 @@ export default function ProofEndorsementsTab() {
             helpText="The credential chip on the Choice designs."
             autoComplete="off"
           />
+          <TextField
+            label="Overlay methodology text"
+            value={displayState.copyOverlayNote}
+            onChange={(value) => setDisplayField("copyOverlayNote", value)}
+            placeholder="Verified recommendations from licensed dermatologists. Read what they have to say about the product, Cellexia and its approach to skincare."
+            multiline={3}
+            helpText="Shown at the top of the endorsements overlay. Blank: the section description serves. Use {n} for the endorsement count."
+            autoComplete="off"
+          />
           <InlineStack gap="200">
             <Button
               variant="primary"
@@ -1334,6 +1368,7 @@ export default function ProofEndorsementsTab() {
               { field: "copyBadgeLink", label: "Badge link text", sourceText: display.copyBadgeLink },
               { field: "copyBadgeNoLink", label: "Badge no-link text", sourceText: display.copyBadgeNoLink },
               { field: "copyBadgeChip", label: "Badge chip text", sourceText: display.copyBadgeChip },
+              { field: "copyOverlayNote", label: "Overlay methodology text", sourceText: display.copyOverlayNote },
             ]}
             targetLocales={targetLocales}
             translations={copyTranslations}

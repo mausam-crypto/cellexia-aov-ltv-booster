@@ -11,5 +11,5 @@
   "clinical": "Klinisch bestätigte Formeln",
   "trustpilot": "{{rating}}/5 · {{count}} Bewertungen auf Trustpilot",
   "customs": "Keine Zollgebühren oder zusätzlichen Kosten bei der Lieferung.",
-  "tracked": "Versand mit Sendungsverfolgung · Zustellung garantiert bis {{date}}"
+  "tracked": "Zustellung mit Sendungsverfolgung garantiert bis zum {{date}}"
 }

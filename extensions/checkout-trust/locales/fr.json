@@ -11,5 +11,5 @@
   "clinical": "Formules cliniquement prouvées",
   "trustpilot": "{{rating}}/5 · {{count}} avis sur Trustpilot",
   "customs": "Aucuns frais de douane ni frais supplémentaires à la livraison.",
-  "tracked": "Livraison suivie · Garantie d'ici au {{date}}"
+  "tracked": "Livraison suivie garantie d'ici au {{date}}"
 }

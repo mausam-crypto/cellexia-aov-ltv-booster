@@ -199,6 +199,44 @@ const L = await loadTrustLogic();
   tap.check("T2: explicit true turns the rows on",
     rowsOn.checkoutTrust.showCustoms === true && rowsOn.checkoutTrust.showTracked === true);
 
+  // v11 rowOrder: resolveConfig ALWAYS yields a full permutation of the six
+  // row keys — ordering can reshuffle rows, never hide/double/reveal one.
+  const DEFAULT_ORDER = ["badges", "guarantee", "customs", "tracked", "clinical", "trustpilot"];
+  const orderOf = (root: unknown): string =>
+    JSON.stringify(L.resolveConfig(root).checkoutTrust.rowOrder);
+  tap.check("T2: TRUST_ROW_ORDER_DEFAULT is the pre-v11 hardcoded render order",
+    JSON.stringify([...L.TRUST_ROW_ORDER_DEFAULT]) === JSON.stringify(DEFAULT_ORDER));
+  tap.check("T2: no config -> default row order",
+    JSON.stringify(dflt.checkoutTrust.rowOrder) === JSON.stringify(DEFAULT_ORDER));
+  tap.check("T2: pre-v11 config (no rowOrder key) -> default row order (byte-identical upgrade)",
+    JSON.stringify(preV2.checkoutTrust.rowOrder) === JSON.stringify(DEFAULT_ORDER));
+  const fullCustom = ["trustpilot", "clinical", "tracked", "customs", "guarantee", "badges"];
+  tap.check("T2: full custom permutation honored verbatim",
+    orderOf({ checkoutTrust: { rowOrder: fullCustom } }) === JSON.stringify(fullCustom));
+  tap.check("T2: partial order -> listed rows first, missing rows appended in default order",
+    orderOf({ checkoutTrust: { rowOrder: ["clinical", "badges"] } }) ===
+      JSON.stringify(["clinical", "badges", "guarantee", "customs", "tracked", "trustpilot"]));
+  tap.check("T2: unknown keys drop + duplicates dedupe",
+    orderOf({ checkoutTrust: { rowOrder: ["clinical", "amazon", "clinical", 7, null, "badges"] } }) ===
+      JSON.stringify(["clinical", "badges", "guarantee", "customs", "tracked", "trustpilot"]));
+  for (const bad of ["badges", 7, null, {}]) {
+    tap.check(`T2: non-array rowOrder (${JSON.stringify(bad)}) -> default order`,
+      orderOf({ checkoutTrust: { rowOrder: bad } }) === JSON.stringify(DEFAULT_ORDER));
+  }
+  // Twin sync: the settings model's CHECKOUT_TRUST_ROWS literal must carry
+  // the SAME keys in the SAME order (source anchor — the server model does
+  // not execute here; settings-derivation.ts covers its behavior).
+  const settingsSrc = readSource("app/models/settings.server.ts");
+  const rowsLiteral = settingsSrc.match(
+    /export const CHECKOUT_TRUST_ROWS = \[([\s\S]*?)\] as const;/,
+  );
+  const settingsRows = rowsLiteral
+    ? (rowsLiteral[1].match(/"[a-z_]+"/g) ?? []).map((s) => s.slice(1, -1))
+    : [];
+  tap.check("T2: settings.server.ts CHECKOUT_TRUST_ROWS twins TRUST_ROW_ORDER_DEFAULT",
+    JSON.stringify(settingsRows) === JSON.stringify(DEFAULT_ORDER),
+    "got=" + JSON.stringify(settingsRows));
+
   // enabled requires the explicit boolean true.
   for (const bad of [1, "true", {}, null]) {
     tap.check(
@@ -352,6 +390,12 @@ const L = await loadTrustLogic();
       "got keys " + Object.keys(obj).sort().join(","),
     );
     tap.check(`T4: ${file} tracked carries {{date}}`, String(obj.tracked).includes("{{date}}"));
+    // v11.1 one-sentence contract: no interpunct separator in the tracked
+    // row — "… · Garantie d'ici au …" read as a SECOND standalone guarantee
+    // next to the money-back line. The guarantee must stay grammatically
+    // bound to the delivery noun. (The trustpilot value's "·" is fine.)
+    tap.check(`T4: ${file} tracked is one sentence (no ·/・ separator)`,
+      !String(obj.tracked).includes("·") && !String(obj.tracked).includes("・"));
     tap.check(`T4: ${file} guarantee title + body carry {{days}} (other form)`,
       daysCarrier(obj.guarantee_title).includes("{{days}}") &&
         daysCarrier(obj.guarantee_body).includes("{{days}}"));
@@ -385,16 +429,19 @@ const L = await loadTrustLogic();
     ));
   tap.eq("T4: en customs is the merchant's wording", en.customs,
     "No customs or additional fees on delivery.");
+  // v11.1: ONE SENTENCE — the old "Tracked Delivery · Guaranteed by …"
+  // two-part pattern read as a second standalone guarantee right under the
+  // money-back line (merchant catch, 2026-08-10, fr screenshot).
   tap.eq("T4: en tracked is the merchant's wording", en.tracked,
-    "Tracked Delivery · Guaranteed by {{date}}");
+    "Tracked delivery guaranteed by {{date}}");
   tap.check("T4: nb is a byte-copy of no (SPEC convention)",
     fs.readFileSync(path.join(dir, "nb.json"), "utf8") === fs.readFileSync(path.join(dir, "no.json"), "utf8"));
   const fr = JSON.parse(fs.readFileSync(path.join(dir, "fr.json"), "utf8"));
   tap.check("T4: fr tracked aligns with the delivery vocabulary",
     fr.tracked.includes("Livraison suivie") && fr.tracked.includes("d'ici au {{date}}"));
   const ja = JSON.parse(fs.readFileSync(path.join(dir, "ja.json"), "utf8"));
-  tap.check("T4: ja tracked uses the native ・ separator and までにお届け",
-    ja.tracked.includes("・") && ja.tracked.includes("までのお届け"));
+  tap.check("T4: ja tracked is one sentence binding the guarantee to お届け",
+    ja.tracked.includes("追跡") && ja.tracked.includes("までのお届けを保証"));
 }
 
 // --------------------------------------------------------- T5 component pins
@@ -427,6 +474,28 @@ const L = await loadTrustLogic();
     // Country + v10 US state only ever come from the shipping address.
     "shippingAddress?.countryCode",
     "shippingAddress?.provinceCode",
+    // v11: the render is DRIVEN by the normalized rowOrder — a keyed row map
+    // indexed by the config order, every row still behind its own gate.
+    "const rowsByKey: Record<TrustRowKey, ReactElement | null>",
+    "{config.checkoutTrust.rowOrder.map((rowKey) => rowsByKey[rowKey])}",
+    // ALL SIX rowsByKey entries stay behind their own render flag — the
+    // Record type only forces key presence, not gating, so each ternary is
+    // pinned: an ungated (or cross-wired) entry would let ordering REVEAL a
+    // row whose show* flag is off, with tsc green.
+    "badges: renderBadges ? (",
+    "guarantee: renderGuarantee ? (",
+    "customs: renderCustoms ? (",
+    "tracked: renderTracked ? (",
+    "clinical: renderClinical ? (",
+    "trustpilot: renderTrustpilot ? (",
+    // …and the flag derivations themselves (a derivation/ternary swap must
+    // not slip through either).
+    "const renderBadges = showBadges || inEditor;",
+    "const renderGuarantee = showGuarantee || inEditor;",
+    "const renderCustoms = customsVisible || inEditor;",
+    "trackedVisible || (inEditor && trackedDateLabel !== '')",
+    "const renderClinical = showClinical || inEditor;",
+    "const renderTrustpilot = showTrustpilot || inEditor;",
   ]) {
     tap.check(`T5: Checkout.tsx anchor present: ${anchor}`, src.includes(anchor));
   }
@@ -482,6 +551,21 @@ if (!process.env.CX_SKIP_MUTANTS) {
         name: "m7-fr-ordinal-dropped",
         find: "label = label.replace(/\\b1\\b/, '1er');",
         replace: "label = label;",
+      },
+      {
+        name: "m8-roworder-ignores-config",
+        find: "  if (Array.isArray(value)) {",
+        replace: "  if (false) {",
+      },
+      {
+        name: "m9-roworder-drops-missing-append",
+        find: "    if (!out.includes(key)) out.push(key);",
+        replace: "    ;",
+      },
+      {
+        name: "m10-roworder-keeps-duplicates",
+        find: "        !out.includes(entry as TrustRowKey)",
+        replace: "        true",
       },
     ],
   });

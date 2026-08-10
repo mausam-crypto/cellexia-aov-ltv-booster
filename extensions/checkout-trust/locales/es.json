@@ -11,5 +11,5 @@
   "clinical": "Fórmulas clínicamente probadas",
   "trustpilot": "{{rating}}/5 · {{count}} reseñas en Trustpilot",
   "customs": "Sin aranceles ni gastos adicionales en la entrega.",
-  "tracked": "Envío con seguimiento · Entrega garantizada el {{date}} o antes"
+  "tracked": "Entrega con seguimiento garantizada el {{date}} o antes"
 }

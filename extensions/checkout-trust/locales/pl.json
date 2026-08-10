@@ -15,5 +15,5 @@
   "clinical": "Klinicznie potwierdzone formuły",
   "trustpilot": "{{rating}}/5 · {{count}} opinii w serwisie Trustpilot",
   "customs": "Bez opłat celnych i dodatkowych kosztów przy dostawie.",
-  "tracked": "Przesyłka ze śledzeniem · Gwarantowana dostawa najpóźniej: {{date}}"
+  "tracked": "Przesyłka ze śledzeniem i gwarantowaną dostawą najpóźniej {{date}}"
 }

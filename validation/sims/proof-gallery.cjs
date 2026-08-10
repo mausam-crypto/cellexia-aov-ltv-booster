@@ -157,6 +157,7 @@ const EXTRACTED = extractAll(SRC, {
     "endoBadgeHeadParts", "endoBadgeAvatars", "endoBadgeOutlineShield",
     "endoBadgeCaduceus", "endoBadgeLaurel", "endoBadgeCrown",
     "endoBadgeChip", "endoBadgeTail", "endoApplyCopy",
+    "endoOverlayNote", "endoOverlayBuild", "endoOverlayOpen",
     "resultsBannerData", "resultsFacetLabel", "resultsParams",
     "resultsValidItems", "resultsMetaLine", "resultsBadges",
     "resultsBuildFrame", "resultsBuildCard", "resultsBuildLightbox",
@@ -233,6 +234,7 @@ const ENDO_STR = {
   bl: "Read their professional assessments",
   bv: "Verified professional assessments",
   chip: "Licensed dermatologists", // v8.18 credential chip
+  cls: "Close", // v8.21 overlay close label (reused results.close)
 };
 
 const PRESS_STR = { eyebrow: "As seen in the press", aria: "As seen in the press", read: "Read the article" };
@@ -1599,6 +1601,173 @@ function unmountFixture(info) {
   ok(true, "CP2: degenerate inputs never throw");
 }
 
+// ============================================ endorsements overlay (OV, v8.21)
+//
+// badgeLinkAction "overlay" (island bo:1): the badge link opens a dialog
+// via the SHARED lightbox machinery instead of scrolling — methodology
+// note (ov -> od -> desc), the full card list, Show more pagination.
+
+// --- OV1: click opens the overlay; structure + strings ------------------------------
+{
+  S.PF_LB_OPENED.length = 0;
+  const badge = S.endoBadgeBuild(badgeConf({ bo: 1 }), { total: 73, items: endoFixture(24, 0) });
+  const wallStub = S.document.createElement("div");
+  wallStub.setAttribute("class", "cx-endo");
+  const scrolls = [];
+  wallStub.scrollIntoView = function () { scrolls.push(1); };
+  S.document.body.appendChild(wallStub);
+  S.PF_TRACKS.length = 0;
+  click(badge.querySelector(".cx-endo-badge__link"));
+  ok(S.PF_LB_OPENED.length === 1, "OV1: click hands the overlay to the lightbox machinery");
+  ok(scrolls.length === 0, "OV1: overlay mode never scrolls the page");
+  ok(S.PF_TRACKS.length === 1 && S.PF_TRACKS[0][1] === "click",
+    "OV1: the click beacon still fires");
+  const ov = S.PF_LB_OPENED[0];
+  const card = ov.querySelector(".cx-endo-ov__card");
+  ok(!!card && card.getAttribute("role") === "dialog" && card.getAttribute("aria-modal") === "true",
+    "OV1: dialog semantics on the card");
+  const title = ov.querySelector(".cx-endo-ov__title");
+  ok(!!title && title.textContent === "Recommended by 73 dermatologists" &&
+    !!title.querySelector("strong"),
+    "OV1: the title is the badge headline with the bold live count");
+  const ovCred = ov.querySelector(".cx-endo-ov__cred-text");
+  ok(!!ovCred && ovCred.textContent === "Licensed dermatologists",
+    "OV1: the credential line reuses the chip string");
+  const ovNote = ov.querySelector(".cx-endo-ov__note");
+  ok(!!ovNote && ovNote.textContent ===
+    "Verified recommendations from licensed dermatologists.",
+    "OV1: the methodology note defaults to the section description");
+  ok(ov.querySelectorAll(".cx-endo__card").length === 24,
+    "OV1: the full first page of endorsement cards renders");
+  const ovProg = ov.querySelector(".cx-endo-ov__progress");
+  ok(!!ovProg && ovProg.textContent === "Showing 24 of 73",
+    "OV1: shown-of progress line");
+  const close = ov.querySelector(".cx-endo-ov__close");
+  ok(!!close && close.hasAttribute("data-cx-lb-close") &&
+    close.getAttribute("aria-label") === "Close",
+    "OV1: close button rides the lightbox close contract with the reused label");
+  S.document.body.removeChild(wallStub);
+}
+
+// --- OV2: merchant/localized note override + @@N@@ substitution ---------------------
+{
+  S.PF_LB_OPENED.length = 0;
+  const str = Object.assign({}, ENDO_STR, { ov: "All @@N@@ endorsements were independently verified." });
+  const badge = S.endoBadgeBuild(badgeConf({ bo: 1, str }), { total: 73, items: endoFixture(24, 0) });
+  click(badge.querySelector(".cx-endo-badge__link"));
+  const ov2Note = S.PF_LB_OPENED[0].querySelector(".cx-endo-ov__note");
+  ok(!!ov2Note && ov2Note.textContent ===
+    "All 73 endorsements were independently verified.",
+    "OV2: the ov override wins and substitutes the live count");
+}
+
+// --- OV3: Show more inside the overlay pages the same proxy -------------------------
+{
+  S.PF_LB_OPENED.length = 0;
+  const badge = S.endoBadgeBuild(badgeConf({ bo: 1 }), { total: 73, items: endoFixture(24, 0) });
+  click(badge.querySelector(".cx-endo-badge__link"));
+  const ov = S.PF_LB_OPENED[0];
+  const more = ov.querySelector(".cx-endo__show-more");
+  ok(!!more && !more.hasAttribute("hidden"), "OV3: Show more visible while shown < total");
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.push({ total: 73, items: endoFixture(24, 24) });
+  click(more);
+  ok(S.PF_FETCH_CALLS[0].qs === "?type=endorsements&page=2&per=24&product=9",
+    "OV3: overlay pagination pins the exact product-scoped page-2 query");
+  ok(ov.querySelectorAll(".cx-endo__card").length === 48,
+    "OV3: page 2 cards append into the overlay list");
+  const ov3Prog = ov.querySelector(".cx-endo-ov__progress");
+  ok(!!ov3Prog && ov3Prog.textContent === "Showing 48 of 73",
+    "OV3: progress advances");
+}
+
+// --- OV4: scroll mode is untouched (no overlay without bo) --------------------------
+{
+  S.PF_LB_OPENED.length = 0;
+  const badge = S.endoBadgeBuild(badgeConf(), { total: 73, items: endoFixture(24, 0) });
+  const wallStub = S.document.createElement("div");
+  wallStub.setAttribute("class", "cx-endo");
+  const scrolls = [];
+  wallStub.scrollIntoView = function () { scrolls.push(1); };
+  S.document.body.appendChild(wallStub);
+  click(badge.querySelector(".cx-endo-badge__link"));
+  ok(S.PF_LB_OPENED.length === 0 && scrolls.length === 1,
+    "OV4: without bo the link scrolls exactly as before");
+  S.document.body.removeChild(wallStub);
+}
+
+// ======================================= REAL lightbox machinery (LB, v8.21)
+//
+// OV1-OV4 run against a RECORDING pfLbOpen stub, which is precisely why
+// the interior-click tautology hid there (review catch). This block
+// executes the REAL pfLbOpen/pfLbClose/pfLbFocusables in a second
+// context and drives the actual click/focus semantics.
+{
+  const LB = extractAll(SRC, {
+    vars: ["pfLbState"],
+    functions: ["pfLbFocusables", "pfLbClose", "pfLbOpen"],
+  });
+  const lbDoc = makeDocument();
+  lbDoc.addEventListener = function () { /* keydown recorded elsewhere */ };
+  lbDoc.removeEventListener = function () { /* noop */ };
+  const S2 = { console, document: lbDoc, window: {} };
+  vm.createContext(S2);
+  vm.runInContext(LB, S2);
+  function lbFixture() {
+    const root = lbDoc.createElement("div");
+    root.setAttribute("class", "cx-endo-ov");
+    const card = lbDoc.createElement("div");
+    card.setAttribute("class", "cx-endo-ov__card");
+    card.setAttribute("tabindex", "-1");
+    const inner = lbDoc.createElement("p");
+    card.appendChild(inner);
+    const closeBtn = lbDoc.createElement("button");
+    closeBtn.setAttribute("data-cx-lb-close", "");
+    card.appendChild(closeBtn);
+    root.appendChild(card);
+    return { root, card, inner, closeBtn };
+  }
+  // --- LB1: open mounts + locks + focuses the OVERLAY card ------------------
+  const f1 = lbFixture();
+  const focused = [];
+  f1.card.focus = function () { focused.push("card"); };
+  const trigger = lbDoc.createElement("a");
+  trigger.setAttribute("href", "#");
+  const trigFocus = [];
+  trigger.focus = function () { trigFocus.push(1); };
+  S2.pfLbOpen(f1.root, trigger);
+  ok(f1.root.parentNode === lbDoc.body && f1.root.id === "cx-proof-lb",
+    "LB1: open appends the singleton to body");
+  ok(lbDoc.body.style.overflow === "hidden", "LB1: body scroll locks");
+  ok(focused.length === 1,
+    "LB1: the OVERLAY card receives initial focus (the widened lookup)");
+  // --- LB2: interior clicks NEVER close (the tautology regression net) ------
+  f1.root._fire("click", { target: f1.inner });
+  ok(f1.root.parentNode === lbDoc.body,
+    "LB2: a click INSIDE the card keeps the dialog open");
+  // --- LB3: a data-cx-lb-close click closes + restores ----------------------
+  f1.root._fire("click", { target: f1.closeBtn });
+  ok(f1.root.parentNode === null && lbDoc.body.style.overflow === "" &&
+    trigFocus.length === 1,
+    "LB3: close button closes, unlocks scroll, restores trigger focus");
+  // --- LB4: a DIRECT scrim click closes -------------------------------------
+  const f2 = lbFixture();
+  S2.pfLbOpen(f2.root, null);
+  f2.root._fire("click", { target: f2.root });
+  ok(f2.root.parentNode === null, "LB4: a direct scrim/gutter click closes");
+  // --- LB5: focusables skip hidden + tabindex -1 ----------------------------
+  const f3 = lbFixture();
+  const hiddenBtn = lbDoc.createElement("button");
+  hiddenBtn.setAttribute("hidden", "");
+  f3.card.appendChild(hiddenBtn);
+  const negTab = lbDoc.createElement("button");
+  negTab.setAttribute("tabindex", "-1");
+  f3.card.appendChild(negTab);
+  const items = S2.pfLbFocusables(f3.card);
+  ok(items.length === 1 && items[0] === f3.closeBtn,
+    "LB5: hidden and tabindex=-1 controls never join the focus trap");
+}
+
 // ---------------------------------------------------------------- mutants
 if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
   const failedMutants = runMutants({
@@ -1723,6 +1892,32 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m22-badge-plus-overcounts",
         find: "      plus.textContent = '+' + String(total - av.shown);",
         replace: "      plus.textContent = '+' + String(total);",
+      },
+      {
+        // v8.21: the overlay gate dropped — every mode scrolls again.
+        name: "m23-overlay-gate-dropped",
+        find: "          if (conf.bo === 1) {\n            // v8.21 overlay behavior: browse everything in place.\n            endoOverlayOpen(conf, data, link);",
+        replace: "          if (false) {\n            // v8.21 overlay behavior: browse everything in place.\n            endoOverlayOpen(conf, data, link);",
+      },
+      {
+        // v8.21: the note fallback chain dropped — the overlay loses its
+        // methodology text whenever no merchant override is set.
+        name: "m24-overlay-note-chain-dropped",
+        find: "    if (!/\\S/.test(t)) t = endoText(s, 'od', 'desc');",
+        replace: "",
+      },
+      {
+        // v8.21 review catch: reverting the gutter fix closes the dialog
+        // on any interior click — LB2 catches.
+        name: "m25-gutter-tautology-restored",
+        find: "        if (event.target === root) pfLbClose();",
+        replace: "        if (el === root) pfLbClose();",
+      },
+      {
+        // v8.21: hidden controls back in the trap — LB5 catches.
+        name: "m26-hidden-focusable-kept",
+        find: "        if (nodes[i].hasAttribute('hidden')) continue;",
+        replace: "",
       },
       {
         name: "m9-preview-always-verified",

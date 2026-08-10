@@ -28,7 +28,9 @@ import {
   trustFormatDateCompact,
   trustPreviewDiagnosis,
   type PreviewConfig,
+  type TrustRowKey,
 } from './trust-logic';
+import type {ReactElement} from 'react';
 
 /**
  * Cellexia AOV & LTV Booster — Checkout Trust module V2 (v9).
@@ -41,6 +43,13 @@ import {
  * math for the tracked row comes from ./delivery-engine.ts, the
  * BYTE-IDENTICAL twin of checkout-delivery's engine, so the tracked row
  * always promises exactly the delivery_estimate guarantee date.
+ *
+ * v11 ROW ORDER: the rows render in `checkoutTrust.rowOrder` (merchant-set
+ * on the Checkout admin page, arrow reorder). resolveConfig normalizes the
+ * order to a FULL permutation of the six row keys, so ordering can never
+ * hide, duplicate or reveal a row — visibility stays with the show* flags
+ * and the per-row market gates. Missing/pre-v11 config = default order =
+ * the pre-v11 hardcoded sequence (byte-identical render).
  *
  * SAFE BY DEFAULT: a missing/unparsable config metafield, a missing
  * `checkoutTrust` section, or anything but an explicit `enabled: true`
@@ -318,77 +327,88 @@ function Extension() {
 
   const filledStars = Math.min(5, Math.max(0, Math.round(config.trustpilot.rating)));
 
+  // v11 MERCHANT-ORDERED ROWS: rowOrder is a normalized FULL permutation of
+  // the six row keys (resolveConfig guarantees it — unknown keys dropped,
+  // missing keys appended), so the map below renders every row exactly once,
+  // each still gated by its OWN render flag: ordering can reshuffle rows but
+  // can never hide, duplicate or reveal one. A config without rowOrder gets
+  // the default order = the pre-v11 hardcoded sequence (byte-identical
+  // render). The editor caption stays pinned after the rows.
+  const rowsByKey: Record<TrustRowKey, ReactElement | null> = {
+    badges: renderBadges ? (
+      <InlineLayout key="badges" columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
+        <Icon source="lock" appearance="subdued" size="small" />
+        <Text size="small">{translate('secure')}</Text>
+      </InlineLayout>
+    ) : null,
+    guarantee: renderGuarantee ? (
+      <InlineLayout key="guarantee" columns={['auto', 'fill']} spacing="tight" blockAlignment="start">
+        <Icon source="success" appearance="subdued" size="small" />
+        <BlockStack spacing="none">
+          {/* v9.1: `count` drives CLDR plural selection in the locales
+              whose day-word inflects (ro/ar/pl/… ship plural objects);
+              {{days}} stays the interpolated number in every form. */}
+          <Text size="small" emphasis="bold">
+            {translate('guarantee_title', {
+              days: config.guarantee.days,
+              count: config.guarantee.days,
+            })}
+          </Text>
+          <Text size="small" appearance="subdued">
+            {translate('guarantee_body', {
+              days: config.guarantee.days,
+              count: config.guarantee.days,
+            })}
+          </Text>
+        </BlockStack>
+      </InlineLayout>
+    ) : null,
+    customs: renderCustoms ? (
+      <InlineLayout key="customs" columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
+        <Icon source="orderBox" appearance="subdued" size="small" />
+        <Text size="small">{translate('customs')}</Text>
+      </InlineLayout>
+    ) : null,
+    tracked: renderTracked ? (
+      <InlineLayout key="tracked" columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
+        <Icon source="truck" appearance="subdued" size="small" />
+        <Text size="small">{translate('tracked', {date: trackedDateLabel})}</Text>
+      </InlineLayout>
+    ) : null,
+    clinical: renderClinical ? (
+      <InlineLayout key="clinical" columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
+        <Icon source="checkmark" appearance="subdued" size="small" />
+        <Text size="small">{translate('clinical')}</Text>
+      </InlineLayout>
+    ) : null,
+    trustpilot: renderTrustpilot ? (
+      <InlineLayout key="trustpilot" columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
+        {/* Decorative: unlabeled Icons are not announced, so screen
+            readers only hear the rating text next to the stars. */}
+        <InlineStack spacing="none">
+          {Array.from({length: 5}, (_, index) => (
+            <Icon
+              key={`star-${index}`}
+              source={index < filledStars ? 'starFill' : 'star'}
+              appearance={index < filledStars ? 'accent' : 'subdued'}
+              size="small"
+            />
+          ))}
+        </InlineStack>
+        {profileUrl ? (
+          <Link to={profileUrl} external>
+            <Text size="small">{trustpilotLabel}</Text>
+          </Link>
+        ) : (
+          <Text size="small">{trustpilotLabel}</Text>
+        )}
+      </InlineLayout>
+    ) : null,
+  };
+
   return (
     <BlockStack spacing="tight">
-      {renderBadges ? (
-        <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
-          <Icon source="lock" appearance="subdued" size="small" />
-          <Text size="small">{translate('secure')}</Text>
-        </InlineLayout>
-      ) : null}
-      {renderGuarantee ? (
-        <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="start">
-          <Icon source="success" appearance="subdued" size="small" />
-          <BlockStack spacing="none">
-            {/* v9.1: `count` drives CLDR plural selection in the locales
-                whose day-word inflects (ro/ar/pl/… ship plural objects);
-                {{days}} stays the interpolated number in every form. */}
-            <Text size="small" emphasis="bold">
-              {translate('guarantee_title', {
-                days: config.guarantee.days,
-                count: config.guarantee.days,
-              })}
-            </Text>
-            <Text size="small" appearance="subdued">
-              {translate('guarantee_body', {
-                days: config.guarantee.days,
-                count: config.guarantee.days,
-              })}
-            </Text>
-          </BlockStack>
-        </InlineLayout>
-      ) : null}
-      {renderCustoms ? (
-        <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
-          <Icon source="orderBox" appearance="subdued" size="small" />
-          <Text size="small">{translate('customs')}</Text>
-        </InlineLayout>
-      ) : null}
-      {renderTracked ? (
-        <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
-          <Icon source="truck" appearance="subdued" size="small" />
-          <Text size="small">{translate('tracked', {date: trackedDateLabel})}</Text>
-        </InlineLayout>
-      ) : null}
-      {renderClinical ? (
-        <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
-          <Icon source="checkmark" appearance="subdued" size="small" />
-          <Text size="small">{translate('clinical')}</Text>
-        </InlineLayout>
-      ) : null}
-      {renderTrustpilot ? (
-        <InlineLayout columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
-          {/* Decorative: unlabeled Icons are not announced, so screen
-              readers only hear the rating text next to the stars. */}
-          <InlineStack spacing="none">
-            {Array.from({length: 5}, (_, index) => (
-              <Icon
-                key={`star-${index}`}
-                source={index < filledStars ? 'starFill' : 'star'}
-                appearance={index < filledStars ? 'accent' : 'subdued'}
-                size="small"
-              />
-            ))}
-          </InlineStack>
-          {profileUrl ? (
-            <Link to={profileUrl} external>
-              <Text size="small">{trustpilotLabel}</Text>
-            </Link>
-          ) : (
-            <Text size="small">{trustpilotLabel}</Text>
-          )}
-        </InlineLayout>
-      ) : null}
+      {config.checkoutTrust.rowOrder.map((rowKey) => rowsByKey[rowKey])}
       {inEditor ? <EditorPreviewCaption /> : null}
     </BlockStack>
   );

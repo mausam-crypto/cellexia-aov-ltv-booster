@@ -64,6 +64,7 @@ export const TRANSLATABLE_PROOF_FIELDS: Record<ProofScope, string[]> = {
     "copyBadgeLink",
     "copyBadgeNoLink",
     "copyBadgeChip",
+    "copyOverlayNote",
   ],
 };
 
@@ -623,6 +624,7 @@ export const COPY_FIELD_ISLAND_CODES: Record<string, string> = {
   copyBadgeLink: "ol",
   copyBadgeNoLink: "on",
   copyBadgeChip: "oc",
+  copyOverlayNote: "ov",
 };
 
 /**
@@ -644,7 +646,11 @@ export function copyOverlayToIslandCodes(
     if (!/\S/.test(sources[field] ?? "")) continue;
     let value = translated[field];
     if (typeof value !== "string" || !/\S/.test(value)) continue;
-    if (field === "copyHeadline" || field === "copyBadgeHeadline") {
+    if (
+      field === "copyHeadline" ||
+      field === "copyBadgeHeadline" ||
+      field === "copyOverlayNote"
+    ) {
       value = value.split("{n}").join("@@N@@");
     }
     out[code] = value;

@@ -124,6 +124,8 @@ for (const path of [
   // (full-settings spread — same emission object).
   "checkoutTrust.showCustoms",
   "checkoutTrust.showTracked",
+  // v11: the trust extension's ordered render reads this path.
+  "checkoutTrust.rowOrder",
   "marketScopes.checkout_customs.mode",
   "marketScopes.checkout_customs.markets",
   "marketScopes.checkout_tracked.mode",
@@ -152,7 +154,8 @@ for (const path of [
     "pre-v9 store merges to rows-off with the master preserved",
   );
   // Non-boolean garbage coerces back to the defaults through the merge
-  // typeof guard (the checkoutTrust slice has no bespoke sanitize block).
+  // typeof guard (the checkoutTrust BOOLEAN flags have no bespoke sanitize
+  // block — v11 added one for rowOrder only, see 4c).
   const dirty = clone(DEFAULT_SETTINGS) as any;
   dirty.checkoutTrust.showCustoms = "yes";
   dirty.checkoutTrust.showTracked = 1;
@@ -161,6 +164,77 @@ for (const path of [
     cleaned.checkoutTrust.showCustoms === false &&
       cleaned.checkoutTrust.showTracked === false,
     "non-boolean v9 row flags coerce to the off defaults",
+  );
+}
+
+// --- 4c. v11 checkout-trust rowOrder ----------------------------------------
+{
+  const { CHECKOUT_TRUST_ROWS, normalizeTrustRowOrder } = M;
+  const DEFAULT_ORDER = [
+    "badges",
+    "guarantee",
+    "customs",
+    "tracked",
+    "clinical",
+    "trustpilot",
+  ];
+  ok(
+    JSON.stringify([...CHECKOUT_TRUST_ROWS]) === JSON.stringify(DEFAULT_ORDER),
+    "CHECKOUT_TRUST_ROWS is the six-key pre-v11 render order",
+  );
+  ok(
+    JSON.stringify(DEFAULT_SETTINGS.checkoutTrust.rowOrder) ===
+      JSON.stringify(DEFAULT_ORDER),
+    "rowOrder defaults to the pre-v11 hardcoded order (upgrade renders byte-identically)",
+  );
+  // Back-compat: a stored pre-v11 blob (no rowOrder key) merges to the
+  // default order.
+  const stored = clone(DEFAULT_SETTINGS) as any;
+  delete stored.checkoutTrust.rowOrder;
+  const merged = mergeSettings(clone(DEFAULT_SETTINGS), stored);
+  ok(
+    JSON.stringify(merged.checkoutTrust.rowOrder) === JSON.stringify(DEFAULT_ORDER),
+    "pre-v11 store merges to the default row order",
+  );
+  // A stored custom order replaces wholesale (arrays replace on merge) and a
+  // valid full permutation survives sanitize unchanged.
+  const custom = clone(DEFAULT_SETTINGS) as any;
+  custom.checkoutTrust.rowOrder = [
+    "trustpilot", "clinical", "tracked", "customs", "guarantee", "badges",
+  ];
+  const kept = sanitizeSettings(
+    mergeSettings(clone(DEFAULT_SETTINGS), custom),
+    clone(DEFAULT_SETTINGS),
+  );
+  ok(
+    JSON.stringify(kept.checkoutTrust.rowOrder) ===
+      JSON.stringify(["trustpilot", "clinical", "tracked", "customs", "guarantee", "badges"]),
+    "a full custom permutation round-trips merge + sanitize verbatim",
+  );
+  // Sanitize normalizes garbage: unknown keys drop, duplicates dedupe,
+  // missing keys append in default order — ordering can never hide a row.
+  const junk = clone(DEFAULT_SETTINGS) as any;
+  junk.checkoutTrust.rowOrder = ["clinical", "amazon", "clinical", 7, null, "badges"];
+  const cleanedOrder = sanitizeSettings(junk, clone(DEFAULT_SETTINGS));
+  ok(
+    JSON.stringify(cleanedOrder.checkoutTrust.rowOrder) ===
+      JSON.stringify(["clinical", "badges", "guarantee", "customs", "tracked", "trustpilot"]),
+    "sanitize keeps known keys in listed order and appends the missing rows",
+  );
+  // Non-array garbage resets to the default order via the same block.
+  const notArray = clone(DEFAULT_SETTINGS) as any;
+  notArray.checkoutTrust.rowOrder = "badges";
+  const reset = sanitizeSettings(notArray, clone(DEFAULT_SETTINGS));
+  ok(
+    JSON.stringify(reset.checkoutTrust.rowOrder) === JSON.stringify(DEFAULT_ORDER),
+    "non-array rowOrder sanitizes to the default order",
+  );
+  // The exported normalizer (shared by the admin page's load path) agrees.
+  ok(
+    JSON.stringify(normalizeTrustRowOrder(undefined)) === JSON.stringify(DEFAULT_ORDER) &&
+      JSON.stringify(normalizeTrustRowOrder(["tracked"])) ===
+        JSON.stringify(["tracked", "badges", "guarantee", "customs", "clinical", "trustpilot"]),
+    "normalizeTrustRowOrder: undefined -> default; partial -> listed first, rest appended",
   );
 }
 
@@ -274,6 +348,7 @@ for (const path of [
     "copyBadgeLink",
     "copyBadgeNoLink",
     "copyBadgeChip",
+    "copyOverlayNote",
   ] as const;
   for (const field of copyFields) {
     ok(
@@ -310,6 +385,7 @@ for (const path of [
   variants.dermEndorsements.copyHeadline = "{N} experts, { n } fans, {{n}} docs, {{ N }} pros";
   variants.dermEndorsements.copyBadgeHeadline = "Backed by {{ n }} experts";
   variants.dermEndorsements.copyBadgeLink = "See all { n } reviews";
+  variants.dermEndorsements.copyOverlayNote = "All {{n}} were verified";
   const healed = sanitizeSettings(variants, DEFAULT_SETTINGS).dermEndorsements;
   ok(
     healed.copyHeadline === "{n} experts, {n} fans, {n} docs, {n} pros",
@@ -322,6 +398,10 @@ for (const path of [
   ok(
     healed.copyBadgeLink === "See all { n } reviews",
     "sanitize: non-headline copy keeps its braces verbatim",
+  );
+  ok(
+    healed.copyOverlayNote === "All {n} were verified",
+    "sanitize: copyOverlayNote brace variants canonicalize to {n} (v8.21)",
   );
   // {name} tokens must NOT be eaten by the {n} regex.
   const named = clone(DEFAULT_SETTINGS) as any;
@@ -404,6 +484,39 @@ for (const path of [
   ok(
     mergedStyle.badgeStyle === "classic" && mergedStyle.copyBadgeChip === "",
     "pre-v8.18 store merges to classic + built-in chip",
+  );
+  // v8.21 badge link action — closed enum, fail-closed to scroll.
+  ok(
+    DEFAULT_SETTINGS.dermEndorsements.badgeLinkAction === "scroll",
+    "badgeLinkAction defaults to scroll",
+  );
+  const overlayPick = clone(DEFAULT_SETTINGS) as any;
+  overlayPick.dermEndorsements.badgeLinkAction = "overlay";
+  ok(
+    sanitizeSettings(overlayPick, DEFAULT_SETTINGS).dermEndorsements
+      .badgeLinkAction === "overlay",
+    'sanitize: badgeLinkAction "overlay" survives',
+  );
+  for (const bad of ["popup", 1, null, ""] as const) {
+    const dirty = clone(DEFAULT_SETTINGS) as any;
+    dirty.dermEndorsements.badgeLinkAction = bad;
+    ok(
+      sanitizeSettings(dirty, DEFAULT_SETTINGS).dermEndorsements
+        .badgeLinkAction === "scroll",
+      `sanitize: badgeLinkAction ${JSON.stringify(bad)} -> scroll`,
+    );
+  }
+  const storedAction = clone(DEFAULT_SETTINGS) as any;
+  delete storedAction.dermEndorsements.badgeLinkAction;
+  delete storedAction.dermEndorsements.copyOverlayNote;
+  const mergedAction = mergeSettings(
+    clone(DEFAULT_SETTINGS),
+    storedAction,
+  ).dermEndorsements;
+  ok(
+    mergedAction.badgeLinkAction === "scroll" &&
+      mergedAction.copyOverlayNote === "",
+    "pre-v8.21 store merges to scroll + built-in overlay note",
   );
 }
 {

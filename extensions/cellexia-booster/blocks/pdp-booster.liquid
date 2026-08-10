@@ -40,7 +40,9 @@ assign show_nudge = false
 endif
 assign cx_pdp_flags = product.metafields.cellexia.pdp_flags.value
 assign cx_pname = product.metafields.cellexia.display_name.value | default: product.title
-# Shopify's real Liquid parser rejects a literal '{name}' filter arg inside {{ }} - assign it here, reference the variable everywhere instead.
+comment
+Shopify's real parser rejects literal brace strings as filter args inside output tags - use this token variable.
+endcomment
 assign cx_name_token = '{name}'
 assign survey_ok = false
 assign show_survey = false

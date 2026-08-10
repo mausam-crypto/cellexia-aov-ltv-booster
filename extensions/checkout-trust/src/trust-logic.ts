@@ -13,6 +13,22 @@
  * wasn't enabled for).
  */
 
+/**
+ * v11: the six display rows in their DEFAULT display order — the pre-v11
+ * hardcoded render order, so a config without `rowOrder` renders
+ * byte-identically to before. Mirrors CHECKOUT_TRUST_ROWS in
+ * app/models/settings.server.ts (keep the two lists in sync).
+ */
+export const TRUST_ROW_ORDER_DEFAULT = [
+  'badges',
+  'guarantee',
+  'customs',
+  'tracked',
+  'clinical',
+  'trustpilot',
+] as const;
+export type TrustRowKey = (typeof TRUST_ROW_ORDER_DEFAULT)[number];
+
 export interface TrustModuleConfig {
   checkoutTrust: {
     enabled: boolean;
@@ -25,6 +41,10 @@ export interface TrustModuleConfig {
      *  render byte-identically to before (no new rows appear unbidden). */
     showCustoms: boolean;
     showTracked: boolean;
+    /** v11 display order — resolveConfig guarantees a FULL permutation of
+     *  TRUST_ROW_ORDER_DEFAULT (ordering can never hide a row; visibility
+     *  stays with the show* flags and the per-row market gates). */
+    rowOrder: TrustRowKey[];
   };
   guarantee: {days: number};
   trustpilot: {
@@ -46,6 +66,7 @@ export const DEFAULT_CONFIG: TrustModuleConfig = {
     showBadges: true,
     showCustoms: false,
     showTracked: false,
+    rowOrder: [...TRUST_ROW_ORDER_DEFAULT],
   },
   guarantee: {days: 60},
   trustpilot: {
@@ -97,6 +118,35 @@ function readString(source: unknown, key: string, fallback: string): string {
     return source[key] as string;
   }
   return fallback;
+}
+
+/**
+ * v11: normalizes `checkoutTrust.rowOrder` into a FULL permutation of
+ * TRUST_ROW_ORDER_DEFAULT — unknown entries drop, duplicates keep their
+ * first position, missing rows append in default order, and any non-array
+ * input (including a pre-v11 config without the key) yields the default
+ * order. FAILS SAFE, not closed: a malformed order can reshuffle rows but
+ * can never hide one — visibility belongs to the show* flags alone.
+ * Twin of normalizeTrustRowOrder in app/models/settings.server.ts.
+ */
+export function normalizeRowOrder(value: unknown): TrustRowKey[] {
+  const out: TrustRowKey[] = [];
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (
+        (TRUST_ROW_ORDER_DEFAULT as readonly string[]).includes(
+          entry as string,
+        ) &&
+        !out.includes(entry as TrustRowKey)
+      ) {
+        out.push(entry as TrustRowKey);
+      }
+    }
+  }
+  for (const key of TRUST_ROW_ORDER_DEFAULT) {
+    if (!out.includes(key)) out.push(key);
+  }
+  return out;
 }
 
 /**
@@ -166,6 +216,8 @@ export function resolveConfig(
       // (Kept single-line: the sim's mutation anchors target these lines.)
       showCustoms: readBoolean(trust, 'showCustoms', defaults.checkoutTrust.showCustoms),
       showTracked: readBoolean(trust, 'showTracked', defaults.checkoutTrust.showTracked),
+      // v11: always a full permutation — order can reshuffle, never hide.
+      rowOrder: normalizeRowOrder(isPlainObject(trust) ? trust.rowOrder : undefined),
     },
     guarantee: {
       days: Math.max(1, Math.round(readNumber(guarantee, 'days', defaults.guarantee.days))),

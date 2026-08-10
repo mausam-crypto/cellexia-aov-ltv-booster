@@ -27,14 +27,16 @@ import {
   TextField,
   Thumbnail,
 } from "@shopify/polaris";
-import { ImageIcon } from "@shopify/polaris-icons";
+import { ArrowDownIcon, ArrowUpIcon, ImageIcon } from "@shopify/polaris-icons";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import {
   getSettings,
+  normalizeTrustRowOrder,
   resolveFeatureFlag,
   saveSettings,
   type BoosterSettings,
+  type CheckoutTrustRow,
   type DeepPartial,
 } from "../models/settings.server";
 import { syncSettingsToMetafields } from "../services/metafields.server";
@@ -128,6 +130,16 @@ async function applySettingsPatch(
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const settings = await getSettings(session.shop);
+  // v11: getSettings merges but does not sanitize — normalize the trust-row
+  // order SERVER-SIDE so the client always receives a full permutation of
+  // the six lines, even from a stored blob predating rowOrder (or carrying
+  // junk). Must stay in the loader: normalizeTrustRowOrder is a .server
+  // VALUE, and calling it from component code puts settings.server in the
+  // client module graph and breaks the Vite build (the v8.3 build-break
+  // lesson — see app.features._index.tsx).
+  settings.checkoutTrust.rowOrder = normalizeTrustRowOrder(
+    settings.checkoutTrust.rowOrder,
+  );
   const [upsellVariants, protectionVariants, markets, priceReadback] =
     await Promise.all([
       getVariantsByIds(admin, settings.checkoutUpsell.variantIds),
@@ -403,6 +415,9 @@ interface CheckoutFormState {
   /** v9 trust rows — FeatureKeys with their own market scopes below. */
   showCustoms: boolean;
   showTracked: boolean;
+  /** v11: display order of the six trust lines (always a full permutation —
+   *  normalized server-side in the loader, sanitized on save). */
+  rowOrder: CheckoutTrustRow[];
   scopes: {
     checkout_upsell: ScopeState;
     checkout_protection: ScopeState;
@@ -438,6 +453,10 @@ function initialFormState(settings: BoosterSettings): CheckoutFormState {
     showBadges: settings.checkoutTrust.showBadges,
     showCustoms: settings.checkoutTrust.showCustoms,
     showTracked: settings.checkoutTrust.showTracked,
+    // Already normalized to a full permutation by the LOADER (server-side —
+    // normalizeTrustRowOrder is a .server value and must never run in
+    // client code). Fresh array copy so state edits never alias the source.
+    rowOrder: [...settings.checkoutTrust.rowOrder],
     scopes: {
       checkout_upsell: toScopeState(settings.marketScopes.checkout_upsell),
       checkout_protection: toScopeState(
@@ -449,6 +468,44 @@ function initialFormState(settings: BoosterSettings): CheckoutFormState {
     },
   };
 }
+
+/**
+ * v11: label/help copy for each trust line plus the CheckoutFormState flag it
+ * toggles. The card renders these in `state.rowOrder` order — the exact order
+ * buyers see in checkout — with arrow buttons to reorder (the badges-page
+ * pattern). Copy unchanged from the pre-v11 fixed checkboxes.
+ */
+const TRUST_LINE_META: Record<
+  CheckoutTrustRow,
+  {
+    label: string;
+    helpText?: string;
+    field:
+      | "showBadges"
+      | "showGuarantee"
+      | "showCustoms"
+      | "showTracked"
+      | "showClinical"
+      | "showTrustpilot";
+  }
+> = {
+  badges: { label: "Secure checkout badges", field: "showBadges" },
+  guarantee: { label: "Money-back guarantee line", field: "showGuarantee" },
+  customs: {
+    label: "“No customs or additional fees” line",
+    helpText:
+      "V2 row with its own market targeting below — enable it only for markets where you genuinely cover customs and import fees.",
+    field: "showCustoms",
+  },
+  tracked: {
+    label: "Tracked delivery line with the guaranteed date",
+    helpText:
+      "V2 row: “Tracked Delivery · Guaranteed by …” — the date is the SAME guaranteed-by date as the Delivery guarantee (its schedule, country overrides and holidays), shown in the buyer's language. Hidden automatically until the buyer's shipping country is known and a date is computable. Own market targeting below. Stands alone: the row keeps rendering even while the Delivery guarantee feature is switched off (only the schedule values are shared) — turn this row off to stop the promise.",
+    field: "showTracked",
+  },
+  clinical: { label: "Clinically proven line", field: "showClinical" },
+  trustpilot: { label: "Trustpilot rating line", field: "showTrustpilot" },
+};
 
 const PROTECTION_PRICE_PATTERN = /^\d+(\.\d{1,2})?$/;
 
@@ -530,6 +587,13 @@ export default function CheckoutFeaturesPage() {
   /** Intent of the most recent submission, so the revalidation effect below
    *  knows whether fresh loader data may replace in-progress edits. */
   const lastSubmittedIntentRef = useRef<string | null>(null);
+  /** v11: JSON snapshot of exactly what the last "save" submitted, so the
+   *  post-save adoption below can tell "form unchanged since submit" (adopt
+   *  fresh loader data wholesale) from "merchant kept editing during the
+   *  round-trip" (keep the edits — they stay dirty against the fresh
+   *  baseline). Without this, arrows clicked while a save was in flight
+   *  were silently reverted when revalidation landed. */
+  const submittedSnapshotRef = useRef<string | null>(null);
 
   useEffect(() => {
     const intent = lastSubmittedIntentRef.current;
@@ -553,9 +617,26 @@ export default function CheckoutFeaturesPage() {
       }));
       return;
     }
-    // Adopt fresh loader data wholesale only after a completed save, or when
-    // there are no unsaved edits to lose (e.g. a background revalidation).
-    if ((intent === "save" && actionData?.ok !== false) || !dirty) {
+    // Adopt fresh loader data wholesale only after a completed save whose
+    // form has not been edited since submit, or when there are no unsaved
+    // edits to lose (e.g. a background revalidation). Edits made WHILE the
+    // save was in flight survive — they remain dirty against the fresh
+    // baseline so the merchant can save again (the same
+    // preserve-in-progress-edits behavior as the two intents above).
+    if (intent === "save" && actionData?.ok !== false) {
+      const snapshot = submittedSnapshotRef.current;
+      submittedSnapshotRef.current = null;
+      if (
+        snapshot === null ||
+        snapshot === JSON.stringify({ state, selectedIds })
+      ) {
+        setState(initialFormState(settings));
+        setSelected(upsellVariants);
+        setProtectionPrice(protectionVariant?.price ?? "2.95");
+      }
+      return;
+    }
+    if (!dirty) {
       setState(initialFormState(settings));
       setSelected(upsellVariants);
       setProtectionPrice(protectionVariant?.price ?? "2.95");
@@ -638,6 +719,19 @@ export default function CheckoutFeaturesPage() {
     );
   };
 
+  /** v11: swap the trust line at `index` with its neighbor (badges-page
+   *  moveBadge pattern) — rowOrder always stays a full permutation. */
+  const moveTrustLine = (index: number, direction: -1 | 1) => {
+    setState((previous) => {
+      const target = index + direction;
+      if (target < 0 || target >= previous.rowOrder.length) return previous;
+      const rowOrder = [...previous.rowOrder];
+      const [moved] = rowOrder.splice(index, 1);
+      rowOrder.splice(target, 0, moved);
+      return { ...previous, rowOrder };
+    });
+  };
+
   const setScope = (
     key: keyof CheckoutFormState["scopes"],
     scope: ScopeState,
@@ -712,6 +806,7 @@ export default function CheckoutFeaturesPage() {
         showBadges: state.showBadges,
         showCustoms: state.showCustoms,
         showTracked: state.showTracked,
+        rowOrder: state.rowOrder,
       },
       marketScopes: scopesToPatch(state.scopes),
     };
@@ -719,6 +814,9 @@ export default function CheckoutFeaturesPage() {
     formData.set("intent", "save");
     formData.set("patch", JSON.stringify(patch));
     lastSubmittedIntentRef.current = "save";
+    // Same shape as the adoption effect's comparison — a mismatch there
+    // means the merchant kept editing during the save round-trip.
+    submittedSnapshotRef.current = JSON.stringify({ state, selectedIds });
     submit(formData, { method: "post" });
   };
 
@@ -1234,50 +1332,55 @@ export default function CheckoutFeaturesPage() {
                   }
                 />
                 <Divider />
-                <Checkbox
-                  label="Money-back guarantee line"
-                  checked={state.showGuarantee}
-                  onChange={(showGuarantee) =>
-                    setState((previous) => ({ ...previous, showGuarantee }))
-                  }
-                />
-                <Checkbox
-                  label="Trustpilot rating line"
-                  checked={state.showTrustpilot}
-                  onChange={(showTrustpilot) =>
-                    setState((previous) => ({ ...previous, showTrustpilot }))
-                  }
-                />
-                <Checkbox
-                  label="Clinically proven line"
-                  checked={state.showClinical}
-                  onChange={(showClinical) =>
-                    setState((previous) => ({ ...previous, showClinical }))
-                  }
-                />
-                <Checkbox
-                  label="Secure checkout badges"
-                  checked={state.showBadges}
-                  onChange={(showBadges) =>
-                    setState((previous) => ({ ...previous, showBadges }))
-                  }
-                />
-                <Checkbox
-                  label="“No customs or additional fees” line"
-                  helpText="V2 row with its own market targeting below — enable it only for markets where you genuinely cover customs and import fees."
-                  checked={state.showCustoms}
-                  onChange={(showCustoms) =>
-                    setState((previous) => ({ ...previous, showCustoms }))
-                  }
-                />
-                <Checkbox
-                  label="Tracked delivery line with the guaranteed date"
-                  helpText="V2 row: “Tracked Delivery · Guaranteed by …” — the date is the SAME guaranteed-by date as the Delivery guarantee (its schedule, country overrides and holidays), shown in the buyer's language. Hidden automatically until the buyer's shipping country is known and a date is computable. Own market targeting below. Stands alone: the row keeps rendering even while the Delivery guarantee feature is switched off (only the schedule values are shared) — turn this row off to stop the promise."
-                  checked={state.showTracked}
-                  onChange={(showTracked) =>
-                    setState((previous) => ({ ...previous, showTracked }))
-                  }
-                />
+                <BlockStack gap="200">
+                  <Text as="h3" variant="headingSm">
+                    Lines (display order)
+                  </Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Buyers see the checked lines in this order — use the
+                    arrows to reorder. The order applies live after you save.
+                  </Text>
+                  {state.rowOrder.map((rowKey, index) => {
+                    const meta = TRUST_LINE_META[rowKey];
+                    return (
+                      <InlineStack
+                        key={rowKey}
+                        gap="200"
+                        align="space-between"
+                        blockAlign="start"
+                        wrap={false}
+                      >
+                        <Checkbox
+                          label={meta.label}
+                          helpText={meta.helpText}
+                          checked={state[meta.field]}
+                          onChange={(checked) =>
+                            setState((previous) => ({
+                              ...previous,
+                              [meta.field]: checked,
+                            }))
+                          }
+                        />
+                        <InlineStack gap="100" wrap={false}>
+                          <Button
+                            icon={ArrowUpIcon}
+                            variant="tertiary"
+                            accessibilityLabel={`Move “${meta.label}” up`}
+                            disabled={index === 0}
+                            onClick={() => moveTrustLine(index, -1)}
+                          />
+                          <Button
+                            icon={ArrowDownIcon}
+                            variant="tertiary"
+                            accessibilityLabel={`Move “${meta.label}” down`}
+                            disabled={index === state.rowOrder.length - 1}
+                            onClick={() => moveTrustLine(index, 1)}
+                          />
+                        </InlineStack>
+                      </InlineStack>
+                    );
+                  })}
+                </BlockStack>
               </BlockStack>
             </Card>
 

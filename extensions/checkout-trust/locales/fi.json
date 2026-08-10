@@ -11,5 +11,5 @@
   "clinical": "Kliinisesti todistetut koostumukset",
   "trustpilot": "{{rating}}/5 · {{count}} arvostelua Trustpilot-palvelussa",
   "customs": "Ei tulli- eikä lisämaksuja toimituksen yhteydessä.",
-  "tracked": "Toimitus seurantakoodilla · Taatusti perillä viimeistään: {{date}}"
+  "tracked": "Seurattava toimitus taatusti perillä viimeistään {{date}}"
 }

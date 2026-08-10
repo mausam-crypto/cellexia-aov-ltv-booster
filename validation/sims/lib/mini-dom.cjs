@@ -20,11 +20,23 @@
 "use strict";
 
 function parseCompound(part) {
+  // v8.21: strip :not(...) qualifiers first (single level, attr/class
+  // arguments) — the lightbox focusables selector uses button:not([disabled]).
+  const nots = [];
+  const stripped = part.trim().replace(/:not\(([^)]+)\)/g, (_, inner) => {
+    nots.push(inner.trim());
+    return "";
+  });
   const m = /^([a-zA-Z][a-zA-Z0-9-]*)?((?:\.[A-Za-z0-9_-]+|\[[^\]]+\])*)$/.exec(
-    part.trim(),
+    stripped,
   );
   if (!m) return null;
-  const spec = { tag: m[1] ? m[1].toUpperCase() : null, classes: [], attrs: [] };
+  const spec = { tag: m[1] ? m[1].toUpperCase() : null, classes: [], attrs: [], nots: [] };
+  for (const inner of nots) {
+    const notSpec = parseCompound(inner);
+    if (!notSpec) return null;
+    spec.nots.push(notSpec);
+  }
   const rest = m[2] || "";
   const re = /\.([A-Za-z0-9_-]+)|\[([^\]]+)\]/g;
   let t;
@@ -53,6 +65,9 @@ function matchesCompound(el, spec) {
     if (a.op === "*" && v.indexOf(a.value) === -1) return false;
     if (a.op === "^" && v.indexOf(a.value) !== 0) return false;
     if (a.op === "$" && !v.endsWith(a.value)) return false;
+  }
+  for (const notSpec of spec.nots ?? []) {
+    if (matchesCompound(el, notSpec)) return false;
   }
   return true;
 }

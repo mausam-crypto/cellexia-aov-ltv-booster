@@ -11,5 +11,5 @@
   "clinical": "Klinisch bewezen formules",
   "trustpilot": "{{rating}}/5 · {{count}} beoordelingen op Trustpilot",
   "customs": "Geen douane- of extra kosten bij levering.",
-  "tracked": "Verzending met track & trace · Gegarandeerd bezorgd uiterlijk {{date}}"
+  "tracked": "Verzending met track & trace en gegarandeerde bezorging uiterlijk {{date}}"
 }

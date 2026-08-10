@@ -314,6 +314,21 @@ scope, and a ProofTranslationsSection under the card gives per-locale manual
 review (manual rows never overwritten; blank deletes). Zero locale-file and
 zero Liquid bytes — translations ship via proxy JSON only.
 
+v8.21 ENDORSEMENTS OVERLAY: dermEndorsements.badgeLinkAction (BADGE_LINK_ACTIONS
+scroll|overlay, default scroll = the v8.17 behavior; island lean "bo":1). In
+overlay mode the badge link opens a dialog IN PLACE via the SHARED
+pfLbOpen/pfLbClose lightbox machinery (singleton cx-proof-lb, focus trap,
+Escape, scrim/data-cx-lb-close, body scroll lock, focus restore): title = the
+badge-headline chain with bold live count, credential line reuses the chip
+string, methodology note = copyOverlayNote override ("ov" island code, {n}
+supported + DeepL copy scope) -> copyDescription -> endo.description, then the
+full endorsement list (the wall's endoBuildCard) with shown-of + Show more
+paginating the same proxy. "cls" reuses results.close — ZERO new locale keys
+(el.json headroom is 7B). Desktop: centered 640px dialog; mobile <=559px:
+bottom sheet (rounded top, 88vh, list scrolls inside). Admin: "Link behavior"
+Select (client mirror BADGE_LINK_ACTION_OPTIONS, disabled while the link is
+off) + "Overlay methodology text" field incl. the translations reviewer.
+
 ## 7. Validation
 
 - New sims: `proof-gallery.cjs` (vm-extract cellexia-proof.js renderers: press rotate,

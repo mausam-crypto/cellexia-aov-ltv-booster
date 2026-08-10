@@ -3794,6 +3794,183 @@ body.customer--b2b .cx-sub-remove {
   }
 }
 
+/* --------------------------------- endorsements overlay (v8.21) */
+/* Opened by the badge link (badgeLinkAction "overlay"): methodology note
+   + the full browsable endorsement list, riding the lightbox machinery
+   (same z-plane and scrim discipline). Desktop: centered dialog.
+   Mobile: bottom sheet. No animation — nothing to reduce for
+   prefers-reduced-motion. */
+
+.cx-endo-ov {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483202;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(29, 29, 27, 0.55);
+}
+
+.cx-endo-ov__card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  text-align: start; /* the wall's guard — never inherit theme centering */
+  inline-size: 100%;
+  max-inline-size: 640px;
+  max-block-size: 82vh;
+  background: #fff;
+  border-radius: 16px;
+  padding: 20px 22px 16px;
+  outline: none;
+}
+
+.cx-endo-ov__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cx-endo-ov__titles {
+  min-inline-size: 0;
+}
+
+.cx-endo-ov__title {
+  margin: 0;
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: #1d1d1b;
+}
+
+.cx-endo-ov__cred {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: #4c4a45;
+}
+
+.cx-endo-ov__cred .cx-endo-badge__chip-shield {
+  inline-size: 15px;
+  block-size: 17px;
+}
+
+.cx-endo-ov__cred-text {
+  min-inline-size: 0;
+}
+
+.cx-endo-ov__close {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  inline-size: 34px;
+  block-size: 34px;
+  border: 1px solid #d8d8d8;
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  color: #1d1d1b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.cx-endo-ov__close:hover,
+.cx-endo-ov__close:focus-visible {
+  background: #1d1d1b;
+  border-color: #1d1d1b;
+  color: #fff;
+}
+
+.cx-endo-ov__note {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #1d1d1b;
+  /* a 1000-char note must scroll itself, never starve the list below
+     (overflow also zeroes its automatic flex minimum) */
+  max-block-size: 26vh;
+  overflow-y: auto;
+}
+
+.cx-endo-ov__list {
+  flex: 1 1 auto;
+  min-block-size: 96px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 14px 0 0;
+  padding-inline-end: 4px;
+  display: grid;
+  gap: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+/* the wall's cards render inside the overlay list — kill their
+   column-flow margin so the grid gap rules the rhythm */
+.cx-endo-ov__list .cx-endo__card {
+  margin-block-end: 0;
+}
+
+.cx-endo-ov__foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-block-start: 12px;
+}
+
+.cx-endo-ov__progress {
+  margin: 0;
+  font-size: 12px;
+  color: #767676; /* 4.54:1 on white — the shared #808080 misses AA at 12px */
+}
+
+.cx-endo-ov .cx-endo__show-more {
+  padding: 9px 22px;
+}
+
+@media (pointer: coarse) {
+  /* the house 44px touch floor for the overlay's controls */
+  .cx-endo-ov__close {
+    inline-size: 44px;
+    block-size: 44px;
+  }
+
+  .cx-endo-ov .cx-endo__show-more {
+    padding-block: 14px;
+  }
+}
+
+@media (max-width: 559px) {
+  /* bottom sheet: full width, rounded top, drag-height capped */
+  .cx-endo-ov {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .cx-endo-ov__card {
+    max-inline-size: none;
+    max-block-size: 88vh;
+    border-radius: 18px 18px 0 0;
+    padding: 18px 16px 14px;
+  }
+
+  .cx-endo-ov__title {
+    font-size: 18px;
+  }
+}
+
 /* ------------------------------------- results gallery (compact band) */
 .cx-results {
   text-align: start;

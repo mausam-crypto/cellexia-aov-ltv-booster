@@ -13,5 +13,5 @@
   "clinical": "Formule dovedite clinic",
   "trustpilot": "{{rating}}/5 · {{count}} de recenzii pe Trustpilot",
   "customs": "Fără taxe vamale sau costuri suplimentare la livrare.",
-  "tracked": "Livrare cu urmărire · Garantată cel târziu {{date}}"
+  "tracked": "Livrare cu urmărire, garantată cel târziu {{date}}"
 }

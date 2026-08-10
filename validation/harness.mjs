@@ -272,7 +272,13 @@ const EVIDENCE = {
   ]) {
     ok(matrixSrc.includes(anchor), `app.markets.tsx: v9 trust-row flag-patch mapper present: ${anchor}`);
   }
-  // The checkout features page must persist both row flags + both scopes.
+  // The checkout features page must persist both row flags + both scopes,
+  // and (v11) the trust-line rowOrder: the loader normalizes it SERVER-SIDE
+  // (normalizeTrustRowOrder is a .server value — calling it from component
+  // code breaks the Vite client build, the v8.3 lesson), the form state
+  // hydrates from the normalized value, and the save patch persists it.
+  // Dropping any link kills the feature silently at save/load time with
+  // tsc green (DeepPartial makes an omitted patch field type-legal).
   {
     const checkoutSrc = read("app/routes/app.features.checkout.tsx");
     for (const anchor of [
@@ -280,8 +286,11 @@ const EVIDENCE = {
       "showTracked: state.showTracked",
       "checkout_customs: toScopeState(settings.marketScopes.checkout_customs)",
       "checkout_tracked: toScopeState(settings.marketScopes.checkout_tracked)",
+      "settings.checkoutTrust.rowOrder = normalizeTrustRowOrder(",
+      "rowOrder: [...settings.checkoutTrust.rowOrder]",
+      "rowOrder: state.rowOrder",
     ]) {
-      ok(checkoutSrc.includes(anchor), `app.features.checkout.tsx: v9 row plumbing present: ${anchor}`);
+      ok(checkoutSrc.includes(anchor), `app.features.checkout.tsx: v9/v11 row plumbing present: ${anchor}`);
     }
   }
 
@@ -580,16 +589,12 @@ const EVIDENCE = {
     );
     ok(
       settingsSrc17.includes(
-        'if (field === "copyHeadline" || field === "copyBadgeHeadline") {',
+        'field === "copyHeadline" ||\n          field === "copyBadgeHeadline" ||\n          field === "copyOverlayNote"',
       ) &&
         settingsSrc17.includes(
           'value = value.replace(/\\{\\{?\\s*n\\s*\\}?\\}/gi, "{n}");',
         ),
       "v8.17: the two headline fields canonicalize {n} brace variants (methodology discipline)",
-    );
-    ok(
-      proofLiquid.includes("assign cx_n_token = '{n}'"),
-      "v8.17/regression-fix: cx_n_token variable assignment present in proof-booster.liquid (Shopify's real Liquid parser rejects the literal '{n}' string as a filter argument inside {{ }})",
     );
     for (const member17 of [
       '{% if cfg.dermEndorsements.badgeEnabled == true %},"bd":1{% endif %}',
@@ -597,6 +602,9 @@ const EVIDENCE = {
       `"desc":{{'endo.description'|t|json}}`,
       `"bh1":{{'endo.badge_headline'|t:count:1,n:'@@N@@'|json}}`,
       `"bh2":{{'endo.badge_headline'|t:count:2,n:'@@N@@'|json}}`,
+      // v8.20: the {n} literal rides cx_n_token (Shopify-parser rule —
+      // see the v8.13b/v8.20 note on cx_name_token).
+      `assign cx_n_token = '{n}'`,
       `"oh":{{cfg.dermEndorsements.copyHeadline|replace:cx_n_token,'@@N@@'|json}}`,
       `"ob":{{cfg.dermEndorsements.copyBadgeHeadline|replace:cx_n_token,'@@N@@'|json}}`,
       `"on":{{cfg.dermEndorsements.copyBadgeNoLink|json}}`,
@@ -791,7 +799,7 @@ const EVIDENCE = {
     ok(
       ptSrc19.includes('export const COPY_RESOURCE_ID = "dermEndorsements";') &&
         ptSrc19.includes('export type ProofScope = ProofType | "copy";') &&
-        ptSrc19.includes('copy: [\n    "copyEyebrow",\n    "copyHeadline",\n    "copyDescription",\n    "copyBadgeHeadline",\n    "copyBadgeLink",\n    "copyBadgeNoLink",\n    "copyBadgeChip",\n  ],') &&
+        ptSrc19.includes('copy: [\n    "copyEyebrow",\n    "copyHeadline",\n    "copyDescription",\n    "copyBadgeHeadline",\n    "copyBadgeLink",\n    "copyBadgeNoLink",\n    "copyBadgeChip",\n    "copyOverlayNote",\n  ],') &&
         ptSrc19.includes('copy: "copy",'),
       "v8.19: the copy scope exists with the seven copy fields",
     );
@@ -807,6 +815,7 @@ const EVIDENCE = {
         ptSrc19.includes('copyBadgeLink: "ol",') &&
         ptSrc19.includes('copyBadgeNoLink: "on",') &&
         ptSrc19.includes('copyBadgeChip: "oc",') &&
+        ptSrc19.includes('copyOverlayNote: "ov",') &&
         ptSrc19.includes('value = value.split("{n}").join("@@N@@");') &&
         ptSrc19.includes("export function copyOverlayToIslandCodes(") &&
         ptSrc19.includes("export async function deleteCopyTranslationsForFields("),
@@ -827,7 +836,7 @@ const EVIDENCE = {
     );
     for (const anchor19 of [
       "function endoApplyCopy(conf, data) {",
-      "var keys = ['oe', 'oh', 'od', 'ob', 'ol', 'on', 'oc'];",
+      "var keys = ['oe', 'oh', 'od', 'ob', 'ol', 'on', 'oc', 'ov'];",
       // ORDERING pin (review catch: presence alone let the merge move
       // after the build) — the merge must precede endoBuildSection.
       "endoApplyCopy(isl.conf, data);\n          var node = endoBuildSection(isl.conf, data);",
@@ -866,6 +875,74 @@ const EVIDENCE = {
       endoTab19.includes("auto-translates into every") &&
         endoTab19.includes("survives translation"),
       "v8.19: the copy card explains DeepL auto-translation + {n} survival",
+    );
+  }
+
+  // v8.21: badge-link OVERLAY behavior — enum, island members, the
+  // storefront overlay riding the lightbox machinery, admin wiring.
+  // Behavior pinned by sims/proof-gallery OV-cases + mutants m23/m24.
+  {
+    const settingsSrc21 = read("app/models/settings.server.ts");
+    ok(
+      settingsSrc21.includes(
+        'export const BADGE_LINK_ACTIONS = ["scroll", "overlay"] as const;',
+      ) &&
+        settingsSrc21.includes("badgeLinkAction: BadgeLinkAction;") &&
+        settingsSrc21.includes('badgeLinkAction: "scroll",') &&
+        settingsSrc21.includes("copyOverlayNote: string;") &&
+        settingsSrc21.includes('["copyOverlayNote", 1000],') &&
+        settingsSrc21.includes('field === "copyOverlayNote"'),
+      "v8.21: badgeLinkAction enum + copyOverlayNote (capped, {n}-canonicalized) in the settings model",
+    );
+    ok(
+      proofLiquid.includes(
+        '{% if cfg.dermEndorsements.badgeLinkAction == "overlay" %},"bo":1{% endif %}',
+      ) &&
+        proofLiquid.includes(
+          `"ov":{{cfg.dermEndorsements.copyOverlayNote|replace:cx_n_token,'@@N@@'|json}}`,
+        ) &&
+        proofLiquid.includes(`"cls":{{'results.close'|t|json}}`),
+      "v8.21: endo island emits bo + ov (token replace) + the reused close label",
+    );
+    for (const anchor21 of [
+      "function endoOverlayBuild(conf, data) {",
+      "function endoOverlayOpen(conf, data, trigger) {",
+      "if (node) pfLbOpen(node, trigger);",
+      "if (conf.bo === 1) {",
+      "endoOverlayOpen(conf, data, link);",
+      // note chain: overlay note -> description override -> catalog desc
+      "var t = pfStr(s, 'ov');",
+      "if (!/\\S/.test(t)) t = endoText(s, 'od', 'desc');",
+      // v8.21b review catches on the SHARED lightbox machinery:
+      // direct-scrim-click-only close, overlay card in the focus lookup,
+      // hidden controls out of the trap.
+      "if (event.target === root) pfLbClose();",
+      "var card = root.querySelector('.cx-lightbox__card, .cx-endo-ov__card') || root;",
+      "if (nodes[i].hasAttribute('hidden')) continue;",
+    ]) {
+      ok(
+        proofJs.includes(anchor21),
+        `v8.21: overlay code present in cellexia-proof.js: ${anchor21.slice(0, 52)}`,
+      );
+    }
+    const endoTab21 = read("app/routes/app.proof.endorsements.tsx");
+    const actStart = endoTab21.indexOf("const BADGE_LINK_ACTION_OPTIONS = [");
+    const actEnd = endoTab21.indexOf("] as const;", actStart);
+    const actSlice =
+      actStart !== -1 && actEnd !== -1 ? endoTab21.slice(actStart, actEnd) : "";
+    const actValues = [...actSlice.matchAll(/value: "([a-z_]+)"/g)].map(
+      (m) => m[1],
+    );
+    const serverActions = ["scroll", "overlay"];
+    ok(
+      actSlice !== "" &&
+        actValues.length === serverActions.length &&
+        serverActions.every((v) => actValues.includes(v)) &&
+        actValues.every((v) => serverActions.includes(v)) &&
+        endoTab21.includes('label="Link behavior"') &&
+        endoTab21.includes("disabled={!displayState.badgeShowLink}") &&
+        endoTab21.includes("Overlay methodology text"),
+      "v8.21: admin BADGE_LINK_ACTION_OPTIONS set-equal to BADGE_LINK_ACTIONS + overlay-note field present",
     );
   }
 
@@ -1020,6 +1097,7 @@ const EVIDENCE = {
     "cx-study-config": "study config-island id (getElementById)",
     "cx-press-config": "press config-island id (pfIsland)",
     "cx-endo-config": "endorsement config-island id (pfIsland)",
+    "cx-endo-ov-title": "overlay dialog title id (aria-labelledby, v8.21)",
     "cx-results-config": "results config-island id (pfIsland)",
     "cx-gcheck": "guarantee-check modal singleton id",
     "cx-gcheck-title": "guarantee-check modal aria-labelledby id",
@@ -1386,6 +1464,79 @@ const EVIDENCE = {
         ok(
           size <= 15000,
           `v8.16b: ${locDir}/${lf} is ${size}B <= 15,000B (Shopify rejects locale files over 15,360B — minify via MINIFIED_LOCALES or trim copy)`,
+        );
+      }
+    }
+  }
+
+  // ---- v8.20 DEPLOY-FATAL classes (merchant's deploy report) --------------
+  // Two rules the REAL Shopify deploy enforces that no local tool does.
+  //
+  // (1) Literal brace strings as filter args inside {{ }} output tags kill
+  // the deploy ("was not properly terminated with regexp: /\}\}/") — the
+  // liquidjs family parses them fine, so only a real deploy ever caught
+  // it, twice. Tokens must ride variables assigned inside {% liquid %}
+  // (cx_name_token / cx_n_token). This sweep bans the whole class in
+  // every Liquid file, block and snippet, forever.
+  {
+    for (const dir of ["blocks", "snippets"]) {
+      const full = `extensions/cellexia-booster/${dir}`;
+      if (!exists(full)) continue;
+      for (const lf of listFiles(full, ".liquid")) {
+        const src = read(`${full}/${lf}`);
+        const spans = src.match(/\{\{[\s\S]*?\}\}/g) ?? [];
+        const offenders = spans.filter((span) =>
+          /'[^']*[{}][^']*'|"[^"]*[{}][^"]*"/.test(span),
+        );
+        ok(
+          offenders.length === 0,
+          `v8.20: no literal brace string inside a {{ }} output tag in ${dir}/${lf}` +
+            (offenders.length
+              ? ` (Shopify's parser rejects it — use a {% liquid %} token variable): ${offenders[0].slice(0, 70)}`
+              : ""),
+        );
+      }
+    }
+  }
+  //
+  // (2) Shopify flattens locale keys INCLUDING plural categories and
+  // requires the default locale to define every key any locale defines —
+  // ar's zero/two/few/many made en.default's one/other objects
+  // deploy-fatal, and a locale's FLAT string under an object default
+  // fails the same check from the other side. en.default.json must be a
+  // leaf-path SUPERSET of every locale file, per extension.
+  {
+    const flattenLeaves = (node, prefix, into) => {
+      for (const [key, value] of Object.entries(node)) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+          flattenLeaves(value, path, into);
+        } else {
+          into.add(path);
+        }
+      }
+      return into;
+    };
+    for (const extDir of listFiles("extensions")) {
+      const locDir = `extensions/${extDir}/locales`;
+      if (!exists(locDir)) continue;
+      const files = listFiles(locDir, ".json");
+      const defFile = files.find((f) => f === "en.default.json");
+      if (!defFile) continue;
+      const defLeaves = flattenLeaves(
+        JSON.parse(read(`${locDir}/${defFile}`)),
+        "",
+        new Set(),
+      );
+      for (const lf of files) {
+        if (lf === defFile) continue;
+        const extra = [
+          ...flattenLeaves(JSON.parse(read(`${locDir}/${lf}`)), "", new Set()),
+        ].filter((path) => !defLeaves.has(path));
+        ok(
+          extra.length === 0,
+          `v8.20: ${locDir}/${lf} keys (incl. plural categories) are a subset of en.default` +
+            (extra.length ? ` — missing from default: ${extra.slice(0, 4).join(", ")}` : ""),
         );
       }
     }
@@ -2388,15 +2539,25 @@ const EVIDENCE = {
   // substitute the display name — the raw value used to ship verbatim
   // ("Tested on {name} itself" showed literally). Every merchant-entered
   // text field of the two islands carries the replace filter.
+  // v8.20 (DEPLOY-FATAL regression, merchant's deploy report): Shopify's
+  // REAL Liquid parser rejects a literal brace string as a filter argument
+  // inside a {{ }} output tag — the token must ride the cx_name_token
+  // variable (assigned once inside {% liquid %}, which IS parse-safe).
+  // The deployer fixed this once on their side (their commit 7196208) and
+  // our exports kept reverting it; these pins hold the fix in-tree.
   const NAME_REPLACE = "| replace: cx_name_token, cx_pname";
   const replaceUses = pdpLiquid.split(NAME_REPLACE).length - 1;
   ok(
-    pdpLiquid.includes("assign cx_name_token = '{name}'"),
-    "v8.13b/regression-fix: cx_name_token variable assignment present (Shopify's real Liquid parser rejects the literal '{name}' string as a filter argument inside {{ }})",
+    replaceUses === 14,
+    `v8.13b/v8.20: exactly 14 cx_name_token replace filters in pdp-booster.liquid (got ${replaceUses})`,
   );
   ok(
-    replaceUses === 14,
-    `v8.13b: exactly 14 '{name}' replace filters (via cx_name_token) in pdp-booster.liquid (got ${replaceUses})`,
+    pdpLiquid.includes("assign cx_name_token = '{name}'"),
+    "v8.20: cx_name_token assigned once inside the liquid tag",
+  );
+  ok(
+    !pdpLiquid.includes("replace: '{name}'"),
+    "v8.20: no literal '{name}' filter arg remains in pdp-booster.liquid",
   );
   for (const site of [
     `{{ cx_study.subject.value ${NAME_REPLACE} | json }}`,
@@ -2407,7 +2568,7 @@ const EVIDENCE = {
     `t: methods: cx_study.instruments.value ${NAME_REPLACE} | json }}`,
     `assign survey_verifier = survey_verifier ${NAME_REPLACE}`,
   ]) {
-    ok(pdpLiquid.includes(site), `v8.13b: {name} replace (via cx_name_token) at: ${site.slice(0, 60)}`);
+    ok(pdpLiquid.includes(site), `v8.13b: {name} replace at: ${site.slice(0, 60)}`);
   }
   // DeepL protection: single-brace {name} (and spaced legacy variants) must
   // survive machine translation of custom text (the substitution happens

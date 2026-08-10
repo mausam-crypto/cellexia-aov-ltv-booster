@@ -907,3 +907,25 @@ endcomment
 # handle). An empty handle matches only non-selected scopes.
 ```
 
+
+
+## Shopify's REAL parser vs liquidjs (v8.20, deploy-fatal)
+
+A literal brace string as a filter argument inside a `{{ }}` output tag —
+`{{ x | replace: '{name}', y }}` — deploys FINE through every local tool
+but is REJECTED by Shopify's real parser ("Variable ... was not properly
+terminated with regexp: /\}\}/"). Inside `{% liquid %}` tags the same
+literal is safe. Convention: assign the token once (`assign cx_name_token
+= '{name}'`, `assign cx_n_token = '{n}'`) and reference the variable in
+every output-tag filter. The harness v8.20 sweep fails the build on any
+quoted brace literal inside an output tag.
+
+## Locale files: en.default is a flattened-key SUPERSET (v8.20)
+
+Shopify flattens translation keys INCLUDING CLDR plural categories and
+rejects a deploy when any locale defines a key/category the default
+locale lacks — and when a locale keeps a FLAT string where the default
+has a plural object. en.default.json must carry every category any
+locale uses (extra categories on the English side are harmless: CLDR
+selection never picks them for en). The harness v8.20 superset check
+enforces this for every extensions/*/locales dir.

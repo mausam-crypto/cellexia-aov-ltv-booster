@@ -256,7 +256,55 @@ export const BADGE_STYLES = [
   "choice_compact",
 ] as const;
 export type BadgeStyle = (typeof BADGE_STYLES)[number];
+
+/** v8.21 badge link behaviors: "scroll" = smooth-scroll to the wall (the
+ *  v8.17 default), "overlay" = open the endorsements overlay (methodology
+ *  note + browsable list) without leaving the top of the page. */
+export const BADGE_LINK_ACTIONS = ["scroll", "overlay"] as const;
+export type BadgeLinkAction = (typeof BADGE_LINK_ACTIONS)[number];
 export type PressLayout = (typeof PRESS_LAYOUTS)[number];
+
+/**
+ * v11: the six checkout-trust display rows, in their DEFAULT display order
+ * (the pre-v11 hardcoded render order — a config without rowOrder renders
+ * byte-identically to before). The array order IS the default; the extension
+ * mirrors this list in extensions/checkout-trust/src/trust-logic.ts
+ * (TRUST_ROW_ORDER_DEFAULT — keep the two in sync).
+ */
+export const CHECKOUT_TRUST_ROWS = [
+  "badges",
+  "guarantee",
+  "customs",
+  "tracked",
+  "clinical",
+  "trustpilot",
+] as const;
+export type CheckoutTrustRow = (typeof CHECKOUT_TRUST_ROWS)[number];
+
+/**
+ * Normalizes a stored/patched trust-row order into a full permutation of
+ * CHECKOUT_TRUST_ROWS: unknown entries drop, duplicates keep their first
+ * position, missing rows append in default order. Any non-array input
+ * yields the default order. Shared by sanitizeSettings (save path) and the
+ * Checkout admin page (display of not-yet-sanitized stored blobs).
+ */
+export function normalizeTrustRowOrder(value: unknown): CheckoutTrustRow[] {
+  const out: CheckoutTrustRow[] = [];
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (
+        (CHECKOUT_TRUST_ROWS as readonly string[]).includes(entry as string) &&
+        !out.includes(entry as CheckoutTrustRow)
+      ) {
+        out.push(entry as CheckoutTrustRow);
+      }
+    }
+  }
+  for (const key of CHECKOUT_TRUST_ROWS) {
+    if (!out.includes(key)) out.push(key);
+  }
+  return out;
+}
 
 /** The four merchant-selectable delivery-estimate widget formats (v5.9). */
 export const DELIVERY_ESTIMATE_FORMATS = [
@@ -457,6 +505,14 @@ export interface BoosterSettings {
      */
     showCustoms: boolean;
     showTracked: boolean;
+    /**
+     * v11 display order of the six trust rows in checkout. Always a full
+     * permutation of CHECKOUT_TRUST_ROWS after sanitize (unknown keys drop,
+     * duplicates dedupe, missing keys append in default order), so ordering
+     * can never hide a row — visibility stays with the show* flags above.
+     * LIVE setting (the v6.5 placement precedent): no draft/preview plumbing.
+     */
+    rowOrder: CheckoutTrustRow[];
   };
   /**
    * PDP trust boosters (SPEC v3). Content lives in per-product metaobjects
@@ -615,6 +671,9 @@ export interface BoosterSettings {
     badgeShowLink: boolean;
     /** v8.18 badge design (BADGE_STYLES; default "classic"). */
     badgeStyle: BadgeStyle;
+    /** v8.21 what the badge link does (BADGE_LINK_ACTIONS; default
+     *  "scroll"). */
+    badgeLinkAction: BadgeLinkAction;
     /** v8.17 merchant copy overrides — blank = built-in translated
      *  default from the extension locale catalogs. NON-BLANK TEXT IS
      *  SERVED AS ENTERED IN EVERY LANGUAGE (settings copy is never
@@ -630,6 +689,10 @@ export interface BoosterSettings {
      *  translated "Licensed dermatologists" default; blank catalog string
      *  hides the chip). */
     copyBadgeChip: string;
+    /** v8.21: the methodology note at the top of the endorsements overlay
+     *  ("" = the section description serves; {n} = the live endorsement
+     *  total; DeepL-translated via the copy scope like the others). */
+    copyOverlayNote: string;
   };
   /**
    * Dispatch countdown ("Order within 2h 14m for same-day dispatch").
@@ -945,6 +1008,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     // zero new checkout content until it enables them explicitly.
     showCustoms: false,
     showTracked: false,
+    rowOrder: [...CHECKOUT_TRUST_ROWS],
   },
   clinicalStudy: {
     enabled: false,
@@ -995,6 +1059,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     badgeEnabled: false,
     badgeShowLink: true,
     badgeStyle: "classic",
+    badgeLinkAction: "scroll",
     copyEyebrow: "",
     copyHeadline: "",
     copyDescription: "",
@@ -1002,6 +1067,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     copyBadgeLink: "",
     copyBadgeNoLink: "",
     copyBadgeChip: "",
+    copyOverlayNote: "",
   },
   dispatch: {
     enabled: false,
@@ -1310,6 +1376,12 @@ export function sanitizeSettings(
   );
   next.checkoutUpsell.variantIds = (next.checkoutUpsell.variantIds ?? []).filter(
     (id) => typeof id === "string" && VARIANT_GID_PATTERN.test(id),
+  );
+
+  // v11: rowOrder is always persisted as a full permutation of
+  // CHECKOUT_TRUST_ROWS — ordering can never hide a row.
+  next.checkoutTrust.rowOrder = normalizeTrustRowOrder(
+    next.checkoutTrust.rowOrder,
   );
 
   if (next.freeShipping.mode !== "auto" && next.freeShipping.mode !== "manual") {
@@ -1729,6 +1801,14 @@ export function sanitizeSettings(
     next.dermEndorsements.badgeStyle =
       DEFAULT_SETTINGS.dermEndorsements.badgeStyle;
   }
+  if (
+    !BADGE_LINK_ACTIONS.includes(
+      next.dermEndorsements.badgeLinkAction as BadgeLinkAction,
+    )
+  ) {
+    next.dermEndorsements.badgeLinkAction =
+      DEFAULT_SETTINGS.dermEndorsements.badgeLinkAction;
+  }
   {
     const endo = next.dermEndorsements;
     const copyCaps = [
@@ -1739,13 +1819,18 @@ export function sanitizeSettings(
       ["copyBadgeLink", 120],
       ["copyBadgeNoLink", 120],
       ["copyBadgeChip", 120],
+      ["copyOverlayNote", 1000],
     ] as const;
     for (const [field, cap] of copyCaps) {
       if (typeof endo[field] !== "string") {
         endo[field] = "";
       } else {
         let value = endo[field];
-        if (field === "copyHeadline" || field === "copyBadgeHeadline") {
+        if (
+          field === "copyHeadline" ||
+          field === "copyBadgeHeadline" ||
+          field === "copyOverlayNote"
+        ) {
           value = value.replace(/\{\{?\s*n\s*\}?\}/gi, "{n}");
         }
         // Cap on CODE POINTS, not UTF-16 units: a plain slice can split a

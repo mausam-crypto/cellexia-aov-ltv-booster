@@ -19,5 +19,5 @@
   "clinical": "Clinically proven formulas",
   "trustpilot": "{{rating}}/5 · {{count}} reviews on Trustpilot",
   "customs": "No customs or additional fees on delivery.",
-  "tracked": "Tracked Delivery · Guaranteed by {{date}}"
+  "tracked": "Tracked delivery guaranteed by {{date}}"
 }

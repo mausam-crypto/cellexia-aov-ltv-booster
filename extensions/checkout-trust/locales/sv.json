@@ -11,5 +11,5 @@
   "clinical": "Kliniskt bevisade formler",
   "trustpilot": "{{rating}}/5 · {{count}} omdömen på Trustpilot",
   "customs": "Inga tullavgifter eller extra avgifter vid leverans.",
-  "tracked": "Spårbar frakt · Garanterad leverans senast {{date}}"
+  "tracked": "Spårbar leverans garanterad senast {{date}}"
 }

@@ -11,5 +11,5 @@
   "clinical": "Klinikailag igazolt formulák",
   "trustpilot": "{{rating}}/5 · {{count}} értékelés a Trustpilot oldalán",
   "customs": "Nincsenek vám- vagy egyéb többletköltségek a kézbesítéskor.",
-  "tracked": "Nyomon követett szállítás · Garantált kézbesítés legkésőbb: {{date}}"
+  "tracked": "Nyomon követett, garantált kézbesítés legkésőbb: {{date}}"
 }

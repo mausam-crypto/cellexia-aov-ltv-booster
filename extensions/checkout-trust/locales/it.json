@@ -11,5 +11,5 @@
   "clinical": "Formule clinicamente provate",
   "trustpilot": "{{rating}}/5 · {{count}} recensioni su Trustpilot",
   "customs": "Nessun dazio doganale né costi aggiuntivi alla consegna.",
-  "tracked": "Spedizione tracciata · Consegna garantita entro il {{date}}"
+  "tracked": "Spedizione tracciata con consegna garantita entro il {{date}}"
 }

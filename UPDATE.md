@@ -263,6 +263,59 @@ strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
 
+v8.22 — REORDERABLE CHECKOUT TRUST LINES + CLEARER TRACKED-DELIVERY WORDING
+(2026-08-10; internal trust-module version v11/v11.1): (1) the Checkout page's
+trust module card gained a "Lines (display order)" list — every line keeps its
+visibility checkbox and gets up/down arrows (same pattern as the trust-badges
+page); buyers see the checked lines in exactly that order, applied live on
+save. The order is stored as checkoutTrust.rowOrder and normalized at every
+read/write point to a full permutation of the six lines, so a reorder can
+never hide, duplicate or reveal a line — visibility stays with the checkboxes
+and the per-market gates, and existing stores render exactly as before until
+they reorder. (2) The tracked-delivery line is now ONE sentence in all 18
+languages — the old two-part "Livraison suivie · Garantie d'ici au 13 août"
+pattern could read as a second stand-alone guarantee right under the
+money-back line; it is now "Livraison suivie garantie d'ici au {{date}}" /
+"Tracked delivery guaranteed by {{date}}" etc., with the guarantee
+grammatically bound to the delivery in every language (native-review passed;
+the validation suite now rejects any "·" separator in this string). No new
+scopes, no DB change, no new locale keys, no theme-editor or checkout-editor
+action — deploy BOTH halves per §3 (the admin page + settings model changed
+in the app server; Checkout.tsx, trust-logic.ts and all 18 locale files
+changed in the checkout-trust extension).
+
+v8.21 — ENDORSEMENTS OVERLAY (2026-08-10): the badge link gained a second
+behavior, picked on Proof library → Endorsements ("Link behavior"): instead
+of scrolling down the page, the link can open a polished dialog right where
+the shopper is — your methodology text (new "Overlay methodology text"
+field; blank = the section description; {n} = live count; DeepL-translated
+like the other copy), a "Licensed dermatologists" credential line, and
+every endorsement browsable with Show more. Desktop: centered dialog;
+mobile: bottom sheet. Full modal accessibility (focus trap, Escape,
+scrim/close, focus restore) rides the same machinery as the results
+lightbox. Default stays "scroll" — nothing changes until you switch. No
+new locale keys, no DB change, no new scopes.
+
+v8.20 — DEPLOY-BLOCKER ROOT CAUSES FIXED IN-TREE (2026-08-10): the two
+classes from your deploy report are now fixed at the source AND fenced by
+permanent validation tripwires, so future exports can no longer revert
+your deploy-side patches: (1) literal brace strings as filter arguments
+inside {{ }} output tags (Shopify's real parser rejects them) — all 14
+'{name}' sites in pdp-booster.liquid now ride an assigned cx_name_token
+(reinstating your commit-7196208 fix in the canonical tree) and both
+'{n}' sites in proof-booster.liquid ride cx_n_token; a new harness sweep
+bans quoted brace literals inside ANY {{ }} output tag in every Liquid
+file. (2) locale plural-shape supersets — en.default.json now carries
+every CLDR plural category any locale uses (cellexia-booster:
+bought_count, cta_count, fbt_add, days_count, badge_headline,
+count_headline, weeks_count; checkout-trust: guarantee_title,
+guarantee_body) and the four flat-string locales (fi/hu/ja/pl) are
+wrapped in their own languages' plural shapes with unchanged text; a new
+harness check enforces "every locale's flattened keys, plural categories
+included, are a subset of en.default" across ALL extensions. No visual
+or behavioral change on the storefront; your local commits 78fe8ff /
+b5a2ea5 are superseded by this tree (same fixes, same shapes).
+
 v8.19 — ENDORSEMENT COPY SPEAKS EVERY LANGUAGE (2026-08-09): the seven
 custom copy fields of the endorsement section/badge (eyebrow, headline,
 description, badge headline, badge link, badge no-link, badge chip) now

@@ -9,5 +9,5 @@
   "clinical": "臨床的に実証された処方",
   "trustpilot": "{{rating}}/5・Trustpilotで{{count}}件のレビュー",
   "customs": "お届け時に関税や追加料金はかかりません。",
-  "tracked": "追跡可能な配送・{{date}}までのお届けを保証"
+  "tracked": "追跡可能な配送で{{date}}までのお届けを保証"
 }

@@ -168,9 +168,16 @@ Checkout locale files unchanged.)
   "clinical": "Clinically proven formulas",
   "trustpilot": "{{rating}}/5 · {{count}} reviews on Trustpilot",
   "customs": "No customs or additional fees on delivery.",
-  "tracked": "Tracked Delivery · Guaranteed by {{date}}"
+  "tracked": "Tracked delivery guaranteed by {{date}}"
 }
 ```
+
+(v11.1: `tracked` is ONE sentence in every locale — the earlier
+"Tracked Delivery · Guaranteed by {{date}}" two-part pattern read as a second
+standalone guarantee right under the money-back line (merchant catch on the
+French checkout: "Livraison suivie · Garantie d'ici au 13 août"). The
+guarantee must stay grammatically bound to the delivery noun; the sim rejects
+any `·`/`・` separator in `tracked`.)
 
 (v5.5: the `subscription_hint` line — "Continuous Treatment Plan members
 save {{percent}}% on every delivery." — was removed from the checkout trust
@@ -352,6 +359,16 @@ when off. All components from `@shopify/ui-extensions-react/checkout`. Use `useT
    the shipping address, fails closed row-locally) — clinical line and Trustpilot line. Pure
    display, no mutations, no network calls. Pure logic lives in `src/trust-logic.ts`
    (sim-tested by `validation/sims/checkout-trust.ts`). (v5.5 removed the subscription hint.)
+   v11: rows render in `checkoutTrust.rowOrder` (merchant-reorderable with arrow buttons on the
+   Checkout admin page, the badges-page pattern; LIVE setting, no preview plumbing). `rowOrder`
+   is normalized EVERYWHERE it is read (sanitize on save, admin page on load, `resolveConfig`
+   in the extension) to a FULL permutation of the six row keys `badges, guarantee, customs,
+   tracked, clinical, trustpilot` (`CHECKOUT_TRUST_ROWS` in settings.server.ts =
+   `TRUST_ROW_ORDER_DEFAULT` in trust-logic.ts, kept in sync) — unknown keys drop, duplicates
+   dedupe, missing keys append in default order, non-arrays reset. Ordering can therefore never
+   hide, duplicate or reveal a row; visibility stays with the show* flags and per-row market
+   gates. Missing/pre-v11 config = default order = the pre-v11 hardcoded sequence
+   (byte-identical render).
 
 ## Admin dashboard spec (`app/routes/`)
 

@@ -11,5 +11,5 @@
   "clinical": "Fórmulas clinicamente comprovadas",
   "trustpilot": "{{rating}}/5 · {{count}} avaliações no Trustpilot",
   "customs": "Sem taxas alfandegárias nem custos adicionais na entrega.",
-  "tracked": "Envio com seguimento · Entrega garantida até {{date}}"
+  "tracked": "Envio com seguimento e entrega garantida até {{date}}"
 }

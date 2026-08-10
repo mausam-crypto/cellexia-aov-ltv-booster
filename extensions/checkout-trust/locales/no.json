@@ -11,5 +11,5 @@
   "clinical": "Klinisk dokumenterte formler",
   "trustpilot": "{{rating}}/5 · {{count}} anmeldelser på Trustpilot",
   "customs": "Ingen toll eller ekstra gebyrer ved levering.",
-  "tracked": "Sporbar frakt · Garantert levering senest {{date}}"
+  "tracked": "Sporbar levering garantert senest {{date}}"
 }

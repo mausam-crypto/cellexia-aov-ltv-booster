@@ -203,7 +203,7 @@ let failLocales = new Set<string>();
 const copyState: Record<string, string> = {
   copyEyebrow: "", copyHeadline: "", copyDescription: "",
   copyBadgeHeadline: "", copyBadgeLink: "", copyBadgeNoLink: "",
-  copyBadgeChip: "",
+  copyBadgeChip: "", copyOverlayNote: "",
 };
 (globalThis as any).__CX_PT_SETTINGS = async () => ({
   dermEndorsements: { ...copyState },
@@ -647,17 +647,21 @@ const result1 = db._seed("customerResult", {
     copyEyebrow: "Trusted", copyHeadline: "Loved by {n} of {n} experts",
     copyDescription: "Desc", copyBadgeHeadline: "Backed by {n} pros",
     copyBadgeLink: "See {n} reviews", copyBadgeNoLink: "Verified", copyBadgeChip: "Chip",
+    copyOverlayNote: "All {n} endorsements verified",
   };
   const translated = {
     copyEyebrow: "FR-eyebrow", copyHeadline: "Aimé par {n} sur {n} experts",
     copyDescription: "FR-desc", copyBadgeHeadline: "Soutenu par {n} pros",
     copyBadgeLink: "Voir les {n} avis", copyBadgeNoLink: "FR-verified", copyBadgeChip: "FR-chip",
+    copyOverlayNote: "Les {n} recommandations vérifiées",
   };
   const out = T.copyOverlayToIslandCodes(translated, sources);
-  ok(JSON.stringify(Object.keys(out).sort()) === JSON.stringify(["ob", "oc", "od", "oe", "oh", "ol", "on"]),
+  ok(JSON.stringify(Object.keys(out).sort()) === JSON.stringify(["ob", "oc", "od", "oe", "oh", "ol", "on", "ov"]),
     "C7: every field emits under its island code");
   ok(out.oh === "Aimé par @@N@@ sur @@N@@ experts" && out.ob === "Soutenu par @@N@@ pros",
     "C7: BOTH headline fields mirror every {n} to @@N@@");
+  ok(out.ov === "Les @@N@@ recommandations vérifiées",
+    "C7: the overlay note mirrors {n} to @@N@@ too (v8.21)");
   ok(out.ol === "Voir les {n} avis",
     "C7: non-headline fields keep {n} verbatim (no consumer)");
   const blankedOut = T.copyOverlayToIslandCodes(translated, { ...sources, copyHeadline: "" });

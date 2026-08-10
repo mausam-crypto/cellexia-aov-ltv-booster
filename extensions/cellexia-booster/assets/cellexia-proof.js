@@ -1198,6 +1198,117 @@
     return chip;
   }
 
+  // ------------------------------------------ endorsements overlay (v8.21)
+  //
+  // The badge link's second behavior (badgeLinkAction "overlay", island
+  // "bo":1): instead of scrolling away, a dialog opens IN PLACE with the
+  // methodology note (copyOverlayNote -> the section description) and the
+  // full browsable endorsement list — the wall's own cards + Show more
+  // pagination against the same proxy. All modal a11y (focus trap,
+  // Escape, scrim/close clicks, body scroll lock, focus restore) rides
+  // the proven pfLbOpen/pfLbClose lightbox machinery.
+
+  function endoOverlayNote(s) {
+    // Override chain: overlay note -> description override -> catalog
+    // description. The note may carry @@N@@ (merchant {n}).
+    var t = pfStr(s, 'ov');
+    if (!/\S/.test(t)) t = endoText(s, 'od', 'desc');
+    return t;
+  }
+
+  function endoOverlayBuild(conf, data) {
+    var s = conf.str || {};
+    var items = endoValidItems(data);
+    if (items.length === 0) return null;
+    var total = pfPosInt(data.total) ? data.total : items.length;
+    if (total < items.length) total = items.length;
+    var root = pfEl('div', 'cx-endo-ov', ['role', 'presentation']);
+    var card = pfEl('div', 'cx-endo-ov__card', ['role', 'dialog', 'aria-modal', 'true', 'aria-labelledby', 'cx-endo-ov-title', 'tabindex', '-1']);
+    var head = pfEl('div', 'cx-endo-ov__head');
+    var titles = pfEl('div', 'cx-endo-ov__titles');
+    var title = pfEl('h2', 'cx-endo-ov__title', ['id', 'cx-endo-ov-title']);
+    // Same resolution chain as the badge headline (el ships bh blank).
+    var headTpl = pfStr(s, 'ob');
+    if (!/\S/.test(headTpl)) headTpl = pfStr(s, total === 1 ? 'bh1' : 'bh2');
+    if (!/\S/.test(headTpl)) headTpl = pfStr(s, total === 1 ? 'one' : 'other');
+    endoBadgeHeadParts(title, headTpl, total, true);
+    titles.appendChild(title);
+    var chipText = endoText(s, 'oc', 'chip');
+    if (/\S/.test(chipText)) {
+      var cred = pfEl('p', 'cx-endo-ov__cred');
+      cred.appendChild(endoBadgeOutlineShield());
+      var credText = pfEl('span', 'cx-endo-ov__cred-text');
+      credText.textContent = chipText;
+      cred.appendChild(credText);
+      titles.appendChild(cred);
+    }
+    head.appendChild(titles);
+    var close = pfEl('button', 'cx-endo-ov__close', ['type', 'button', 'data-cx-lb-close', '']);
+    close.textContent = '×';
+    var closeLabel = pfStr(s, 'cls');
+    if (/\S/.test(closeLabel)) close.setAttribute('aria-label', closeLabel);
+    head.appendChild(close);
+    card.appendChild(head);
+    var noteText = endoOverlayNote(s);
+    if (/\S/.test(noteText)) {
+      var note = pfEl('p', 'cx-endo-ov__note');
+      note.textContent = noteText.split('@@N@@').join(String(total));
+      card.appendChild(note);
+    }
+    var list = pfEl('div', 'cx-endo-ov__list');
+    for (var i = 0; i < items.length; i++) list.appendChild(endoBuildCard(items[i], s));
+    card.appendChild(list);
+    var shown = items.length;
+    var page = 1;
+    var foot = pfEl('div', 'cx-endo-ov__foot');
+    var progress = pfEl('p', 'cx-endo-ov__progress');
+    function setProgress() {
+      var tpl = pfStr(s, 'shown');
+      if (!/\S/.test(tpl)) return;
+      progress.textContent = tpl.replace('@@SHOWN@@', String(shown)).replace('@@TOTAL@@', String(total));
+    }
+    setProgress();
+    foot.appendChild(progress);
+    var moreLabel = pfStr(s, 'more');
+    if (moreLabel) {
+      // Reuses the wall's styled pill (incl. its [hidden] display guard).
+      var moreBtn = pfEl('button', 'cx-endo__show-more', ['type', 'button']);
+      moreBtn.textContent = moreLabel;
+      var syncMore = function () {
+        if (shown >= total) moreBtn.setAttribute('hidden', '');
+        else moreBtn.removeAttribute('hidden');
+      };
+      moreBtn.addEventListener('click', function () {
+        if (moreBtn.hasAttribute('disabled')) return;
+        moreBtn.setAttribute('disabled', '');
+        proofFetch('endorsements', pfProductParams(conf, { page: page + 1, per: 24 }), function (next) {
+          moreBtn.removeAttribute('disabled');
+          var extra = endoValidItems(next);
+          if (extra.length === 0) {
+            moreBtn.setAttribute('hidden', '');
+            return;
+          }
+          page += 1;
+          for (var j = 0; j < extra.length; j++) list.appendChild(endoBuildCard(extra[j], s));
+          shown += extra.length;
+          if (shown > total) total = shown;
+          setProgress();
+          syncMore();
+        });
+      });
+      foot.appendChild(moreBtn);
+      syncMore();
+    }
+    card.appendChild(foot);
+    root.appendChild(card);
+    return root;
+  }
+
+  function endoOverlayOpen(conf, data, trigger) {
+    var node = endoOverlayBuild(conf, data);
+    if (node) pfLbOpen(node, trigger);
+  }
+
   function endoBadgeBuild(conf, data) {
     if (conf.bd !== 1 || conf.ctx !== 'product') return null;
     var items = endoValidItems(data);
@@ -1248,13 +1359,13 @@
     if (!choicey) head.appendChild(endoBadgeShield());
     endoBadgeHeadParts(head, headTpl, total, choicey);
     body.appendChild(head);
-    endoBadgeTail(conf, s, body);
+    endoBadgeTail(conf, s, body, data);
     host.appendChild(body);
     if (row) root.appendChild(row);
     return root;
   }
 
-  function endoBadgeTail(conf, s, body) {
+  function endoBadgeTail(conf, s, body, data) {
     if (conf.bk === 0) {
       // Link toggled off: the quiet non-link line takes the row instead.
       var altText = endoText(s, 'on', 'bv');
@@ -1270,18 +1381,23 @@
         link.textContent = linkText;
         link.addEventListener('click', function (ev) {
           try { ev.preventDefault(); } catch (e) { /* noop */ }
-          var wall = document.querySelector('.cx-endo');
-          if (wall) {
-            // Smooth only when motion is welcome: programmatic smooth
-            // scroll is NOT reduced by the browser under
-            // prefers-reduced-motion (unlike CSS scroll-behavior).
-            var reduce = false;
-            try {
-              reduce = !!(window.matchMedia &&
-                window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-            } catch (e) { /* noop */ }
-            try { wall.scrollIntoView(reduce ? { block: 'start' } : { behavior: 'smooth', block: 'start' }); }
-            catch (e) { try { wall.scrollIntoView(); } catch (e2) { /* noop */ } }
+          if (conf.bo === 1) {
+            // v8.21 overlay behavior: browse everything in place.
+            endoOverlayOpen(conf, data, link);
+          } else {
+            var wall = document.querySelector('.cx-endo');
+            if (wall) {
+              // Smooth only when motion is welcome: programmatic smooth
+              // scroll is NOT reduced by the browser under
+              // prefers-reduced-motion (unlike CSS scroll-behavior).
+              var reduce = false;
+              try {
+                reduce = !!(window.matchMedia &&
+                  window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+              } catch (e) { /* noop */ }
+              try { wall.scrollIntoView(reduce ? { block: 'start' } : { behavior: 'smooth', block: 'start' }); }
+              catch (e) { try { wall.scrollIntoView(); } catch (e2) { /* noop */ } }
+            }
           }
           pfTrack('derm_endorsements', 'click');
         });
@@ -1327,7 +1443,7 @@
     // island carries. Whitelisted keys only; the catalog defaults and the
     // fallback chains behind endoText are untouched.
     if (!conf || !conf.str || !data || !data.copy || typeof data.copy !== 'object') return;
-    var keys = ['oe', 'oh', 'od', 'ob', 'ol', 'on', 'oc'];
+    var keys = ['oe', 'oh', 'od', 'ob', 'ol', 'on', 'oc', 'ov'];
     for (var i = 0; i < keys.length; i++) {
       var value = data.copy[keys[i]];
       if (typeof value === 'string' && /\S/.test(value)) conf.str[keys[i]] = value;
@@ -1623,6 +1739,9 @@
       );
       for (var i = 0; i < nodes.length; i++) {
         if (nodes[i].getAttribute('tabindex') === '-1') continue;
+        // A display:none control (the paged-out Show more pill) would
+        // dead-lock shift-Tab and leak forward Tab behind the modal.
+        if (nodes[i].hasAttribute('hidden')) continue;
         out.push(nodes[i]);
       }
     } catch (e) { /* noop */ }
@@ -1648,7 +1767,7 @@
       if (pfLbState || document.getElementById('cx-proof-lb')) return; // singleton
       if (!root) return;
       root.id = 'cx-proof-lb';
-      var card = root.querySelector('.cx-lightbox__card') || root;
+      var card = root.querySelector('.cx-lightbox__card, .cx-endo-ov__card') || root;
 
       var onKeydown = function (event) {
         if (event.key === 'Escape' || event.key === 'Esc') {
@@ -1684,7 +1803,11 @@
           }
           el = el.parentNode;
         }
-        if (el === root) pfLbClose(); // the flex gutter around the card
+        // Only a DIRECT gutter/scrim click closes — the walk-up loop ends
+        // at root for EVERY interior click, so testing the walked pointer
+        // was a tautology that closed the dialog on any tap inside it
+        // (v8.21 review catch; the overlay's Show more made it visible).
+        if (event.target === root) pfLbClose();
       });
 
       var prevOverflow = '';
