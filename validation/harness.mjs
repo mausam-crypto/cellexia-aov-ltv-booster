@@ -587,14 +587,18 @@ const EVIDENCE = {
         ),
       "v8.17: the two headline fields canonicalize {n} brace variants (methodology discipline)",
     );
+    ok(
+      proofLiquid.includes("assign cx_n_token = '{n}'"),
+      "v8.17/regression-fix: cx_n_token variable assignment present in proof-booster.liquid (Shopify's real Liquid parser rejects the literal '{n}' string as a filter argument inside {{ }})",
+    );
     for (const member17 of [
       '{% if cfg.dermEndorsements.badgeEnabled == true %},"bd":1{% endif %}',
       '{% if cfg.dermEndorsements.badgeShowLink == false %},"bk":0{% endif %}',
       `"desc":{{'endo.description'|t|json}}`,
       `"bh1":{{'endo.badge_headline'|t:count:1,n:'@@N@@'|json}}`,
       `"bh2":{{'endo.badge_headline'|t:count:2,n:'@@N@@'|json}}`,
-      `"oh":{{cfg.dermEndorsements.copyHeadline|replace:'{n}','@@N@@'|json}}`,
-      `"ob":{{cfg.dermEndorsements.copyBadgeHeadline|replace:'{n}','@@N@@'|json}}`,
+      `"oh":{{cfg.dermEndorsements.copyHeadline|replace:cx_n_token,'@@N@@'|json}}`,
+      `"ob":{{cfg.dermEndorsements.copyBadgeHeadline|replace:cx_n_token,'@@N@@'|json}}`,
       `"on":{{cfg.dermEndorsements.copyBadgeNoLink|json}}`,
       `"bl":{{'endo.badge_link'|t|json}}`,
       `"bv":{{'endo.badge_alt'|t|json}}`,
@@ -2384,11 +2388,15 @@ const EVIDENCE = {
   // substitute the display name — the raw value used to ship verbatim
   // ("Tested on {name} itself" showed literally). Every merchant-entered
   // text field of the two islands carries the replace filter.
-  const NAME_REPLACE = "| replace: '{name}', cx_pname";
+  const NAME_REPLACE = "| replace: cx_name_token, cx_pname";
   const replaceUses = pdpLiquid.split(NAME_REPLACE).length - 1;
   ok(
+    pdpLiquid.includes("assign cx_name_token = '{name}'"),
+    "v8.13b/regression-fix: cx_name_token variable assignment present (Shopify's real Liquid parser rejects the literal '{name}' string as a filter argument inside {{ }})",
+  );
+  ok(
     replaceUses === 14,
-    `v8.13b: exactly 14 '{name}' replace filters in pdp-booster.liquid (got ${replaceUses})`,
+    `v8.13b: exactly 14 '{name}' replace filters (via cx_name_token) in pdp-booster.liquid (got ${replaceUses})`,
   );
   for (const site of [
     `{{ cx_study.subject.value ${NAME_REPLACE} | json }}`,
@@ -2399,7 +2407,7 @@ const EVIDENCE = {
     `t: methods: cx_study.instruments.value ${NAME_REPLACE} | json }}`,
     `assign survey_verifier = survey_verifier ${NAME_REPLACE}`,
   ]) {
-    ok(pdpLiquid.includes(site), `v8.13b: {name} replace at: ${site.slice(0, 60)}`);
+    ok(pdpLiquid.includes(site), `v8.13b: {name} replace (via cx_name_token) at: ${site.slice(0, 60)}`);
   }
   // DeepL protection: single-brace {name} (and spaced legacy variants) must
   // survive machine translation of custom text (the substitution happens

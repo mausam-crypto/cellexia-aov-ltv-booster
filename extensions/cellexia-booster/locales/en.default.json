@@ -71,7 +71,11 @@
     "eyebrow": "Independent clinical study",
     "subject": "Tested on {{ product }} itself — the exact formula on this page.",
     "weeks_count": {
+      "zero": "{{ count }}-week study",
       "one": "{{ count }}-week study",
+      "two": "{{ count }}-week study",
+      "few": "{{ count }}-week study",
+      "many": "{{ count }}-week study",
       "other": "{{ count }}-week study"
     },
     "fact_participants": "{{ n }} participants",
@@ -106,7 +110,11 @@
     "title": "Try it for {{ days }}, completely risk-free",
     "body": "Take {{ days }}. If you don't love your results, return the empty {{ container }} for a full refund.",
     "days_count": {
+      "zero": "{{ count }} days",
       "one": "{{ count }} day",
+      "two": "{{ count }} days",
+      "few": "{{ count }} days",
+      "many": "{{ count }} days",
       "other": "{{ count }} days"
     },
     "container_bottle": "bottle",
@@ -148,7 +156,11 @@
   "endo": {
     "eyebrow": "Dermatologist recommended",
     "count_headline": {
+      "zero": "{{ n }} dermatologists recommend Cellexia",
       "one": "{{ n }} dermatologist recommends Cellexia",
+      "two": "{{ n }} dermatologists recommend Cellexia",
+      "few": "{{ n }} dermatologists recommend Cellexia",
+      "many": "{{ n }} dermatologists recommend Cellexia",
       "other": "{{ n }} dermatologists recommend Cellexia"
     },
     "shown_of": "Showing @@SHOWN@@ of @@TOTAL@@",
@@ -156,7 +168,11 @@
     "read_full": "Read full endorsement",
     "description": "Verified recommendations from licensed dermatologists. Read what they have to say about the product, Cellexia and its approach to skincare.",
     "badge_headline": {
+      "zero": "Recommended by {{ n }} dermatologists",
       "one": "Recommended by {{ n }} dermatologist",
+      "two": "Recommended by {{ n }} dermatologists",
+      "few": "Recommended by {{ n }} dermatologists",
+      "many": "Recommended by {{ n }} dermatologists",
       "other": "Recommended by {{ n }} dermatologists"
     },
     "badge_link": "Read their professional assessments",
@@ -219,7 +235,11 @@
     "secure": "Secure transaction",
     "free_returns": "FREE returns",
     "bought_count": {
+      "zero": "{{ n }}+ bought in past month",
       "one": "{{ n }}+ bought in past month",
+      "two": "{{ n }}+ bought in past month",
+      "few": "{{ n }}+ bought in past month",
+      "many": "{{ n }}+ bought in past month",
       "other": "{{ n }}+ bought in past month"
     },
     "bestseller": "#{{ rank }} Bestseller",
@@ -227,13 +247,21 @@
     "fbt_this_item": "This item:",
     "fbt_total": "Total price:",
     "fbt_add": {
+      "zero": "Add all {{ count }} to cart",
       "one": "Add to cart",
+      "two": "Add all {{ count }} to cart",
+      "few": "Add all {{ count }} to cart",
+      "many": "Add all {{ count }} to cart",
       "other": "Add all {{ count }} to cart"
     },
     "fbt_add_both": "Add both to cart",
     "similar_title": "You Might Also Like",
     "cta_count": {
+      "zero": "Proceed to checkout ({{ count }} items)",
       "one": "Proceed to checkout ({{ count }} item)",
+      "two": "Proceed to checkout ({{ count }} items)",
+      "few": "Proceed to checkout ({{ count }} items)",
+      "many": "Proceed to checkout ({{ count }} items)",
       "other": "Proceed to checkout ({{ count }} items)"
     }
   }

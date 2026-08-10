@@ -1,7 +1,18 @@
 {
-  "guarantee_title": "{{days}}-Day Money-Back Guarantee",
+  "guarantee_title": {
+    "zero": "{{days}}-Day Money-Back Guarantee",
+    "one": "{{days}}-Day Money-Back Guarantee",
+    "two": "{{days}}-Day Money-Back Guarantee",
+    "few": "{{days}}-Day Money-Back Guarantee",
+    "many": "{{days}}-Day Money-Back Guarantee",
+    "other": "{{days}}-Day Money-Back Guarantee"
+  },
   "guarantee_body": {
+    "zero": "Not satisfied? Get your money back within {{days}} days.",
     "one": "Not satisfied? Get your money back within {{days}} day.",
+    "two": "Not satisfied? Get your money back within {{days}} days.",
+    "few": "Not satisfied? Get your money back within {{days}} days.",
+    "many": "Not satisfied? Get your money back within {{days}} days.",
     "other": "Not satisfied? Get your money back within {{days}} days."
   },
   "secure": "Secure Encrypted Checkout",
