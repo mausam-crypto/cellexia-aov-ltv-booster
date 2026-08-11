@@ -349,6 +349,11 @@ v8.22 DESIGNS + OFFICIAL OVERLAY + MONOGRAM REMOVAL:
   the overlay (endoOverlayOpen + the derm_endorsements click beacon).
   Density codes are IGNORED under panel (the panel IS the compact design);
   headline missing → fail closed (no official panel without its claim).
+  MERCHANT CATCH (v8.22b): the View-all pill ALWAYS opens the full
+  endorsement LIST overlay (endoOverlayOpen forceList param → overrides
+  os) — the panel's clamped cards have no expander, so this pill is the
+  only route to the complete quote texts; the quoteless official
+  explainer stays the BADGE link's overlay. Pinned by P4 + mutant m31.
 - dermEndorsements.overlayStyle (OVERLAY_STYLES list|official, default
   list; island lean "os":1): "official" = the explainer overlay — instead
   of the one-by-one endorsement list: intro paragraphs (oi ONLY — blank

@@ -1698,6 +1698,16 @@ function unmountFixture(info) {
   S.document.body.removeChild(wallStub);
 }
 
+// v8.22 fixture: the proxy-served overlay-content codes, shared by the
+// panel (P) and official-overlay (OF) series.
+const OFFICIAL_STR = Object.assign({}, ENDO_STR, {
+  oi: "Every endorsement comes from a licensed dermatologist.\n\nAll @@N@@ statements are kept on file.",
+  fq: "Common questions",
+  f1q: "Who are the dermatologists?", f1a: "All contributors are licensed.\nEach is named.",
+  f2q: "How were these collected?", f2a: "Independently.",
+  lt: "All @@N@@ dermatologists",
+});
+
 // ============================================= panel wall (P, v8.22)
 //
 // wallStyle "panel" (island ws:1): the official fixed-height wall —
@@ -1758,6 +1768,30 @@ function unmountFixture(info) {
     "P2: last resort is the Show-more label (never a dead panel)");
 }
 
+// --- P4: the View-all pill ALWAYS opens the LIST overlay, even under os:1 -----------
+// (merchant catch: the panel's clamped cards have no expander, so this
+// button is the only route to the full quote texts — the official
+// explainer, which carries no quotes, stays the badge link's overlay)
+{
+  const conf = { ctx: "product", pid: 9, ws: 1, os: 1, str: OFFICIAL_STR };
+  const panel = S.endoBuildSection(conf, { total: 73, items: endoFixture(24, 0) });
+  S.PF_LB_OPENED.length = 0;
+  click(panel.querySelector(".cx-endo-panel__cta"));
+  const ov = S.PF_LB_OPENED[0];
+  ok(!!ov && ov.querySelectorAll(".cx-endo__card").length === 24 &&
+     !ov.querySelector(".cx-endo-ov__card--official") &&
+     !ov.querySelector(".cx-endo-ov__doc") && !ov.querySelector(".cx-endo-ov__intro"),
+    "P4: panel View-all under os:1 opens the FULL endorsement list, never the explainer");
+  ok(ov.querySelectorAll(".cx-endo__more").length > 0,
+    "P4: the list's per-card Read-full expanders are reachable from the panel");
+  // the badge link still opens the official explainer in the same config
+  S.PF_LB_OPENED.length = 0;
+  const badge = S.endoBadgeBuild(badgeConf({ bo: 1, os: 1, str: OFFICIAL_STR }), { total: 73, items: endoFixture(24, 0) });
+  click(badge.querySelector(".cx-endo-badge__link"));
+  ok(!!S.PF_LB_OPENED[0].querySelector(".cx-endo-ov__card--official"),
+    "P4: the badge link keeps opening the official explainer alongside");
+}
+
 // --- P3: gates — ws absent keeps the classic wall; panel needs a headline -----------
 {
   const wall = S.endoBuildSection({ ctx: "brand", pid: 0, str: ENDO_STR }, { total: 60, items: endoFixture(24, 0) });
@@ -1782,14 +1816,6 @@ function unmountFixture(info) {
 // endorsement one by one, the overlay explains where the recommendations
 // come from — proxy-served intro paragraphs, FAQ dropdowns, then the
 // dermatologist roster WITHOUT the individual quotes.
-
-const OFFICIAL_STR = Object.assign({}, ENDO_STR, {
-  oi: "Every endorsement comes from a licensed dermatologist.\n\nAll @@N@@ statements are kept on file.",
-  fq: "Common questions",
-  f1q: "Who are the dermatologists?", f1a: "All contributors are licensed.\nEach is named.",
-  f2q: "How were these collected?", f2a: "Independently.",
-  lt: "All @@N@@ dermatologists",
-});
 
 // --- OF1: structure — intro paragraphs, FAQ, roster; no quote cards -----------------
 {
@@ -2149,7 +2175,7 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         // v8.22: the official-overlay gate dropped — os:1 silently
         // renders the quote list again (OF1 catches).
         name: "m27-official-gate-dropped",
-        find: "    var official = conf.os === 1;",
+        find: "    var official = !forceList && conf.os === 1;",
         replace: "    var official = false;",
       },
       {
@@ -2172,6 +2198,14 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m30-raw-decode-regressed",
         find: "      var introText = pfStrRaw(s, 'oi');",
         replace: "      var introText = pfStr(s, 'oi');",
+      },
+      {
+        // v8.22 merchant catch: the panel CTA forced-list flag dropped —
+        // under os:1 the pill would open the quoteless explainer and the
+        // full endorsement texts would be unreachable (P4 catches).
+        name: "m31-panel-cta-opens-explainer",
+        find: "        endoOverlayOpen(conf, data, cta, true);",
+        replace: "        endoOverlayOpen(conf, data, cta);",
       },
       {
         name: "m9-preview-always-verified",

@@ -905,8 +905,8 @@ const EVIDENCE = {
       "v8.21: endo island emits bo + ov (token replace) + the reused close label",
     );
     for (const anchor21 of [
-      "function endoOverlayBuild(conf, data) {",
-      "function endoOverlayOpen(conf, data, trigger) {",
+      "function endoOverlayBuild(conf, data, forceList) {",
+      "function endoOverlayOpen(conf, data, trigger, forceList) {",
       "if (node) pfLbOpen(node, trigger);",
       "if (conf.bo === 1) {",
       "endoOverlayOpen(conf, data, link);",
@@ -1011,7 +1011,10 @@ const EVIDENCE = {
     for (const anchor22 of [
       "function endoPanelBuild(conf, data) {",
       "if (conf.ws === 1) return endoPanelBuild(conf, data);",
-      "var official = conf.os === 1;",
+      "var official = !forceList && conf.os === 1;",
+      // merchant catch: the panel pill promises the endorsements — it
+      // must FORCE the list overlay even when overlayStyle is official
+      "endoOverlayOpen(conf, data, cta, true);",
       "var body = pfEl('div', 'cx-endo-ov__body');",
       "function endoOverlayFaq(s) {",
       "function endoOverlayDocRow(item) {",
@@ -1399,6 +1402,7 @@ const EVIDENCE = {
     cwd: ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    shell: process.platform === "win32",
   });
   const DEF = JSON.parse(out);
   ok(DEF && typeof DEF === "object", "emission: DEFAULT_SETTINGS executed from the live model");

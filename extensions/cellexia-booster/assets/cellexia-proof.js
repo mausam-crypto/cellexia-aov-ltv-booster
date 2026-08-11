@@ -939,9 +939,11 @@
     root.appendChild(rail);
     pfSp(root);
     // View-all pill: merchant CTA (proxy-served, translated) → the badge
-    // link label → the Show-more label. Opens the overlay — in the
-    // official style that is the methodology explainer, in the list style
-    // the full browsable endorsements (where clamped quotes read whole).
+    // link label → the Show-more label. ALWAYS opens the full endorsement
+    // LIST overlay, even when overlayStyle is "official" (merchant catch:
+    // the panel's clamped cards have no expander, so this button is the
+    // ONLY route to the full quote texts — the official explainer, which
+    // deliberately carries no quotes, stays the badge link's overlay).
     var ctaTpl = pfStrRaw(s, 'wc');
     if (!/\S/.test(ctaTpl)) ctaTpl = endoText(s, 'ol', 'bl');
     if (!/\S/.test(ctaTpl)) ctaTpl = pfStr(s, 'more');
@@ -950,7 +952,7 @@
       var cta = pfEl('button', 'cx-endo-panel__cta', ['type', 'button']);
       cta.textContent = ctaTpl.split('@@N@@').join(String(total));
       cta.addEventListener('click', function () {
-        endoOverlayOpen(conf, data, cta);
+        endoOverlayOpen(conf, data, cta, true);
         pfTrack('derm_endorsements', 'click');
       });
       foot.appendChild(cta);
@@ -1354,7 +1356,7 @@
     return row;
   }
 
-  function endoOverlayBuild(conf, data) {
+  function endoOverlayBuild(conf, data, forceList) {
     var s = conf.str || {};
     var items = endoValidItems(data);
     if (items.length === 0) return null;
@@ -1366,7 +1368,10 @@
     // full dermatologist roster without the individual quotes. All three
     // pieces are proxy-served merchant copy; with none of them present
     // the overlay still stands as title + roster (the payload's items).
-    var official = conf.os === 1;
+    // `forceList` (the panel's View-all pill) overrides os: that button
+    // promises the endorsements themselves and is the clamped rail's
+    // only route to the full texts.
+    var official = !forceList && conf.os === 1;
     var root = pfEl('div', 'cx-endo-ov', ['role', 'presentation']);
     var card = pfEl('div', 'cx-endo-ov__card' + (official ? ' cx-endo-ov__card--official' : ''), ['role', 'dialog', 'aria-modal', 'true', 'aria-labelledby', 'cx-endo-ov-title', 'tabindex', '-1']);
     var head = pfEl('div', 'cx-endo-ov__head');
@@ -1481,8 +1486,8 @@
     return root;
   }
 
-  function endoOverlayOpen(conf, data, trigger) {
-    var node = endoOverlayBuild(conf, data);
+  function endoOverlayOpen(conf, data, trigger, forceList) {
+    var node = endoOverlayBuild(conf, data, forceList);
     if (node) pfLbOpen(node, trigger);
   }
 

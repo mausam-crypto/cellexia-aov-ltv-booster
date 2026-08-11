@@ -1330,7 +1330,7 @@ export default function ProofEndorsementsTab() {
                 value as (typeof display)["overlayStyle"],
               )
             }
-            helpText="What opens from the badge link (overlay behavior) and the panel's View-all button. The official explainer shows your intro text, FAQ dropdowns and the full dermatologist list instead of the one-by-one endorsements — edit its content below."
+            helpText="What the badge link opens (with the overlay link behavior). The official explainer shows your intro text, FAQ dropdowns and the full dermatologist list instead of the one-by-one endorsements — edit its content below. The panel's View-all button ALWAYS opens the full endorsement list: with the panel's clamped cards it is the only route to the complete quote texts."
           />
           <Divider />
           <Checkbox
@@ -1451,7 +1451,7 @@ export default function ProofEndorsementsTab() {
             label="Panel View-all button"
             value={displayState.copyWallCta}
             onChange={(value) => setDisplayField("copyWallCta", value)}
-            helpText="The official panel's button that opens the overlay. Use {n} for the endorsement count. Blank: the badge link text serves."
+            helpText="The official panel's button. It always opens the full endorsement list (whatever the overlay style above). Use {n} for the endorsement count. Blank: the badge link text serves."
             autoComplete="off"
           />
           <Divider />
