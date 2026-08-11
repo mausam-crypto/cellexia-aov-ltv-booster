@@ -105,6 +105,16 @@
     return map && typeof map[key] === 'string' ? pfDecode(map[key]) : '';
   }
 
+  function pfStrRaw(map, key) {
+    // v8.22: RAW reader for the proxy-only overlay-content codes (wc/oi/
+    // fq/f1q..f4a/lt). Those never pass Liquid's t-filter escaping — the
+    // proxy serves the merchant text verbatim as JSON — so running
+    // pfDecode on them would UN-escape entities the merchant typed
+    // literally ("R&amp;D" would render as "R&D"). Island/t-carried
+    // strings keep pfStr.
+    return map && typeof map[key] === 'string' ? map[key] : '';
+  }
+
   function pfHttps(url) {
     // THE gate for every URL that may reach el.src / href / <video src>:
     // string, https scheme, no whitespace — anything else becomes '' and
@@ -804,31 +814,11 @@
   // -------------------------------------------- endorsement wall (v8)
   //
   // THE WALL: static count headline (credible, not animated), dense
-  // multi-column card wall (CSS columns 1/2/3/4), 44px portrait circle or
-  // initials monogram, one-line clamped quote expanding in place, and a
-  // "Showing X of N" progress line + Show more pagination (24 per page).
-
-  function endoInitials(name) {
-    // Monogram fallback: first + last "real" token initials — tokens
-    // ending in '.' (Dr., Prof.) are skipped when anything else remains,
-    // so "Dr. Anna Weiss" → AW. '' when the name has no usable token
-    // (callers then skip the monogram entirely).
-    var parts = String(name || '').split(/\s+/);
-    var keep = [];
-    var i;
-    for (i = 0; i < parts.length; i++) {
-      if (parts[i] && !/\.$/.test(parts[i])) keep.push(parts[i]);
-    }
-    if (keep.length === 0) {
-      for (i = 0; i < parts.length; i++) {
-        if (parts[i]) keep.push(parts[i]);
-      }
-    }
-    if (keep.length === 0) return '';
-    var out = keep[0].charAt(0);
-    if (keep.length > 1) out += keep[keep.length - 1].charAt(0);
-    return out.toUpperCase();
-  }
+  // multi-column card wall (CSS columns 1/2/3/4), 44px portrait circle
+  // (photo rows ONLY — v8.22 removed the initials-monogram filler: a
+  // letter circle reads as a fake avatar, so photo-less cards simply
+  // lead with the name), one-line clamped quote expanding in place, and
+  // a "Showing X of N" progress line + Show more pagination (24/page).
 
   function endoValidItems(data) {
     if (!data || !Array.isArray(data.items)) return [];
@@ -858,7 +848,10 @@
     return /\S/.test(o) ? o : pfStr(s, key);
   }
 
-  function endoBuildCard(item, s) {
+  function endoBuildCard(item, s, bare) {
+    // v8.22 `bare` (the panel rail): no in-place expander — the quote
+    // stays CSS-clamped and the panel's View-all pill opens the overlay
+    // for the full text (an expanding card would break the fixed height).
     var card = pfEl('div', 'cx-endo__card');
     pfSp(card);
     var head = pfEl('div', 'cx-endo__head');
@@ -866,13 +859,6 @@
       var img = pfEl('img', 'cx-endo__photo', ['alt', '', 'aria-hidden', 'true', 'loading', 'lazy']);
       img.src = item.img;
       head.appendChild(img);
-    } else {
-      var initials = endoInitials(item.n);
-      if (initials) {
-        var mono = pfEl('span', 'cx-endo__monogram', ['aria-hidden', 'true']);
-        mono.textContent = initials;
-        head.appendChild(mono);
-      }
     }
     pfSp(head);
     var id = pfEl('div', 'cx-endo__id');
@@ -895,7 +881,7 @@
     quote.textContent = item.q;
     card.appendChild(quote);
     pfSp(card);
-    var readLabel = pfStr(s, 'read');
+    var readLabel = bare ? '' : pfStr(s, 'read');
     if (readLabel) {
       var more = pfEl('button', 'cx-endo__more', ['type', 'button', 'aria-expanded', 'false']);
       more.textContent = readLabel;
@@ -906,16 +892,76 @@
       });
       card.appendChild(more);
       pfSp(card);
-    } else {
+    } else if (!bare) {
       // Stale-island degrade: no expander label means no working
       // disclosure, so the full quote ships unclamped instead of
-      // unreachable (the compact-survey lesson).
+      // unreachable (the compact-survey lesson). Panel (`bare`) cards
+      // stay clamped on purpose — the overlay carries the full text.
       card.className = 'cx-endo__card cx-endo__card--open';
     }
     return card;
   }
 
+  function endoPanelBuild(conf, data) {
+    // v8.22 "panel" wall design (island "ws":1): the official fixed-height
+    // alternative to the masonry wall — shield + count headline +
+    // credential chip over a horizontal scroll-snap rail of clamped cards,
+    // closed by a View-all pill that opens the overlay. Vertical footprint
+    // is CONSTANT whatever the endorsement count; density codes are
+    // ignored (the panel IS the compact design).
+    var items = endoValidItems(data);
+    if (items.length === 0) return null; // fail closed with the wall
+    var s = conf.str || {};
+    var total = pfPosInt(data.total) ? data.total : items.length;
+    if (total < items.length) total = items.length;
+    var headTpl = endoText(s, 'oh', total === 1 ? 'one' : 'other');
+    if (!/\S/.test(headTpl)) return null; // no headline, no official panel
+    var root = pfEl('section', 'cx-proof cx-endo cx-endo--panel', ['data-cx-feature', 'derm_endorsements']);
+    pfSp(root);
+    var head = pfEl('div', 'cx-endo-panel__head');
+    var headline = pfEl('h2', 'cx-endo-panel__headline');
+    headline.appendChild(endoBadgeShield());
+    endoBadgeHeadParts(headline, headTpl, total, true);
+    head.appendChild(headline);
+    var chipText = endoText(s, 'oc', 'chip');
+    if (/\S/.test(chipText)) {
+      var chip = pfEl('p', 'cx-endo-panel__chip');
+      chip.appendChild(endoBadgeOutlineShield());
+      var chipLabel = pfEl('span', 'cx-endo-panel__chip-text');
+      chipLabel.textContent = chipText;
+      chip.appendChild(chipLabel);
+      head.appendChild(chip);
+    }
+    root.appendChild(head);
+    pfSp(root);
+    var rail = pfEl('div', 'cx-endo-panel__rail');
+    for (var i = 0; i < items.length; i++) rail.appendChild(endoBuildCard(items[i], s, true));
+    root.appendChild(rail);
+    pfSp(root);
+    // View-all pill: merchant CTA (proxy-served, translated) → the badge
+    // link label → the Show-more label. Opens the overlay — in the
+    // official style that is the methodology explainer, in the list style
+    // the full browsable endorsements (where clamped quotes read whole).
+    var ctaTpl = pfStrRaw(s, 'wc');
+    if (!/\S/.test(ctaTpl)) ctaTpl = endoText(s, 'ol', 'bl');
+    if (!/\S/.test(ctaTpl)) ctaTpl = pfStr(s, 'more');
+    if (/\S/.test(ctaTpl)) {
+      var foot = pfEl('div', 'cx-endo-panel__foot');
+      var cta = pfEl('button', 'cx-endo-panel__cta', ['type', 'button']);
+      cta.textContent = ctaTpl.split('@@N@@').join(String(total));
+      cta.addEventListener('click', function () {
+        endoOverlayOpen(conf, data, cta);
+        pfTrack('derm_endorsements', 'click');
+      });
+      foot.appendChild(cta);
+      root.appendChild(foot);
+      pfSp(root);
+    }
+    return root;
+  }
+
   function endoBuildSection(conf, data) {
+    if (conf.ws === 1) return endoPanelBuild(conf, data);
     var items = endoValidItems(data);
     if (items.length === 0) return null; // fail closed: an empty wall is no wall
     var s = conf.str || {};
@@ -1216,14 +1262,113 @@
     return t;
   }
 
+  function endoOverlayParas(container, cls, text) {
+    // Multi-line merchant text → one <p> per non-blank line (textContent
+    // cannot carry line breaks; markup sinks stay banned in this asset).
+    var lines = String(text).split(/\n+/);
+    for (var i = 0; i < lines.length; i++) {
+      if (!/\S/.test(lines[i])) continue;
+      var p = pfEl('p', cls);
+      p.textContent = lines[i];
+      container.appendChild(p);
+    }
+  }
+
+  function endoOverlayChevron() {
+    // Small caret for the FAQ disclosure rows; rotation is CSS-driven off
+    // the button's aria-expanded state.
+    var svg = pfSvg('svg', 'cx-endo-ov__faq-caret', ['viewBox', '0 0 16 16', 'aria-hidden', 'true', 'focusable', 'false']);
+    var path = pfSvg('path', null, ['d', 'M3.5 6l4.5 4.5L12.5 6']);
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function endoOverlayFaq(s) {
+    // v8.22 official overlay: up to four merchant Q&A dropdowns (proxy
+    // codes f1q/f1a..f4q/f4a). A pair renders only when BOTH sides are
+    // non-blank; zero pairs -> null (the heading never renders alone).
+    // Disclosure = the house button[aria-expanded] + [hidden] panel
+    // pattern (click/tap only, like the survey methodology).
+    var items = [];
+    for (var i = 1; i <= 4; i++) {
+      var q = pfStrRaw(s, 'f' + i + 'q');
+      var a = pfStrRaw(s, 'f' + i + 'a');
+      if (/\S/.test(q) && /\S/.test(a)) items.push({ q: q, a: a });
+    }
+    if (items.length === 0) return null;
+    var wrap = pfEl('div', 'cx-endo-ov__faq');
+    var faqTitle = pfStrRaw(s, 'fq');
+    if (/\S/.test(faqTitle)) {
+      var heading = pfEl('h3', 'cx-endo-ov__sub');
+      heading.textContent = faqTitle;
+      wrap.appendChild(heading);
+    }
+    for (var j = 0; j < items.length; j++) {
+      (function (entry) {
+        var row = pfEl('div', 'cx-endo-ov__faq-item');
+        var btn = pfEl('button', 'cx-endo-ov__faq-q', ['type', 'button', 'aria-expanded', 'false']);
+        var label = pfEl('span', 'cx-endo-ov__faq-q-text');
+        label.textContent = entry.q;
+        btn.appendChild(label);
+        btn.appendChild(endoOverlayChevron());
+        var panel = pfEl('div', 'cx-endo-ov__faq-a', ['hidden', '']);
+        endoOverlayParas(panel, 'cx-endo-ov__faq-a-p', entry.a);
+        btn.addEventListener('click', function () {
+          var open = btn.getAttribute('aria-expanded') === 'true';
+          btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+          if (open) panel.setAttribute('hidden', '');
+          else panel.removeAttribute('hidden');
+        });
+        row.appendChild(btn);
+        row.appendChild(panel);
+        wrap.appendChild(row);
+      })(items[j]);
+    }
+    return wrap;
+  }
+
+  function endoOverlayDocRow(item) {
+    // Official-overlay roster row: photo when one EXISTS (never monogram
+    // filler), name + credentials · country. No quote — the roster is the
+    // "who", the intro/FAQ are the "how".
+    var row = pfEl('div', 'cx-endo-ov__doc');
+    if (item.img) {
+      var img = pfEl('img', 'cx-endo-ov__doc-photo', ['alt', '', 'aria-hidden', 'true', 'loading', 'lazy']);
+      img.src = item.img;
+      row.appendChild(img);
+    }
+    var id = pfEl('div', 'cx-endo-ov__doc-id');
+    var nm = pfEl('p', 'cx-endo-ov__doc-name');
+    nm.textContent = item.n;
+    id.appendChild(nm);
+    var bits = [];
+    if (item.c) bits.push(item.c);
+    var country = pfRegionName(item.cc);
+    if (country) bits.push(country);
+    if (bits.length > 0) {
+      var creds = pfEl('p', 'cx-endo-ov__doc-creds');
+      creds.textContent = bits.join(' · ');
+      id.appendChild(creds);
+    }
+    row.appendChild(id);
+    return row;
+  }
+
   function endoOverlayBuild(conf, data) {
     var s = conf.str || {};
     var items = endoValidItems(data);
     if (items.length === 0) return null;
     var total = pfPosInt(data.total) ? data.total : items.length;
     if (total < items.length) total = items.length;
+    // v8.22 official style (island "os":1): instead of browsing every
+    // endorsement one by one, the overlay explains WHERE the
+    // recommendations come from — merchant intro, FAQ dropdowns, then the
+    // full dermatologist roster without the individual quotes. All three
+    // pieces are proxy-served merchant copy; with none of them present
+    // the overlay still stands as title + roster (the payload's items).
+    var official = conf.os === 1;
     var root = pfEl('div', 'cx-endo-ov', ['role', 'presentation']);
-    var card = pfEl('div', 'cx-endo-ov__card', ['role', 'dialog', 'aria-modal', 'true', 'aria-labelledby', 'cx-endo-ov-title', 'tabindex', '-1']);
+    var card = pfEl('div', 'cx-endo-ov__card' + (official ? ' cx-endo-ov__card--official' : ''), ['role', 'dialog', 'aria-modal', 'true', 'aria-labelledby', 'cx-endo-ov-title', 'tabindex', '-1']);
     var head = pfEl('div', 'cx-endo-ov__head');
     var titles = pfEl('div', 'cx-endo-ov__titles');
     var title = pfEl('h2', 'cx-endo-ov__title', ['id', 'cx-endo-ov-title']);
@@ -1249,15 +1394,45 @@
     if (/\S/.test(closeLabel)) close.setAttribute('aria-label', closeLabel);
     head.appendChild(close);
     card.appendChild(head);
-    var noteText = endoOverlayNote(s);
-    if (/\S/.test(noteText)) {
-      var note = pfEl('p', 'cx-endo-ov__note');
-      note.textContent = noteText.split('@@N@@').join(String(total));
-      card.appendChild(note);
+    // v8.22: ONE scroll region for everything under the header — the old
+    // per-piece scrollers (26vh note, self-scrolling list) clipped the
+    // note mid-line on short viewports; now the note/intro/FAQ/list flow
+    // and scroll together like a document.
+    var body = pfEl('div', 'cx-endo-ov__body');
+    var list;
+    if (official) {
+      // Review catch: NO note-chain fallback here — the overlay-content
+      // contract is blank = HIDDEN (the admin promises it), and without
+      // the intro the official overlay still stands as title + roster.
+      var introText = pfStrRaw(s, 'oi');
+      if (/\S/.test(introText)) {
+        var intro = pfEl('div', 'cx-endo-ov__intro');
+        endoOverlayParas(intro, 'cx-endo-ov__intro-p', introText.split('@@N@@').join(String(total)));
+        body.appendChild(intro);
+      }
+      var faq = endoOverlayFaq(s);
+      if (faq) body.appendChild(faq);
+      var listTitle = pfStrRaw(s, 'lt');
+      if (/\S/.test(listTitle)) {
+        var roster = pfEl('h3', 'cx-endo-ov__sub');
+        roster.textContent = listTitle.split('@@N@@').join(String(total));
+        body.appendChild(roster);
+      }
+      list = pfEl('div', 'cx-endo-ov__docs');
+      for (var d = 0; d < items.length; d++) list.appendChild(endoOverlayDocRow(items[d]));
+      body.appendChild(list);
+    } else {
+      var noteText = endoOverlayNote(s);
+      if (/\S/.test(noteText)) {
+        var note = pfEl('p', 'cx-endo-ov__note');
+        note.textContent = noteText.split('@@N@@').join(String(total));
+        body.appendChild(note);
+      }
+      list = pfEl('div', 'cx-endo-ov__list');
+      for (var i = 0; i < items.length; i++) list.appendChild(endoBuildCard(items[i], s));
+      body.appendChild(list);
     }
-    var list = pfEl('div', 'cx-endo-ov__list');
-    for (var i = 0; i < items.length; i++) list.appendChild(endoBuildCard(items[i], s));
-    card.appendChild(list);
+    card.appendChild(body);
     var shown = items.length;
     var page = 1;
     var foot = pfEl('div', 'cx-endo-ov__foot');
@@ -1289,7 +1464,9 @@
             return;
           }
           page += 1;
-          for (var j = 0; j < extra.length; j++) list.appendChild(endoBuildCard(extra[j], s));
+          for (var j = 0; j < extra.length; j++) {
+            list.appendChild(official ? endoOverlayDocRow(extra[j]) : endoBuildCard(extra[j], s));
+          }
           shown += extra.length;
           if (shown > total) total = shown;
           setProgress();
@@ -1442,8 +1619,12 @@
     // a fresh translation overrides the primary-language override the
     // island carries. Whitelisted keys only; the catalog defaults and the
     // fallback chains behind endoText are untouched.
+    // v8.22: the overlay-content codes (wc + the official-overlay pieces)
+    // ride the same member — for those the proxy is the ONLY carrier
+    // (translated-else-source; the island never emits them).
     if (!conf || !conf.str || !data || !data.copy || typeof data.copy !== 'object') return;
-    var keys = ['oe', 'oh', 'od', 'ob', 'ol', 'on', 'oc', 'ov'];
+    var keys = ['oe', 'oh', 'od', 'ob', 'ol', 'on', 'oc', 'ov',
+      'wc', 'oi', 'fq', 'f1q', 'f1a', 'f2q', 'f2a', 'f3q', 'f3a', 'f4q', 'f4a', 'lt'];
     for (var i = 0; i < keys.length; i++) {
       var value = data.copy[keys[i]];
       if (typeof value === 'string' && /\S/.test(value)) conf.str[keys[i]] = value;

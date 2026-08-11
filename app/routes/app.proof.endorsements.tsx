@@ -34,6 +34,9 @@ import { authenticate } from "../shopify.server";
 import {
   getSettings,
   saveSettings,
+  // LOADER-ONLY value use (the v8.3 rule: never let a .server VALUE reach
+  // component code — this one feeds the English-defaults flag server-side).
+  DEFAULT_SETTINGS,
   type BoosterSettings,
   type DeepPartial,
 } from "../models/settings.server";
@@ -178,6 +181,26 @@ const BADGE_STYLE_OPTIONS = [
   },
 ] as const;
 
+// Client-safe mirror of WALL_STYLES in settings.server.ts (same v8.3
+// rule; harness-pinned in sync).
+const WALL_STYLE_OPTIONS = [
+  { label: "Classic wall — every endorsement, stacked", value: "wall" },
+  {
+    label: "Official panel — fixed height, swipeable cards, View-all",
+    value: "panel",
+  },
+] as const;
+
+// Client-safe mirror of OVERLAY_STYLES in settings.server.ts (same v8.3
+// rule; harness-pinned in sync).
+const OVERLAY_STYLE_OPTIONS = [
+  { label: "Endorsement list — browse every endorsement", value: "list" },
+  {
+    label: "Official explainer — intro, FAQ and the dermatologist roster",
+    value: "official",
+  },
+] as const;
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const url = new URL(request.url);
@@ -202,6 +225,32 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     locales.targets,
   );
   const localesUnavailable = (locales.errors?.length ?? 0) > 0;
+  // v8.22 review catch: on a NON-English-primary shop the overlay-content
+  // English defaults would face the shop's own primary-language shoppers
+  // verbatim (translations cover only the additional published
+  // languages). Flag any still-default field so the card can warn.
+  const endoDefaults = DEFAULT_SETTINGS.dermEndorsements;
+  const overlayContentFields = [
+    "copyWallCta",
+    "copyOverlayIntro",
+    "copyOverlayFaqTitle",
+    "copyOverlayFaq1Q",
+    "copyOverlayFaq1A",
+    "copyOverlayFaq2Q",
+    "copyOverlayFaq2A",
+    "copyOverlayFaq3Q",
+    "copyOverlayFaq3A",
+    "copyOverlayFaq4Q",
+    "copyOverlayFaq4A",
+    "copyOverlayListTitle",
+  ] as const;
+  const overlayContentEnglishDefaults =
+    (locales.primary ?? "en").toLowerCase().split("-")[0] !== "en" &&
+    overlayContentFields.some(
+      (field) =>
+        /\S/.test(endoDefaults[field]) &&
+        settings.dermEndorsements[field] === endoDefaults[field],
+    );
   const [translationStatus, itemTranslations, copyStatus, copyTranslations] =
     await Promise.all([
       proofTranslationStatusFor(session.shop, "endorsements", targetLocales),
@@ -238,6 +287,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       copyBadgeNoLink: settings.dermEndorsements.copyBadgeNoLink,
       copyBadgeChip: settings.dermEndorsements.copyBadgeChip,
       copyOverlayNote: settings.dermEndorsements.copyOverlayNote,
+      // v8.22 designs + overlay content.
+      wallStyle: settings.dermEndorsements.wallStyle,
+      overlayStyle: settings.dermEndorsements.overlayStyle,
+      copyWallCta: settings.dermEndorsements.copyWallCta,
+      copyOverlayIntro: settings.dermEndorsements.copyOverlayIntro,
+      copyOverlayFaqTitle: settings.dermEndorsements.copyOverlayFaqTitle,
+      copyOverlayFaq1Q: settings.dermEndorsements.copyOverlayFaq1Q,
+      copyOverlayFaq1A: settings.dermEndorsements.copyOverlayFaq1A,
+      copyOverlayFaq2Q: settings.dermEndorsements.copyOverlayFaq2Q,
+      copyOverlayFaq2A: settings.dermEndorsements.copyOverlayFaq2A,
+      copyOverlayFaq3Q: settings.dermEndorsements.copyOverlayFaq3Q,
+      copyOverlayFaq3A: settings.dermEndorsements.copyOverlayFaq3A,
+      copyOverlayFaq4Q: settings.dermEndorsements.copyOverlayFaq4Q,
+      copyOverlayFaq4A: settings.dermEndorsements.copyOverlayFaq4A,
+      copyOverlayListTitle: settings.dermEndorsements.copyOverlayListTitle,
     },
     targetLocales,
     translationStatus,
@@ -247,6 +311,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     localesUnavailable,
     hasDeeplKey: translationConfig.apiKey !== "",
     autoTranslate: translationConfig.autoOnSave,
+    overlayContentEnglishDefaults,
   };
 };
 
@@ -684,6 +749,7 @@ export default function ProofEndorsementsTab() {
     localesUnavailable,
     hasDeeplKey,
     autoTranslate,
+    overlayContentEnglishDefaults,
   } = useLoaderData<typeof loader>();
   const shopify = useAppBridge();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -944,8 +1010,14 @@ export default function ProofEndorsementsTab() {
       if (displayState[key] !== display[key]) section[key] = displayState[key];
     }
     if (Object.keys(section).length === 0) return;
-    copyTouchedRef.current = Object.keys(section).some((key) =>
-      key.startsWith("copy"),
+    // v8.22 review catch: adopting a design (panel/official) makes the
+    // never-translated overlay-content DEFAULTS live — a style-only save
+    // must also fire the incremental copy translate (no-op when covered).
+    copyTouchedRef.current = Object.keys(section).some(
+      (key) =>
+        key.startsWith("copy") ||
+        key === "wallStyle" ||
+        key === "overlayStyle",
     );
     const formData = new FormData();
     formData.set("intent", "save_settings");
@@ -986,7 +1058,8 @@ export default function ProofEndorsementsTab() {
               <Text as="p" variant="bodySm" tone="subdued">
                 The endorsement wall is built for dozens or hundreds of
                 entries — the storefront headline counts every approved
-                endorsement. A portrait is optional (initials show otherwise).
+                endorsement. A portrait is optional (cards without one
+                simply lead with the doctor&apos;s name).
               </Text>
             </BlockStack>
             <InlineStack gap="200" blockAlign="center">
@@ -1235,6 +1308,31 @@ export default function ProofEndorsementsTab() {
               above is enabled and the product has endorsements to show.
             </Text>
           </BlockStack>
+          <Select
+            label="Wall design"
+            options={[...WALL_STYLE_OPTIONS]}
+            value={displayState.wallStyle}
+            onChange={(value) =>
+              setDisplayField(
+                "wallStyle",
+                value as (typeof display)["wallStyle"],
+              )
+            }
+            helpText="The official panel keeps a FIXED vertical footprint however many endorsements you have: shield + count headline + credential chip over a swipeable card rail, closed by a View-all button that opens the overlay. Display density applies to the classic wall only."
+          />
+          <Select
+            label="Overlay style"
+            options={[...OVERLAY_STYLE_OPTIONS]}
+            value={displayState.overlayStyle}
+            onChange={(value) =>
+              setDisplayField(
+                "overlayStyle",
+                value as (typeof display)["overlayStyle"],
+              )
+            }
+            helpText="What opens from the badge link (overlay behavior) and the panel's View-all button. The official explainer shows your intro text, FAQ dropdowns and the full dermatologist list instead of the one-by-one endorsements — edit its content below."
+          />
+          <Divider />
           <Checkbox
             label="Show the endorsement badge on product pages"
             checked={displayState.badgeEnabled}
@@ -1346,7 +1444,88 @@ export default function ProofEndorsementsTab() {
             onChange={(value) => setDisplayField("copyOverlayNote", value)}
             placeholder="Verified recommendations from licensed dermatologists. Read what they have to say about the product, Cellexia and its approach to skincare."
             multiline={3}
-            helpText="Shown at the top of the endorsements overlay. Blank: the section description serves. Use {n} for the endorsement count."
+            helpText="Shown at the top of the endorsement-list overlay. Blank: the section description serves. Use {n} for the endorsement count."
+            autoComplete="off"
+          />
+          <TextField
+            label="Panel View-all button"
+            value={displayState.copyWallCta}
+            onChange={(value) => setDisplayField("copyWallCta", value)}
+            helpText="The official panel's button that opens the overlay. Use {n} for the endorsement count. Blank: the badge link text serves."
+            autoComplete="off"
+          />
+          <Divider />
+          <BlockStack gap="100">
+            <Text as="h3" variant="headingSm">
+              Official overlay content
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Shown when the overlay style above is the official explainer:
+              your intro text, up to four FAQ dropdowns, then the full
+              dermatologist list. This starting copy is a template — review
+              it and adjust it so it accurately describes how your
+              endorsements were collected before publishing. Like the rest
+              of the copy it auto-translates through DeepL on save; blank
+              fields are simply hidden ({"{n}"} inserts the endorsement
+              count in the intro, list title and View-all button).
+            </Text>
+          </BlockStack>
+          {overlayContentEnglishDefaults ? (
+            <Banner tone="warning" title="This starting copy is in English">
+              <Text as="p" variant="bodySm">
+                Your shop&apos;s primary language is not English, and some of
+                these fields still hold the English starting copy. Shoppers
+                browsing in your primary language will see it in English
+                until you rewrite it here in that language — DeepL
+                translations only cover your additional published languages.
+              </Text>
+            </Banner>
+          ) : null}
+          <TextField
+            label="Intro text"
+            value={displayState.copyOverlayIntro}
+            onChange={(value) => setDisplayField("copyOverlayIntro", value)}
+            multiline={5}
+            helpText="Where the recommendations come from. A blank line starts a new paragraph."
+            autoComplete="off"
+          />
+          <TextField
+            label="FAQ heading"
+            value={displayState.copyOverlayFaqTitle}
+            onChange={(value) => setDisplayField("copyOverlayFaqTitle", value)}
+            autoComplete="off"
+          />
+          {([1, 2, 3, 4] as const).map((slot) => {
+            const qField = `copyOverlayFaq${slot}Q` as const;
+            const aField = `copyOverlayFaq${slot}A` as const;
+            return (
+              <BlockStack gap="200" key={slot}>
+                <TextField
+                  label={`Question ${slot}`}
+                  value={displayState[qField]}
+                  onChange={(value) => setDisplayField(qField, value)}
+                  autoComplete="off"
+                />
+                <TextField
+                  label={`Answer ${slot}`}
+                  value={displayState[aField]}
+                  onChange={(value) => setDisplayField(aField, value)}
+                  multiline={3}
+                  helpText={
+                    slot === 4
+                      ? "A dropdown renders only when both its question and answer are filled."
+                      : undefined
+                  }
+                  autoComplete="off"
+                />
+              </BlockStack>
+            );
+          })}
+          <TextField
+            label="Dermatologist list heading"
+            value={displayState.copyOverlayListTitle}
+            onChange={(value) => setDisplayField("copyOverlayListTitle", value)}
+            helpText="Above the name list. Use {n} for the endorsement count."
             autoComplete="off"
           />
           <InlineStack gap="200">
@@ -1369,6 +1548,18 @@ export default function ProofEndorsementsTab() {
               { field: "copyBadgeNoLink", label: "Badge no-link text", sourceText: display.copyBadgeNoLink },
               { field: "copyBadgeChip", label: "Badge chip text", sourceText: display.copyBadgeChip },
               { field: "copyOverlayNote", label: "Overlay methodology text", sourceText: display.copyOverlayNote },
+              { field: "copyWallCta", label: "Panel View-all button", sourceText: display.copyWallCta },
+              { field: "copyOverlayIntro", label: "Official overlay intro", sourceText: display.copyOverlayIntro },
+              { field: "copyOverlayFaqTitle", label: "FAQ heading", sourceText: display.copyOverlayFaqTitle },
+              { field: "copyOverlayFaq1Q", label: "FAQ question 1", sourceText: display.copyOverlayFaq1Q },
+              { field: "copyOverlayFaq1A", label: "FAQ answer 1", sourceText: display.copyOverlayFaq1A },
+              { field: "copyOverlayFaq2Q", label: "FAQ question 2", sourceText: display.copyOverlayFaq2Q },
+              { field: "copyOverlayFaq2A", label: "FAQ answer 2", sourceText: display.copyOverlayFaq2A },
+              { field: "copyOverlayFaq3Q", label: "FAQ question 3", sourceText: display.copyOverlayFaq3Q },
+              { field: "copyOverlayFaq3A", label: "FAQ answer 3", sourceText: display.copyOverlayFaq3A },
+              { field: "copyOverlayFaq4Q", label: "FAQ question 4", sourceText: display.copyOverlayFaq4Q },
+              { field: "copyOverlayFaq4A", label: "FAQ answer 4", sourceText: display.copyOverlayFaq4A },
+              { field: "copyOverlayListTitle", label: "Dermatologist list heading", sourceText: display.copyOverlayListTitle },
             ]}
             targetLocales={targetLocales}
             translations={copyTranslations}

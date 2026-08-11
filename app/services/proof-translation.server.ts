@@ -65,6 +65,18 @@ export const TRANSLATABLE_PROOF_FIELDS: Record<ProofScope, string[]> = {
     "copyBadgeNoLink",
     "copyBadgeChip",
     "copyOverlayNote",
+    "copyWallCta",
+    "copyOverlayIntro",
+    "copyOverlayFaqTitle",
+    "copyOverlayFaq1Q",
+    "copyOverlayFaq1A",
+    "copyOverlayFaq2Q",
+    "copyOverlayFaq2A",
+    "copyOverlayFaq3Q",
+    "copyOverlayFaq3A",
+    "copyOverlayFaq4Q",
+    "copyOverlayFaq4A",
+    "copyOverlayListTitle",
   ],
 };
 
@@ -650,6 +662,60 @@ export function copyOverlayToIslandCodes(
       field === "copyHeadline" ||
       field === "copyBadgeHeadline" ||
       field === "copyOverlayNote"
+    ) {
+      value = value.split("{n}").join("@@N@@");
+    }
+    out[code] = value;
+  }
+  return out;
+}
+
+/** v8.22: the island codes of the OVERLAY-CONTENT copy fields. These have
+ *  non-blank English DEFAULTS and NO locale-catalog fallback (the el.json
+ *  byte wall forbids new locale keys), so — unlike COPY_FIELD_ISLAND_CODES,
+ *  whose fields the Liquid island already carries in the primary language —
+ *  the PROXY is their only carrier: it must serve them in EVERY language,
+ *  translated when a DeepL row exists, the saved source otherwise. */
+export const OVERLAY_CONTENT_ISLAND_CODES: Record<string, string> = {
+  copyWallCta: "wc",
+  copyOverlayIntro: "oi",
+  copyOverlayFaqTitle: "fq",
+  copyOverlayFaq1Q: "f1q",
+  copyOverlayFaq1A: "f1a",
+  copyOverlayFaq2Q: "f2q",
+  copyOverlayFaq2A: "f2a",
+  copyOverlayFaq3Q: "f3q",
+  copyOverlayFaq3A: "f3a",
+  copyOverlayFaq4Q: "f4q",
+  copyOverlayFaq4A: "f4a",
+  copyOverlayListTitle: "lt",
+};
+
+/**
+ * v8.22: turn the overlay-content fields into payload.copy members (island
+ * codes). PURE — behaviorally pinned by the sim. Rules:
+ *   - a field emits ONLY while its CURRENT source is non-blank (blank =
+ *     the merchant hid that piece; a stale translation must never
+ *     resurrect it);
+ *   - the translated value serves when non-blank, else the SOURCE serves
+ *     (the proxy is the only carrier — there is no island fallback);
+ *   - the three {n} fields mirror Liquid's {n} → @@N@@ replace, so the
+ *     storefront JS keeps its single sentinel-substitution path.
+ */
+export function overlayContentToIslandCodes(
+  sources: Record<string, string>,
+  translated: Record<string, string>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [field, code] of Object.entries(OVERLAY_CONTENT_ISLAND_CODES)) {
+    const source = sources[field] ?? "";
+    if (!/\S/.test(source)) continue;
+    const t = translated[field];
+    let value = typeof t === "string" && /\S/.test(t) ? t : source;
+    if (
+      field === "copyWallCta" ||
+      field === "copyOverlayIntro" ||
+      field === "copyOverlayListTitle"
     ) {
       value = value.split("{n}").join("@@N@@");
     }

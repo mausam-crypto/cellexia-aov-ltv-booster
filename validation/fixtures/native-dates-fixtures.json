@@ -1,7 +1,7 @@
 {
   "contract": "v6.0.1 DATE_STYLE (ja convention + fr 1er + verbatim locale + local-noon rebuild)",
-  "node": "v23.2.0",
-  "icu": "76.1",
+  "node": "v24.15.0",
+  "icu": "78.2",
   "entries": [
     {
       "locale": "ar",

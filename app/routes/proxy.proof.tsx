@@ -12,6 +12,8 @@ import {
   COPY_FIELD_ISLAND_CODES,
   COPY_RESOURCE_ID,
   copyOverlayToIslandCodes,
+  overlayContentToIslandCodes,
+  OVERLAY_CONTENT_ISLAND_CODES,
   getProofTranslationOverlay,
 } from "../services/proof-translation.server";
 import { getSettings } from "../models/settings.server";
@@ -162,33 +164,61 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         // v8.19: localized MERCHANT COPY overrides ("copy" scope). Only
         // the page-1 init fetch consumes payload.copy (endoApplyCopy runs
         // once, before the build), so later pages skip the settings +
-        // overlay reads entirely. Sources carry ALL seven fields with
-        // blanks as "" — a blanked override digest-mismatches its stored
-        // rows AND is filtered from emission, so it can never resurrect
-        // its old translation (review catch); an edited field serves its
-        // new primary text until re-translated.
-        if (locale && page === 1 && payload.items.length > 0) {
+        // overlay reads entirely. Sources carry ALL fields with blanks as
+        // "" — a blanked override digest-mismatches its stored rows AND
+        // is filtered from emission, so it can never resurrect its old
+        // translation (review catch); an edited field serves its new
+        // primary text until re-translated.
+        // v8.22: the OVERLAY-CONTENT fields (panel CTA, official-overlay
+        // intro/FAQ/list title) have NO island fallback, so their part of
+        // payload.copy emits on EVERY page-1 fetch — locale or not — as
+        // translated-else-source. The v8.19 island-backed fields keep
+        // their translated-only semantics behind the locale guard.
+        if (page === 1 && payload.items.length > 0) {
           try {
             const endo = (await getSettings(shop)).dermEndorsements;
+            const read = (field: string): string => {
+              const text = (endo as unknown as Record<string, unknown>)[field];
+              return typeof text === "string" ? text : "";
+            };
             const sources: Record<string, string> = {};
             let anySet = false;
             for (const field of Object.keys(COPY_FIELD_ISLAND_CODES)) {
-              const text = (endo as unknown as Record<string, unknown>)[field];
-              sources[field] = typeof text === "string" ? text : "";
+              sources[field] = read(field);
               if (/\S/.test(sources[field])) anySet = true;
             }
-            if (anySet) {
-              const copyOverlay = await getProofTranslationOverlay(
-                shop, "copy", [COPY_RESOURCE_ID], locale,
-                new Map([[COPY_RESOURCE_ID, sources]]),
-              );
-              const fields = copyOverlay.get(COPY_RESOURCE_ID);
-              if (fields) {
-                const copy = copyOverlayToIslandCodes(fields, sources);
-                if (Object.keys(copy).length > 0) {
-                  (payload as Record<string, unknown>).copy = copy;
-                }
+            const contentSources: Record<string, string> = {};
+            let anyContent = false;
+            for (const field of Object.keys(OVERLAY_CONTENT_ISLAND_CODES)) {
+              contentSources[field] = read(field);
+              if (/\S/.test(contentSources[field])) anyContent = true;
+            }
+            let fields: Record<string, string> | undefined;
+            if (locale && (anySet || anyContent)) {
+              // Inner catch (review catch): a failed TRANSLATION lookup
+              // must not drop the overlay-content sources below — the
+              // proxy is their ONLY carrier, so they degrade to the saved
+              // primary text, not to nothing.
+              try {
+                const copyOverlay = await getProofTranslationOverlay(
+                  shop, "copy", [COPY_RESOURCE_ID], locale,
+                  new Map([[COPY_RESOURCE_ID, { ...sources, ...contentSources }]]),
+                );
+                fields = copyOverlay.get(COPY_RESOURCE_ID);
+              } catch {
+                // untranslated sources serve
               }
+            }
+            const copy: Record<string, string> = {
+              ...(locale && anySet && fields
+                ? copyOverlayToIslandCodes(fields, sources)
+                : {}),
+              ...(anyContent
+                ? overlayContentToIslandCodes(contentSources, fields ?? {})
+                : {}),
+            };
+            if (Object.keys(copy).length > 0) {
+              (payload as Record<string, unknown>).copy = copy;
             }
           } catch {
             // untranslated payload serves

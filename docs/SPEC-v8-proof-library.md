@@ -329,6 +329,74 @@ bottom sheet (rounded top, 88vh, list scrolls inside). Admin: "Link behavior"
 Select (client mirror BADGE_LINK_ACTION_OPTIONS, disabled while the link is
 off) + "Overlay methodology text" field incl. the translations reviewer.
 
+v8.22 DESIGNS + OFFICIAL OVERLAY + MONOGRAM REMOVAL:
+- MONOGRAM GONE: the initials-monogram avatar filler (endoInitials +
+  .cx-endo__monogram, all density tiers) is REMOVED everywhere — a letter
+  circle reads as a fake avatar; photo-less cards/rows simply lead with the
+  name. Portraits still render when a row has an https image.
+- OVERLAY BODY: the overlay's per-piece scrollers (26vh note cap +
+  self-scrolling list — the note clipped MID-LINE on short viewports) are
+  replaced by ONE .cx-endo-ov__body scroll region under the header; the
+  foot (shown-of + Show more) stays fixed.
+- dermEndorsements.wallStyle (WALL_STYLES wall|panel, default wall; island
+  lean "ws":1): "panel" = the OFFICIAL fixed-height wall — bordered panel,
+  shield + count headline (bold count) + credential chip (chip/oc chain),
+  horizontal scroll-snap rail of BARE cards (endoBuildCard(item, s, true):
+  no in-place expander, CSS-clamped quotes — 3 lines desktop / 4 mobile;
+  mobile cards min(240px, 78vw) so the next card peeks), then a View-all
+  pill. CTA label chain: "wc" (copyWallCta, proxy-served + translated) →
+  badge-link (ol/bl) → Show-more label — never a dead panel. The pill opens
+  the overlay (endoOverlayOpen + the derm_endorsements click beacon).
+  Density codes are IGNORED under panel (the panel IS the compact design);
+  headline missing → fail closed (no official panel without its claim).
+- dermEndorsements.overlayStyle (OVERLAY_STYLES list|official, default
+  list; island lean "os":1): "official" = the explainer overlay — instead
+  of the one-by-one endorsement list: intro paragraphs (oi ONLY — blank
+  HIDES the intro, NO note-chain fallback [review catch: the catalog
+  description must never resurrect a piece the merchant removed]; \n
+  splits <p>s), FAQ dropdowns (button[aria-expanded] + [hidden] panel,
+  complete Q+A pairs only, heading never renders alone), then the
+  dermatologist ROSTER (name + credentials · country + photo when
+  present, NO quotes) with the shared shown-of + Show more pagination
+  appending roster rows. With no content pieces the overlay still stands
+  as title + roster. RAW READS: the 12 proxy-only codes are read via
+  pfStrRaw (NOT pfStr) — they never pass Liquid's t-filter escaping, so
+  pfDecode would un-escape entities the merchant typed literally.
+- OVERLAY-CONTENT COPY (12 fields): copyWallCta(120) + copyOverlayIntro
+  (1500) + copyOverlayFaqTitle(120) + copyOverlayFaq1..4Q/A(200/1000) +
+  copyOverlayListTitle(160). UNLIKE the v8.17 overrides these ship
+  NON-BLANK ENGLISH DEFAULTS (editable starting copy; admin tells the
+  merchant to review for accuracy) and have NO locale-catalog fallback
+  (the el.json byte wall forbids new locale keys), so the PROXY is their
+  only carrier: OVERLAY_CONTENT_ISLAND_CODES (wc/oi/fq/f1q..f4a/lt) +
+  overlayContentToIslandCodes emit translated-else-source into
+  payload.copy on EVERY page-1 fetch (locale-independent; blank source =
+  the piece is hidden and its old translation can never resurrect). {n}
+  canonicalization + @@N@@ mirror on wc/oi/lt. endoApplyCopy whitelist
+  grew by the 12 codes. All 12 ride the DeepL copy scope (translate on
+  save, coverage, manual review) exactly like the v8.17 fields.
+- Admin (endorsements tab): "Wall design" + "Overlay style" Selects
+  (client mirrors WALL_STYLE_OPTIONS/OVERLAY_STYLE_OPTIONS, harness-pinned
+  set-equal), "Panel View-all button" field, "Official overlay content"
+  section (intro textarea, FAQ heading, 4 Q/A pairs, roster heading) —
+  all on the existing displayFetcher changed-only patch; blanked fields
+  drop their stored translations (the copy* prefix path).
+- Liquid budget: the island gained ONLY the two lean codes (~140B; total
+  94,759/95,000). Zero new locale keys.
+- v8.22 REVIEW FIXES (adversarial workflow, 8 confirmed 0 refuted): blank
+  oi hides the intro (above); style-only saves (wallStyle/overlayStyle)
+  also fire the copy auto-translate — adopting a design makes the
+  never-translated English defaults live, so the incremental translate
+  must run then, not only on copy edits; the proxy's translation lookup
+  got its OWN inner catch so a DeepL-side failure degrades the content
+  fields to their saved sources (the proxy is their only carrier);
+  non-English-primary shops see a warning Banner while any content field
+  still equals its English default (translations never cover the PRIMARY
+  storefront language — only rewriting the source does); the panel CTA
+  coarse floor is 44px (padding 14 + min-block-size); panel card NAME
+  is one-line-ellipsized like the creds (long names must never grow the
+  fixed rail); stale "initials show otherwise" admin copy removed.
+
 ## 7. Validation
 
 - New sims: `proof-gallery.cjs` (vm-extract cellexia-proof.js renderers: press rotate,

@@ -671,6 +671,39 @@ const result1 = db._seed("customerResult", {
   ok(blankValue.oe === undefined, "C7: blank translated values never emit");
 }
 
+// --- OC1: v8.22 overlay-content emission — translated-else-source, {n} mirror -------
+{
+  const sources = {
+    copyWallCta: "Read all {n} endorsements",
+    copyOverlayIntro: "Where the {n} recommendations come from.",
+    copyOverlayFaqTitle: "Common questions",
+    copyOverlayFaq1Q: "Who?", copyOverlayFaq1A: "Licensed dermatologists.",
+    copyOverlayFaq2Q: "", copyOverlayFaq2A: "",
+    copyOverlayFaq3Q: "", copyOverlayFaq3A: "",
+    copyOverlayFaq4Q: "", copyOverlayFaq4A: "",
+    copyOverlayListTitle: "All {n} dermatologists",
+  };
+  const translated = {
+    copyOverlayIntro: "D'où viennent les {n} recommandations.",
+    copyOverlayFaq1Q: "Qui ?",
+  };
+  const out = T.overlayContentToIslandCodes(sources, translated);
+  ok(JSON.stringify(Object.keys(out).sort()) === JSON.stringify(["f1a", "f1q", "fq", "lt", "oi", "wc"]),
+    "OC1: only non-blank sources emit, each under its island code");
+  ok(out.oi === "D'où viennent les @@N@@ recommandations.",
+    "OC1: a translated value wins and mirrors {n} to @@N@@");
+  ok(out.wc === "Read all @@N@@ endorsements" && out.lt === "All @@N@@ dermatologists",
+    "OC1: untranslated fields serve their SOURCE (the proxy is the only carrier) with the mirror");
+  ok(out.f1q === "Qui ?" && out.f1a === "Licensed dermatologists.",
+    "OC1: FAQ fields resolve independently (translated q, source a) and keep {n}-free text verbatim");
+  const blankT = T.overlayContentToIslandCodes(sources, { copyOverlayFaqTitle: "   " });
+  ok(blankT.fq === "Common questions",
+    "OC1: a blank translated value falls back to the source, never emits blank");
+  const hidden = T.overlayContentToIslandCodes({ ...sources, copyOverlayIntro: "" }, translated);
+  ok(hidden.oi === undefined,
+    "OC1: a BLANKED source hides the piece — its old translation can never resurrect it");
+}
+
 // --- C8: blanked source digest-mismatches its stored row (overlay belt) -------------
 {
   const stale = await T.getProofTranslationOverlay(

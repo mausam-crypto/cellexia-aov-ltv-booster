@@ -151,12 +151,15 @@ const EXTRACTED = extractAll(SRC, {
     "pfPosInt", "pfPageLocale", "pfRegionName", "pfQuery", "pfProductParams",
     "pfPreviewVerified", "pfBeaconsOff", "pfWhenAllowed", // v8.2: preview contract (V)
     "pressItems", "pressBuildWall", "pressBuildSection",
-    "endoInitials", "endoValidItems", "endoText", "endoBuildCard",
-    "endoBuildSection", // v8.17 badge + v8.18 design builders:
+    "endoValidItems", "endoText", "endoBuildCard",
+    "endoPanelBuild", "endoBuildSection", // v8.17 badge + v8.18 design builders:
     "endoBadgeShield", "endoBadgeBuild", "endoBadgeMount",
     "endoBadgeHeadParts", "endoBadgeAvatars", "endoBadgeOutlineShield",
     "endoBadgeCaduceus", "endoBadgeLaurel", "endoBadgeCrown",
     "endoBadgeChip", "endoBadgeTail", "endoApplyCopy",
+    "pfStrRaw", // v8.22 raw reader for proxy-only copy codes
+    "endoOverlayParas", "endoOverlayChevron", "endoOverlayFaq",
+    "endoOverlayDocRow", // v8.22 official overlay + panel wall
     "endoOverlayNote", "endoOverlayBuild", "endoOverlayOpen",
     "resultsBannerData", "resultsFacetLabel", "resultsParams",
     "resultsValidItems", "resultsMetaLine", "resultsBadges",
@@ -578,12 +581,9 @@ function logosOnlyFixture() {
 
 // ==================================================== endorsement wall (W)
 
-// --- W1: monogram initials -----------------------------------------------------------
-ok(S.endoInitials("Dr. Anna Weiss") === "AW", "W1: abbreviation tokens (Dr.) skipped");
-ok(S.endoInitials("prof. dr. maria van der berg") === "MB", "W1: multi-abbreviation names");
-ok(S.endoInitials("Cher") === "C", "W1: single-token name");
-ok(S.endoInitials("Dr.") === "D", "W1: only-abbreviation name falls back to itself");
-ok(S.endoInitials("") === "" && S.endoInitials("   ") === "", "W1: degenerate names -> no monogram");
+// --- W1: v8.22 — the monogram filler is GONE from the whole asset --------------------
+ok(SRC.indexOf("endoInitials") === -1 && SRC.indexOf("cx-endo__monogram") === -1,
+  "W1: no initials-monogram machinery anywhere (a letter circle reads as a fake avatar)");
 
 // --- W2: headline + progress math on the first page ----------------------------------
 {
@@ -635,15 +635,17 @@ ok(S.endoInitials("") === "" && S.endoInitials("   ") === "", "W1: degenerate na
     "W5: total 1 picks the CLDR one form");
 }
 
-// --- W6: portrait vs monogram per card -----------------------------------------------
+// --- W6: portrait when present; photo-less cards lead with the name ------------------
 {
   const withImg = S.endoBuildCard({ n: "Dr. Anna Weiss", q: "Q", c: "MD", cc: "DE", img: "https://cdn/p.jpg" }, ENDO_STR);
   const photo = withImg.querySelector(".cx-endo__photo");
   ok(!!photo && photo.src === "https://cdn/p.jpg", "W6: https portrait used when present");
-  ok(!withImg.querySelector(".cx-endo__monogram"), "W6: no monogram beside a photo");
   const noImg = S.endoBuildCard({ n: "Dr. Anna Weiss", q: "Q", c: "MD", cc: "DE", img: "" }, ENDO_STR);
-  const mono = noImg.querySelector(".cx-endo__monogram");
-  ok(!!mono && mono.textContent === "AW", "W6: monogram fallback without a portrait");
+  ok(!noImg.querySelector(".cx-endo__photo") &&
+     !noImg.querySelector(".cx-endo__head").querySelector("span"),
+    "W6: no portrait -> NO avatar element at all (v8.22: monogram filler removed)");
+  ok(noImg.querySelector(".cx-endo__name").textContent === "Dr. Anna Weiss",
+    "W6: photo-less card still leads with the name");
 }
 
 // --- W7: credentials · country line --------------------------------------------------
@@ -1696,6 +1698,228 @@ function unmountFixture(info) {
   S.document.body.removeChild(wallStub);
 }
 
+// ============================================= panel wall (P, v8.22)
+//
+// wallStyle "panel" (island ws:1): the official fixed-height wall —
+// shield + count headline + credential chip over a horizontal rail of
+// BARE cards (no in-place expander), closed by a View-all pill that
+// opens the overlay. Density codes are ignored; absent ws keeps the
+// classic wall byte-for-byte.
+
+// --- P1: structure + fixed-height contract ------------------------------------------
+{
+  const conf = { ctx: "product", pid: 9, ws: 1, str: ENDO_STR };
+  const panel = S.endoBuildSection(conf, { total: 73, items: endoFixture(24, 0) });
+  ok(!!panel && panel.className === "cx-proof cx-endo cx-endo--panel" &&
+     panel.getAttribute("data-cx-feature") === "derm_endorsements",
+    "P1: ws:1 builds the panel root (cx-endo kept for idempotence + badge scroll target)");
+  const headline = panel.querySelector(".cx-endo-panel__headline");
+  ok(!!headline && headline.textContent === "Endorsed by 73 dermatologists" &&
+     !!headline.querySelector("strong"),
+    "P1: count headline with the bold live total");
+  ok(!!headline.querySelector(".cx-endo-badge__shield"), "P1: shield leads the headline");
+  const chip = panel.querySelector(".cx-endo-panel__chip-text");
+  ok(!!chip && chip.textContent === "Licensed dermatologists",
+    "P1: credential chip under the headline");
+  ok(panel.querySelectorAll(".cx-endo-panel__rail .cx-endo__card").length === 24,
+    "P1: all page-1 cards ride the rail");
+  ok(!panel.querySelector(".cx-endo__more"),
+    "P1: rail cards are BARE — no in-place expander can grow the fixed panel");
+  ok(!panel.querySelector(".cx-endo__card--open"),
+    "P1: bare cards stay clamped (never the unclamped degrade class)");
+  ok(!panel.querySelector(".cx-endo__show-more") && !panel.querySelector(".cx-endo__progress"),
+    "P1: no wall pagination machinery inside the panel (View-all owns the rest)");
+  ok(!panel.querySelector(".cx-endo__headline") && !panel.querySelector(".cx-endo__desc"),
+    "P1: none of the classic wall head pieces leak into the panel");
+}
+
+// --- P2: View-all CTA chain + overlay handoff + beacon ------------------------------
+{
+  const conf = { ctx: "product", pid: 9, ws: 1, str: Object.assign({}, ENDO_STR, { wc: "Read all @@N@@ endorsements" }) };
+  const panel = S.endoBuildSection(conf, { total: 73, items: endoFixture(24, 0) });
+  const cta = panel.querySelector(".cx-endo-panel__cta");
+  ok(!!cta && cta.textContent === "Read all 73 endorsements",
+    "P2: the proxy-served wc label wins with the live count substituted");
+  S.PF_LB_OPENED.length = 0;
+  S.PF_TRACKS.length = 0;
+  click(cta);
+  ok(S.PF_LB_OPENED.length === 1, "P2: View-all opens the overlay via the lightbox machinery");
+  ok(S.PF_TRACKS.length === 1 && S.PF_TRACKS[0][0] === "derm_endorsements" &&
+     S.PF_TRACKS[0][1] === "click",
+    "P2: the View-all click beacon rides the existing key");
+  // fallback chain: no wc -> the badge link label; neither -> Show more
+  const noWc = S.endoBuildSection({ ctx: "product", pid: 9, ws: 1, str: ENDO_STR },
+    { total: 73, items: endoFixture(24, 0) });
+  ok(noWc.querySelector(".cx-endo-panel__cta").textContent === "Read their professional assessments",
+    "P2: absent wc falls back to the badge link label");
+  const bare = S.endoBuildSection({ ctx: "product", pid: 9, ws: 1, str: { one: "N @@N@@", other: "N @@N@@", more: "Show more" } },
+    { total: 73, items: endoFixture(24, 0) });
+  ok(bare.querySelector(".cx-endo-panel__cta").textContent === "Show more",
+    "P2: last resort is the Show-more label (never a dead panel)");
+}
+
+// --- P3: gates — ws absent keeps the classic wall; panel needs a headline -----------
+{
+  const wall = S.endoBuildSection({ ctx: "brand", pid: 0, str: ENDO_STR }, { total: 60, items: endoFixture(24, 0) });
+  ok(!wall.className.includes("cx-endo--panel") && !!wall.querySelector(".cx-endo__wall"),
+    "P3: no ws member -> the classic wall exactly as before");
+  ok(S.endoBuildSection({ ctx: "product", pid: 9, ws: 1, str: ENDO_STR }, { total: 1, items: [] }) === null,
+    "P3: empty payload -> no panel (fail closed)");
+  ok(S.endoBuildSection({ ctx: "product", pid: 9, ws: 1, str: { more: "x" } },
+    { total: 5, items: endoFixture(3, 0) }) === null,
+    "P3: no headline string -> no official panel (fail closed)");
+  // density codes are IGNORED under the panel (the panel IS the compact design)
+  const cm = S.endoBuildSection({ ctx: "product", pid: 9, ws: 1, cm: 2, str: ENDO_STR },
+    { total: 73, items: endoFixture(24, 0) });
+  ok(!!cm && cm.className === "cx-proof cx-endo cx-endo--panel" &&
+     !cm.className.includes("ultra"),
+    "P3: cm codes are ignored under ws:1");
+}
+
+// ========================================= official overlay (OF, v8.22)
+//
+// overlayStyle "official" (island os:1): instead of browsing every
+// endorsement one by one, the overlay explains where the recommendations
+// come from — proxy-served intro paragraphs, FAQ dropdowns, then the
+// dermatologist roster WITHOUT the individual quotes.
+
+const OFFICIAL_STR = Object.assign({}, ENDO_STR, {
+  oi: "Every endorsement comes from a licensed dermatologist.\n\nAll @@N@@ statements are kept on file.",
+  fq: "Common questions",
+  f1q: "Who are the dermatologists?", f1a: "All contributors are licensed.\nEach is named.",
+  f2q: "How were these collected?", f2a: "Independently.",
+  lt: "All @@N@@ dermatologists",
+});
+
+// --- OF1: structure — intro paragraphs, FAQ, roster; no quote cards -----------------
+{
+  S.PF_LB_OPENED.length = 0;
+  const badge = S.endoBadgeBuild(badgeConf({ bo: 1, os: 1, str: OFFICIAL_STR }), { total: 73, items: endoFixture(24, 0) });
+  click(badge.querySelector(".cx-endo-badge__link"));
+  ok(S.PF_LB_OPENED.length === 1, "OF1: the badge link opens the official overlay");
+  const ov = S.PF_LB_OPENED[0];
+  ok(!!ov.querySelector(".cx-endo-ov__card--official"),
+    "OF1: the official modifier rides the dialog card");
+  const paras = ov.querySelectorAll(".cx-endo-ov__intro-p");
+  ok(paras.length === 2 &&
+     paras[0].textContent === "Every endorsement comes from a licensed dermatologist." &&
+     paras[1].textContent === "All 73 statements are kept on file.",
+    "OF1: intro splits into paragraphs and substitutes the live count");
+  const subs = ov.querySelectorAll(".cx-endo-ov__sub");
+  ok(subs.length === 2 && subs[0].textContent === "Common questions" &&
+     subs[1].textContent === "All 73 dermatologists",
+    "OF1: FAQ heading + roster heading (lt substitutes the count)");
+  ok(ov.querySelectorAll(".cx-endo-ov__faq-item").length === 2,
+    "OF1: only complete Q+A pairs render");
+  ok(ov.querySelectorAll(".cx-endo-ov__doc").length === 24,
+    "OF1: the roster lists every page-1 dermatologist");
+  ok(!ov.querySelector(".cx-endo__card") && !ov.querySelector(".cx-endo-ov__note"),
+    "OF1: NO quote cards and no list-mode note in the official overlay");
+  const doc0 = ov.querySelectorAll(".cx-endo-ov__doc")[0];
+  ok(doc0.querySelector(".cx-endo-ov__doc-name").textContent === "Dr. Anna W0" &&
+     doc0.querySelector(".cx-endo-ov__doc-creds").textContent === "MD · Germany" &&
+     !!doc0.querySelector(".cx-endo-ov__doc-photo"),
+    "OF1: roster row = name + creds · country + real photo");
+  const doc1 = ov.querySelectorAll(".cx-endo-ov__doc")[1];
+  ok(!doc1.querySelector(".cx-endo-ov__doc-photo") && !doc1.querySelector("span"),
+    "OF1: photo-less roster row has NO avatar filler (the monogram rule)");
+  ok(ov.querySelectorAll(".cx-endo-ov__body").length === 1 &&
+     ov.querySelector(".cx-endo-ov__body").querySelectorAll(".cx-endo-ov__doc").length === 24,
+    "OF1: everything under the header lives in the ONE scroll body");
+}
+
+// --- OF2: FAQ dropdowns toggle via aria-expanded + [hidden] -------------------------
+{
+  const faq = S.endoOverlayFaq(OFFICIAL_STR);
+  const btn = faq.querySelectorAll(".cx-endo-ov__faq-q")[0];
+  const panel = faq.querySelectorAll(".cx-endo-ov__faq-a")[0];
+  ok(btn.getAttribute("aria-expanded") === "false" && panel.hasAttribute("hidden"),
+    "OF2: dropdowns start closed");
+  click(btn);
+  ok(btn.getAttribute("aria-expanded") === "true" && !panel.hasAttribute("hidden"),
+    "OF2: first press opens");
+  ok(panel.querySelectorAll(".cx-endo-ov__faq-a-p").length === 2,
+    "OF2: multi-line answers split into paragraphs");
+  click(btn);
+  ok(btn.getAttribute("aria-expanded") === "false" && panel.hasAttribute("hidden"),
+    "OF2: second press closes");
+  ok(S.endoOverlayFaq(Object.assign({}, ENDO_STR, { fq: "Questions" })) === null,
+    "OF2: zero complete pairs -> no FAQ block (the heading never renders alone)");
+  ok(S.endoOverlayFaq(Object.assign({}, ENDO_STR, { f1q: "Question without an answer", f2a: "Answer without a question" })) === null,
+    "OF2: half pairs never render (a question needs its answer and vice versa)");
+}
+
+// --- OF3: degrades — no content pieces still leaves title + roster ------------------
+{
+  S.PF_LB_OPENED.length = 0;
+  const badge = S.endoBadgeBuild(badgeConf({ bo: 1, os: 1 }), { total: 73, items: endoFixture(24, 0) });
+  click(badge.querySelector(".cx-endo-badge__link"));
+  const ov = S.PF_LB_OPENED[0];
+  ok(!!ov && ov.querySelectorAll(".cx-endo-ov__doc").length === 24,
+    "OF3: a stale/absent payload.copy still shows the roster");
+  // review catch: blank/absent oi HIDES the intro — no note-chain
+  // fallback (the admin promises blank = hidden; the catalog description
+  // must never resurrect a piece the merchant removed)
+  ok(!ov.querySelector(".cx-endo-ov__intro") && !ov.querySelector(".cx-endo-ov__note"),
+    "OF3: absent oi -> NO intro at all (title + roster stand alone)");
+  ok(!ov.querySelector(".cx-endo-ov__faq"), "OF3: no FAQ content -> no FAQ block");
+}
+
+// --- OF6: proxy-only copy is RAW — entities the merchant typed stay literal ---------
+{
+  S.PF_LB_OPENED.length = 0;
+  const str = Object.assign({}, ENDO_STR, {
+    oi: "Our R&amp;D team &lt;independently&gt; reviews.",
+    fq: "Q&amp;A",
+    f1q: "A &amp; B?", f1a: "Yes &amp; no.",
+    lt: "All &lt;26&gt; doctors",
+    wc: "See &amp; read all",
+  });
+  const badge = S.endoBadgeBuild(badgeConf({ bo: 1, os: 1, str }), { total: 73, items: endoFixture(24, 0) });
+  click(badge.querySelector(".cx-endo-badge__link"));
+  const ov = S.PF_LB_OPENED[0];
+  ok(ov.querySelectorAll(".cx-endo-ov__intro-p")[0].textContent ===
+     "Our R&amp;D team &lt;independently&gt; reviews.",
+    "OF6: intro serves the merchant text VERBATIM (no entity un-escape on raw proxy copy)");
+  const subs6 = ov.querySelectorAll(".cx-endo-ov__sub");
+  ok(subs6[0].textContent === "Q&amp;A" && subs6[1].textContent === "All &lt;26&gt; doctors",
+    "OF6: FAQ + roster headings stay verbatim too");
+  const panel6 = S.endoBuildSection({ ctx: "product", pid: 9, ws: 1, str }, { total: 73, items: endoFixture(24, 0) });
+  ok(panel6.querySelector(".cx-endo-panel__cta").textContent === "See &amp; read all",
+    "OF6: the panel CTA stays verbatim (the ol/bl/more fallbacks keep their t-filter decode)");
+}
+
+// --- OF4: pagination appends roster rows (not cards) --------------------------------
+{
+  S.PF_LB_OPENED.length = 0;
+  const badge = S.endoBadgeBuild(badgeConf({ bo: 1, os: 1, str: OFFICIAL_STR }), { total: 73, items: endoFixture(24, 0) });
+  click(badge.querySelector(".cx-endo-badge__link"));
+  const ov = S.PF_LB_OPENED[0];
+  const more = ov.querySelector(".cx-endo__show-more");
+  ok(!!more && !more.hasAttribute("hidden"), "OF4: Show more visible while shown < total");
+  S.PF_FETCH_QUEUE.push({ total: 73, items: endoFixture(24, 24) });
+  click(more);
+  ok(ov.querySelectorAll(".cx-endo-ov__doc").length === 48 && !ov.querySelector(".cx-endo__card"),
+    "OF4: page 2 appends roster rows, never quote cards");
+  const prog = ov.querySelector(".cx-endo-ov__progress");
+  ok(!!prog && prog.textContent === "Showing 48 of 73", "OF4: progress advances");
+}
+
+// --- OF5: without os the list overlay keeps the v8.21 shape (in the body) -----------
+{
+  S.PF_LB_OPENED.length = 0;
+  const badge = S.endoBadgeBuild(badgeConf({ bo: 1 }), { total: 73, items: endoFixture(24, 0) });
+  click(badge.querySelector(".cx-endo-badge__link"));
+  const ov = S.PF_LB_OPENED[0];
+  ok(ov.querySelectorAll(".cx-endo__card").length === 24 &&
+     !ov.querySelector(".cx-endo-ov__doc") && !ov.querySelector(".cx-endo-ov__intro"),
+    "OF5: no os member -> the browsable list, no official pieces");
+  const body = ov.querySelector(".cx-endo-ov__body");
+  ok(!!body && body.querySelectorAll(".cx-endo__card").length === 24 &&
+     !!body.querySelector(".cx-endo-ov__note"),
+    "OF5: note + list share the ONE scroll body (the mid-line clip fix)");
+}
+
 // ======================================= REAL lightbox machinery (LB, v8.21)
 //
 // OV1-OV4 run against a RECORDING pfLbOpen stub, which is precisely why
@@ -1795,9 +2019,11 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         replace: "    if (pfPosInt(total)) return { tpl: pfStr(s, 'ba'), n: total };\n    if (pfPosInt(verified)) return { tpl: pfStr(s, 'bv'), n: verified };",
       },
       {
-        name: "m3-monogram-abbrev-kept",
-        find: "      if (parts[i] && !/\\.$/.test(parts[i])) keep.push(parts[i]);",
-        replace: "      if (parts[i]) keep.push(parts[i]);",
+        // v8.22: the panel gate ignored — ws:1 must NEVER fall through to
+        // the classic wall (P-series asserts the panel structure).
+        name: "m3-panel-gate-dropped",
+        find: "    if (conf.ws === 1) return endoPanelBuild(conf, data);",
+        replace: "    if (false) return endoPanelBuild(conf, data);",
       },
       {
         name: "m4-per-cap-dropped",
@@ -1918,6 +2144,34 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m26-hidden-focusable-kept",
         find: "        if (nodes[i].hasAttribute('hidden')) continue;",
         replace: "",
+      },
+      {
+        // v8.22: the official-overlay gate dropped — os:1 silently
+        // renders the quote list again (OF1 catches).
+        name: "m27-official-gate-dropped",
+        find: "    var official = conf.os === 1;",
+        replace: "    var official = false;",
+      },
+      {
+        // v8.22: half FAQ pairs rendered — a question without its answer
+        // would ship a dead dropdown (OF2's half-pair case catches).
+        name: "m28-faq-halfpair-rendered",
+        find: "      if (/\\S/.test(q) && /\\S/.test(a)) items.push({ q: q, a: a });",
+        replace: "      if (/\\S/.test(q) || /\\S/.test(a)) items.push({ q: q, a: a });",
+      },
+      {
+        // v8.22: official pagination regressed to quote cards — the
+        // roster would grow cards after page 1 (OF4 catches).
+        name: "m29-official-pagination-cards",
+        find: "            list.appendChild(official ? endoOverlayDocRow(extra[j]) : endoBuildCard(extra[j], s));",
+        replace: "            list.appendChild(endoBuildCard(extra[j], s));",
+      },
+      {
+        // v8.22 review catch: the raw reader regressed to the decoding
+        // pfStr — merchant-typed entities would un-escape (OF6 catches).
+        name: "m30-raw-decode-regressed",
+        find: "      var introText = pfStrRaw(s, 'oi');",
+        replace: "      var introText = pfStr(s, 'oi');",
       },
       {
         name: "m9-preview-always-verified",

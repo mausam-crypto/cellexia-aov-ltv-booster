@@ -33,7 +33,7 @@
     },
     {
       "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v8 proof library + compact modes: the #cx-ba-config island emission is DELETED (the PDP before/after widget retires \u2014 the standalone results-gallery block replaces it; the show_ba/cx_bas reads are kept because they still feed the outer emission gate and cx_draft_any), and the survey/study/bottle islands gain lean LIVE compact members ('\"cm\": 1' under cfg.dermSurvey.compact / cfg.clinicalStudy.compact / cfg.emptyBottleGuarantee.compact == true strict gates) plus the compact-gated surveyStrings.more_outcomes key. Pinned by harness section-5 v8 block + sims/survey-methodology.cjs C-series.",
+      "reason": "v8 proof library + compact modes: the #cx-ba-config island emission is DELETED (the PDP before/after widget retires — the standalone results-gallery block replaces it; the show_ba/cx_bas reads are kept because they still feed the outer emission gate and cx_draft_any), and the survey/study/bottle islands gain lean LIVE compact members ('\"cm\": 1' under cfg.dermSurvey.compact / cfg.clinicalStudy.compact / cfg.emptyBottleGuarantee.compact == true strict gates) plus the compact-gated surveyStrings.more_outcomes key. Pinned by harness section-5 v8 block + sims/survey-methodology.cjs C-series.",
       "wave": "v8"
     },
     {
@@ -48,7 +48,7 @@
     },
     {
       "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
-      "reason": "v8.2 ultra-compact branches (cm-guarded, textContent-only, same DOM): pressBuildSection collapses to one row (quote starts [hidden]; bindLogo tap reveals + rotates, a second tap on the ACTIVE logo re-hides + clears aria-pressed); endoBuildSection composes ONE <p> head row (count \u00b7 shown_of, per-part degrade, re-composed by setProgress after Show more appends into the same wall); resultsBuildSection emits only the cx-results--compact root modifier (CSS leverage). cm-absent paths byte-identical to v8. Pinned by sims/proof-gallery.cjs U/V series + mutants m7/m8/m9 and the harness class-coverage self-test (--compact trio).",
+      "reason": "v8.2 ultra-compact branches (cm-guarded, textContent-only, same DOM): pressBuildSection collapses to one row (quote starts [hidden]; bindLogo tap reveals + rotates, a second tap on the ACTIVE logo re-hides + clears aria-pressed); endoBuildSection composes ONE <p> head row (count · shown_of, per-part degrade, re-composed by setProgress after Show more appends into the same wall); resultsBuildSection emits only the cx-results--compact root modifier (CSS leverage). cm-absent paths byte-identical to v8. Pinned by sims/proof-gallery.cjs U/V series + mutants m7/m8/m9 and the harness class-coverage self-test (--compact trio).",
       "wave": "v8.2"
     },
     {
@@ -58,12 +58,12 @@
     },
     {
       "file": "extensions/cellexia-booster/blocks/proof-booster.liquid",
-      "reason": "v8.7 NEW embed replacing the three v8 SECTION blocks (press/derm-endorsements/results-gallery .liquid, entries retired this wave): the store's legacy Liquid templates cannot take section app blocks (merchant-verified), so the three proof widgets merge into ONE app embed (target body, name 'Cellexia proof library', 22 chars). The #cx-press-config/#cx-endo-config/#cx-results-config islands keep their v8/v8.3 payload byte-for-byte (incl. the two-code cm density members) \u2014 only the gate assigns are renamed per widget (cx_p_*/cx_e_*/cx_r_*) and the data-cx-mount divs are gone: cellexia-proof.js now self-inserts via the ordered .cx-proof-band (after .pdp__tabs on product pages, end of #main elsewhere, fail-closed). Pinned by harness section-5 v8.7 block + the CM_ISLANDS density pins.",
+      "reason": "v8.7 NEW embed replacing the three v8 SECTION blocks (press/derm-endorsements/results-gallery .liquid, entries retired this wave): the store's legacy Liquid templates cannot take section app blocks (merchant-verified), so the three proof widgets merge into ONE app embed (target body, name 'Cellexia proof library', 22 chars). The #cx-press-config/#cx-endo-config/#cx-results-config islands keep their v8/v8.3 payload byte-for-byte (incl. the two-code cm density members) — only the gate assigns are renamed per widget (cx_p_*/cx_e_*/cx_r_*) and the data-cx-mount divs are gone: cellexia-proof.js now self-inserts via the ordered .cx-proof-band (after .pdp__tabs on product pages, end of #main elsewhere, fail-closed). Pinned by harness section-5 v8.7 block + the CM_ISLANDS density pins.",
       "wave": "v8.7"
     },
     {
       "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v8.13 product display names: new `assign cx_pname = product.metafields.cellexia.display_name.value | default: product.title` and the three name interpolations (survey rec_line, survey outcomes_intro, study sub) switch from product.title to cx_pname. The metafield is translatable (native Shopify translations registered by the Product names admin page), so localized pages serve the merchant's exact per-language name; unset falls back to the title \u2014 byte-identical output for shops that never set a display name.",
+      "reason": "v8.13 product display names: new `assign cx_pname = product.metafields.cellexia.display_name.value | default: product.title` and the three name interpolations (survey rec_line, survey outcomes_intro, study sub) switch from product.title to cx_pname. The metafield is translatable (native Shopify translations registered by the Product names admin page), so localized pages serve the merchant's exact per-language name; unset falls back to the title — byte-identical output for shops that never set a display name.",
       "wave": "v8.13"
     },
     {
@@ -95,6 +95,11 @@
       "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
       "reason": "v10 US state overlay, byte-twin of the cellexia-pdp.js change: deliveryConfig state layer + deliveryQualifies dc.extra/dc.usFederal clauses, the US_STATE_NAMES + deliveryUs* twin region ('cx:us_state'/'cx_geo:1'/'apps/cellexia/geo' literals, selector, geo kick), dispatchSchedule resolved-state cutoff/dispatchDays substitution, CX_AZ_ICONS 'pin' entry; renderDelivery attaches the selector and kicks the geo hint. v10 fix wave adds the byte-twinned deliveryUsPrime (called at renderInto() top before the render decisions), deliveryUsBroadcast + deliveryUsEventToken 'cx:us-state' fan-out and deliveryUsPointerCoarse close split, plus the hidden-state option filter + stored-hidden-choice auto-clear. First allowlist entry for this file (baseline-clean before v10). Pinned by sims/us-state-delivery.mjs per-symbol twin byte-identity + behavioral matrix on BOTH bundles (incl. the pdp+cart shared-document fan-out pairing), sims/delivery-businessdays.mjs and harness v10 pins.",
       "wave": "v10"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/proof-booster.liquid",
+      "reason": "v8.22 wall/overlay design codes: the cx-endo-config island gains two lean members — \"ws\":1 when cfg.dermEndorsements.wallStyle == \"panel\" (official fixed-height panel wall) and \"os\":1 when cfg.dermEndorsements.overlayStyle == \"official\" (explainer overlay: intro + FAQ dropdowns + dermatologist roster). Absent members = the classic wall / list overlay, so a stale island keeps the v8.21 behavior. The overlay-content COPY (intro/FAQ/roster title/panel CTA) deliberately does NOT ride the island: it has non-blank English defaults and no locale-catalog fallback, so the proxy serves it translated-else-source in payload.copy (zero Liquid bytes). Pinned by sims/proof-gallery.cjs P/OF series + harness v8.22 block.",
+      "wave": "v8.22"
     }
   ]
 }

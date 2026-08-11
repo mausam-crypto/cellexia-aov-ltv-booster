@@ -519,6 +519,116 @@ for (const path of [
     "pre-v8.21 store merges to scroll + built-in overlay note",
   );
 }
+
+// v8.22: wall/overlay designs + proxy-served overlay content.
+{
+  ok(
+    DEFAULT_SETTINGS.dermEndorsements.wallStyle === "wall" &&
+      DEFAULT_SETTINGS.dermEndorsements.overlayStyle === "list",
+    "v8.22 designs default to the classic wall + list overlay",
+  );
+  for (const [field, good, bad] of [
+    ["wallStyle", "panel", "wall"],
+    ["overlayStyle", "official", "list"],
+  ] as const) {
+    const pick = clone(DEFAULT_SETTINGS) as any;
+    pick.dermEndorsements[field] = good;
+    ok(
+      sanitizeSettings(pick, DEFAULT_SETTINGS).dermEndorsements[field] === good,
+      `sanitize: ${field} "${good}" survives`,
+    );
+    for (const junk of ["masonry", 1, null, ""]) {
+      const dirty = clone(DEFAULT_SETTINGS) as any;
+      dirty.dermEndorsements[field] = junk;
+      ok(
+        sanitizeSettings(dirty, DEFAULT_SETTINGS).dermEndorsements[field] === bad,
+        `sanitize: ${field} ${JSON.stringify(junk)} -> ${bad} (fail closed)`,
+      );
+    }
+  }
+  // The overlay-content fields ship NON-BLANK English defaults (no
+  // locale-catalog fallback exists) except FAQ slot 4.
+  ok(
+    DEFAULT_SETTINGS.dermEndorsements.copyWallCta === "Read all {n} endorsements" &&
+      /\S/.test(DEFAULT_SETTINGS.dermEndorsements.copyOverlayIntro) &&
+      DEFAULT_SETTINGS.dermEndorsements.copyOverlayFaqTitle === "Common questions" &&
+      /\S/.test(DEFAULT_SETTINGS.dermEndorsements.copyOverlayFaq1Q) &&
+      /\S/.test(DEFAULT_SETTINGS.dermEndorsements.copyOverlayFaq3A) &&
+      DEFAULT_SETTINGS.dermEndorsements.copyOverlayFaq4Q === "" &&
+      DEFAULT_SETTINGS.dermEndorsements.copyOverlayFaq4A === "" &&
+      DEFAULT_SETTINGS.dermEndorsements.copyOverlayListTitle === "All {n} dermatologists",
+    "v8.22 overlay-content defaults: editable English starting copy, FAQ 4 empty",
+  );
+  // A merchant who BLANKS a piece means to hide it — sanitize must keep
+  // "" and never resurrect the default.
+  const hiddenPiece = clone(DEFAULT_SETTINGS) as any;
+  hiddenPiece.dermEndorsements.copyOverlayIntro = "   ";
+  ok(
+    sanitizeSettings(hiddenPiece, DEFAULT_SETTINGS).dermEndorsements
+      .copyOverlayIntro === "",
+    "sanitize: a blanked overlay-content field stays blank (hidden, not defaulted)",
+  );
+  // Caps: CTA/FAQ-title 120, intro 1500, questions 200, answers 1000,
+  // list title 160 — all code points.
+  const capped22 = clone(DEFAULT_SETTINGS) as any;
+  capped22.dermEndorsements.copyWallCta = "x".repeat(500);
+  capped22.dermEndorsements.copyOverlayIntro = "x".repeat(5000);
+  capped22.dermEndorsements.copyOverlayFaqTitle = "x".repeat(500);
+  capped22.dermEndorsements.copyOverlayFaq2Q = "x".repeat(500);
+  capped22.dermEndorsements.copyOverlayFaq2A = "x".repeat(5000);
+  capped22.dermEndorsements.copyOverlayListTitle = "x".repeat(500);
+  const cut22 = sanitizeSettings(capped22, DEFAULT_SETTINGS).dermEndorsements;
+  ok(
+    cut22.copyWallCta.length === 120 &&
+      cut22.copyOverlayIntro.length === 1500 &&
+      cut22.copyOverlayFaqTitle.length === 120 &&
+      cut22.copyOverlayFaq2Q.length === 200 &&
+      cut22.copyOverlayFaq2A.length === 1000 &&
+      cut22.copyOverlayListTitle.length === 160,
+    "sanitize: v8.22 copy caps enforced (120/1500/120/200/1000/160)",
+  );
+  // {n} canonicalization covers the three new count-bearing fields; FAQ
+  // text keeps merchant braces verbatim.
+  const braces22 = clone(DEFAULT_SETTINGS) as any;
+  braces22.dermEndorsements.copyWallCta = "See {{ n }} endorsements";
+  braces22.dermEndorsements.copyOverlayIntro = "All { N } are on file";
+  braces22.dermEndorsements.copyOverlayListTitle = "The {{n}} doctors";
+  braces22.dermEndorsements.copyOverlayFaq1A = "About { n } of them";
+  const healed22 = sanitizeSettings(braces22, DEFAULT_SETTINGS).dermEndorsements;
+  ok(
+    healed22.copyWallCta === "See {n} endorsements" &&
+      healed22.copyOverlayIntro === "All {n} are on file" &&
+      healed22.copyOverlayListTitle === "The {n} doctors" &&
+      healed22.copyOverlayFaq1A === "About { n } of them",
+    "sanitize: {n} canonicalization on CTA/intro/list title only (v8.22)",
+  );
+  // Non-strings become "" (hidden), never the default — the intro default
+  // must not sneak back through the junk path.
+  const junk22 = clone(DEFAULT_SETTINGS) as any;
+  junk22.dermEndorsements.copyOverlayFaq1Q = 7;
+  ok(
+    sanitizeSettings(junk22, DEFAULT_SETTINGS).dermEndorsements
+      .copyOverlayFaq1Q === "",
+    "sanitize: non-string overlay-content field -> '' (hidden)",
+  );
+  // Upgrade path: a stored pre-v8.22 blob (none of the new fields) merges
+  // to the classic designs + the English starting copy.
+  const stored22 = clone(DEFAULT_SETTINGS) as any;
+  delete stored22.dermEndorsements.wallStyle;
+  delete stored22.dermEndorsements.overlayStyle;
+  delete stored22.dermEndorsements.copyWallCta;
+  delete stored22.dermEndorsements.copyOverlayIntro;
+  delete stored22.dermEndorsements.copyOverlayFaq1Q;
+  const merged22 = mergeSettings(clone(DEFAULT_SETTINGS), stored22).dermEndorsements;
+  ok(
+    merged22.wallStyle === "wall" &&
+      merged22.overlayStyle === "list" &&
+      merged22.copyWallCta === DEFAULT_SETTINGS.dermEndorsements.copyWallCta &&
+      merged22.copyOverlayIntro === DEFAULT_SETTINGS.dermEndorsements.copyOverlayIntro &&
+      merged22.copyOverlayFaq1Q === DEFAULT_SETTINGS.dermEndorsements.copyOverlayFaq1Q,
+    "pre-v8.22 store merges to classic designs + the English starting copy",
+  );
+}
 {
   const scoped = clone(DEFAULT_SETTINGS);
   scoped.marketScopes.az_ships_from = { mode: "selected", markets: ["switzerland"] };

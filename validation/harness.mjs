@@ -799,9 +799,9 @@ const EVIDENCE = {
     ok(
       ptSrc19.includes('export const COPY_RESOURCE_ID = "dermEndorsements";') &&
         ptSrc19.includes('export type ProofScope = ProofType | "copy";') &&
-        ptSrc19.includes('copy: [\n    "copyEyebrow",\n    "copyHeadline",\n    "copyDescription",\n    "copyBadgeHeadline",\n    "copyBadgeLink",\n    "copyBadgeNoLink",\n    "copyBadgeChip",\n    "copyOverlayNote",\n  ],') &&
+        ptSrc19.includes('copy: [\n    "copyEyebrow",\n    "copyHeadline",\n    "copyDescription",\n    "copyBadgeHeadline",\n    "copyBadgeLink",\n    "copyBadgeNoLink",\n    "copyBadgeChip",\n    "copyOverlayNote",\n    "copyWallCta",\n    "copyOverlayIntro",\n    "copyOverlayFaqTitle",\n    "copyOverlayFaq1Q",\n    "copyOverlayFaq1A",\n    "copyOverlayFaq2Q",\n    "copyOverlayFaq2A",\n    "copyOverlayFaq3Q",\n    "copyOverlayFaq3A",\n    "copyOverlayFaq4Q",\n    "copyOverlayFaq4A",\n    "copyOverlayListTitle",\n  ],') &&
         ptSrc19.includes('copy: "copy",'),
-      "v8.19: the copy scope exists with the seven copy fields",
+      "v8.19: the copy scope exists with the v8.17 + v8.22 copy fields",
     );
     // The emission mapping is a PURE service function (behaviorally pinned
     // by sims/proof-translation C7); here: all seven code literals + the
@@ -823,10 +823,10 @@ const EVIDENCE = {
     );
     const proxySrc19 = read("app/routes/proxy.proof.tsx");
     ok(
-      proxySrc19.includes("if (locale && page === 1 && payload.items.length > 0) {") &&
-        proxySrc19.includes("const copy = copyOverlayToIslandCodes(fields, sources);") &&
+      proxySrc19.includes("if (page === 1 && payload.items.length > 0) {") &&
+        proxySrc19.includes("? copyOverlayToIslandCodes(fields, sources)") &&
         proxySrc19.includes("(payload as Record<string, unknown>).copy = copy;") &&
-        proxySrc19.includes('sources[field] = typeof text === "string" ? text : "";'),
+        proxySrc19.includes("sources[field] = read(field);"),
       "v8.19b: proxy gates copy on the page-1 init fetch and passes ALL sources (blanks included)",
     );
     ok(
@@ -836,7 +836,7 @@ const EVIDENCE = {
     );
     for (const anchor19 of [
       "function endoApplyCopy(conf, data) {",
-      "var keys = ['oe', 'oh', 'od', 'ob', 'ol', 'on', 'oc', 'ov'];",
+      "var keys = ['oe', 'oh', 'od', 'ob', 'ol', 'on', 'oc', 'ov',\n      'wc', 'oi', 'fq', 'f1q', 'f1a', 'f2q', 'f2a', 'f3q', 'f3a', 'f4q', 'f4a', 'lt'];",
       // ORDERING pin (review catch: presence alone let the merge move
       // after the build) — the merge must precede endoBuildSection.
       "endoApplyCopy(isl.conf, data);\n          var node = endoBuildSection(isl.conf, data);",
@@ -943,6 +943,165 @@ const EVIDENCE = {
         endoTab21.includes("disabled={!displayState.badgeShowLink}") &&
         endoTab21.includes("Overlay methodology text"),
       "v8.21: admin BADGE_LINK_ACTION_OPTIONS set-equal to BADGE_LINK_ACTIONS + overlay-note field present",
+    );
+  }
+
+  // v8.22: wall PANEL design + OFFICIAL overlay + monogram removal.
+  // Behavior pinned by sims/proof-gallery P/OF-cases + mutants m3/m27/m28/
+  // m29 and sims/proof-translation OC-cases.
+  {
+    const settingsSrc22 = read("app/models/settings.server.ts");
+    const boosterCss = read("extensions/cellexia-booster/assets/cellexia-booster.css");
+    ok(
+      settingsSrc22.includes('export const WALL_STYLES = ["wall", "panel"] as const;') &&
+        settingsSrc22.includes('export const OVERLAY_STYLES = ["list", "official"] as const;') &&
+        settingsSrc22.includes("wallStyle: WallStyle;") &&
+        settingsSrc22.includes("overlayStyle: OverlayStyle;") &&
+        settingsSrc22.includes('wallStyle: "wall",') &&
+        settingsSrc22.includes('overlayStyle: "list",'),
+      "v8.22: wall/overlay style enums + defaults in the settings model",
+    );
+    ok(
+      settingsSrc22.includes('["copyWallCta", 120],') &&
+        settingsSrc22.includes('["copyOverlayIntro", 1500],') &&
+        settingsSrc22.includes('["copyOverlayFaqTitle", 120],') &&
+        settingsSrc22.includes('["copyOverlayFaq4A", 1000],') &&
+        settingsSrc22.includes('["copyOverlayListTitle", 160],') &&
+        settingsSrc22.includes('field === "copyWallCta"') &&
+        settingsSrc22.includes('field === "copyOverlayIntro"') &&
+        settingsSrc22.includes('field === "copyOverlayListTitle"'),
+      "v8.22: overlay-content copy fields capped + the three {n} fields canonicalized",
+    );
+    // The overlay-content defaults are NON-BLANK English (no locale-
+    // catalog fallback exists — the el.json byte wall): blanking one must
+    // HIDE the piece, so sanitize must never resurrect a default.
+    ok(
+      settingsSrc22.includes('copyWallCta: "Read all {n} endorsements",') &&
+        settingsSrc22.includes('copyOverlayFaqTitle: "Common questions",') &&
+        settingsSrc22.includes('copyOverlayListTitle: "All {n} dermatologists",') &&
+        settingsSrc22.includes('copyOverlayFaq4Q: "",'),
+      "v8.22: editable English defaults ship in DEFAULT_SETTINGS (FAQ slot 4 blank)",
+    );
+    const ptSrc22 = read("app/services/proof-translation.server.ts");
+    ok(
+      ptSrc22.includes("export const OVERLAY_CONTENT_ISLAND_CODES: Record<string, string> = {") &&
+        ptSrc22.includes('copyWallCta: "wc",') &&
+        ptSrc22.includes('copyOverlayIntro: "oi",') &&
+        ptSrc22.includes('copyOverlayFaqTitle: "fq",') &&
+        ptSrc22.includes('copyOverlayFaq1Q: "f1q",') &&
+        ptSrc22.includes('copyOverlayFaq4A: "f4a",') &&
+        ptSrc22.includes('copyOverlayListTitle: "lt",') &&
+        ptSrc22.includes("export function overlayContentToIslandCodes(") &&
+        ptSrc22.includes("let value = typeof t === \"string\" && /\\S/.test(t) ? t : source;"),
+      "v8.22: overlay-content island codes + translated-else-source resolution in the service",
+    );
+    const proxySrc22 = read("app/routes/proxy.proof.tsx");
+    ok(
+      proxySrc22.includes("for (const field of Object.keys(OVERLAY_CONTENT_ISLAND_CODES)) {") &&
+        proxySrc22.includes("contentSources[field] = read(field);") &&
+        proxySrc22.includes("? overlayContentToIslandCodes(contentSources, fields ?? {})") &&
+        proxySrc22.includes("if (locale && (anySet || anyContent)) {"),
+      "v8.22: proxy always resolves overlay content at page 1 (locale-independent carrier)",
+    );
+    ok(
+      proofLiquid.includes('{% if cfg.dermEndorsements.wallStyle == "panel" %},"ws":1{% endif %}') &&
+        proofLiquid.includes('{% if cfg.dermEndorsements.overlayStyle == "official" %},"os":1{% endif %}'),
+      "v8.22: endo island emits the ws/os lean design codes",
+    );
+    for (const anchor22 of [
+      "function endoPanelBuild(conf, data) {",
+      "if (conf.ws === 1) return endoPanelBuild(conf, data);",
+      "var official = conf.os === 1;",
+      "var body = pfEl('div', 'cx-endo-ov__body');",
+      "function endoOverlayFaq(s) {",
+      "function endoOverlayDocRow(item) {",
+      // proxy-only copy reads RAW (never t-filter-escaped, so no decode)
+      "function pfStrRaw(map, key) {",
+      // panel CTA fallback chain wc -> ol/bl -> more (never a dead panel)
+      "var ctaTpl = pfStrRaw(s, 'wc');",
+      "if (!/\\S/.test(ctaTpl)) ctaTpl = endoText(s, 'ol', 'bl');",
+      "if (!/\\S/.test(ctaTpl)) ctaTpl = pfStr(s, 'more');",
+      // review catch: blank oi HIDES the official intro (no note-chain
+      // fallback — the admin promises blank = hidden)
+      "var introText = pfStrRaw(s, 'oi');",
+      // FAQ pairs render only complete
+      "if (/\\S/.test(q) && /\\S/.test(a)) items.push({ q: q, a: a });",
+      // official pagination appends roster rows, not cards
+      "list.appendChild(official ? endoOverlayDocRow(extra[j]) : endoBuildCard(extra[j], s));",
+    ]) {
+      ok(
+        proofJs.includes(anchor22),
+        `v8.22: panel/official code present in cellexia-proof.js: ${anchor22.slice(0, 52)}`,
+      );
+    }
+    // Monogram machinery is GONE — JS and CSS both (a letter circle reads
+    // as a fake avatar; photo-less cards lead with the name).
+    ok(
+      !proofJs.includes("endoInitials") &&
+        !proofJs.includes("cx-endo__monogram") &&
+        !boosterCss.includes("cx-endo__monogram"),
+      "v8.22: no initials-monogram machinery in JS or CSS",
+    );
+    for (const cssAnchor22 of [
+      ".cx-endo--panel {",
+      ".cx-endo-panel__rail {",
+      ".cx-endo-panel__cta {",
+      ".cx-endo-ov__body {",
+      ".cx-endo-ov__card--official {",
+      ".cx-endo-ov__faq-q {",
+      ".cx-endo-ov__doc {",
+      // the [hidden]-reliant FAQ panel keeps the house display guard
+      ".cx-endo-ov__faq-a[hidden] {\n  display: none !important;\n}",
+    ]) {
+      ok(
+        boosterCss.includes(cssAnchor22),
+        `v8.22: css anchor present: ${cssAnchor22.split("\n")[0]}`,
+      );
+    }
+    const endoTab22 = read("app/routes/app.proof.endorsements.tsx");
+    for (const [optName22, serverVals22] of [
+      ["WALL_STYLE_OPTIONS", ["wall", "panel"]],
+      ["OVERLAY_STYLE_OPTIONS", ["list", "official"]],
+    ]) {
+      const os22 = endoTab22.indexOf(`const ${optName22} = [`);
+      const oe22 = endoTab22.indexOf("] as const;", os22);
+      const slice22 = os22 !== -1 && oe22 !== -1 ? endoTab22.slice(os22, oe22) : "";
+      const vals22 = [...slice22.matchAll(/value: "([a-z_]+)"/g)].map((m) => m[1]);
+      ok(
+        slice22 !== "" &&
+          vals22.length === serverVals22.length &&
+          serverVals22.every((v) => vals22.includes(v)) &&
+          vals22.every((v) => serverVals22.includes(v)),
+        `v8.22: admin ${optName22} set-equal to the server enum`,
+      );
+    }
+    ok(
+      endoTab22.includes('label="Wall design"') &&
+        endoTab22.includes('label="Overlay style"') &&
+        endoTab22.includes('label="Intro text"') &&
+        endoTab22.includes('label="Dermatologist list heading"') &&
+        endoTab22.includes('{ field: "copyOverlayListTitle", label: "Dermatologist list heading", sourceText: display.copyOverlayListTitle },') &&
+        endoTab22.includes('{ field: "copyWallCta", label: "Panel View-all button", sourceText: display.copyWallCta },'),
+      "v8.22: admin design selects + official content fields + translation rows wired",
+    );
+    // v8.22 review catches (the four wiring fixes):
+    ok(
+      endoTab22.includes('key === "wallStyle" ||') &&
+        endoTab22.includes('key === "overlayStyle",'),
+      "v8.22: a style-only save also fires the copy auto-translate (defaults go live translated)",
+    );
+    ok(
+      endoTab22.includes("overlayContentEnglishDefaults") &&
+        endoTab22.includes('title="This starting copy is in English"'),
+      "v8.22: non-English-primary shops get the English-defaults warning banner",
+    );
+    ok(
+      proxySrc22.includes("// untranslated sources serve"),
+      "v8.22: a failed translation lookup degrades to the saved sources (inner catch)",
+    );
+    ok(
+      !endoTab22.includes("initials show otherwise"),
+      "v8.22: no stale initials-avatar promise in the admin",
     );
   }
 

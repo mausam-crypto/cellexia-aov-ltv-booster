@@ -264,6 +264,21 @@ export const BADGE_LINK_ACTIONS = ["scroll", "overlay"] as const;
 export type BadgeLinkAction = (typeof BADGE_LINK_ACTIONS)[number];
 export type PressLayout = (typeof PRESS_LAYOUTS)[number];
 
+/** v8.22 wall designs: "wall" = the v8 masonry wall (density applies),
+ *  "panel" = the official fixed-height panel — shield + count headline +
+ *  credential chip over a horizontal snap rail of clamped cards and a
+ *  View-all pill that opens the overlay (density is ignored: the panel IS
+ *  the compact design). */
+export const WALL_STYLES = ["wall", "panel"] as const;
+export type WallStyle = (typeof WALL_STYLES)[number];
+
+/** v8.22 overlay designs: "list" = the v8.21 browsable endorsement list,
+ *  "official" = the explainer overlay — merchant intro text (where the
+ *  recommendations come from), FAQ dropdowns, and the full dermatologist
+ *  name list WITHOUT the individual quotes. */
+export const OVERLAY_STYLES = ["list", "official"] as const;
+export type OverlayStyle = (typeof OVERLAY_STYLES)[number];
+
 /**
  * v11: the six checkout-trust display rows, in their DEFAULT display order
  * (the pre-v11 hardcoded render order — a config without rowOrder renders
@@ -693,6 +708,37 @@ export interface BoosterSettings {
      *  ("" = the section description serves; {n} = the live endorsement
      *  total; DeepL-translated via the copy scope like the others). */
     copyOverlayNote: string;
+    /** v8.22 wall design (WALL_STYLES; default "wall"). */
+    wallStyle: WallStyle;
+    /** v8.22 overlay design (OVERLAY_STYLES; default "list"). */
+    overlayStyle: OverlayStyle;
+    /** v8.22 OVERLAY-CONTENT COPY. Unlike the v8.17 overrides these have
+     *  NON-BLANK ENGLISH DEFAULTS (there is no locale-catalog fallback —
+     *  the el.json byte wall forbids new locale keys), so they ship via
+     *  the PROXY payload only (never the Liquid island): the proxy
+     *  resolves DeepL translation → saved source per field at page 1 and
+     *  the storefront merges them like the other copy codes. Blank = the
+     *  storefront hides that piece. {n} = the live endorsement total in
+     *  copyWallCta / copyOverlayIntro / copyOverlayListTitle. */
+    /** The panel wall's View-all pill label (also the overlay trigger). */
+    copyWallCta: string;
+    /** Official overlay: intro text explaining where the recommendations
+     *  come from (blank line = paragraph break). */
+    copyOverlayIntro: string;
+    /** Official overlay: heading over the FAQ dropdowns. */
+    copyOverlayFaqTitle: string;
+    /** Official overlay: up to four FAQ dropdowns — a pair renders only
+     *  when BOTH its question and answer are non-blank. */
+    copyOverlayFaq1Q: string;
+    copyOverlayFaq1A: string;
+    copyOverlayFaq2Q: string;
+    copyOverlayFaq2A: string;
+    copyOverlayFaq3Q: string;
+    copyOverlayFaq3A: string;
+    copyOverlayFaq4Q: string;
+    copyOverlayFaq4A: string;
+    /** Official overlay: heading over the dermatologist name list. */
+    copyOverlayListTitle: string;
   };
   /**
    * Dispatch countdown ("Order within 2h 14m for same-day dispatch").
@@ -1068,6 +1114,27 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     copyBadgeNoLink: "",
     copyBadgeChip: "",
     copyOverlayNote: "",
+    wallStyle: "wall",
+    overlayStyle: "list",
+    // v8.22 overlay-content defaults: EDITABLE English starting copy (the
+    // admin tells the merchant to review it for accuracy before
+    // publishing). Proxy-served + DeepL-translated; never in locale files.
+    copyWallCta: "Read all {n} endorsements",
+    copyOverlayIntro:
+      "Every endorsement in this library comes from a licensed dermatologist who reviewed Cellexia — the formulas, the ingredients and the approach — and shared a written professional assessment in their own words.\n\nRecommendations are published with each dermatologist's name, professional title and country of practice, and are kept on file by Cellexia.",
+    copyOverlayFaqTitle: "Common questions",
+    copyOverlayFaq1Q: "Who are the dermatologists behind these recommendations?",
+    copyOverlayFaq1A:
+      "All contributors are licensed dermatologists. Each recommendation is published with the doctor's name, board certification or professional title, and country of practice.",
+    copyOverlayFaq2Q: "How were these recommendations collected?",
+    copyOverlayFaq2A:
+      "Cellexia shared the product and its full ingredient information with practising dermatologists and asked for their independent professional assessment. Their statements are published in their own words.",
+    copyOverlayFaq3Q: "Does a recommendation mean the product will suit my skin?",
+    copyOverlayFaq3A:
+      "No two skins are the same. These assessments describe the formulation approach in general terms — for personal advice about your own skin, please consult your dermatologist or pharmacist.",
+    copyOverlayFaq4Q: "",
+    copyOverlayFaq4A: "",
+    copyOverlayListTitle: "All {n} dermatologists",
   },
   dispatch: {
     enabled: false,
@@ -1809,6 +1876,20 @@ export function sanitizeSettings(
     next.dermEndorsements.badgeLinkAction =
       DEFAULT_SETTINGS.dermEndorsements.badgeLinkAction;
   }
+  if (
+    !WALL_STYLES.includes(next.dermEndorsements.wallStyle as WallStyle)
+  ) {
+    next.dermEndorsements.wallStyle =
+      DEFAULT_SETTINGS.dermEndorsements.wallStyle;
+  }
+  if (
+    !OVERLAY_STYLES.includes(
+      next.dermEndorsements.overlayStyle as OverlayStyle,
+    )
+  ) {
+    next.dermEndorsements.overlayStyle =
+      DEFAULT_SETTINGS.dermEndorsements.overlayStyle;
+  }
   {
     const endo = next.dermEndorsements;
     const copyCaps = [
@@ -1820,6 +1901,20 @@ export function sanitizeSettings(
       ["copyBadgeNoLink", 120],
       ["copyBadgeChip", 120],
       ["copyOverlayNote", 1000],
+      // v8.22 overlay-content fields (non-strings become "" = hidden, NOT
+      // the default — a merchant who blanks a piece means to hide it).
+      ["copyWallCta", 120],
+      ["copyOverlayIntro", 1500],
+      ["copyOverlayFaqTitle", 120],
+      ["copyOverlayFaq1Q", 200],
+      ["copyOverlayFaq1A", 1000],
+      ["copyOverlayFaq2Q", 200],
+      ["copyOverlayFaq2A", 1000],
+      ["copyOverlayFaq3Q", 200],
+      ["copyOverlayFaq3A", 1000],
+      ["copyOverlayFaq4Q", 200],
+      ["copyOverlayFaq4A", 1000],
+      ["copyOverlayListTitle", 160],
     ] as const;
     for (const [field, cap] of copyCaps) {
       if (typeof endo[field] !== "string") {
@@ -1829,7 +1924,10 @@ export function sanitizeSettings(
         if (
           field === "copyHeadline" ||
           field === "copyBadgeHeadline" ||
-          field === "copyOverlayNote"
+          field === "copyOverlayNote" ||
+          field === "copyWallCta" ||
+          field === "copyOverlayIntro" ||
+          field === "copyOverlayListTitle"
         ) {
           value = value.replace(/\{\{?\s*n\s*\}?\}/gi, "{n}");
         }

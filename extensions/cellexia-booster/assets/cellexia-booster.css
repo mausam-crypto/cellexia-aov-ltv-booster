@@ -3247,20 +3247,8 @@ body.customer--b2b .cx-sub-remove {
   flex: 0 0 auto;
 }
 
-.cx-endo__monogram {
-  inline-size: 44px;
-  block-size: 44px;
-  border-radius: 50%;
-  background: #b1cded;
-  color: #1d1d1b;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: "Gobold", sans-serif;
-  font-weight: 700;
-  font-size: 15px;
-  flex: 0 0 auto;
-}
+/* v8.22: the initials-monogram avatar filler was REMOVED (a letter
+   circle reads as a fake avatar) — photo-less cards lead with the name. */
 
 .cx-endo__id {
   min-inline-size: 0;
@@ -3891,28 +3879,188 @@ body.customer--b2b .cx-sub-remove {
   color: #fff;
 }
 
-.cx-endo-ov__note {
-  margin: 12px 0 0;
-  font-size: 14px;
-  line-height: 1.55;
-  color: #1d1d1b;
-  /* a 1000-char note must scroll itself, never starve the list below
-     (overflow also zeroes its automatic flex minimum) */
-  max-block-size: 26vh;
-  overflow-y: auto;
-}
-
-.cx-endo-ov__list {
+/* v8.22: ONE scroll region under the header. The old per-piece
+   scrollers (26vh note cap, self-scrolling list) clipped the note
+   MID-LINE on short viewports; now note/intro/FAQ/roster flow and
+   scroll together like a document. */
+.cx-endo-ov__body {
   flex: 1 1 auto;
   min-block-size: 96px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  margin: 14px 0 0;
+  margin: 12px 0 0;
   padding-inline-end: 4px;
-  display: grid;
-  gap: 10px;
   scrollbar-width: thin;
   scrollbar-color: #d5d9d9 transparent;
+}
+
+.cx-endo-ov__note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #1d1d1b;
+}
+
+.cx-endo-ov__list {
+  margin: 14px 0 0;
+  display: grid;
+  gap: 10px;
+}
+
+.cx-endo-ov__note + .cx-endo-ov__list {
+  margin-block-start: 14px;
+}
+
+/* ---- v8.22 official overlay: intro + FAQ dropdowns + roster ---- */
+
+/* the explainer reads better a touch wider than the quote list */
+.cx-endo-ov__card--official {
+  max-inline-size: 680px;
+}
+
+.cx-endo-ov__intro {
+  margin: 0;
+}
+
+.cx-endo-ov__intro-p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #1d1d1b;
+}
+
+.cx-endo-ov__intro-p:last-child {
+  margin-block-end: 0;
+}
+
+.cx-endo-ov__sub {
+  margin: 18px 0 8px;
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1d1d1b;
+}
+
+.cx-endo-ov__faq {
+  margin-block-start: 4px;
+}
+
+.cx-endo-ov__faq-item {
+  border-block-end: 1px solid #e5e5e3;
+}
+
+.cx-endo-ov__faq-item:first-of-type {
+  border-block-start: 1px solid #e5e5e3;
+}
+
+.cx-endo-ov__faq-q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  inline-size: 100%;
+  border: 0;
+  background: none;
+  padding: 11px 2px;
+  cursor: pointer;
+  text-align: start;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #1d1d1b;
+}
+
+.cx-endo-ov__faq-q-text {
+  min-inline-size: 0;
+}
+
+.cx-endo-ov__faq-caret {
+  flex: 0 0 auto;
+  inline-size: 14px;
+  block-size: 14px;
+  fill: none;
+  stroke: #1d1d1b;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s ease;
+}
+
+.cx-endo-ov__faq-q[aria-expanded="true"] .cx-endo-ov__faq-caret {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cx-endo-ov__faq-caret {
+    transition: none;
+  }
+}
+
+.cx-endo-ov__faq-a {
+  padding: 0 2px 12px;
+}
+
+/* the answer panel relies on [hidden]; nothing sets its display, but the
+   house guard keeps a future display rule from defeating the attribute */
+.cx-endo-ov__faq-a[hidden] {
+  display: none !important;
+}
+
+.cx-endo-ov__faq-a-p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #4c4a45;
+}
+
+.cx-endo-ov__faq-a-p:last-child {
+  margin-block-end: 0;
+}
+
+.cx-endo-ov__docs {
+  display: grid;
+  gap: 0;
+}
+
+.cx-endo-ov__doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 2px;
+  border-block-end: 1px solid #efefed;
+}
+
+.cx-endo-ov__doc:last-child {
+  border-block-end: 0;
+}
+
+.cx-endo-ov__doc-photo {
+  inline-size: 32px;
+  block-size: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+
+.cx-endo-ov__doc-id {
+  min-inline-size: 0;
+}
+
+.cx-endo-ov__doc-name {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #1d1d1b;
+}
+
+.cx-endo-ov__doc-creds {
+  margin: 1px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #767676;
 }
 
 /* the wall's cards render inside the overlay list — kill their
@@ -3950,6 +4098,10 @@ body.customer--b2b .cx-sub-remove {
   .cx-endo-ov .cx-endo__show-more {
     padding-block: 14px;
   }
+
+  .cx-endo-ov__faq-q {
+    padding-block: 13px;
+  }
 }
 
 @media (max-width: 559px) {
@@ -3968,6 +4120,174 @@ body.customer--b2b .cx-sub-remove {
 
   .cx-endo-ov__title {
     font-size: 18px;
+  }
+}
+
+/* ---------------------- v8.22 endorsement PANEL wall (official, fixed
+   height). The masonry wall's alternative design: bordered panel,
+   shield + count headline + credential chip, a horizontal scroll-snap
+   rail of CLAMPED cards (no in-place expander — the View-all pill opens
+   the overlay), constant vertical footprint whatever the count. */
+
+.cx-endo--panel {
+  box-sizing: border-box;
+  text-align: start;
+  border: 1px solid #d8d8d8;
+  border-radius: 14px;
+  background: #fff;
+  padding: 16px 16px 14px;
+}
+
+.cx-endo-panel__head {
+  margin-block-end: 12px;
+}
+
+.cx-endo-panel__headline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: clamp(16px, 3.4vw, 20px);
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: #1d1d1b;
+}
+
+/* minimal-reset themes set strong to inherit (the v8.18 lesson) */
+.cx-endo-panel__headline strong {
+  font-weight: 700;
+}
+
+.cx-endo-panel__headline .cx-endo-badge__shield {
+  flex: 0 0 auto;
+  inline-size: 20px;
+  block-size: 22px;
+}
+
+.cx-endo-panel__chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: #4c4a45;
+}
+
+.cx-endo-panel__chip .cx-endo-badge__chip-shield {
+  inline-size: 14px;
+  block-size: 16px;
+}
+
+.cx-endo-panel__chip-text {
+  min-inline-size: 0;
+}
+
+.cx-endo-panel__rail {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  padding-block-end: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+.cx-endo-panel__rail::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cx-endo-panel__rail::-webkit-scrollbar-thumb {
+  background: #d5d9d9;
+  border-radius: 3px;
+}
+
+.cx-endo-panel__rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* fixed-height rail cards: quotes clamp, identity stays one line — the
+   card can NEVER grow the panel (that is the whole point) */
+.cx-endo--panel .cx-endo__card {
+  flex: 0 0 260px;
+  min-inline-size: 0;
+  scroll-snap-align: start;
+  margin-block-end: 0;
+  padding: 12px 14px;
+  background: #fafaf9;
+}
+
+.cx-endo--panel .cx-endo__photo {
+  inline-size: 36px;
+  block-size: 36px;
+}
+
+/* one-line identity: a long name or credential must NEVER grow the
+   fixed-height rail (the .cx-endo__id min-inline-size:0 lets the
+   ellipsis engage inside the flex head) */
+.cx-endo--panel .cx-endo__name,
+.cx-endo--panel .cx-endo__creds {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cx-endo--panel .cx-endo__quote {
+  margin-block-start: 8px;
+  -webkit-line-clamp: 3;
+}
+
+.cx-endo-panel__foot {
+  display: flex;
+  justify-content: center;
+  padding-block-start: 4px;
+}
+
+.cx-endo-panel__cta {
+  display: inline-block;
+  border: 1px solid #1d1d1b;
+  border-radius: 999px;
+  background: none;
+  color: #1d1d1b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 10px 24px;
+  cursor: pointer;
+}
+
+.cx-endo-panel__cta:hover,
+.cx-endo-panel__cta:focus-visible {
+  background: #1d1d1b;
+  color: #fff;
+}
+
+@media (pointer: coarse) {
+  /* house 44px touch floor (12px text + 2px border needs 14px pads;
+     the min-size belt holds under tight theme line-heights) */
+  .cx-endo-panel__cta {
+    padding-block: 14px;
+    min-block-size: 44px;
+  }
+}
+
+@media (max-width: 559px) {
+  /* mobile: slightly narrower cards so the next one peeks (swipe cue) */
+  .cx-endo--panel {
+    padding: 14px 12px 12px;
+  }
+
+  .cx-endo--panel .cx-endo__card {
+    flex-basis: min(240px, 78vw);
+  }
+
+  .cx-endo--panel .cx-endo__quote {
+    -webkit-line-clamp: 4;
   }
 }
 
@@ -4596,14 +4916,9 @@ body.customer--b2b .cx-sub-remove {
   padding: 10px 12px;
 }
 
-.cx-endo--ultra .cx-endo__photo,
-.cx-endo--ultra .cx-endo__monogram {
+.cx-endo--ultra .cx-endo__photo {
   inline-size: 32px;
   block-size: 32px;
-}
-
-.cx-endo--ultra .cx-endo__monogram {
-  font-size: 12px;
 }
 
 /* one-line identity + tighter quote/expander rhythm — ultra trades
@@ -4890,14 +5205,9 @@ body.customer--b2b .cx-sub-remove {
   padding: 12px 14px;
 }
 
-.cx-endo--compact .cx-endo__photo,
-.cx-endo--compact .cx-endo__monogram {
+.cx-endo--compact .cx-endo__photo {
   inline-size: 40px;
   block-size: 40px;
-}
-
-.cx-endo--compact .cx-endo__monogram {
-  font-size: 14px;
 }
 
 /* full name + ONE-line credentials while collapsed; an expanded card
