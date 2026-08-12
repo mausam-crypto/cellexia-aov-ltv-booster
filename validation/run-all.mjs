@@ -59,6 +59,7 @@ const SUITES = [
   { name: "sims/proof-translation", dir: "sims", base: "proof-translation" },
   { name: "sims/threshold-snap", dir: "sims", base: "threshold-snap" },
   { name: "sims/flip-test", dir: "sims", base: "flip-test" },
+  { name: "sims/deploy-safety", dir: "sims", base: "deploy-safety" },
 ];
 
 const EXT_ORDER = [".mjs", ".js", ".cjs", ".ts", ".tsx"];

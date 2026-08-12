@@ -1,180 +1,185 @@
 {
-  "_doc": "Suite inventory \u2014 the anti-deletion tripwire. Every validation suite is listed here with a byte floor; the harness fails if a listed 'required' file is missing or has shrunk below its floor (a hollowed-out suite is a deleted suite). 'pending' entries are suites whose rebuild is assigned to other agents and has not landed yet: run-all counts them as loud SKIPs without --strict and as failures with --strict (the default). RATCHET: the moment a pending file exists on disk, the harness REQUIRES its phase to be flipped to 'required' \u2014 landing agents must edit this manifest in the same change.",
-  "files": [
-    {
-      "file": "validation/run-all.mjs",
-      "floorBytes": 4000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/README.md",
-      "floorBytes": 3000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/prover.mjs",
-      "floorBytes": 5000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/harness.mjs",
-      "floorBytes": 15000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/allowlist.json",
-      "floorBytes": 200,
-      "phase": "required"
-    },
-    {
-      "file": "validation/suite-manifest.json",
-      "floorBytes": 1500,
-      "phase": "required"
-    },
-    {
-      "file": "validation/settings-derivation.ts",
-      "floorBytes": 7000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/lib/util.mjs",
-      "floorBytes": 3000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/lib/settings-loader.ts",
-      "floorBytes": 1500,
-      "phase": "required"
-    },
-    {
-      "file": "validation/lib/emit-default-settings.ts",
-      "floorBytes": 500,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/dispatch-tz.mjs",
-      "floorBytes": 8000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/delivery-businessdays.mjs",
-      "floorBytes": 8000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/us-state-delivery.mjs",
-      "floorBytes": 8000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/checkout-delivery-engine.ts",
-      "floorBytes": 5000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/checkout-trust.ts",
-      "floorBytes": 9000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/geo-lookup.ts",
-      "floorBytes": 5000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/native-dates.mjs",
-      "floorBytes": 4000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/plurals.mjs",
-      "floorBytes": 5000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/translation-service.ts",
-      "floorBytes": 12000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/crosssell-pipeline.cjs",
-      "floorBytes": 18000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/fbt.cjs",
-      "floorBytes": 18000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/badge-cards.cjs",
-      "floorBytes": 15000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/az-split.cjs",
-      "floorBytes": 12000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/subscribed-upgrade.cjs",
-      "floorBytes": 8000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/survey-methodology.cjs",
-      "floorBytes": 9000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/proof-gallery.cjs",
-      "floorBytes": 12000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/proof-server.ts",
-      "floorBytes": 25000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/threshold-snap.ts",
-      "floorBytes": 9000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/flip-test.ts",
-      "floorBytes": 7000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/lib/extract.cjs",
-      "floorBytes": 1500,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/lib/mini-dom.cjs",
-      "floorBytes": 5000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/lib/mutants.cjs",
-      "floorBytes": 1200,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/lib/tsx-shim.cjs",
-      "floorBytes": 800,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/proof-placement.cjs",
-      "floorBytes": 5000,
-      "phase": "required"
-    },
-    {
-      "file": "validation/sims/proof-translation.ts",
-      "floorBytes": 9000,
-      "phase": "required"
-    }
-  ]
+ "_doc": "Suite inventory \u2014 the anti-deletion tripwire. Every validation suite is listed here with a byte floor; the harness fails if a listed 'required' file is missing or has shrunk below its floor (a hollowed-out suite is a deleted suite). 'pending' entries are suites whose rebuild is assigned to other agents and has not landed yet: run-all counts them as loud SKIPs without --strict and as failures with --strict (the default). RATCHET: the moment a pending file exists on disk, the harness REQUIRES its phase to be flipped to 'required' \u2014 landing agents must edit this manifest in the same change.",
+ "files": [
+  {
+   "file": "validation/run-all.mjs",
+   "floorBytes": 4000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/README.md",
+   "floorBytes": 3000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/prover.mjs",
+   "floorBytes": 5000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/harness.mjs",
+   "floorBytes": 15000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/allowlist.json",
+   "floorBytes": 200,
+   "phase": "required"
+  },
+  {
+   "file": "validation/suite-manifest.json",
+   "floorBytes": 1500,
+   "phase": "required"
+  },
+  {
+   "file": "validation/settings-derivation.ts",
+   "floorBytes": 7000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/lib/util.mjs",
+   "floorBytes": 3000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/lib/settings-loader.ts",
+   "floorBytes": 1500,
+   "phase": "required"
+  },
+  {
+   "file": "validation/lib/emit-default-settings.ts",
+   "floorBytes": 500,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/dispatch-tz.mjs",
+   "floorBytes": 8000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/delivery-businessdays.mjs",
+   "floorBytes": 8000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/us-state-delivery.mjs",
+   "floorBytes": 8000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/checkout-delivery-engine.ts",
+   "floorBytes": 5000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/checkout-trust.ts",
+   "floorBytes": 9000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/geo-lookup.ts",
+   "floorBytes": 5000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/native-dates.mjs",
+   "floorBytes": 4000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/plurals.mjs",
+   "floorBytes": 5000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/translation-service.ts",
+   "floorBytes": 12000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/crosssell-pipeline.cjs",
+   "floorBytes": 18000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/fbt.cjs",
+   "floorBytes": 18000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/badge-cards.cjs",
+   "floorBytes": 15000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/az-split.cjs",
+   "floorBytes": 12000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/subscribed-upgrade.cjs",
+   "floorBytes": 8000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/survey-methodology.cjs",
+   "floorBytes": 9000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/proof-gallery.cjs",
+   "floorBytes": 12000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/proof-server.ts",
+   "floorBytes": 25000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/threshold-snap.ts",
+   "floorBytes": 9000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/flip-test.ts",
+   "floorBytes": 7000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/lib/extract.cjs",
+   "floorBytes": 1500,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/lib/mini-dom.cjs",
+   "floorBytes": 5000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/lib/mutants.cjs",
+   "floorBytes": 1200,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/lib/tsx-shim.cjs",
+   "floorBytes": 800,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/proof-placement.cjs",
+   "floorBytes": 5000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/proof-translation.ts",
+   "floorBytes": 9000,
+   "phase": "required"
+  },
+  {
+   "file": "validation/sims/deploy-safety.cjs",
+   "floorBytes": 9000,
+   "phase": "required"
+  }
+ ]
 }

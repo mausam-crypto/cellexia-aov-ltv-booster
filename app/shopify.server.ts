@@ -13,6 +13,30 @@ import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prism
 import prisma from "./db.server";
 
 const shopify = shopifyApp({
+  hooks: {
+    // v8.23 (review catch): uninstalling destroys the AppInstallation and
+    // with it BOTH config metafields, while ShopSettings deliberately
+    // survives in the DB. Without this hook a REINSTALL leaves the
+    // storefront dark (cfg nil in every Liquid gate) until someone
+    // happens to press Save — now the mirrors resync on auth. Fully
+    // guarded: an auth must never fail because a resync did.
+    afterAuth: async ({ session, admin }) => {
+      try {
+        const [{ getSettings }, { syncSettingsToMetafields }] =
+          await Promise.all([
+            import("./models/settings.server"),
+            import("./services/metafields.server"),
+          ]);
+        const settings = await getSettings(session.shop);
+        await syncSettingsToMetafields(admin, settings);
+      } catch (error) {
+        console.error(
+          "afterAuth metafield resync failed (storefront may need a manual Save):",
+          error,
+        );
+      }
+    },
+  },
   apiKey: process.env.SHOPIFY_API_KEY,
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
   apiVersion: ApiVersion.October25,

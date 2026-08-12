@@ -1108,6 +1108,64 @@ const EVIDENCE = {
     );
   }
 
+  // v8.23: BLANK-STOREFRONT DEFENSES (the "deploy blanked the site while
+  // the admin looked normal" incident). Structural pins for each layer;
+  // sims/deploy-safety.cjs carries the behavioral checks + self-tests.
+  {
+    const healthSrc23 = read("app/services/health.server.ts");
+    for (const anchor23 of [
+      // presence anchors on OUR asset filenames, never the deploy label
+      "const EXTENSION_ASSET_PATTERN =",
+      "assets\\/cellexia-(?:booster\\.css|pdp\\.js|cart\\.js|proof\\.js)",
+      'id="cx-pdp-config"',
+      "apps/cellexia/track",
+      // the incident escalation + its guards
+      "!looksPasswordProtected(productPage) &&",
+      "embeds !== null &&",
+      // the beacons dead-man incl. the anti-disarm anchor
+      "async function checkStorefrontPulse(",
+      "orderBy: { createdAt: \"desc\" },",
+      // dark-by-configuration
+      "async function checkMarketReach(",
+      // wrong-app detection judges ENABLED entries against the live handle
+      "function embedAppHandle(type: string | null): string | null {",
+      "const ours = handles.some(",
+      // full structural metafield fingerprint (version+one-flag was blind)
+      "const { preview: _preview, ...content } = parsed;",
+      "return deepEqual(content, settings as unknown as Record<string, unknown>);",
+    ]) {
+      ok(
+        healthSrc23.includes(anchor23),
+        `v8.23: health defense present: ${anchor23.slice(0, 52)}`,
+      );
+    }
+    ok(
+      !healthSrc23.includes("cellexia-aov-ltv-booster-(\\d+)"),
+      "v8.23: the deploy-version-label pattern (false-alarm class) stays dead",
+    );
+    const shopifySrv23 = read("app/shopify.server.ts");
+    ok(
+      shopifySrv23.includes("afterAuth: async ({ session, admin }) => {") &&
+        shopifySrv23.includes("await syncSettingsToMetafields(admin, settings);"),
+      "v8.23: reinstall resyncs the config metafields in afterAuth (guarded)",
+    );
+    const pkg23 = JSON.parse(read("package.json"));
+    ok(
+      pkg23.scripts?.predeploy === "npm run validate",
+      `v8.23: npm run deploy is gated on a green validation run (predeploy = ${pkg23.scripts?.predeploy})`,
+    );
+    ok(
+      typeof pkg23.devDependencies?.acorn === "string",
+      "v8.23: acorn is a DECLARED devDependency (deploy-safety must survive a fresh clone)",
+    );
+    const installMd23 = read("INSTALL.md");
+    ok(
+      installMd23.includes("## 7.5 After EVERY deploy") &&
+        installMd23.includes("shopify app info"),
+      "v8.23: the post-deploy protocol ships in INSTALL.md",
+    );
+  }
+
   // v8.11: proof-library translations — schema model, island locale
   // emission, JS locale param, proxy overlay, service allowlist, admin
   // intents. Behavior itself is pinned by sims/proof-translation.ts.

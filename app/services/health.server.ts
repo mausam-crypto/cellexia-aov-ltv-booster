@@ -1,10 +1,12 @@
 import prisma from "../db.server";
 import {
   getSettings,
+  FEATURE_DEFS,
   type BoosterSettings,
 } from "../models/settings.server";
 import { PDP_METAOBJECT_TYPES } from "./metaobjects.server";
 import { getPreviewState } from "./preview.server";
+import { listMarkets } from "./markets.server";
 
 /**
  * Setup & health checks (SPEC v4 §B).
@@ -162,10 +164,7 @@ const METAFIELDS_READBACK_QUERY = `#graphql
   }
 `;
 
-interface ParsedConfig {
-  version?: unknown;
-  cartUpsell?: { enabled?: unknown };
-}
+type ParsedConfig = Record<string, unknown>;
 
 function parseConfig(value: string | null | undefined): ParsedConfig | null {
   if (typeof value !== "string" || value === "") return null;
@@ -178,16 +177,40 @@ function parseConfig(value: string | null | undefined): ParsedConfig | null {
   }
 }
 
-/** version + a cheap settings fingerprint, compared against the DB truth. */
+/** Key-order-independent structural equality (sync-time serialization and
+ *  getSettings() merge order are not guaranteed identical). */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
+    return false;
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keysA = Object.keys(a as object);
+  const keysB = Object.keys(b as object);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every((key) =>
+    deepEqual(
+      (a as Record<string, unknown>)[key],
+      (b as Record<string, unknown>)[key],
+    ),
+  );
+}
+
+/**
+ * v8.23 (review catch): the old fingerprint was version + ONE flag —
+ * version is a constant, so a metafield stale in any OTHER section (a
+ * failed sync after a market-scope edit, a feature toggle, the v8.22
+ * copy fields) read back as "in sync" forever. Now the WHOLE metafield
+ * content must structurally equal the saved settings; the `preview` key
+ * is the sync-time injection (armed state) and is excluded.
+ */
 function configMatches(
   parsed: ParsedConfig | null,
   settings: BoosterSettings,
 ): boolean {
-  return (
-    parsed !== null &&
-    parsed.version === settings.version &&
-    parsed.cartUpsell?.enabled === settings.cartUpsell.enabled
-  );
+  if (parsed === null) return false;
+  const { preview: _preview, ...content } = parsed;
+  return deepEqual(content, settings as unknown as Record<string, unknown>);
 }
 
 async function checkConfigMetafields(
@@ -269,6 +292,11 @@ const THEME_FILES = [
 
 const THEME_FILES_QUERY = `#graphql
   query cellexiaHealthTheme($filenames: [String!]!) {
+    currentAppInstallation {
+      app {
+        handle
+      }
+    }
     themes(first: 5, roles: [MAIN]) {
       nodes {
         id
@@ -292,6 +320,9 @@ interface ThemeFilesResult {
   error: string;
   /** filename -> text content (only files that came back as text). */
   contents: Map<string, string>;
+  /** v8.23: OUR app's handle (the apps/<handle> segment of legit embed
+   *  entries) — null when the API did not return it. */
+  appHandle: string | null;
 }
 
 async function fetchThemeFiles(
@@ -300,6 +331,9 @@ async function fetchThemeFiles(
   try {
     const json = await graphqlJson<{
       data?: {
+        currentAppInstallation?: {
+          app?: { handle?: string | null } | null;
+        } | null;
         themes?: {
           nodes?: {
             id: string;
@@ -315,12 +349,15 @@ async function fetchThemeFiles(
       errors?: { message?: string }[];
     }>(admin, THEME_FILES_QUERY, { filenames: [...THEME_FILES] });
 
+    const rawHandle = json.data?.currentAppInstallation?.app?.handle;
+    const appHandle =
+      typeof rawHandle === "string" && rawHandle !== "" ? rawHandle : null;
     const theme = json.data?.themes?.nodes?.[0];
     if (!theme) {
       const reason =
         json.errors?.map((e) => e.message).filter(Boolean).join("; ") ||
         "no published theme returned (is the read_themes scope granted?)";
-      return { ok: false, error: reason, contents: new Map() };
+      return { ok: false, error: reason, contents: new Map(), appHandle };
     }
     const contents = new Map<string, string>();
     for (const file of theme.files?.nodes ?? []) {
@@ -328,9 +365,14 @@ async function fetchThemeFiles(
         contents.set(file.filename, file.body.content);
       }
     }
-    return { ok: true, error: "", contents };
+    return { ok: true, error: "", contents, appHandle };
   } catch (error) {
-    return { ok: false, error: errorMessage(error), contents: new Map() };
+    return {
+      ok: false,
+      error: errorMessage(error),
+      contents: new Map(),
+      appHandle: null,
+    };
   }
 }
 
@@ -349,12 +391,21 @@ function parseSettingsData(content: string): Record<string, unknown> | null {
 interface EmbedStatus {
   found: boolean;
   enabled: boolean;
+  /** v8.23: ALL matching settings_data block types
+   *  ("shopify://apps/<app-handle>/blocks/<extension-handle>/<uuid>") —
+   *  disabled leftovers from re-linked/dev apps linger in settings_data,
+   *  so a single first-match would let a dead entry shadow the live one
+   *  (review catch). enabledTypes carries only the non-disabled ones. */
+  types: string[];
+  enabledTypes: string[];
 }
 
 /**
- * App-embed detection: `current.blocks` entries whose type includes our
- * embed handle ("blocks/cart-booster" / "blocks/pdp-booster") and are not
- * disabled. `current` may be a preset name string — resolve via `presets`.
+ * App-embed detection: EVERY `current.blocks` entry whose type carries our
+ * embed handle as a full path segment ("…/blocks/cart-booster/<uuid>").
+ * `current` may be a preset name string — resolve via `presets`. Collects
+ * all matches: settings_data keeps one entry per app per embed and
+ * disabled leftovers persist, so "the first match" is not "the live one".
  */
 function detectEmbed(
   settingsData: Record<string, unknown>,
@@ -368,21 +419,52 @@ function detectEmbed(
         ? (presets as Record<string, unknown>)[current]
         : null;
   }
-  if (typeof current !== "object" || current === null) {
-    return { found: false, enabled: false };
-  }
+  const none: EmbedStatus = { found: false, enabled: false, types: [], enabledTypes: [] };
+  if (typeof current !== "object" || current === null) return none;
   const blocks = (current as Record<string, unknown>).blocks;
-  if (typeof blocks !== "object" || blocks === null) {
-    return { found: false, enabled: false };
-  }
+  if (typeof blocks !== "object" || blocks === null) return none;
+  const types: string[] = [];
+  const enabledTypes: string[] = [];
   for (const entry of Object.values(blocks as Record<string, unknown>)) {
     if (typeof entry !== "object" || entry === null) continue;
     const block = entry as { type?: unknown; disabled?: unknown };
-    if (typeof block.type === "string" && block.type.includes(needle)) {
-      return { found: true, enabled: block.disabled !== true };
+    if (typeof block.type === "string" && block.type.includes(`${needle}/`)) {
+      types.push(block.type);
+      if (block.disabled !== true) enabledTypes.push(block.type);
     }
   }
-  return { found: false, enabled: false };
+  return { found: types.length > 0, enabled: enabledTypes.length > 0, types, enabledTypes };
+}
+
+/** v8.23: the apps/<handle> segment of an embed block type. */
+function embedAppHandle(type: string | null): string | null {
+  const match = /^shopify:\/\/apps\/([^/]+)\/blocks\//.exec(type ?? "");
+  return match ? match[1] : null;
+}
+
+interface EmbedsSnapshot {
+  cart: boolean;
+  pdp: boolean;
+  any: boolean;
+}
+
+/**
+ * v8.23: shared enabled-status snapshot for the OTHER checks (the
+ * deployed-extension escalation). null = the theme could not be read, so
+ * nothing should escalate on the strength of it.
+ */
+function embedsEnabledFromTheme(theme: ThemeFilesResult): EmbedsSnapshot | null {
+  if (!theme.ok) return null;
+  const raw = theme.contents.get("config/settings_data.json");
+  const settingsData = raw ? parseSettingsData(raw) : null;
+  if (!settingsData) return null;
+  const cart = detectEmbed(settingsData, "blocks/cart-booster");
+  const pdp = detectEmbed(settingsData, "blocks/pdp-booster");
+  return {
+    cart: cart.found && cart.enabled,
+    pdp: pdp.found && pdp.enabled,
+    any: (cart.found && cart.enabled) || (pdp.found && pdp.enabled),
+  };
 }
 
 async function checkThemeEmbeds(
@@ -426,6 +508,49 @@ async function checkThemeEmbeds(
           "Open the theme editor's App embeds panel and enable Cart booster and PDP booster, then save the theme.",
         fixUrl: themeEditorUrl,
       };
+    }
+    // v8.23 (deploy-incident class): the theme's embed entries carry the
+    // OWNING APP's handle — if the extensions were last deployed under a
+    // DIFFERENT app (a re-linked fork, a dev app, a fresh `config link`),
+    // the storefront reads THAT app's config metafield, which this admin
+    // never writes: every widget goes dark while every admin page (and the
+    // config check above) stays green. Compare each entry's app segment
+    // against the app this admin session belongs to.
+    if (theme.appHandle) {
+      // Judge only the ENABLED entries: settings_data keeps disabled
+      // leftovers (dev apps, past re-links) forever, and those are inert.
+      // An enabled entry under a foreign app IS the incident: the
+      // storefront reads THAT app's (empty) config while this admin stays
+      // green. An enabled OURS alongside a foreign one is fine — ours
+      // renders.
+      const foreign = [
+        ["Cart booster", cart.enabledTypes],
+        ["PDP booster", pdp.enabledTypes],
+      ] as const;
+      const problems2: string[] = [];
+      for (const [label, enabledTypes] of foreign) {
+        const handles = enabledTypes
+          .map((type) => embedAppHandle(type))
+          .filter((handle): handle is string => typeof handle === "string");
+        const ours = handles.some(
+          (handle) => handle.toLowerCase() === theme.appHandle!.toLowerCase(),
+        );
+        const others = handles.filter(
+          (handle) => handle.toLowerCase() !== theme.appHandle!.toLowerCase(),
+        );
+        if (!ours && others.length > 0) {
+          problems2.push(`${label} embed belongs to app "${others[0]}"`);
+        }
+      }
+      if (problems2.length > 0) {
+        return {
+          status: "fail" as const,
+          detail: `The published theme's ${problems2.join(" and ")}, but this admin is app "${theme.appHandle}". The storefront reads the OTHER app's (empty) config, so every widget renders nothing while this admin looks normal — the signature of a deploy made under the wrong app.`,
+          fixHint:
+            "Redeploy the extensions from the production app (the shopify.app.toml whose client_id belongs to THIS admin app), or re-enable this app's embeds in the theme editor and remove the foreign ones. Never `shopify app config link` to a new app before deploying. (If the app itself was recently RENAMED, its handle changed — re-toggle the embeds once to refresh the recorded reference.)",
+          fixUrl: themeEditorUrl,
+        };
+      }
     }
     // v8.7: the proof-library widgets (press / endorsements / results) ride
     // their own embed. Its absence only matters when those features are
@@ -928,14 +1053,38 @@ async function checkAppProxy(shop: string): Promise<HealthCheck> {
 
 /**
  * Shopify serves theme-extension assets under
- * /extensions/<uuid>/<build>/... with the extension handle and an
- * auto-incrementing build number in the path, e.g.
- * ".../extensions/.../cellexia-aov-ltv-booster-42/assets/...". Detecting that
- * path in the rendered storefront HTML tells us which extension build real
- * visitors receive.
+ * /extensions/<uuid>/<version-label>/assets/<file>. The middle segment is
+ * the APP VERSION LABEL the deploying party chose (`shopify app deploy`
+ * defaults to "<app-name>-<N>", but CI pipelines pass --version and real
+ * stores serve git SHAs there) — this repo does not control it and MUST
+ * NOT match on it (review catch: the old pattern hard-coded
+ * "cellexia-aov-ltv-booster-<N>" and would have false-alarmed forever on
+ * any relabeled deploy). Presence detection anchors on OUR OWN asset
+ * filenames; the label is only reported opportunistically.
  */
-const EXTENSION_BUILD_PATTERN =
-  /\/extensions\/[^"]*cellexia-aov-ltv-booster-(\d+)\//;
+const EXTENSION_ASSET_PATTERN =
+  /\/extensions\/[^"']+\/([^/"']+)\/assets\/cellexia-(?:booster\.css|pdp\.js|cart\.js|proof\.js)/;
+
+/** Secondary presence signals this repo ships: the config islands and the
+ *  cart embed's session beacon (emitted on every page the embed renders). */
+const EXTENSION_MARKUP_SIGNALS = [
+  'id="cx-pdp-config"',
+  'id="cx-cart-config"',
+  "apps/cellexia/track",
+] as const;
+
+function extensionPresence(html: string | null): {
+  present: boolean;
+  label: string | null;
+} {
+  if (!html) return { present: false, label: null };
+  const match = html.match(EXTENSION_ASSET_PATTERN);
+  if (match) return { present: true, label: match[1] };
+  return {
+    present: EXTENSION_MARKUP_SIGNALS.some((signal) => html.includes(signal)),
+    label: null,
+  };
+}
 
 async function fetchStorefrontText(url: string): Promise<string | null> {
   try {
@@ -951,31 +1100,56 @@ async function fetchStorefrontText(url: string): Promise<string | null> {
   }
 }
 
+/** v8.23: any THEME-side feature on? (checkout_* features render in the
+ *  checkout, not through the theme embeds — they must never make a blank
+ *  storefront page look like an incident.) */
+function anyThemeFeatureOn(settings: BoosterSettings): boolean {
+  return Object.entries(FEATURE_DEFS).some(
+    ([key, def]) => !key.startsWith("checkout") && def.get(settings),
+  );
+}
+
+/** Password-protected storefronts serve a 200 password page — no embed
+ *  markup there is not an incident. */
+function looksPasswordProtected(html: string): boolean {
+  return html.includes('action="/password"') || html.includes("id=\"password\"");
+}
+
 /**
- * Info-grade: detects the theme-extension build number the storefront
- * actually serves. Tries the home page first, then falls back to the first
- * product page (the app embeds render on both). NEVER fails — the storefront
- * may be password-protected, the embeds disabled, or the network flaky, none
- * of which is a broken setup on its own; every miss degrades to `warn`.
+ * Detects the theme-extension build number the storefront actually serves.
+ * Tries the home page first, then falls back to the first product page.
+ *
+ * v8.23 ESCALATION (the "deploy blanked the site while the admin looked
+ * normal" incident): when the PRODUCT page was fetched successfully, is not
+ * password-protected, theme features are enabled AND the theme check says
+ * the embeds are on — yet the page carries ZERO Cellexia extension markup —
+ * that is no longer a soft warn: it is the incident signature (config
+ * carrier gone, wrong-app deploy, or a dead extension reference) and FAILS
+ * loudly. Every fetch/read failure still degrades to `warn`.
  */
-async function checkDeployedExtension(shop: string): Promise<HealthCheck> {
+async function checkDeployedExtension(
+  shop: string,
+  settings: BoosterSettings | null,
+  embeds: EmbedsSnapshot | null,
+): Promise<HealthCheck> {
   return runCheck(
     "deployed-extension",
     "Deployed extension build",
     async () => {
       const fixHint =
-        "Each `npm run deploy` increments the extension build number served from /extensions/…-cellexia-aov-ltv-booster-<N>/. Preview and checkout changes ship in TWO halves: the extensions (npm run deploy) AND the app server — redeploy BOTH, or the storefront serves a build that no longer matches the server's behavior.";
+        "Presence is detected from this app's own asset filenames (cellexia-*.js/css) and markup — the /extensions/<uuid>/<label>/ path segment is the deploy version label the deploying pipeline chooses. Preview and checkout changes ship in TWO halves: the extensions (deploy) AND the app server — redeploy BOTH, or the storefront serves a build that no longer matches the server's behavior.";
       const warnResult = {
         status: "warn" as const,
         detail:
-          "could not detect the deployed extension build (page fetch failed or embed disabled)",
+          "could not detect the deployed extension on the storefront (page fetch failed or embed disabled)",
         fixHint,
       };
       try {
         const home = await fetchStorefrontText(`https://${shop}/`);
-        let match = home?.match(EXTENSION_BUILD_PATTERN) ?? null;
+        let presence = extensionPresence(home);
+        let productPage: string | null = null;
 
-        if (!match) {
+        if (!presence.present) {
           // Fallback: the first product page (embeds also render there, and
           // some themes only load our assets on product templates).
           const productsJson = await fetchStorefrontText(
@@ -994,23 +1168,51 @@ async function checkDeployedExtension(shop: string): Promise<HealthCheck> {
             }
           }
           if (handle) {
-            const productPage = await fetchStorefrontText(
+            productPage = await fetchStorefrontText(
               `https://${shop}/products/${encodeURIComponent(handle)}`,
             );
-            match = productPage?.match(EXTENSION_BUILD_PATTERN) ?? null;
+            presence = extensionPresence(productPage);
           }
         }
 
-        if (match) {
+        if (presence.present) {
+          const buildNum = presence.label
+            ? (/-(\d+)$/.exec(presence.label) ?? [])[1]
+            : undefined;
           return {
             status: "pass" as const,
-            detail: `Storefront serves extension build -${match[1]}`,
+            detail: buildNum
+              ? `Storefront serves extension build -${buildNum}`
+              : presence.label
+                ? `Storefront serves extension version label "${presence.label}"`
+                : "Storefront carries Cellexia extension markup (version label not visible on the fetched page)",
             fixHint,
+          };
+        }
+        // v8.23 ESCALATION (the "deploy blanked the site while the admin
+        // looked normal" incident): a real product page with ZERO Cellexia
+        // markup — no assets, no config islands, not even the cart embed's
+        // session beacon (which renders on every page the embed is on) —
+        // while the theme says the embeds are enabled. That is no soft
+        // warn; it is the incident signature.
+        if (
+          productPage &&
+          !looksPasswordProtected(productPage) &&
+          embeds !== null &&
+          embeds.any &&
+          settings !== null
+        ) {
+          return {
+            status: "fail" as const,
+            detail:
+              "A real product page was fetched and carries ZERO Cellexia extension markup (no assets, no config islands, no session beacon), although the theme's app embeds are enabled. This is the signature of a deploy that blanked the storefront: the released app version no longer contains the theme extension, it was deployed under a different app, or the theme references a dead extension version. The admin looks normal because it reads its own data.",
+            fixHint:
+              "Revert to the previous app/extension version in the Partner Dashboard FIRST, then diagnose — and redeploy from the production app (the shopify.app.toml/client_id this admin belongs to). See INSTALL.md → 'After every deploy'.",
           };
         }
         return warnResult;
       } catch {
-        // Info-grade check: any unexpected crash degrades to warn, never fail.
+        // Any unexpected crash degrades to warn, never fail.
         return warnResult;
       }
     },
@@ -1104,6 +1306,196 @@ async function checkProofDatabase(): Promise<HealthCheck> {
 // Orchestrator
 // ---------------------------------------------------------------------------
 
+/**
+ * v8.23: STOREFRONT PULSE — the dead-man switch for every "the site went
+ * dark but the admin looked normal" class at once. Whatever kills the
+ * widgets (wrong-app deploy, dead embed reference, broken config carrier,
+ * a fatal JS build, a dropped app proxy), the impression beacons stop —
+ * so a store that USED to beacon and suddenly does not is failing, no
+ * matter how green everything else looks.
+ *
+ * Guards against false alarms: brand-new installs (no baseline) and shops
+ * whose baseline is too thin to be meaningful pass with a note; a merchant
+ * who turned every theme feature off is not an incident.
+ */
+const PULSE_BASELINE_DAYS = 7;
+const PULSE_MIN_BASELINE = 70; // ~10 impressions/day before the check arms
+
+async function checkStorefrontPulse(
+  shop: string,
+  settings: BoosterSettings,
+): Promise<HealthCheck> {
+  return runCheck("storefront-pulse", "Storefront pulse (beacons)", async () => {
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const recentStart = new Date(now - dayMs);
+    const baselineStart = new Date(
+      now - (PULSE_BASELINE_DAYS + 1) * dayMs,
+    );
+    const [recent, baseline] = await Promise.all([
+      prisma.event.count({
+        where: { shop, type: "impression", createdAt: { gte: recentStart } },
+      }),
+      prisma.event.count({
+        where: {
+          shop,
+          type: "impression",
+          createdAt: { gte: baselineStart, lt: recentStart },
+        },
+      }),
+    ]);
+    const dailyAvg = baseline / PULSE_BASELINE_DAYS;
+    if (!anyThemeFeatureOn(settings)) {
+      return {
+        status: "pass" as const,
+        detail:
+          "No theme-side feature is enabled, so no storefront beacons are expected.",
+        fixHint: "Nothing to do.",
+      };
+    }
+    if (baseline < PULSE_MIN_BASELINE) {
+      // Review catch: after ~8 silent days the rolling baseline itself
+      // drains to zero and the dead-man would DISARM in the middle of the
+      // very outage it exists to catch. Anchor the arming test at the
+      // LAST impression ever seen: if the 7 days before it were healthy,
+      // the store is not "new" — it is silent.
+      if (recent === 0) {
+        const last = await prisma.event.findFirst({
+          where: { shop, type: "impression" },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true },
+        });
+        if (last) {
+          const anchored = await prisma.event.count({
+            where: {
+              shop,
+              type: "impression",
+              createdAt: {
+                gte: new Date(last.createdAt.getTime() - PULSE_BASELINE_DAYS * dayMs),
+                lte: last.createdAt,
+              },
+            },
+          });
+          if (anchored >= PULSE_MIN_BASELINE) {
+            const silentDays = Math.floor(
+              (now - last.createdAt.getTime()) / dayMs,
+            );
+            return {
+              status: "fail" as const,
+              detail: `The storefront has been SILENT for ${silentDays} day${silentDays === 1 ? "" : "s"}: the last impression beacon arrived ${last.createdAt.toISOString().slice(0, 10)}, after ~${Math.round(anchored / PULSE_BASELINE_DAYS)}/day before it went quiet. Real visitors are not seeing the widgets (or the beacons cannot reach the app).`,
+              fixHint:
+                "Open the storefront in an incognito window and check for Cellexia widgets. If they are missing, revert/redeploy the extensions from the production app (INSTALL.md → 'After every deploy'); if they show, fix the App Proxy (beacons ride it).",
+            };
+          }
+        }
+      }
+      return {
+        status: "pass" as const,
+        detail: `Not enough beacon history to monitor yet (${baseline} impressions over the last ${PULSE_BASELINE_DAYS} days; the check arms at ${PULSE_MIN_BASELINE}). Recent 24h: ${recent}.`,
+        fixHint: "Nothing to do — the pulse arms itself as traffic accrues.",
+      };
+    }
+    if (recent === 0) {
+      return {
+        status: "fail" as const,
+        detail: `The storefront went SILENT: zero impression beacons in the last 24h after averaging ~${Math.round(dailyAvg)}/day over the prior ${PULSE_BASELINE_DAYS} days. Real visitors are not seeing the widgets (or the beacons cannot reach the app). Typical causes: the last deploy shipped under the wrong app, the theme lost the embeds, the config metafield stopped resolving, or the App Proxy was dropped — see the checks above to tell them apart.`,
+        fixHint:
+          "Open the storefront in an incognito window and check for Cellexia widgets. If they are missing, revert/redeploy the extensions from the production app (INSTALL.md → 'After every deploy'); if they show, fix the App Proxy (beacons ride it).",
+      };
+    }
+    if (recent < dailyAvg * 0.15) {
+      return {
+        status: "warn" as const,
+        detail: `Beacon volume dropped hard: ${recent} impressions in the last 24h vs ~${Math.round(dailyAvg)}/day before. Could be traffic, could be a partially-dark storefront (one embed off, one market gated).`,
+        fixHint:
+          "Spot-check the storefront and the Markets matrix; re-run the checks after a few hours of traffic.",
+      };
+    }
+    return {
+      status: "pass" as const,
+      detail: `Beacons flowing: ${recent} impressions in the last 24h (~${Math.round(dailyAvg)}/day baseline).`,
+      fixHint: "Nothing to do.",
+    };
+  });
+}
+
+/**
+ * v8.23 (review catch): a feature can be ON yet market-scoped to ZERO live
+ * markets — "selected" mode whose handles no longer exist (markets get
+ * renamed/deleted) or were never picked. Every gate then fails on the
+ * storefront while every toggle looks on in the admin: dark by
+ * configuration. On a low-traffic store the pulse takes days to notice;
+ * this check reads the configuration directly.
+ */
+async function checkMarketReach(
+  admin: AdminGraphqlClient,
+  settings: BoosterSettings,
+): Promise<HealthCheck> {
+  return runCheck("market-reach", "Features reach a live market", async () => {
+    const enabledKeys = Object.entries(FEATURE_DEFS)
+      .filter(([key, def]) => !key.startsWith("checkout") && def.get(settings))
+      .map(([key]) => key);
+    if (enabledKeys.length === 0) {
+      return {
+        status: "pass" as const,
+        detail: "No theme-side feature is enabled — nothing to target.",
+        fixHint: "Nothing to do.",
+      };
+    }
+    let liveHandles: Set<string>;
+    try {
+      const markets = await listMarkets(admin);
+      liveHandles = new Set(
+        markets.filter((m) => m.enabled !== false).map((m) => m.handle),
+      );
+      if (liveHandles.size === 0) {
+        return {
+          status: "warn" as const,
+          detail: "Could not read any live market from the API — market targeting could not be verified.",
+          fixHint: "Re-run the checks; if it persists, verify the read_markets scope.",
+        };
+      }
+    } catch (error) {
+      return {
+        status: "warn" as const,
+        detail: `Could not read the markets list (${errorMessage(error)}) — market targeting could not be verified.`,
+        fixHint: "Re-run the checks; if it persists, verify the read_markets scope.",
+      };
+    }
+    const unreachable = enabledKeys.filter((key) => {
+      const scope = settings.marketScopes[key as keyof typeof settings.marketScopes];
+      return (
+        scope &&
+        scope.mode === "selected" &&
+        !scope.markets.some((handle) => liveHandles.has(handle))
+      );
+    });
+    if (unreachable.length === enabledKeys.length) {
+      return {
+        status: "fail" as const,
+        detail: `EVERY enabled feature (${unreachable.join(", ")}) is market-scoped to zero live markets — the storefront is dark by configuration, not by deploy. The selected market handles no longer match any live market.`,
+        fixHint:
+          "Open the Markets page and re-select live markets for each feature (or switch them to 'All markets').",
+        fixUrl: "/app/markets",
+      };
+    }
+    if (unreachable.length > 0) {
+      return {
+        status: "warn" as const,
+        detail: `${unreachable.length} enabled feature${unreachable.length === 1 ? " is" : "s are"} market-scoped to zero live markets and will never render: ${unreachable.join(", ")}.`,
+        fixHint:
+          "Open the Markets page and re-select live markets for the listed features.",
+        fixUrl: "/app/markets",
+      };
+    }
+    return {
+      status: "pass" as const,
+      detail: `All ${enabledKeys.length} enabled theme-side features reach at least one live market.`,
+      fixHint: "Nothing to do.",
+    };
+  });
+}
+
 export async function runHealthChecks(
   admin: AdminGraphqlClient,
   session: SessionLike,
@@ -1129,7 +1521,21 @@ export async function runHealthChecks(
     return [
       crashed,
       await checkAppProxy(shop),
-      await checkDeployedExtension(shop),
+      await checkDeployedExtension(shop, null, embedsEnabledFromTheme(theme)),
+      {
+        id: "storefront-pulse",
+        label: "Storefront pulse (beacons)",
+        status: "fail",
+        detail: "Skipped — settings could not be loaded.",
+        fixHint: "Fix the settings load error above first.",
+      },
+      {
+        id: "market-reach",
+        label: "Features reach a live market",
+        status: "fail",
+        detail: "Skipped — settings could not be loaded.",
+        fixHint: "Fix the settings load error above first.",
+      },
       await checkThemeEmbeds(theme, themeEditorUrl),
       await checkThemeCompat(theme),
       await checkWebhooks(admin, shop),
@@ -1153,6 +1559,8 @@ export async function runHealthChecks(
     configMetafields,
     appProxy,
     deployedExtension,
+    storefrontPulse,
+    marketReach,
     themeEmbeds,
     themeCompat,
     webhooks,
@@ -1165,7 +1573,9 @@ export async function runHealthChecks(
   ] = await Promise.all([
     checkConfigMetafields(admin, shop, settings),
     checkAppProxy(shop),
-    checkDeployedExtension(shop),
+    checkDeployedExtension(shop, settings, embedsEnabledFromTheme(theme)),
+    checkStorefrontPulse(shop, settings),
+    checkMarketReach(admin, settings),
     checkThemeEmbeds(theme, themeEditorUrl),
     checkThemeCompat(theme),
     checkWebhooks(admin, shop),
@@ -1181,6 +1591,8 @@ export async function runHealthChecks(
     configMetafields,
     appProxy,
     deployedExtension,
+    storefrontPulse,
+    marketReach,
     themeEmbeds,
     themeCompat,
     webhooks,

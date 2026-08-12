@@ -192,6 +192,56 @@ translate overrides in Translate & Adapt like any theme content.
    for a meaningful baseline; conversion-rate rows read "n/a" until the session beacon
    has collected data — expected on day one).
 
+## 7.5 After EVERY deploy (5-minute protocol — do not skip)
+
+A deploy once blanked every storefront widget while the admin looked
+completely normal, and it took a revert to recover. The admin reads its own
+database and its own app's metafields, so it CANNOT see this class of
+failure by itself — these five steps can. Run them after every
+`npm run deploy`:
+
+1. **Same app, always.** The extensions must ship from the PRODUCTION app —
+   the `shopify.app.toml` whose `client_id` belongs to the app the merchant
+   admin runs. Never `shopify app config link` to a new/dev app in the
+   deploy checkout, and never merge a `shopify.app.toml` from another
+   checkout: if the extension deploys under a different app, the theme's
+   embeds and the config metafield both belong to the WRONG app — every
+   widget renders nothing, and the admin stays green (it reads its own
+   data). `shopify app info` shows which app the directory is linked to —
+   check it BEFORE deploying.
+2. **Open a real product page** (incognito, no preview params) and run the
+   snippet below in the browser console. Everything must say `ok`.
+3. **Setup & health page** (App → Setup & health): re-run the checks.
+   "Deployed extension build" must show the NEW build number; "Theme app
+   embeds enabled" must pass (it also verifies the embeds belong to THIS
+   app); "Storefront pulse" tracks beacons and fails if the site goes
+   silent for 24h — check it again the day after the deploy.
+4. **App embeds survived?** Theme editor → App embeds: Cart booster, PDP
+   booster (+ Cellexia proof library and Amazon patterns if used) still
+   enabled ON THE PUBLISHED THEME. Publishing/reverting a theme copy can
+   drop them.
+5. **If the storefront is dark**: revert the extension release
+   (Partner Dashboard → app → Extensions → previous version) FIRST, then
+   diagnose — the health page's failing check names the cause.
+
+Storefront console snippet (paste on a product page):
+
+```js
+(function () {
+  var out = {};
+  out.extensionAssets = !!document.querySelector('link[href*="cellexia-booster"],script[src*="cellexia-"]') ? 'ok' : 'MISSING — extension not rendering (wrong app / embeds off / gates dark)';
+  out.pdpIsland = document.getElementById('cx-pdp-config') ? 'ok' : 'missing (ok only if every PDP feature is off)';
+  out.cartIsland = document.getElementById('cx-cart-config') ? 'ok' : 'missing (ok only if cart features are off)';
+  var isl = document.getElementById('cx-pdp-config') || document.getElementById('cx-cart-config');
+  try { out.islandParses = isl ? (JSON.parse(isl.textContent) ? 'ok' : 'EMPTY') : 'n/a'; }
+  catch (e) { out.islandParses = 'BROKEN JSON — island emission bug: ' + e.message; }
+  fetch('/apps/cellexia/track').then(function (r) { return r.json(); })
+    .then(function (j) { console.log('appProxy:', j && j.ok ? 'ok' : 'BROKEN', j); })
+    .catch(function (e) { console.log('appProxy: UNREACHABLE', e); });
+  console.table(out);
+})();
+```
+
 ## 8. Troubleshooting
 
 - **Preview link / `/apps/cellexia/*` returns 404 on the storefront**: the App Proxy is
@@ -210,6 +260,12 @@ translate overrides in Translate & Adapt like any theme content.
   (c) app embeds enabled in THE PUBLISHED theme? (d) market scope includes the market
   you're viewing? (e) for PDP content widgets — product has content AND its per-product
   switch is on?
+- **EVERYTHING stopped rendering right after a deploy, admin looks normal**: the
+  §7.5 incident. Most likely the extensions shipped under a different app (check
+  `shopify app info` in the deploy checkout vs the app the admin runs; Setup &
+  health → "Theme app embeds enabled" now detects foreign-app embeds), the
+  published theme lost the embeds, or the new extension version fails to render.
+  Revert the extension release first, then diagnose with §7.5.
 - **Checkout blocks missing**: they must be added in the checkout editor (step 5.4);
   config metafield must exist (step 5.2); feature enabled.
 - **Scope errors after pulling a new version**: merchants must re-approve OAuth when
