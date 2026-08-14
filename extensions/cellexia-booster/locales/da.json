@@ -205,7 +205,8 @@
     "box_sub": "… ellers refunderer vi dig eller sender dig en gratis erstatning.",
     "badge": "Leveringsgaranti",
     "tooltip": "Leveret senest {{ date }} – ellers refunderer vi dig eller sender dig en gratis erstatning.",
-    "deliver_to": "Leveres til:"
+    "deliver_to": "Leveres til:",
+    "select_state": "Vælg din delstat for en mere præcis leveringsdato"
   },
   "amazon": {
     "in_stock": "På lager",

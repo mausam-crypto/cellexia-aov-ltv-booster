@@ -205,7 +205,8 @@
     "box_sub": "…ou reembolsamos o valor ou enviamos gratuitamente um produto de substituição.",
     "badge": "Garantia de entrega",
     "tooltip": "Entregue o mais tardar até {{ date }} — caso contrário, reembolsamos o valor ou enviamos gratuitamente um produto de substituição.",
-    "deliver_to": "Entregar em:"
+    "deliver_to": "Entregar em:",
+    "select_state": "Selecione o seu estado para uma data de entrega mais precisa"
   },
   "amazon": {
     "in_stock": "Em stock",

@@ -205,7 +205,8 @@
     "box_sub": "… ou nous vous remboursons, ou nous vous envoyons gratuitement un produit de remplacement.",
     "badge": "Garantie de livraison",
     "tooltip": "Livré le {{ date }} au plus tard — sinon nous vous remboursons ou nous vous envoyons gratuitement un produit de remplacement.",
-    "deliver_to": "Livrer à :"
+    "deliver_to": "Livrer à :",
+    "select_state": "Sélectionnez votre État pour une date de livraison plus précise"
   },
   "amazon": {
     "in_stock": "En stock",

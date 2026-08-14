@@ -205,7 +205,8 @@
     "box_sub": "… of je krijgt je geld terug of we sturen gratis een vervangend product.",
     "badge": "Bezorggarantie",
     "tooltip": "Uiterlijk {{ date }} bezorgd – anders krijg je je geld terug of sturen we gratis een vervangend product.",
-    "deliver_to": "Bezorgen in:"
+    "deliver_to": "Bezorgen in:",
+    "select_state": "Kies je staat voor een nauwkeurigere bezorgdatum"
   },
   "amazon": {
     "in_stock": "Op voorraad",

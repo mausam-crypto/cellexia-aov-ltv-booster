@@ -673,16 +673,18 @@ for (const path of [
   ok(
     us.enabled === false &&
       us.selector === true &&
+      us.selectorPrompt === true &&
       us.federalHolidays === true &&
       Array.isArray(us.extraHolidays) &&
       us.extraHolidays.length === 0 &&
       typeof us.byState === "object" &&
       Object.keys(us.byState).length === 0,
-    "v10: usStates defaults are the inert module (off / selector on / federal on / no extras / no states)",
+    "v10: usStates defaults are the inert module (off / selector on / prompt on / federal on / no extras / no states)",
   );
   for (const path of [
     "deliveryEstimate.usStates.enabled",
     "deliveryEstimate.usStates.selector",
+    "deliveryEstimate.usStates.selectorPrompt",
     "deliveryEstimate.usStates.federalHolidays",
     "deliveryEstimate.usStates.extraHolidays",
     "deliveryEstimate.usStates.byState",
@@ -697,6 +699,7 @@ for (const path of [
     const dirty = clone(DEFAULT_SETTINGS) as any;
     dirty.deliveryEstimate.usStates.enabled = "yes";
     dirty.deliveryEstimate.usStates.selector = 1;
+    dirty.deliveryEstimate.usStates.selectorPrompt = "on";
     dirty.deliveryEstimate.usStates.federalHolidays = "false";
     dirty.deliveryEstimate.usStates.extraHolidays = [
       "13-40",
@@ -711,6 +714,7 @@ for (const path of [
     ok(
       cleaned.deliveryEstimate.usStates.enabled === false &&
         cleaned.deliveryEstimate.usStates.selector === true &&
+        cleaned.deliveryEstimate.usStates.selectorPrompt === true &&
         cleaned.deliveryEstimate.usStates.federalHolidays === true,
       "v10 sanitize: non-boolean module switches -> defaults",
     );

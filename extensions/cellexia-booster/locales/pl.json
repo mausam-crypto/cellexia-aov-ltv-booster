@@ -213,7 +213,8 @@
     "box_sub": "…albo zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt.",
     "badge": "Gwarancja dostawy",
     "tooltip": "Dostawa najpóźniej: {{ date }}. W przeciwnym razie zwrócimy Ci pieniądze lub bezpłatnie wyślemy nowy produkt.",
-    "deliver_to": "Dostawa do:"
+    "deliver_to": "Dostawa do:",
+    "select_state": "Wybierz swój stan, aby zobaczyć dokładniejszą datę dostawy"
   },
   "amazon": {
     "in_stock": "Dostępny",

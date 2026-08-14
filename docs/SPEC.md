@@ -129,6 +129,18 @@ deliberately uses the ASCII colon since a Latin state name follows). All 18
 theme locale files, last key of the group; nb stays a byte-copy of no.
 Checkout locale files unchanged.)
 
+(v13, 2026-08-14: the `delivery` group gains a SECOND selector key,
+`delivery.select_state` (en `"Select your state for a more accurate
+delivery date"`): the call-to-action line of the prominent
+"prompt strip" the selector renders while no state is resolved
+(sub-flag `deliveryEstimate.usStates.selectorPrompt`, default true).
+Full sentence, no interpolation; each locale keeps its established
+register (de Sie, fr vous, es/it/nl/da/sv/el/hu/ro informal, ja polite).
+Missing/`Translation missing` values only keep the quiet v10 line — the
+selector itself never hides on this key. Placed right after
+`deliver_to` in all 18 theme locale files; nb stays a byte-copy of no.
+Checkout locale files unchanged.)
+
 ### Checkout upsell — `extensions/checkout-upsell/locales/en.default.json`
 
 ```json

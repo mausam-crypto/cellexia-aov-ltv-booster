@@ -859,6 +859,17 @@ export interface BoosterSettings {
       /** Amazon-style "Deliver to" state selector on the widget (v10
        *  sub-flag convention: default true so the master alone lights it). */
       selector: boolean;
+      /**
+       * v13 selector sub-flag: until a state resolves, render the selector
+       * as the PROMINENT Amazon-style location strip (bordered, with a
+       * link-blue "Select your state…" call-to-action line) instead of the
+       * quiet one-line link. Once any state resolves — visitor choice or a
+       * geo hint — the quiet v10 line returns. Only meaningful while
+       * `selector` is on; default true (sub-flag convention). The
+       * storefront treats a MISSING key as true (`!== false`) so mirrors
+       * saved before v13 light the strip without a re-save.
+       */
+      selectorPrompt: boolean;
       /** Skip the built-in US federal holiday calendar (fixed dates + the
        *  six computed movable holidays — services/delivery-holidays.server.ts)
        *  when counting delivery days. */
@@ -1205,6 +1216,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     usStates: {
       enabled: false,
       selector: true,
+      selectorPrompt: true,
       federalHolidays: true,
       extraHolidays: [],
       byState: {},
@@ -1906,6 +1918,10 @@ export function sanitizeSettings(
     }
     if (typeof us.selector !== "boolean") {
       us.selector = DEFAULT_SETTINGS.deliveryEstimate.usStates.selector;
+    }
+    if (typeof us.selectorPrompt !== "boolean") {
+      us.selectorPrompt =
+        DEFAULT_SETTINGS.deliveryEstimate.usStates.selectorPrompt;
     }
     if (typeof us.federalHolidays !== "boolean") {
       us.federalHolidays =

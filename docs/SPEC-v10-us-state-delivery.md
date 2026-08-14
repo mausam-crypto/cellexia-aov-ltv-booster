@@ -61,11 +61,14 @@ export interface DeliveryStateOverride {
   usStates: {
     enabled: boolean;          // module master, default false
     selector: boolean;         // "Deliver to" selector, default true
+    selectorPrompt: boolean;   // v13 prompt strip until a state resolves, default true
     federalHolidays: boolean;  // built-in US federal holiday calendar, default true
     extraHolidays: string[];   // US-wide days off, "MM-DD" | "YYYY-MM-DD", default []
     byState: Record<string, DeliveryStateOverride>;  // USPS code keys /^[A-Z]{2}$/, default {}
   };
 ```
+
+(`selectorPrompt` landed in the v13 addendum — §12 below.)
 
 Landed rules:
 
@@ -746,3 +749,133 @@ changes.
 - No US territories in the selector; no ZIP-level granularity.
 - No storefront geo on non-US pages, non-US countries, or checkout.
 - No new analytics beacons.
+
+## 12. v13 addendum (2026-08-14): prompt strip + chosen-state checkout coherence
+
+Two changes to THIS module, landed while the merchant runs it **without**
+the IP database (no geo build): the no-state presentation earns its keep,
+and the explicit choice now reaches checkout.
+
+### 12a. The prompt strip (`usStates.selectorPrompt`, default true)
+
+- While **no** state is resolved (choice or geo) — and `selector` is on,
+  `selectorPrompt` is not `false` (missing key = on: mirrors saved before
+  v13 light it without a re-save) and `delivery.select_state` resolves —
+  the SAME `.cx-usloc` node renders as the prominent Amazon-style
+  location bar: root modifier `cx-usloc--prompt`, full-width bordered
+  button (#d5d9d9 hairline on #f0f2f2, radius 8), bold
+  "Deliver to: United States" row, and a full-width CTA line
+  `.cx-usloc__cta` in the measured Amazon link teal #007185 (hover
+  #c7511f + underline) reading en "Select your state for a more accurate
+  delivery date" (`delivery.select_state`, 18 locales, right after
+  `deliver_to`; same Translation-missing discard rule via
+  `deliveryUsCtaText`, twin). Any resolved state returns the QUIET v10
+  line — the swap lives in `deliveryUsSelectorFill` (class + `[hidden]`
+  on the CTA, plus the v6.8.1 `.cx-usloc__cta[hidden]` display guard), so
+  rebuilt/re-synced nodes converge from storage state alone and the CTA
+  disappears the moment a choice/geo state lands.
+- The CTA rides INSIDE `.cx-usloc__btn` — one tap target, screen readers
+  hear the full invitation; no new beacons (the strip is post-mount
+  cosmetics on an already-counted widget).
+- Admin: nested checkbox under the selector toggle on the Delivery page
+  ("Highlight the state prompt until a state is chosen") riding the
+  normal usStates save patch; validate/sanitize are the plain
+  typeof-boolean guards.
+
+### 12b. Chosen-state → checkout (`_cx_us_state` cart attribute)
+
+- `deliveryUsChoiceSet` (twin) now mirrors every SUCCESSFUL choice write
+  onto the cart via new twin `deliveryUsAttrSync` — the setPreviewCartTag
+  shape: `POST cart/update.js {attributes:{_cx_us_state}}`,
+  fire-and-forget, unknown codes CLEAR, geo hints are NEVER mirrored (the
+  checkout never-guess rule). The placeholder and the prime self-heal of
+  a now-hidden stored choice both clear the attribute through the same
+  single owner.
+- CART-ONLY boot heal `deliveryUsAttrHeal` (the cartExcludedAny
+  precedent): the cart island's `"usAttr"` member (inside the `cx_us`
+  gate) carries the server-rendered attribute, so `init()` — prime
+  first, BEFORE the live-widget bail — converges attribute↔choice with
+  at most one write per page view, only on a real mismatch. Covers carts
+  created after the choice (post-order, cleared cookies) and stale
+  attributes after a cleared choice.
+- BOTH checkout components (`checkout-delivery` + `checkout-trust`
+  Checkout.tsx): `provinceCode = typed provinceCode ?? (countryCode ===
+  'US' ? validated attribute : undefined)` — the typed address ALWAYS
+  wins, non-US destinations ignore the attribute, the engine (unchanged)
+  stays fail-open on unknown codes. The tracked row and the delivery
+  widget therefore match the storefront promise for the chosen state
+  before the buyer types an address.
+- Doctrine note: §11's "no storefront geo … or checkout" stands — the
+  attribute carries only the buyer's EXPLICIT selection, never a guess.
+
+### 12c. Budgets & suite
+
+- Liquid total 96,025 B (tripwire 96,500; the usAttr member + three
+  `delivery.select_state` string emissions).
+- el.json (already minified) hit 15,123 B → locale byte budget moved
+  15,000 → 15,200 (v12 budget-move precedent; hard cap 15,360 — the NEXT
+  el growth must diet Greek copy, not the budget).
+- us-state-delivery.mjs 364 → 407 checks (twin pins for the two new
+  functions, prompt-strip DOM matrix, attr-sync/heal behavior, init-hook
+  order anchor, mutants M9 prompt-despite-state + M10 sync-dropped);
+  checkout sims pin the fallback derivation lines; harness v13 block
+  (strings ×3 islands, 18 locales, CTA display guard, attribute literal
+  in 4 sources, selectorPrompt path + default); settings-derivation
+  covers the new sub-flag. Full suite 7,268 checks green.
+
+### 12d. v13 review outcome (6-lens + refuter workflow, 15 agents)
+
+7 findings confirmed → 4 fixed, 3 accepted-by-design; 2 refuted.
+
+**Fixed:**
+
+1. **Strip flash (latent CLS/mis-tap; fires the day the geo DB is ever
+   built):** the strip now WAITS for a SETTLED geo verdict — new twin var
+   `deliveryUsGeoDone`, set by prime on a fresh cached verdict and by
+   geoKick's cached/resolve/reject paths (a settled `{s:null}` also runs
+   `deliveryUsSelectorSync`, revealing the strip). A late geo STATE can
+   never collapse the strip under the pointer; with no geo DB the strip
+   appears one beat after first paint once per session, instantly on
+   later pages. The selector change handler re-kicks geo after a cleared
+   choice so the strip's settled gate cannot strand. Mutants M12 (gate
+   dropped) + updated M9 pin it.
+2. **Per-keystroke unserialized POSTs** (out-of-order last write could
+   strand a stale state for checkout; 429s silently dropped the final
+   commit; fetch-wrapping themes churned): `deliveryUsAttrSync` now
+   feeds a LAST-WRITE-WINS single-flight chain (`deliveryUsAttrWant` /
+   `deliveryUsAttrBusy` / `deliveryUsAttrPump`, twins) — one write in
+   flight, intermediates coalesce, final always lands last; sim pins the
+   burst (AL→AK→AZ ⇒ exactly [AL, AZ]). Mutant M11 pins single-flight.
+   Coalescing also makes the boot "one write instead of two" comments
+   TRUE (prime's clear + heal's clear share one chain link).
+3. **Lost commit on immediate checkout navigation:** the chain's POST
+   carries `keepalive: true` (the setPreviewCartTag exit-path
+   precedent); sim asserts it.
+4. **CTA hover:** gated behind `@media (hover: hover)` (sticky touch
+   :hover read as a followed link) and re-inked #c7511f → #b12704
+   (4.04:1 → 5.91:1 on #f0f2f2; AA ≥ 4.5:1). Heal also RAW-compares the
+   stored attribute now, so junk written by other apps is cleared once
+   (loop-free; sim-pinned).
+
+**Accepted-by-design (documented, not coded around):**
+
+- *el.json budget slack is 77 B* — the §12c ratchet stands: next Greek
+  growth diets copy.
+- *Heal is master-blind* (island gates on `usStates.enabled` only): a
+  merchant running master-OFF + sub-module-ON gets bounded (1/page),
+  downstream-inert attribute writes. Kept because gating the island on
+  the master would break draft-preview of the state layer, and the
+  config is self-inconsistent anyway.
+- *Attribute-only empty carts* for returning past-choosers on bounce
+  visits (cart-create webhook noise) — the deliberate price of checkout
+  coherence without a read request; and *checkout preview diagnoses*
+  don't name the chosen-hidden-state cause (self-heal clears it on the
+  merchant's next storefront page view).
+
+**Refuted (for the record):** "stale hidden-state attribute deliberately
+hides checkout" (the self-heal + chain converge the attribute; checkout
+honoring an explicit hidden choice pre-address is the hidden flag's
+stated meaning); "twin law needs whole-region compare" (the per-symbol
+extraction already covers every non-whitespace byte of the region).
+
+Suite after fixes: us-state-delivery 427 checks; full suite 7,288 green.

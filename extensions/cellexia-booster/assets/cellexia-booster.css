@@ -2209,6 +2209,66 @@ body.customer--b2b .cx-sub-remove {
   display: none !important;
 }
 
+/* v13 PROMPT strip: until a state resolves (and the merchant keeps the
+   selectorPrompt sub-flag on) the SAME selector renders as the prominent
+   Amazon-style location bar — #d5d9d9 hairline card on the soft #f0f2f2
+   wash, bold "Deliver to: United States" row, and the measured Amazon
+   link-teal #007185 CTA line ("Select your state…") underneath. The root
+   class swaps in deliveryUsSelectorFill, so a resolved state (choice or
+   geo) returns the quiet line above without a rebuild. Logical
+   properties only (RTL-safe); no animation. */
+.cx-usloc--prompt {
+  margin-block-start: 6px;
+  font-size: 13px;
+}
+
+.cx-usloc--prompt .cx-usloc__btn {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  gap: 2px 6px;
+  padding: 8px 12px;
+  border: 1px solid #d5d9d9;
+  border-radius: 8px;
+  background: #f0f2f2;
+  text-align: start;
+}
+
+.cx-usloc--prompt .cx-usloc__label {
+  color: #1d1d1b;
+  font-weight: 600;
+}
+
+/* The strip is one big affordance — underlining only the country name
+   reads as a second, narrower control, so hover moves to the CTA line. */
+.cx-usloc--prompt .cx-usloc__btn:hover .cx-usloc__label {
+  text-decoration: none;
+}
+
+/* The CTA rides INSIDE the button (one tap target; a screen reader hears
+   the full invitation): a full-width second line in the link teal. */
+.cx-usloc__cta {
+  flex: 1 0 100%;
+  color: #007185;
+}
+
+/* Hover only where hover exists — touch :hover is sticky after a tap, and
+   the CTA must never read as an already-followed link. The hover ink is
+   the house #b12704 (5.9:1 on the #f0f2f2 wash): Amazon's #c7511f orange
+   sits at 4.04:1, under the 4.5:1 AA floor for this 13px line. */
+@media (hover: hover) {
+  .cx-usloc--prompt .cx-usloc__btn:hover .cx-usloc__cta {
+    color: #b12704;
+    text-decoration: underline;
+  }
+}
+
+/* Same guard shape as __pop/__attr above: the flex base rule must never
+   defeat the [hidden] toggle (the v6.8.1 rule). */
+.cx-usloc__cta[hidden] {
+  display: none !important;
+}
+
 /* --------------------------------------------- dispatch countdown (v5.0) */
 
 .cx-dispatch {

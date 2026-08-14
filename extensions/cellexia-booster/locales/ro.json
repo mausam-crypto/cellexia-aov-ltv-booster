@@ -209,7 +209,8 @@
     "box_sub": "…sau îți returnăm banii ori îți trimitem gratuit un produs de înlocuire.",
     "badge": "Garanția livrării",
     "tooltip": "Livrat cel târziu {{ date }} — altfel îți returnăm banii sau îți trimitem gratuit un produs de înlocuire.",
-    "deliver_to": "Livrare în:"
+    "deliver_to": "Livrare în:",
+    "select_state": "Alege statul tău pentru o dată de livrare mai exactă"
   },
   "amazon": {
     "in_stock": "În stoc",

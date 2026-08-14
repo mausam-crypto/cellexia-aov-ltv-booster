@@ -205,7 +205,8 @@
     "box_sub": "…oppure ti rimborsiamo o ti inviamo gratuitamente un prodotto sostitutivo.",
     "badge": "Garanzia di consegna",
     "tooltip": "Consegna entro e non oltre {{ date }} — altrimenti ti rimborsiamo o ti inviamo gratuitamente un prodotto sostitutivo.",
-    "deliver_to": "Consegna a:"
+    "deliver_to": "Consegna a:",
+    "select_state": "Seleziona il tuo stato per una data di consegna più precisa"
   },
   "amazon": {
     "in_stock": "Disponibilità immediata",

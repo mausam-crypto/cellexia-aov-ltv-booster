@@ -50,6 +50,19 @@ original text is preserved verbatim below.
 > (visible only while a geo-detected state is in use). `azGapFillConfig()`
 > copies `cfg.delivery` wholesale, so the `us` member rides along on
 > az-only pages automatically.
+>
+> **v13 additions:** each of the three `deliveryStrings` maps gains a
+> SECOND selector key, `"delivery.select_state"` (t, no params) — the
+> call-to-action of the prompt strip the selector renders while no state
+> is resolved; same discard rule, missing value only keeps the quiet
+> line. The CART island alone also emits `"usAttr"` next to `"us"`
+> (inside the same `cx_us` gate): `{{ cart.attributes['_cx_us_state'] |
+> json }}`, the server-rendered mirror of the buyer's explicit state
+> choice — read by the cart bundle's one-shot `deliveryUsAttrHeal` boot
+> check so attribute↔choice converge without any read request. The
+> attribute itself is written client-side (`deliveryUsAttrSync`, the
+> setPreviewCartTag shape) and consumed by BOTH checkout components as a
+> provinceCode fallback until the typed address carries one.
 
 ## pdp-booster
 

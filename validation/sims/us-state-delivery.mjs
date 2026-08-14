@@ -233,8 +233,11 @@ const FUNCS_US = [
   'deliveryUsFederal',
   'deliveryUsChoiceGet',
   'deliveryUsChoiceSet',
+  'deliveryUsAttrSync',
+  'deliveryUsAttrPump',
   'deliveryUsCurrent',
   'deliveryUsDeliverTo',
+  'deliveryUsCtaText',
   'deliveryUsLabel',
   'deliveryUsPopToggle',
   'deliveryUsPopCloseAll',
@@ -255,6 +258,10 @@ const VARS_US = [
   'deliveryUsGeoPromise',
   'deliveryUsDocBound',
   'deliveryUsEventToken',
+  'deliveryUsGeoDone',
+  'deliveryUsAttrWant',
+  'deliveryUsAttrBusy',
+  'deliveryUsAttrPromise',
 ];
 
 for (const f of FUNCS_US) {
@@ -414,6 +421,7 @@ const STRINGS = {
   'delivery.box_title': 'title @@DATE@@',
   'delivery.tooltip': 'tip @@DATE@@',
   'delivery.deliver_to': 'Deliver to:',
+  'delivery.select_state': 'Pick a state',
 };
 
 /** A valid US-country cfg; `us` becomes cfg.delivery.us when provided. */
@@ -1295,6 +1303,202 @@ async function runBehavior(t, bundle, tag0) {
       missStr.ctx.deliveryUsSelectorNode(), null);
   }
 
+  // ------------------------------------------------- v13 prompt strip
+  {
+    // No resolved state + sub-flag ABSENT (missing key = on, the sub-flag
+    // convention) + CTA string present + SETTLED geo verdict: the
+    // selector renders as the prominent strip — root class modifier +
+    // visible CTA line riding INSIDE the button (one tap target). The
+    // settled verdict is seeded through prime, mirroring the real
+    // renderInto/init flow.
+    const c = makeCtx(bundle, {
+      cfg: usCfg({ enabled: true, selector: true }),
+      session: { 'cx_geo:1': JSON.stringify({ s: null, t: NOW_DEFAULT - 1000 }) },
+    });
+    c.ctx.deliveryUsPrime();
+    const host = c.doc.createElement('div');
+    c.doc.body.appendChild(host);
+    c.ctx.deliveryUsSelectorAttach(host);
+    const root = host.querySelector('.cx-usloc');
+    const cta = root && root.querySelector('.cx-usloc__cta');
+    t.check('prompt: no-state default renders the strip (class + visible CTA)' + tag,
+      root !== null && root.className === 'cx-usloc cx-usloc--prompt' &&
+        cta !== null && !cta.hasAttribute('hidden') && cta.textContent === 'Pick a state',
+      root && root.className);
+    t.check('prompt: CTA rides INSIDE the button (one tap target)' + tag,
+      cta && cta.parentNode === root.querySelector('.cx-usloc__btn'));
+    // Choosing a state returns the quiet line IN PLACE (no rebuild) …
+    const sel = root.querySelector('.cx-usloc__select');
+    sel.value = 'TX';
+    sel._fire('change');
+    t.check('prompt: a chosen state returns the quiet line (class + CTA hidden)' + tag,
+      root.className === 'cx-usloc' && cta.hasAttribute('hidden'),
+      root.className);
+    // … and clearing the choice restores the strip (fill converges both ways).
+    sel.value = '';
+    sel._fire('change');
+    t.check('prompt: clearing the choice restores the strip' + tag,
+      root.className === 'cx-usloc cx-usloc--prompt' && !cta.hasAttribute('hidden'),
+      root.className);
+  }
+  {
+    // A geo-resolved state suppresses the strip exactly like a choice.
+    const c = makeCtx(bundle, { cfg: usCfg({ enabled: true, selector: true }) });
+    c.ctx.deliveryUsGeoApply('CA');
+    const host = c.doc.createElement('div');
+    c.doc.body.appendChild(host);
+    c.ctx.deliveryUsSelectorAttach(host);
+    const root = host.querySelector('.cx-usloc');
+    t.check('prompt: a geo state keeps the quiet line' + tag,
+      root !== null && root.className === 'cx-usloc' &&
+        root.querySelector('.cx-usloc__cta').hasAttribute('hidden'));
+  }
+  {
+    // selectorPrompt === false: the quiet line even with no state and a
+    // settled verdict (the flag alone must hold the strip off).
+    const c = makeCtx(bundle, {
+      cfg: usCfg({ enabled: true, selector: true, selectorPrompt: false }),
+      session: { 'cx_geo:1': JSON.stringify({ s: null, t: NOW_DEFAULT - 1000 }) },
+    });
+    c.ctx.deliveryUsPrime();
+    const host = c.doc.createElement('div');
+    c.doc.body.appendChild(host);
+    c.ctx.deliveryUsSelectorAttach(host);
+    const root = host.querySelector('.cx-usloc');
+    t.check('prompt: sub-flag off -> quiet line even with no state' + tag,
+      root !== null && root.className === 'cx-usloc' &&
+        root.querySelector('.cx-usloc__cta').hasAttribute('hidden'));
+  }
+  {
+    // Missing/marker CTA string: quiet line, selector fully functional
+    // (the deliver_to discard rule applied to select_state).
+    for (const [label, val] of [['missing', ''], ['marker', 'Translation missing: en.delivery.select_state']]) {
+      const c = makeCtx(bundle, {
+        cfg: usCfg({ enabled: true, selector: true }, undefined, { 'delivery.select_state': val }),
+        session: { 'cx_geo:1': JSON.stringify({ s: null, t: NOW_DEFAULT - 1000 }) },
+      });
+      c.ctx.deliveryUsPrime();
+      const host = c.doc.createElement('div');
+      c.doc.body.appendChild(host);
+      c.ctx.deliveryUsSelectorAttach(host);
+      const root = host.querySelector('.cx-usloc');
+      t.check('prompt: ' + label + ' CTA string -> quiet line, selector intact' + tag,
+        root !== null && root.className === 'cx-usloc' &&
+          root.querySelector('.cx-usloc__select') !== null);
+    }
+  }
+
+  // --------------------------------- v13.1 settled-verdict gate (F1)
+  {
+    // Review F1: an UNSETTLED geo question paints the quiet line first —
+    // a late geo state must never collapse the strip (layout shift next
+    // to the ATC). A resolving NULL verdict upgrades quiet -> strip; a
+    // resolving STATE keeps the quiet line for good.
+    const c = makeCtx(bundle, { cfg: usCfg({ enabled: true, selector: true }), fetchJson: { s: null } });
+    const host = c.doc.createElement('div');
+    c.doc.body.appendChild(host);
+    c.ctx.deliveryUsSelectorAttach(host);
+    const root = host.querySelector('.cx-usloc');
+    const cta = root.querySelector('.cx-usloc__cta');
+    t.check('prompt: unsettled geo -> quiet line first (no strip flash)' + tag,
+      root.className === 'cx-usloc' && cta.hasAttribute('hidden'),
+      root.className);
+    c.ctx.deliveryUsGeoKick();
+    await c.ctx.deliveryUsGeoPromise;
+    t.check('prompt: a settled null verdict upgrades to the strip' + tag,
+      root.className === 'cx-usloc cx-usloc--prompt' && !cta.hasAttribute('hidden'),
+      root.className);
+  }
+  {
+    const c = makeCtx(bundle, { cfg: usCfg({ enabled: true, selector: true }), fetchJson: { s: 'CA' } });
+    const host = c.doc.createElement('div');
+    c.doc.body.appendChild(host);
+    c.ctx.deliveryUsSelectorAttach(host);
+    c.ctx.deliveryUsGeoKick();
+    await c.ctx.deliveryUsGeoPromise;
+    const root = host.querySelector('.cx-usloc');
+    t.check('prompt: a geo verdict WITH a state never shows the strip' + tag,
+      root.className === 'cx-usloc' &&
+        root.querySelector('.cx-usloc__cta').hasAttribute('hidden'));
+  }
+
+  // -------------------------------------------- v13 cart-attribute sync
+  {
+    // A committed choice mirrors onto the cart attribute (LAST-WRITE-WINS
+    // single-flight chain, keepalive); the placeholder CLEARS it.
+    const c = makeCtx(bundle, { cfg: usCfg({ enabled: true, selector: true }) });
+    const host = c.doc.createElement('div');
+    c.doc.body.appendChild(host);
+    c.ctx.deliveryUsSelectorAttach(host);
+    const sel = host.querySelector('.cx-usloc__select');
+    const posts = () => c.fetchLog.filter((f) => f.url === '/cart/update.js');
+    const flush = async () => {
+      for (let i = 0; i < 10 && c.ctx.deliveryUsAttrBusy === true; i++) {
+        await c.ctx.deliveryUsAttrPromise;
+      }
+    };
+    sel.value = 'TX';
+    sel._fire('change');
+    t.check('attr: a committed choice POSTs _cx_us_state (keepalive commit)' + tag,
+      posts().length === 1 && posts()[0].init.method === 'POST' &&
+        posts()[0].init.keepalive === true &&
+        posts()[0].init.body === JSON.stringify({ attributes: { _cx_us_state: 'TX' } }),
+      JSON.stringify(c.fetchLog));
+    await flush();
+    sel.value = '';
+    sel._fire('change');
+    await flush();
+    t.check('attr: the placeholder clears the attribute' + tag,
+      posts().length === 2 &&
+        posts()[1].init.body === JSON.stringify({ attributes: { _cx_us_state: '' } }),
+      JSON.stringify(posts()));
+    t.eq('attr: no beacon ever rides the sync' + tag, c.spies.track, 0);
+    // Chain law (review F2-F5): rapid keystroke changes coalesce to
+    // first + FINAL — one write in flight, the final value lands last.
+    sel.value = 'AL';
+    sel._fire('change');
+    sel.value = 'AK';
+    sel._fire('change');
+    sel.value = 'AZ';
+    sel._fire('change');
+    await flush();
+    const bodies = posts().slice(2).map((f) => JSON.parse(f.init.body).attributes._cx_us_state);
+    t.check('attr: keystroke burst coalesces (first + final, final lands last)' + tag,
+      bodies.length === 2 && bodies[0] === 'AL' && bodies[1] === 'AZ',
+      JSON.stringify(bodies));
+  }
+  {
+    // Geo hints never touch the attribute (the checkout never-guess rule).
+    const c = makeCtx(bundle, { cfg: usCfg({ enabled: true, selector: true }) });
+    c.ctx.deliveryUsGeoApply('CA');
+    t.eq('attr: geo hints never touch the cart attribute' + tag,
+      c.fetchLog.filter((f) => f.url === '/cart/update.js').length, 0);
+  }
+  {
+    // The prime self-heal of a hidden stored choice clears the attribute
+    // too — storefront and checkout can never disagree on a merchant-
+    // hidden state.
+    const c = makeCtx(bundle, {
+      cfg: usCfg({ enabled: true, selector: true, byState: { CA: { hidden: true } } }),
+      local: { 'cx:us_state': 'CA' },
+    });
+    c.ctx.deliveryUsPrime();
+    const posts = c.fetchLog.filter((f) => f.url === '/cart/update.js');
+    t.check('attr: the hidden-choice self-heal clears the attribute' + tag,
+      posts.length === 1 && posts[0].init.body === JSON.stringify({ attributes: { _cx_us_state: '' } }),
+      JSON.stringify(c.fetchLog));
+  }
+  {
+    // deliveryUsAttrSync validates its OWN input: an unknown code clears
+    // instead of writing garbage.
+    const c = makeCtx(bundle, { cfg: usCfg({ enabled: true, selector: true }) });
+    c.ctx.deliveryUsAttrSync('ZZ');
+    t.check('attr: an unknown code clears instead of writing garbage' + tag,
+      c.fetchLog.length === 1 &&
+        c.fetchLog[0].init.body === JSON.stringify({ attributes: { _cx_us_state: '' } }),
+      JSON.stringify(c.fetchLog));
+  }
+
   // -------------------------------------------- cross-bundle fan-out
   await runFanout(t, bundle, bundle, tag0);
 }
@@ -1360,6 +1564,94 @@ await runBehavior(tap, bundles.cart, 'cart');
 // twins are byte-verified above, but the shipped page runs pdp WITH cart).
 await runFanout(tap, bundles.pdp, bundles.cart, 'pdp+cart');
 
+// --------------------------------------------- v13 cart attribute heal
+// CART-ONLY (not a twin — the cartExcludedAny precedent): the one-shot
+// boot heal converges the cart attribute toward the stored choice using
+// the island's server-rendered usAttr member — no read request, at most
+// one write per page view, only on a real mismatch.
+{
+  const healBundle = bundles.cart + '\n' + extractFunction(srcs.cart, 'deliveryUsAttrHeal');
+  const heal = (opts) => {
+    const c = makeCtx(healBundle, opts);
+    c.ctx.deliveryUsAttrHeal();
+    return c;
+  };
+  const posts = (c) => c.fetchLog.filter((f) => f.url === '/cart/update.js');
+  {
+    const c = heal({
+      cfg: usCfg({ enabled: true, selector: true }, { usAttr: null }),
+      local: { 'cx:us_state': 'CA' },
+    });
+    tap.check('heal: choice without attribute -> one write with the choice',
+      posts(c).length === 1 &&
+        posts(c)[0].init.body === JSON.stringify({ attributes: { _cx_us_state: 'CA' } }),
+      JSON.stringify(c.fetchLog));
+  }
+  {
+    const c = heal({
+      cfg: usCfg({ enabled: true, selector: true }, { usAttr: 'CA' }),
+      local: { 'cx:us_state': 'CA' },
+    });
+    tap.eq('heal: matching attribute -> zero writes', posts(c).length, 0);
+  }
+  {
+    const c = heal({ cfg: usCfg({ enabled: true, selector: true }, { usAttr: 'CA' }) });
+    tap.check('heal: attribute without a choice -> cleared',
+      posts(c).length === 1 &&
+        posts(c)[0].init.body === JSON.stringify({ attributes: { _cx_us_state: '' } }),
+      JSON.stringify(c.fetchLog));
+  }
+  {
+    // RAW compare: junk written by another app is cleared once (the
+    // island reflects the cleared value next render — loop-free).
+    const c = heal({ cfg: usCfg({ enabled: true, selector: true }, { usAttr: 'garbage!' }) });
+    tap.check('heal: junk attribute + no choice -> cleared once',
+      posts(c).length === 1 &&
+        posts(c)[0].init.body === JSON.stringify({ attributes: { _cx_us_state: '' } }),
+      JSON.stringify(c.fetchLog));
+  }
+  {
+    // Case-mismatched attribute vs the same choice: rewritten canonical.
+    const c = heal({
+      cfg: usCfg({ enabled: true, selector: true }, { usAttr: 'ca' }),
+      local: { 'cx:us_state': 'CA' },
+    });
+    tap.check('heal: lowercase attribute rewritten to the canonical choice',
+      posts(c).length === 1 &&
+        posts(c)[0].init.body === JSON.stringify({ attributes: { _cx_us_state: 'CA' } }),
+      JSON.stringify(c.fetchLog));
+  }
+  {
+    const c = heal({
+      cfg: usCfg({ enabled: true, selector: true, byState: { CA: { minDays: 1 } } }, { usAttr: null }),
+      session: { 'cx_geo:1': JSON.stringify({ s: 'CA', t: NOW_DEFAULT - 1000 }) },
+    });
+    c.ctx.deliveryUsPrime();
+    c.ctx.deliveryUsAttrHeal();
+    tap.eq('heal: a geo-resolved state is never mirrored (choice only)', posts(c).length, 0);
+  }
+  {
+    const c = heal({
+      cfg: usCfg({ enabled: 'true', selector: true }, { usAttr: null }),
+      local: { 'cx:us_state': 'CA' },
+    });
+    tap.eq('heal: module not strictly enabled -> inert', posts(c).length, 0);
+  }
+  // The boot hook: init() primes then heals BEFORE the live-widget bail
+  // (checkout coherence matters on pages with zero live cart widgets).
+  {
+    const initIdx = srcs.cart.indexOf('function init() {');
+    const cardIdx = srcs.cart.indexOf('initCardFlags();', initIdx);
+    const primeIdx = srcs.cart.indexOf('deliveryUsPrime();', initIdx);
+    const healIdx = srcs.cart.indexOf('deliveryUsAttrHeal();', initIdx);
+    const bailIdx = srcs.cart.indexOf('if (!PREVIEW && !anyEffectiveLive()) return;', initIdx);
+    tap.check('heal hook: cart init() primes then heals before the live-widget bail',
+      initIdx !== -1 && cardIdx !== -1 && primeIdx !== -1 && healIdx !== -1 &&
+        bailIdx !== -1 && cardIdx < primeIdx && primeIdx < healIdx && healIdx < bailIdx,
+      JSON.stringify({ initIdx, cardIdx, primeIdx, healIdx, bailIdx }));
+  }
+}
+
 // -------------------------------------------------------- mutation tests
 // In-memory mutants on the extracted pdp bundle (the dispatch-tz /
 // delivery-businessdays precedent): mutate, re-run the full behavioral
@@ -1406,6 +1698,26 @@ const MUTANTS = [
     name: 'M8 countdown substitution gate no longer requires a resolved state',
     find: '      if (dcUs && dcUs.us && dcUs.us.state) {',
     replace: '      if (dcUs && dcUs.us) {',
+  },
+  {
+    name: 'M9 prompt strip shown despite a resolved state',
+    find: '    var wantPrompt = !st && deliveryUsGeoDone === true &&',
+    replace: '    var wantPrompt = deliveryUsGeoDone === true &&',
+  },
+  {
+    name: 'M10 choice writes stop mirroring the cart attribute',
+    find: '      deliveryUsAttrSync(code);',
+    replace: ';',
+  },
+  {
+    name: 'M11 attr chain single-flight removed (unserialized per-keystroke POSTs)',
+    find: '      if (deliveryUsAttrBusy) return; // the running chain picks it up',
+    replace: ';',
+  },
+  {
+    name: 'M12 strip no longer waits for a settled geo verdict (F1 regression)',
+    find: '    var wantPrompt = !st && deliveryUsGeoDone === true &&',
+    replace: '    var wantPrompt = !st &&',
   },
 ];
 

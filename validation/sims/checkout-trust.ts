@@ -511,9 +511,16 @@ const L = await loadTrustLogic();
     "translate('tracked', {date: trackedDateLabel})",
     "translate('guarantee_body', {",
     "count: config.guarantee.days,",
-    // Country + v10 US state only ever come from the shipping address.
+    // Country only ever comes from the shipping address. v13: the US
+    // state may seed from the _cx_us_state cart attribute (the buyer's
+    // EXPLICIT storefront choice) strictly until the typed address
+    // carries a provinceCode — typed wins, non-US ignores the attribute.
     "shippingAddress?.countryCode",
     "shippingAddress?.provinceCode",
+    "'_cx_us_state',",
+    "/^[A-Z]{2}$/.test(usStateAttributeValue)",
+    "typedProvinceCode ||",
+    "(countryCode === 'US' ? chosenUsState : undefined)",
     // v11: the render is DRIVEN by the normalized rowOrder — a keyed row map
     // indexed by the config order, every row still behind its own gate.
     "const rowsByKey: Record<TrustRowKey, ReactElement | null>",

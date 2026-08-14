@@ -343,6 +343,12 @@ function validateDeliveryPatch(patch: DeepPartial<BoosterSettings>): string[] {
       errors.push("The “Deliver to” selector switch is malformed.");
     }
     if (
+      us.selectorPrompt !== undefined &&
+      typeof us.selectorPrompt !== "boolean"
+    ) {
+      errors.push("The state-prompt switch is malformed.");
+    }
+    if (
       us.federalHolidays !== undefined &&
       typeof us.federalHolidays !== "boolean"
     ) {
@@ -1283,6 +1289,7 @@ interface DeliveryFormState {
   overrides: OverrideRowState[];
   usEnabled: boolean;
   usSelector: boolean;
+  usSelectorPrompt: boolean;
   usFederalHolidays: boolean;
   usExtraHolidays: string;
   usOverrides: UsStateRowState[];
@@ -1366,6 +1373,7 @@ function initialFormState(settings: BoosterSettings): DeliveryFormState {
     overrides,
     usEnabled: us.enabled,
     usSelector: us.selector,
+    usSelectorPrompt: us.selectorPrompt,
     usFederalHolidays: us.federalHolidays,
     usExtraHolidays: us.extraHolidays.join(", "),
     usOverrides,
@@ -1435,6 +1443,7 @@ function serializeForCompare(state: DeliveryFormState): string {
     usStates: {
       enabled: state.usEnabled,
       selector: state.usSelector,
+      selectorPrompt: state.usSelectorPrompt,
       federalHolidays: state.usFederalHolidays,
       extraHolidays: parseExtraHolidays(state.usExtraHolidays),
       overrides: state.usOverrides.map((row) => ({
@@ -2038,6 +2047,7 @@ export default function DeliveryFeaturesPage() {
         usStates: {
           enabled: state.usEnabled,
           selector: state.usSelector,
+          selectorPrompt: state.usSelectorPrompt,
           federalHolidays: state.usFederalHolidays,
           extraHolidays: parseExtraHolidays(state.usExtraHolidays),
           byState,
@@ -2696,6 +2706,21 @@ export default function DeliveryFeaturesPage() {
                           setState((previous) => ({ ...previous, usSelector }))
                         }
                       />
+                      {state.usSelector ? (
+                        <Box paddingInlineStart="600">
+                          <Checkbox
+                            label="Highlight the state prompt until a state is chosen"
+                            helpText="Amazon-style location strip: while no state is resolved, the “Deliver to” line renders as a bordered card with a “Select your state for a more accurate delivery date” call-to-action (translated in all store languages). Once the visitor picks a state — or IP detection resolves one — the quiet one-line link returns. Turn off to keep the quiet link at all times."
+                            checked={state.usSelectorPrompt}
+                            onChange={(usSelectorPrompt) =>
+                              setState((previous) => ({
+                                ...previous,
+                                usSelectorPrompt,
+                              }))
+                            }
+                          />
+                        </Box>
+                      ) : null}
                       <Checkbox
                         label="Skip US federal holidays when counting delivery days"
                         helpText={`Adds the six movable federal holidays the fixed-date table cannot carry — in ${usFederalYear}: ${usFederalNote}. Juneteenth, Independence Day and Veterans Day are already in the US holiday table; both lists apply only where holiday skipping is on.`}

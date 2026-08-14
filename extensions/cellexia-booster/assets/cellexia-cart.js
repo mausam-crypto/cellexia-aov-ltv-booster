@@ -2362,6 +2362,10 @@
   var deliveryUsGeoPromise = null; // single-flight: ONE geo fetch per page
   var deliveryUsDocBound = false; // selector close listeners bound once
   var deliveryUsEventToken = {}; // this bundle's identity on cx:us-state (never loops)
+  var deliveryUsGeoDone = false; // geo question SETTLED this page (fresh verdict read, cached or fetched — null included)
+  var deliveryUsAttrWant = null; // latest desired _cx_us_state value ('' clears; null = nothing requested yet)
+  var deliveryUsAttrBusy = false; // one cart-attribute write in flight (last-write-wins chain)
+  var deliveryUsAttrPromise = null; // the in-flight attribute write (sims settle on it)
 
   function deliveryUsFederal(year) {
     // The six MOVABLE US federal holidays of a year as "YYYY-MM-DD" (the
@@ -2404,14 +2408,63 @@
   function deliveryUsChoiceSet(code) {
     // Persist the explicit choice — an invalid/empty code CLEARS it (the
     // placeholder option is the visitor's way back to the geo hint).
-    // Best-effort: storage failures are silent.
+    // Best-effort: storage failures are silent. v13: a SUCCESSFUL write
+    // also mirrors the choice onto the cart attribute (deliveryUsAttrSync)
+    // so the checkout fallback can never disagree with the stored choice;
+    // a thrown storage write mirrors nothing (deliveryUsAttrHeal converges
+    // the attribute on the next page view instead).
     try {
       if (typeof code === 'string' && /^[A-Z]{2}$/.test(code) && US_STATE_NAMES[code]) {
         window.localStorage.setItem('cx:us_state', code);
       } else {
         window.localStorage.removeItem('cx:us_state');
       }
+      deliveryUsAttrSync(code);
     } catch (e) { /* noop */ }
+  }
+
+  function deliveryUsAttrSync(code) {
+    // v13: mirror the EXPLICIT "Deliver to" choice onto the cart's
+    // _cx_us_state attribute (the setPreviewCartTag shape, every failure
+    // silent) so the checkout extensions can seed their promise from the
+    // chosen state until the typed shipping address carries a
+    // provinceCode — the typed address always wins there. Anything but a
+    // known state code CLEARS the attribute, and the geo hint is never
+    // mirrored (the checkout never-guess rule). Writes ride a
+    // LAST-WRITE-WINS single-flight chain (review F2-F5): a fine pointer
+    // arrow-browsing the closed <select> fires one change per keystroke,
+    // and unserialized fire-and-forget POSTs could land out of order —
+    // stranding the attribute on a non-final state for the checkout to
+    // trust. One write in flight, intermediate values coalesce away, the
+    // final value always lands last.
+    try {
+      if (!window.fetch) return;
+      deliveryUsAttrWant = typeof code === 'string' && /^[A-Z]{2}$/.test(code) && US_STATE_NAMES[code] ? code : '';
+      if (deliveryUsAttrBusy) return; // the running chain picks it up
+      deliveryUsAttrBusy = true;
+      deliveryUsAttrPump();
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function deliveryUsAttrPump() {
+    // One link of the attribute-write chain: POST the CURRENT want, then
+    // re-pump when it moved while in flight, else release the chain.
+    // keepalive so a straight pick-state-then-Checkout navigation cannot
+    // abort the commit (the setPreviewCartTag exit-path precedent); every
+    // failure is silent — deliveryUsAttrHeal converges the attribute on a
+    // later page view instead.
+    try {
+      var v = deliveryUsAttrWant;
+      deliveryUsAttrPromise = window.fetch(routeRoot() + 'cart/update.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ attributes: { _cx_us_state: v } }),
+        keepalive: true
+      }).catch(function () { /* fire and forget */ }).then(function () {
+        if (deliveryUsAttrWant !== v) { deliveryUsAttrPump(); return; }
+        deliveryUsAttrBusy = false;
+      });
+    } catch (e) { deliveryUsAttrBusy = false; }
   }
 
   function deliveryUsCurrent(us) {
@@ -2431,6 +2484,16 @@
     // missing" marker (the azT rule), so an incomplete locale hides ONLY
     // the selector, never the promise.
     var str = deliveryT('delivery.deliver_to');
+    if (!str || str.indexOf('Translation missing') === 0) return '';
+    return str;
+  }
+
+  function deliveryUsCtaText() {
+    // The "Select your state…" call-to-action of the v13 PROMPT strip —
+    // same discard rule as deliveryUsDeliverTo: '' on a miss or a Shopify
+    // "Translation missing" marker. An empty CTA only keeps the quiet
+    // v10 line; it never hides the selector itself.
+    var str = deliveryT('delivery.select_state');
     if (!str || str.indexOf('Translation missing') === 0) return '';
     return str;
   }
@@ -2538,6 +2601,28 @@
       if (st && !deliveryUsChoiceGet()) attr.removeAttribute('hidden');
       else attr.setAttribute('hidden', '');
     }
+    // v13 PROMPT strip: while NO state resolved — and the merchant kept
+    // the selectorPrompt sub-flag on (missing key = on, the sub-flag
+    // convention) and the CTA string exists — the selector renders as
+    // the prominent Amazon-style location strip; any resolved state
+    // (choice or geo) returns the quiet v10 line. Both the class swap
+    // and the [hidden] toggle live HERE so rebuilt and re-synced nodes
+    // always converge from storage/module state alone. The strip also
+    // WAITS for a SETTLED geo verdict (deliveryUsGeoDone — review F1): a
+    // late-resolving geo state must never collapse the prominent strip
+    // under the buyer's pointer next to the ATC (layout-shift + mis-tap
+    // hazard). With no geo DB the verdict is a fast {s:null}, so the
+    // strip appears one beat after first paint once per session and
+    // instantly on every later page (negative verdicts cache 6 h).
+    var cta = root.querySelector('.cx-usloc__cta');
+    var wantPrompt = !st && deliveryUsGeoDone === true &&
+      !!(us && typeof us === 'object' && us.selectorPrompt !== false) &&
+      !!(cta && cta.textContent !== '');
+    root.className = wantPrompt ? 'cx-usloc cx-usloc--prompt' : 'cx-usloc';
+    if (cta) {
+      if (wantPrompt) cta.removeAttribute('hidden');
+      else cta.setAttribute('hidden', '');
+    }
   }
 
   function deliveryUsSelectorSync() {
@@ -2588,6 +2673,13 @@
     var caret = cxEl('span', 'cx-usloc__caret', ['aria-hidden', 'true']);
     caret.textContent = '▾';
     btn.appendChild(caret);
+    // v13: the CTA line rides INSIDE the button — one tap target, and a
+    // screen reader hears the full invitation. deliveryUsSelectorFill
+    // owns its visibility (hidden whenever a state resolved or the
+    // sub-flag is off), so the built node starts hidden.
+    var cta = cxEl('span', 'cx-usloc__cta', ['hidden', '']);
+    cta.textContent = deliveryUsCtaText();
+    btn.appendChild(cta);
     root.appendChild(btn);
     var pop = cxEl('div', 'cx-usloc__pop', ['hidden', '']);
     var sel = cxEl('select', 'cx-usloc__select', ['aria-label', t]);
@@ -2630,6 +2722,7 @@
       if (deliveryUsPointerCoarse()) deliveryUsPopToggle(root, false);
       deliveryUsTicks();
       deliveryUsBroadcast();
+      deliveryUsGeoKick(); // a cleared choice re-arms the geo question (single-flight, choice-masked)
     });
     root.addEventListener('mousedown', function () {
       // Safari never focuses a clicked <button>, so a click inside the
@@ -2713,6 +2806,7 @@
       var parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object' || typeof parsed.t !== 'number' ||
           Date.now() - parsed.t >= 21600000) return;
+      deliveryUsGeoDone = true; // fresh verdict (positive OR negative): settled
       var cs = parsed.s;
       if (typeof cs === 'string' && /^[A-Z]{2}$/.test(cs) && US_STATE_NAMES[cs]) deliveryUsGeoState = cs;
     } catch (e) { /* fail open: US-wide */ }
@@ -2741,6 +2835,7 @@
         }
       } catch (e) { cached = null; }
       if (cached) {
+        deliveryUsGeoDone = true;
         var cs = cached.s;
         if (typeof cs === 'string' && /^[A-Z]{2}$/.test(cs) && US_STATE_NAMES[cs]) deliveryUsGeoApply(cs);
         return; // fresh verdict (positive or negative): no fetch
@@ -2751,12 +2846,39 @@
         .then(function (data) {
           var s = data && typeof data.s === 'string' && /^[A-Z]{2}$/.test(data.s) && US_STATE_NAMES[data.s] ? data.s : null;
           try { window.sessionStorage.setItem('cx_geo:1', JSON.stringify({ s: s, t: Date.now() })); } catch (e) { /* best effort */ }
+          deliveryUsGeoDone = true;
           if (s) deliveryUsGeoApply(s);
+          else deliveryUsSelectorSync(); // a settled null verdict may reveal the prompt strip
         })
         .catch(function () {
           // Network/parse trouble: negative-cache the miss, keep US-wide.
           try { window.sessionStorage.setItem('cx_geo:1', JSON.stringify({ s: null, t: Date.now() })); } catch (e) { /* best effort */ }
+          deliveryUsGeoDone = true;
+          deliveryUsSelectorSync();
         });
+    } catch (e) { /* never break the theme */ }
+  }
+
+  // v13 CART-ONLY (not a twin — the cartExcludedAny precedent): one-shot
+  // heal of the cart's _cx_us_state attribute toward the CURRENT explicit
+  // choice. Covers carts created AFTER the choice was stored (post-order
+  // carts, cleared cookies) and choices cleared while no cart write could
+  // ride. The cart island's usAttr member carries the server-rendered
+  // attribute, so the verdict costs no read request; at most ONE write
+  // fires per page view, and only on a real mismatch. Geo hints never
+  // ride the attribute (deliveryUsAttrSync owns that rule).
+  function deliveryUsAttrHeal() {
+    try {
+      var d = cfg && typeof cfg.delivery === 'object' ? cfg.delivery : null;
+      var us = d ? d.us : null;
+      if (!us || typeof us !== 'object' || us.enabled !== true) return;
+      var choice = deliveryUsChoiceGet() || '';
+      // RAW compare (review): ANY stored value that differs from the
+      // choice — junk written by another app included — is rewritten
+      // once; loop-free because the island reflects the written value on
+      // the next render, and deliveryUsAttrSync validates what it posts.
+      var attr = typeof d.usAttr === 'string' ? d.usAttr : '';
+      if (choice !== attr) deliveryUsAttrSync(choice);
     } catch (e) { /* never break the theme */ }
   }
 
@@ -4074,6 +4196,13 @@
     // fetch, no observers) and a cart-only configuration never scans
     // cards. Beacon-free, self-gated, fail closed.
     initCardFlags();
+    // v13: keep the cart's _cx_us_state attribute coherent with the
+    // stored choice — BEFORE the live-widget bail below (checkout
+    // coherence matters even on pages with zero live cart widgets).
+    // Prime first: a stale choice of a now-hidden state must self-clear
+    // before the mismatch verdict, so one write fires instead of two.
+    deliveryUsPrime();
+    deliveryUsAttrHeal();
     // FINDINGS 9+12: the block can render for draft-only reasons (armed
     // preview, live master off) or with every cart widget scoped out of
     // this market. Real visitors then have zero live widgets — skip the

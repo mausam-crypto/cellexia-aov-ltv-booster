@@ -205,7 +205,8 @@
     "box_sub": "…különben visszatérítjük a pénzed, vagy ingyen küldünk egy csereterméket.",
     "badge": "Kézbesítési garancia",
     "tooltip": "Kézbesítés legkésőbb: {{ date }} – különben visszatérítjük a pénzed, vagy ingyen küldünk egy csereterméket.",
-    "deliver_to": "Szállítás ide:"
+    "deliver_to": "Szállítás ide:",
+    "select_state": "Válaszd ki az államod a pontosabb szállítási dátumhoz"
   },
   "amazon": {
     "in_stock": "Készleten",

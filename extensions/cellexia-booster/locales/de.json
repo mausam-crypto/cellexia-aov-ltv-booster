@@ -205,7 +205,8 @@
     "box_sub": "… oder wir erstatten Ihnen den Kaufpreis oder senden Ihnen kostenlos ein Ersatzprodukt.",
     "badge": "Liefergarantie",
     "tooltip": "Zustellung bis spätestens {{ date }} – andernfalls erstatten wir Ihnen den Kaufpreis oder senden Ihnen kostenlos ein Ersatzprodukt.",
-    "deliver_to": "Lieferung nach:"
+    "deliver_to": "Lieferung nach:",
+    "select_state": "Wählen Sie Ihren Bundesstaat für ein genaueres Lieferdatum"
   },
   "amazon": {
     "in_stock": "Auf Lager",

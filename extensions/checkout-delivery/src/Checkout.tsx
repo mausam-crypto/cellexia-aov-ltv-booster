@@ -389,7 +389,10 @@ function Extension() {
   // cart attribute (SHA-256 hex of the token, computed server-side) and the
   // metafield's preview.tokenHash — the checkout-trust contract exactly.
   const preview = useMemo(() => resolvePreview(configRoot), [configRoot]);
-  const [previewAttributeValue] = useAttributeValues(['_cx_preview']);
+  const [previewAttributeValue, usStateAttributeValue] = useAttributeValues([
+    '_cx_preview',
+    '_cx_us_state',
+  ]);
   const previewActive =
     preview.armed === true &&
     preview.tokenHash.length > 0 &&
@@ -444,11 +447,26 @@ function Extension() {
 
   // Buyer country comes ONLY from the shipping address — undefined means
   // "not entered yet" and the widget stays hidden (never guess a country).
-  // v10: the US state rides the SAME contract (typed provinceCode only,
-  // never geo-guessed) but fails OPEN in the engine — an absent/unknown
+  // v10: the US state fails OPEN in the engine — an absent/unknown
   // provinceCode on a US order means the US-wide promise, never hidden.
+  // v13: until the typed address carries a provinceCode, a US promise may
+  // seed from the `_cx_us_state` cart attribute — the buyer's EXPLICIT
+  // "Deliver to" choice mirrored by the storefront selector (never a geo
+  // guess, so the never-guess rule holds). The typed address always wins
+  // and non-US destinations ignore the attribute. Same contract as
+  // checkout-trust.
   const countryCode = shippingAddress?.countryCode;
-  const provinceCode = shippingAddress?.provinceCode;
+  const typedProvinceCode = shippingAddress?.provinceCode;
+  const chosenUsState =
+    typeof usStateAttributeValue === 'string' &&
+    /^[A-Z]{2}$/.test(usStateAttributeValue)
+      ? usStateAttributeValue
+      : undefined;
+  // `||`, not `??`: an EMPTY typed provinceCode ('' while the buyer is
+  // mid-address) is "no typed state yet" — the chosen-state seed applies.
+  const provinceCode =
+    typedProvinceCode ||
+    (countryCode === 'US' ? chosenUsState : undefined);
 
   // Re-run the whole computation every 30s (the storefront widget's tick
   // interval): crossing the warehouse cutoff mid-checkout shifts every

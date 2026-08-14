@@ -221,7 +221,8 @@
     "box_sub": "…or we refund you or send a free replacement.",
     "badge": "Delivery guarantee",
     "tooltip": "Delivered on or before {{ date }} — or we refund you or send a free replacement.",
-    "deliver_to": "Deliver to:"
+    "deliver_to": "Deliver to:",
+    "select_state": "Select your state for a more accurate delivery date"
   },
   "amazon": {
     "in_stock": "In Stock",

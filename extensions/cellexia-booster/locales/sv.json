@@ -205,7 +205,8 @@
     "box_sub": "… annars återbetalar vi dig eller skickar en gratis ersättningsprodukt.",
     "badge": "Leveransgaranti",
     "tooltip": "Levererat senast {{ date }} – annars återbetalar vi dig eller skickar en gratis ersättningsprodukt.",
-    "deliver_to": "Leverans till:"
+    "deliver_to": "Leverans till:",
+    "select_state": "Välj din delstat för ett mer exakt leveransdatum"
   },
   "amazon": {
     "in_stock": "I lager",

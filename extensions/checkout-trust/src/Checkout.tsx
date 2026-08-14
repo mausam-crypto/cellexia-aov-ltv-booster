@@ -218,7 +218,10 @@ function Extension() {
     () => resolvePreview(configRoot),
     [configRoot],
   );
-  const [previewAttributeValue] = useAttributeValues(['_cx_preview']);
+  const [previewAttributeValue, usStateAttributeValue] = useAttributeValues([
+    '_cx_preview',
+    '_cx_us_state',
+  ]);
   const previewActive =
     preview.armed === true &&
     preview.tokenHash.length > 0 &&
@@ -263,8 +266,24 @@ function Extension() {
   // Tracked-row delivery date: the delivery_estimate engine twin, driven by
   // the shipping-address country. Re-run every 30s (the delivery widget's
   // tick): crossing the warehouse cutoff mid-checkout shifts the date.
+  // v13: until the typed address carries a provinceCode, a US promise may
+  // seed from the `_cx_us_state` cart attribute — the buyer's EXPLICIT
+  // "Deliver to" choice mirrored by the storefront selector (never a geo
+  // guess). The typed address always wins, non-US destinations ignore the
+  // attribute, and the engine stays fail-open on unknown codes. Same
+  // contract as checkout-delivery.
   const countryCode = shippingAddress?.countryCode;
-  const provinceCode = shippingAddress?.provinceCode;
+  const typedProvinceCode = shippingAddress?.provinceCode;
+  const chosenUsState =
+    typeof usStateAttributeValue === 'string' &&
+    /^[A-Z]{2}$/.test(usStateAttributeValue)
+      ? usStateAttributeValue
+      : undefined;
+  // `||`, not `??`: an EMPTY typed provinceCode ('' while the buyer is
+  // mid-address) is "no typed state yet" — the chosen-state seed applies.
+  const provinceCode =
+    typedProvinceCode ||
+    (countryCode === 'US' ? chosenUsState : undefined);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);

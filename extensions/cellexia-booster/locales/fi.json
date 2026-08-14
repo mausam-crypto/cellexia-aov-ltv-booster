@@ -205,7 +205,8 @@
     "box_sub": "… tai palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle.",
     "badge": "Toimitustakuu",
     "tooltip": "Perillä viimeistään: {{ date }}. Muussa tapauksessa palautamme rahasi tai lähetämme veloituksetta uuden tuotteen tilalle.",
-    "deliver_to": "Toimitus:"
+    "deliver_to": "Toimitus:",
+    "select_state": "Valitse osavaltiosi, niin saat tarkemman toimituspäivän"
   },
   "amazon": {
     "in_stock": "Varastossa",

@@ -263,6 +263,30 @@ strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
 
+v13 — US STATE PROMPT + CHOSEN-STATE CHECKOUT COHERENCE (2026-08-14),
+built for running the state module WITHOUT the IP database:
+
+- The "Deliver to: United States" line under the delivery promise now
+  renders as a prominent Amazon-style location strip while no state is
+  known: bordered card, bold country row, and a link-blue call-to-action
+  ("Select your state for a more accurate delivery date", translated in
+  all 18 store languages). The moment a state is chosen (or, if you ever
+  build the IP database, detected), the quiet one-line link returns.
+- New toggle: Features → Delivery guarantee → United States card →
+  "Highlight the state prompt until a state is chosen" (on by default;
+  nested under the selector toggle). Turn it off to keep the quiet link
+  at all times.
+- The chosen state now follows the buyer everywhere: it was already
+  remembered across product pages and the cart; it now also rides the
+  cart as a private `_cx_us_state` attribute so the CHECKOUT delivery
+  estimate and the tracked-delivery guarantee date match the chosen
+  state BEFORE a shipping address is typed. A typed address always wins,
+  and only an explicit selection is ever used (never a guess).
+- Deploy: both halves (app + extensions), no placement steps, no new
+  scopes, no DB changes. Everything is live immediately after deploy —
+  the prompt strip shows wherever the US state module + selector are
+  already on (it ships default-on; toggle off in admin if unwanted).
+
 v12 — PER-MARKET PRODUCT EXCLUSIONS (2026-08-13): five delivery-related
 promises can now exclude selected products per market (all optional; with
 no exclusions, nothing changes anywhere). Configured with a shared

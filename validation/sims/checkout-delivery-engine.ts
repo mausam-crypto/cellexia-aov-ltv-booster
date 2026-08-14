@@ -397,6 +397,15 @@ for (const [label, nowMs, over, expected] of computeCases) {
     "'excludedByMarket'",
     '!deliveryExcluded',
     'excluded: deliveryExcluded',
+    // v13 chosen-state fallback: the storefront selector mirrors the
+    // buyer's EXPLICIT choice onto the _cx_us_state cart attribute; it
+    // seeds provinceCode ONLY while the typed address has none and ONLY
+    // for US destinations (typed always wins — never-guess holds).
+    "'_cx_us_state',",
+    'const typedProvinceCode = shippingAddress?.provinceCode;',
+    '/^[A-Z]{2}$/.test(usStateAttributeValue)',
+    'typedProvinceCode ||',
+    "(countryCode === 'US' ? chosenUsState : undefined)",
   ]) {
     tap.check(`Checkout.tsx anchor present: ${anchor}`, src.includes(anchor));
   }
