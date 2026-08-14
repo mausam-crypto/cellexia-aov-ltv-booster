@@ -7,6 +7,7 @@ import {
   useNavigation,
   useSubmit,
 } from "@remix-run/react";
+import type { ShouldRevalidateFunctionArgs } from "@remix-run/react";
 import {
   Badge,
   Banner,
@@ -35,6 +36,7 @@ import {
   normalizeTrustRowOrder,
   resolveFeatureFlag,
   saveSettings,
+  validateExcludedByMarketPatch,
   type BoosterSettings,
   type CheckoutTrustRow,
   type DeepPartial,
@@ -42,10 +44,12 @@ import {
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import {
   ensureProtectionProduct,
+  getProductTitlesByIds,
   getVariantsByIds,
   type VariantSummary,
 } from "../services/products.server";
 import { listMarkets } from "../services/markets.server";
+import { listProductsWithBoosterStatus } from "../services/pdp-content.server";
 import {
   applyProtectionPrices,
   readbackProtectionPrices,
@@ -53,6 +57,7 @@ import {
   type ProtectionMarketPrice,
 } from "../services/protection-pricing.server";
 import { FeaturePageHeader } from "../components/FeaturePageHeader";
+import { MarketProductExclusionsCard } from "../components/MarketExclusions";
 import type { loader as variantsLoader } from "./app.api.variants";
 
 interface AdminGraphqlClient {
@@ -74,6 +79,21 @@ interface CheckoutActionResult {
   protection: ProtectionResult | null;
   /** Result of the "Apply to Shopify Markets" protection-pricing intent. */
   apply: ApplyProtectionPricesResult | null;
+}
+
+/** v12: response of the exclusion cards' `search_products` intent (the
+ *  ProofForms picker convention — picker fetchers post to the CURRENT
+ *  route). */
+interface SearchProductsResult {
+  intent: "search_products";
+  ok: boolean;
+  errors: string[];
+  products: {
+    gid: string;
+    title: string;
+    imageUrl: string | null;
+    status: string;
+  }[];
 }
 
 async function applySettingsPatch(
@@ -108,6 +128,22 @@ async function applySettingsPatch(
       protection: null,
       apply: null,
     };
+  }
+  // v12: fail-loud validation of the two exclusion records BEFORE the save
+  // (mirrors validateDispatchPatch on the dispatch page) — a malformed
+  // payload must error loudly, never be silently trimmed by the sanitizer.
+  const exclusionErrors = [
+    ...validateExcludedByMarketPatch(
+      patch.checkoutTrust?.customsExcludedByMarket,
+      "Customs-row excluded products",
+    ),
+    ...validateExcludedByMarketPatch(
+      patch.checkoutTrust?.trackedExcludedByMarket,
+      "Tracked-row excluded products",
+    ),
+  ];
+  if (exclusionErrors.length > 0) {
+    return { ok: false, syncErrors: exclusionErrors, protection: null, apply: null };
   }
   const next = await saveSettings(shop, patch);
   try {
@@ -151,20 +187,43 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // price list — display-only; readback failures degrade to {}.
       readbackProtectionPrices(admin, settings.checkoutProtection.variantId),
     ]);
+  // v12: readable labels for the stored exclusion GIDs of BOTH trust-row
+  // records — one combined map (fail-soft: a failed lookup degrades the
+  // tags to "Product <id>", never the page).
+  const exclusionTitles = await getProductTitlesByIds(admin, [
+    ...Object.values(settings.checkoutTrust.customsExcludedByMarket).flat(),
+    ...Object.values(settings.checkoutTrust.trackedExcludedByMarket).flat(),
+  ]).catch(() => ({}) as Record<string, string>);
   return {
     settings,
     upsellVariants,
     protectionVariant: protectionVariants[0] ?? null,
     markets,
+    exclusionTitles,
     currentFixedPrices: priceReadback.byMarket,
     // Combined flag for the shared page header (cheap — settings loaded).
     headerEnabled: resolveFeatureFlag(settings, "checkout_upsell"),
   };
 };
 
+/**
+ * v12: the exclusion card's product search rides a POST fetcher to this
+ * route's action; Remix would revalidate the loader after it, and the
+ * loader-data reset would wipe unsaved form edits (including the exclusion
+ * row being built — review catch). Searches are read-only lookups: skip
+ * revalidation for them, keep it for every real mutation.
+ */
+export function shouldRevalidate({
+  formData,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  if (formData?.get("intent") === "search_products") return false;
+  return defaultShouldRevalidate;
+}
+
 export const action = async ({
   request,
-}: ActionFunctionArgs): Promise<CheckoutActionResult> => {
+}: ActionFunctionArgs): Promise<CheckoutActionResult | SearchProductsResult> => {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
@@ -250,6 +309,26 @@ export const action = async ({
       byMarket: next.checkoutProtection.prices.byMarket,
     });
     return { ok: true, syncErrors, protection: null, apply };
+  }
+
+  // v12: the exclusion cards' product search (the ProofForms picker
+  // convention — the picker's fetcher posts to the CURRENT route).
+  if (intent === "search_products") {
+    const result = await listProductsWithBoosterStatus(
+      admin,
+      String(formData.get("q") ?? ""),
+    );
+    return {
+      intent: "search_products" as const,
+      ok: result.ok,
+      errors: result.errors,
+      products: result.products.map((product) => ({
+        gid: product.id,
+        title: product.title,
+        imageUrl: product.imageUrl,
+        status: product.status,
+      })),
+    };
   }
 
   return applySettingsPatch(session.shop, admin, formData.get("patch"));
@@ -418,6 +497,12 @@ interface CheckoutFormState {
   /** v11: display order of the six trust lines (always a full permutation —
    *  normalized server-side in the loader, sanitized on save). */
   rowOrder: CheckoutTrustRow[];
+  /** v12: per-market excluded products for the customs-free row
+   *  (market handle -> product GIDs). */
+  customsExcluded: Record<string, string[]>;
+  /** v12: per-market excluded products for the tracked-delivery row
+   *  (market handle -> product GIDs). */
+  trackedExcluded: Record<string, string[]>;
   scopes: {
     checkout_upsell: ScopeState;
     checkout_protection: ScopeState;
@@ -457,6 +542,17 @@ function initialFormState(settings: BoosterSettings): CheckoutFormState {
     // normalizeTrustRowOrder is a .server value and must never run in
     // client code). Fresh array copy so state edits never alias the source.
     rowOrder: [...settings.checkoutTrust.rowOrder],
+    // v12: deep copies — state edits must never alias the loader settings.
+    customsExcluded: Object.fromEntries(
+      Object.entries(settings.checkoutTrust.customsExcludedByMarket).map(
+        ([handle, gids]) => [handle, [...gids]],
+      ),
+    ),
+    trackedExcluded: Object.fromEntries(
+      Object.entries(settings.checkoutTrust.trackedExcludedByMarket).map(
+        ([handle, gids]) => [handle, [...gids]],
+      ),
+    ),
     scopes: {
       checkout_upsell: toScopeState(settings.marketScopes.checkout_upsell),
       checkout_protection: toScopeState(
@@ -509,6 +605,16 @@ const TRUST_LINE_META: Record<
 
 const PROTECTION_PRICE_PATTERN = /^\d+(\.\d{1,2})?$/;
 
+/** v12: key-order-normalized copy of an exclusion record so add-then-remove
+ *  of a market compares clean in the dirty check. */
+function sortedExclusionRecord(
+  record: Record<string, string[]>,
+): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(record).sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
+
 /** Canonical [handle, amount] pairs for dirty comparison — empty rows are
  *  equivalent to missing rows, and typing order must not matter. */
 function normalizedPriceEntries(
@@ -548,6 +654,7 @@ export default function CheckoutFeaturesPage() {
     upsellVariants,
     protectionVariant,
     markets,
+    exclusionTitles,
     currentFixedPrices,
     headerEnabled,
   } = useLoaderData<typeof loader>();
@@ -576,13 +683,25 @@ export default function CheckoutFeaturesPage() {
       ...state,
       scopes: scopesToPatch(state.scopes),
       protectionPrices: normalizedPriceEntries(state.protectionPrices),
+      // v12: key order normalized so add-then-remove of a market compares
+      // clean.
+      customsExcluded: sortedExclusionRecord(state.customsExcluded),
+      trackedExcluded: sortedExclusionRecord(state.trackedExcluded),
     }) !==
       JSON.stringify({
         ...initial,
         scopes: scopesToPatch(initial.scopes),
         protectionPrices: normalizedPriceEntries(initial.protectionPrices),
+        // v12: same normalization on the baseline side.
+        customsExcluded: sortedExclusionRecord(initial.customsExcluded),
+        trackedExcluded: sortedExclusionRecord(initial.trackedExcluded),
       }) ||
     selectedIds !== initialIds;
+
+  // v12: the action now also answers search_products (picker fetchers) —
+  // toast + banner + adoption effects read only settings-save results.
+  const saveResult =
+    actionData && "syncErrors" in actionData ? actionData : undefined;
 
   /** Intent of the most recent submission, so the revalidation effect below
    *  knows whether fresh loader data may replace in-progress edits. */
@@ -602,7 +721,9 @@ export default function CheckoutFeaturesPage() {
       // A successful create/verify only changes the protection product —
       // merge just that variant's data from the fresh loader and preserve
       // every other in-progress edit (and the dirty flag).
-      if (actionData?.protection && actionData.protection.errors.length === 0) {
+      // v12: read via saveResult — search_products responses carry none of
+      // the settings-save fields.
+      if (saveResult?.protection && saveResult.protection.errors.length === 0) {
         setProtectionPrice(protectionVariant?.price ?? "2.95");
       }
       return;
@@ -645,11 +766,13 @@ export default function CheckoutFeaturesPage() {
   }, [settings, upsellVariants, protectionVariant]);
 
   useEffect(() => {
-    if (!actionData) return;
-    if (actionData.apply) {
+    // v12: saveResult, not actionData — the search_products responses of
+    // the exclusion pickers must never trigger a settings toast.
+    if (!saveResult) return;
+    if (saveResult.apply) {
       const applyFailed =
-        actionData.apply.errors.length > 0 ||
-        actionData.apply.results.some((result) => result.status === "failed");
+        saveResult.apply.errors.length > 0 ||
+        saveResult.apply.results.some((result) => result.status === "failed");
       shopify.toast.show(
         applyFailed
           ? "Some protection prices could not be applied"
@@ -658,28 +781,28 @@ export default function CheckoutFeaturesPage() {
       );
       return;
     }
-    if (actionData.protection) {
-      if (actionData.protection.errors.length > 0) {
+    if (saveResult.protection) {
+      if (saveResult.protection.errors.length > 0) {
         shopify.toast.show("Order Protection setup failed", { isError: true });
       } else {
         shopify.toast.show(
-          actionData.protection.created
+          saveResult.protection.created
             ? "Order Protection product created"
             : "Order Protection product verified",
         );
       }
       return;
     }
-    if (!actionData.ok) {
+    if (!saveResult.ok) {
       shopify.toast.show("Could not save settings", { isError: true });
-    } else if (actionData.syncErrors.length > 0) {
+    } else if (saveResult.syncErrors.length > 0) {
       shopify.toast.show("Saved, but the storefront sync failed", {
         isError: true,
       });
     } else {
       shopify.toast.show("Saved");
     }
-  }, [actionData, shopify]);
+  }, [saveResult, shopify]);
 
   // Variant search via the /app/api/variants resource route.
   const variantSearch = useFetcher<typeof variantsLoader>();
@@ -807,6 +930,10 @@ export default function CheckoutFeaturesPage() {
         showCustoms: state.showCustoms,
         showTracked: state.showTracked,
         rowOrder: state.rowOrder,
+        // v12: wholesale-replaced records — always send the full maps (an
+        // empty object clears every exclusion).
+        customsExcludedByMarket: state.customsExcluded,
+        trackedExcludedByMarket: state.trackedExcluded,
       },
       marketScopes: scopesToPatch(state.scopes),
     };
@@ -845,7 +972,8 @@ export default function CheckoutFeaturesPage() {
   const protectionConnected = Boolean(settings.checkoutProtection.variantId);
   const suggestedRoundPrice = suggestRoundPrice(protectionVariant?.price);
   const marketPriceCount = Object.keys(buildPricesByMarket()).length;
-  const applyResult = actionData?.apply ?? null;
+  // v12: read via saveResult (search_products responses carry no `apply`).
+  const applyResult = saveResult?.apply ?? null;
   const applyTone: "success" | "warning" | "critical" | undefined = applyResult
     ? applyResult.errors.length > 0 ||
       applyResult.results.some((result) => result.status === "failed")
@@ -887,18 +1015,18 @@ export default function CheckoutFeaturesPage() {
           </Card>
         </Layout.Section>
 
-        {actionData && actionData.syncErrors.length > 0 ? (
+        {saveResult && saveResult.syncErrors.length > 0 ? (
           <Layout.Section>
             <Banner
-              tone={actionData.ok ? "warning" : "critical"}
+              tone={saveResult.ok ? "warning" : "critical"}
               title={
-                actionData.ok
+                saveResult.ok
                   ? "Saved, but the storefront sync reported errors"
                   : "Settings could not be saved"
               }
             >
               <BlockStack gap="100">
-                {actionData.syncErrors.map((error) => (
+                {saveResult.syncErrors.map((error) => (
                   <Text as="p" key={error}>
                     {error}
                   </Text>
@@ -1087,14 +1215,14 @@ export default function CheckoutFeaturesPage() {
                     <Badge tone="attention">No product yet</Badge>
                   )}
                 </InlineStack>
-                {actionData?.protection ? (
-                  actionData.protection.errors.length > 0 ? (
+                {saveResult?.protection ? (
+                  saveResult.protection.errors.length > 0 ? (
                     <Banner
                       tone="critical"
                       title="Order Protection product setup failed"
                     >
                       <BlockStack gap="100">
-                        {actionData.protection.errors.map((error) => (
+                        {saveResult.protection.errors.map((error) => (
                           <Text as="p" key={error}>
                             {error}
                           </Text>
@@ -1104,7 +1232,7 @@ export default function CheckoutFeaturesPage() {
                   ) : (
                     <Banner tone="success">
                       <Text as="p">
-                        {actionData.protection.created
+                        {saveResult.protection.created
                           ? "Order Protection product created and connected to checkout."
                           : "Existing Order Protection product verified and connected to checkout."}
                       </Text>
@@ -1413,6 +1541,30 @@ export default function CheckoutFeaturesPage() {
               markets={markets}
               scope={state.scopes.checkout_tracked}
               onChange={(scope) => setScope("checkout_tracked", scope)}
+            />
+
+            {/* v12: per-market product exclusions for the two V2 trust rows */}
+            <MarketProductExclusionsCard
+              title="Excluded products — customs-free row"
+              description="When a cart contains one of these products in that market, buyers do not see the customs-free line at checkout."
+              markets={markets}
+              value={state.customsExcluded}
+              titles={exclusionTitles}
+              disabled={isSaving}
+              onChange={(next) =>
+                setState((previous) => ({ ...previous, customsExcluded: next }))
+              }
+            />
+            <MarketProductExclusionsCard
+              title="Excluded products — tracked-delivery row"
+              description="When a cart contains one of these products in that market, buyers do not see the tracked-delivery promise at checkout."
+              markets={markets}
+              value={state.trackedExcluded}
+              titles={exclusionTitles}
+              disabled={isSaving}
+              onChange={(next) =>
+                setState((previous) => ({ ...previous, trackedExcluded: next }))
+              }
             />
           </BlockStack>
         </Layout.Section>

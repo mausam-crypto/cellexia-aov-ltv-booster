@@ -56,6 +56,14 @@ assign az_del_hidden = false
 if cx_del_c.hidden == true
 assign az_del_hidden = true
 endif
+assign az_pgid = 'gid://shopify/Product/' | append: product.id
+if cx_de.excludedByMarket[cx_market] contains az_pgid or cfg.dispatch.excludedByMarket[cx_market] contains az_pgid
+assign az_del_hidden = true
+endif
+assign az_exc_sf = false
+if cfg.amazon.shipsFromExcludedByMarket[cx_market] contains az_pgid
+assign az_exc_sf = true
+endif
 assign cx_us = false
 if cx_country == 'US' and cx_de.usStates.enabled == true
 assign cx_us = cx_de.usStates
@@ -94,7 +102,7 @@ assign az_eff_stock = true
 endif
 endif
 assign az_eff_ships = false
-if cfg.amazon.shipsFrom == true and block.settings.show_az_ships_from
+if cfg.amazon.shipsFrom == true and block.settings.show_az_ships_from and az_exc_sf == false
 assign cx_scope = cfg.marketScopes.az_ships_from
 if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
 assign az_eff_ships = true
@@ -159,7 +167,7 @@ if cx_prev_flags.az_stock_line == true or cfg.amazon.stockLine == true
 assign cx_draft_az_stock = true
 endif
 endif
-if block.settings.show_az_ships_from
+if block.settings.show_az_ships_from and az_exc_sf == false
 if cx_prev_flags.az_ships_from == true or cfg.amazon.shipsFrom == true
 assign cx_draft_az_ships = true
 endif
@@ -266,7 +274,7 @@ endif
 {%- endfor -%}
 }},
 {%- endif %}
-{%- if az_any_micro %}
+{%- if az_any_micro and az_exc_sf == false %}
 "shipsFrom": {"warehouse": {{ az_sf | default: '' | json }}, "defaultLabel": {{ cfg.amazon.shipsFromDefault | default: '' | json }}},
 {%- endif %}
 {%- if az_any_stock %}

@@ -378,6 +378,26 @@
     return state.products[String(item.product_id)] || null;
   }
 
+  // v12 per-market product exclusions: the island's gated `exc` member
+  // carries the CURRENT market's excluded product GIDs ("d" dispatch,
+  // "e" delivery). Checked against state.cart at RENDER time — renderInto
+  // re-runs on every cart rebuild, so client-side cart changes re-verdict
+  // without a reload. A truthy verdict makes the render function return
+  // null BEFORE building a node, which by the renderAll contract also
+  // means no impression beacon (only returned feature keys are tracked).
+  function cartExcludedAny(list) {
+    if (!Array.isArray(list) || list.length === 0) return false;
+    if (!state.cart || !Array.isArray(state.cart.items)) return false;
+    for (var i = 0; i < state.cart.items.length; i++) {
+      var item = state.cart.items[i];
+      if (!item || item.product_id == null) continue;
+      if (list.indexOf('gid://shopify/Product/' + String(item.product_id)) !== -1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function variantByPosition(product, position) {
     if (!product || !Array.isArray(product.variants)) return null;
     for (var i = 0; i < product.variants.length; i++) {
@@ -1935,6 +1955,9 @@
     // v6.7 Liquid diet: the gated cfg.dc island flag carries the old
     // template-emission gate; the shell itself is JS-built.
     if (cfg.dc !== 1) return null;
+    // v12: a per-market excluded product in the cart hides the line — in
+    // preview too (the byCountry-hidden precedent); no node, no impression.
+    if (cartExcludedAny(cfg.exc && cfg.exc.d)) return null;
     if (PREVIEW) return renderDispatchPreview(container); // v5.3 merchant preview
     var schedule = dispatchSchedule();
     if (!schedule) return null;
@@ -3020,6 +3043,9 @@
     // render nothing. v6.2: the shell is JS-built (byte-twin builders
     // above) instead of cloned from a Liquid template.
     if (!featureOn('delivery')) return null;
+    // v12: a per-market excluded product in the cart hides the widget — in
+    // preview too (the byCountry-hidden precedent); no node, no impression.
+    if (cartExcludedAny(cfg.exc && cfg.exc.e)) return null;
     var dc = deliveryConfig();
     if (!dc) return null; // invalid/hidden config: fail closed
     var result = deliveryCompute(dc);

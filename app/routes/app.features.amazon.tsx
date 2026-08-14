@@ -6,6 +6,7 @@ import {
   useNavigation,
   useSearchParams,
 } from "@remix-run/react";
+import type { ShouldRevalidateFunctionArgs } from "@remix-run/react";
 import {
   Badge,
   Banner,
@@ -30,12 +31,14 @@ import {
   getSettings,
   resolveFeatureFlag,
   saveSettings,
+  validateExcludedByMarketPatch, // v12
   type BoosterSettings,
   type DeepPartial,
   type FeatureKey,
 } from "../models/settings.server";
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import { listMarkets } from "../services/markets.server";
+import { getProductTitlesByIds } from "../services/products.server"; // v12
 import { ensurePdpDefinitions } from "../services/metaobjects.server";
 import {
   BOUGHT_COUNT_STALE_DAYS,
@@ -52,6 +55,7 @@ import {
   getTranslationConfig,
   translateResources,
 } from "../services/translation.server";
+import { MarketProductExclusionsCard } from "../components/MarketExclusions"; // v12
 import type { loader as variantsLoader } from "./app.api.variants";
 
 /**
@@ -337,6 +341,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       getTargetLocales(admin),
     ]);
 
+  // v12: readable labels for the stored exclusion GIDs (fail-soft — a
+  // failed lookup degrades the tags to "Product <id>", never the page).
+  const exclusionTitles = await getProductTitlesByIds(
+    admin,
+    Object.values(settings.amazon.shipsFromExcludedByMarket).flat(),
+  ).catch(() => ({}) as Record<string, string>);
+
   // Staleness is computed SERVER-SIDE so the rendered text is deterministic
   // (a client Date.now() would hydrate differently).
   const todayMs = Date.parse(new Date().toISOString().slice(0, 10));
@@ -377,6 +388,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ]),
     ) as Record<AzKey, { mode: "all" | "selected"; markets: string[] }>,
     markets,
+    exclusionTitles, // v12
     products,
     productErrors: [
       ...definitionErrors,
@@ -398,6 +410,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 type AmazonActionData =
   | { intent: "save_settings"; ok: boolean; syncErrors: string[] }
   | { intent: "save_product"; ok: boolean; errors: string[]; productId: string }
+  | {
+      /** v12: the exclusion card's product search (the ProofForms picker
+       *  convention — the picker's fetcher posts to the CURRENT route). */
+      intent: "search_products";
+      ok: boolean;
+      errors: string[];
+      products: {
+        gid: string;
+        title: string;
+        imageUrl: string | null;
+        status: string;
+      }[];
+    }
   | {
       /** v6.4: per-product DeepL run for the bestseller-category metafield
        *  (and any booster content) — same intent name as the product editor. */
@@ -494,6 +519,14 @@ function validateAmazonPatch(patch: DeepPartial<BoosterSettings>): string[] {
       "The “Ships from” fallback label is limited to 80 characters.",
     );
   }
+  // v12: per-market product exclusions (fail-loud shape check — the shared
+  // validator lives beside the sanitizer in settings.server.ts).
+  errors.push(
+    ...validateExcludedByMarketPatch(
+      amazon.shipsFromExcludedByMarket,
+      "Ships-from excluded products",
+    ),
+  );
   return errors;
 }
 
@@ -545,6 +578,21 @@ async function applySettingsPatch(
   }
 }
 
+/**
+ * v12: the exclusion card's product search rides a POST fetcher to this
+ * route's action; Remix would revalidate the loader after it, and the
+ * loader-data reset would wipe unsaved form edits (including the exclusion
+ * row being built — review catch). Searches are read-only lookups: skip
+ * revalidation for them, keep it for every real mutation.
+ */
+export function shouldRevalidate({
+  formData,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  if (formData?.get("intent") === "search_products") return false;
+  return defaultShouldRevalidate;
+}
+
 export const action = async ({
   request,
 }: ActionFunctionArgs): Promise<AmazonActionData> => {
@@ -554,6 +602,26 @@ export const action = async ({
 
   if (intent === "save_settings") {
     return applySettingsPatch(session.shop, admin, formData.get("patch"));
+  }
+
+  // v12: the exclusion card's product search (the ProofForms picker
+  // convention — the picker's fetcher posts to the CURRENT route).
+  if (intent === "search_products") {
+    const result = await listProductsWithBoosterStatus(
+      admin,
+      String(formData.get("q") ?? ""),
+    );
+    return {
+      intent: "search_products" as const,
+      ok: result.ok,
+      errors: result.errors,
+      products: result.products.map((product) => ({
+        gid: product.id,
+        title: product.title,
+        imageUrl: product.imageUrl,
+        status: product.status,
+      })),
+    };
   }
 
   if (intent === "save_product") {
@@ -718,6 +786,8 @@ interface AmazonFormState {
   /** v6.10 az_ships_from display style (subtle microline vs the prominent
    *  green local-shipping signal). */
   shipsFromFormat: AzShipsFormatValue;
+  /** v12: per-market excluded products (market handle -> product GIDs). */
+  excluded: Record<string, string[]>;
   scopes: Record<AzKey, ScopeState>;
 }
 
@@ -745,6 +815,8 @@ interface LoaderShape {
     fbtPlacement: string;
     similarPlacement: string;
     shipsFromFormat: string;
+    /** v12 */
+    shipsFromExcludedByMarket: Record<string, string[]>;
   } & Record<AzFlagField, boolean>;
   scopes: Record<AzKey, { mode: "all" | "selected"; markets: string[] }>;
 }
@@ -764,6 +836,13 @@ function initialFormState(data: LoaderShape): AmazonFormState {
     fbtPlacement: toPlacement(data.amazon.fbtPlacement),
     similarPlacement: toPlacement(data.amazon.similarPlacement),
     shipsFromFormat: toShipsFormat(data.amazon.shipsFromFormat),
+    // v12: deep copy — the exclusion card edits per-market arrays in place
+    // of this state, never the loader data.
+    excluded: Object.fromEntries(
+      Object.entries(data.amazon.shipsFromExcludedByMarket).map(
+        ([handle, gids]) => [handle, [...gids]],
+      ),
+    ),
     scopes: Object.fromEntries(
       AZ_KEYS.map((key) => [key, toScopeState(data.scopes[key])]),
     ) as Record<AzKey, ScopeState>,
@@ -785,6 +864,10 @@ function serializeForCompare(state: AmazonFormState): string {
     fbtPlacement: state.fbtPlacement,
     similarPlacement: state.similarPlacement,
     shipsFromFormat: state.shipsFromFormat,
+    // v12: key order normalized so add-then-remove of a market compares clean.
+    excluded: Object.fromEntries(
+      Object.entries(state.excluded).sort(([a], [b]) => a.localeCompare(b)),
+    ),
     scopes: Object.fromEntries(
       AZ_KEYS.map((key) => [key, toScopePatch(state.scopes[key])]),
     ),
@@ -861,6 +944,7 @@ export default function AmazonFeaturesPage() {
     amazon,
     scopes,
     markets,
+    exclusionTitles, // v12
     products,
     productErrors,
     translation,
@@ -940,6 +1024,9 @@ export default function AmazonFeaturesPage() {
         fbtPlacement: state.fbtPlacement,
         similarPlacement: state.similarPlacement,
         shipsFromFormat: state.shipsFromFormat,
+        // v12: wholesale-replaced record — always send the full map (an
+        // empty object clears every exclusion).
+        shipsFromExcludedByMarket: state.excluded,
       },
       marketScopes: Object.fromEntries(
         AZ_KEYS.map((key) => [key, toScopePatch(state.scopes[key])]),
@@ -1452,6 +1539,19 @@ export default function AmazonFeaturesPage() {
                 </BlockStack>
               </Card>
             ))}
+
+            {/* v12: per-market product exclusions for the Ships-from line */}
+            <MarketProductExclusionsCard
+              title="Excluded products — Ships from"
+              description="Products excluded for a market never show any Ships-from line on their own product page there (the stock-line row and the microcopy row, including the fallback label)."
+              markets={markets}
+              value={state.excluded}
+              titles={exclusionTitles}
+              disabled={isSaving}
+              onChange={(next) =>
+                setState((previous) => ({ ...previous, excluded: next }))
+              }
+            />
           </BlockStack>
         </Layout.Section>
 

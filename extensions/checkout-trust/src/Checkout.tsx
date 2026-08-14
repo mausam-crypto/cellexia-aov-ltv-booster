@@ -10,6 +10,7 @@ import {
   useApi,
   useAppMetafields,
   useAttributeValues,
+  useCartLines,
   useLanguage,
   useLocalizationMarket,
   useShippingAddress,
@@ -21,6 +22,7 @@ import {
   type DeliveryResult,
 } from './delivery-engine';
 import {
+  excludedProductInCart,
   isAllowedInMarket,
   parseCellexiaConfig,
   resolveConfig,
@@ -137,6 +139,9 @@ function Extension() {
   // a US order keeps the US-wide promise. Same contract as
   // checkout-delivery.
   const shippingAddress = useShippingAddress();
+  // v12 exclusions read the cart lines — product ids arrive as full GIDs
+  // ("gid://shopify/Product/<id>"), the exact form the settings store.
+  const cartLines = useCartLines();
 
   // CHECKOUT EDITOR detection (v4.9): `extension.editor` is `{type:
   // 'checkout'}` only while the merchant is inside the checkout editor and
@@ -170,6 +175,38 @@ function Extension() {
     configRoot,
     'checkout_tracked',
     marketHandle,
+  );
+  // v12 per-market product exclusions: a cart line whose product is listed
+  // for the buyer's market hides the row (fail-open on malformed config /
+  // unknown market — see excludedProductInCart in trust-logic.ts).
+  const cartProductIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const line of cartLines) {
+      const id = line?.merchandise?.product?.id;
+      if (typeof id === 'string' && id) ids.push(id);
+      // Bundles: the top-level line carries the bundle PARENT's product —
+      // an excluded product sold inside a bundle appears only in
+      // lineComponents, so those are inspected too (review catch).
+      for (const component of line?.lineComponents ?? []) {
+        const componentId = component?.merchandise?.product?.id;
+        if (typeof componentId === 'string' && componentId) {
+          ids.push(componentId);
+        }
+      }
+    }
+    return ids;
+  }, [cartLines]);
+  const customsExcluded = excludedProductInCart(
+    configRoot?.checkoutTrust,
+    'customsExcludedByMarket',
+    marketHandle,
+    cartProductIds,
+  );
+  const trackedExcluded = excludedProductInCart(
+    configRoot?.checkoutTrust,
+    'trackedExcludedByMarket',
+    marketHandle,
+    cartProductIds,
   );
   // v5 preview: the single gate for ALL preview behavior. The `_cx_preview`
   // cart attribute (set by the merchant's preview hub) carries the SHA-256
@@ -209,12 +246,19 @@ function Extension() {
   // row's own market gate; a verified draft grant shows the row regardless
   // (merchant preview). The tracked row additionally needs a computable,
   // formattable date — resolved below.
-  const customsVisible =
+  // v12: the exclusion verdict applies to draft grants too — the merchant
+  // preview shows the truth, and the preview diagnosis names the reason.
+  // The pre-exclusion "wanted" halves are kept as their own values so the
+  // diagnosis can report ONLY a wanted-but-excluded row (an exclusion is
+  // never blamed for a row that was toggled/scoped off anyway).
+  const customsWantedBase =
     (trustVisible && config.checkoutTrust.showCustoms && customsAllowedInMarket) ||
     customsDraftEnabled;
-  const trackedWanted =
+  const trackedWantedBase =
     (trustVisible && config.checkoutTrust.showTracked && trackedAllowedInMarket) ||
     trackedDraftEnabled;
+  const customsVisible = customsWantedBase && !customsExcluded;
+  const trackedWanted = trackedWantedBase && !trackedExcluded;
 
   // Tracked-row delivery date: the delivery_estimate engine twin, driven by
   // the shipping-address country. Re-run every 30s (the delivery widget's
@@ -266,6 +310,9 @@ function Extension() {
         trackedWanted,
         countryCode,
         trackedDateLabel,
+        excludedRows:
+          (customsWantedBase && customsExcluded) ||
+          (trackedWantedBase && trackedExcluded),
       })
     : undefined;
 

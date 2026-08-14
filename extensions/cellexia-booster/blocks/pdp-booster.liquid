@@ -119,6 +119,11 @@ endif
 endif
 endif
 assign cx_country = localization.country.iso_code | upcase
+assign cx_pgid = 'gid://shopify/Product/' | append: product.id
+assign cx_exc_dsp = false
+if cfg.dispatch.excludedByMarket[cx_market] contains cx_pgid
+assign cx_exc_dsp = true
+endif
 assign cx_dsp = cfg.dispatch.byCountry[cx_country]
 assign cx_dsp_cutoff = cfg.dispatch.cutoff | default: '14:00'
 assign cx_dsp_tz = cfg.dispatch.timezone | default: 'Europe/Paris'
@@ -130,7 +135,7 @@ assign cx_dsp_tz = cx_dsp.timezone
 assign cx_dsp_days = cx_dsp.days
 endif
 assign show_dispatch = false
-if cfg.dispatch.enabled == true
+if cfg.dispatch.enabled == true and cx_exc_dsp == false
 unless cfg.dispatch.showOnPdp == false
 assign cx_scope = cfg.marketScopes.dispatch_countdown
 if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
@@ -142,6 +147,9 @@ assign cx_de = cfg.deliveryEstimate
 assign cx_del_c = cx_de.byCountry[cx_country]
 assign cx_del_hidden = false
 if cx_del_c.hidden == true
+assign cx_del_hidden = true
+endif
+if cx_de.excludedByMarket[cx_market] contains cx_pgid
 assign cx_del_hidden = true
 endif
 assign show_delivery = false
@@ -270,7 +278,7 @@ if cx_prev_flags.empty_bottle_guarantee == true or cfg.emptyBottleGuarantee.enab
 assign cx_draft_bottle = true
 endif
 endif
-unless cfg.dispatch.showOnPdp == false
+unless cfg.dispatch.showOnPdp == false or cx_exc_dsp
 if cx_prev_flags.dispatch_countdown == true or cfg.dispatch.enabled == true
 assign cx_draft_dispatch = true
 endif
@@ -295,6 +303,9 @@ endif
 {%- if show_dispatch or cx_draft_dispatch %}
 "dispatch": {"live": {{ show_dispatch }}, "cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}, "showWithinHours": {{ cx_dsp_within }}},
 "strings": {"dispatch.within": {{ 'dispatch.within' | t: hours: '@@HOURS@@', minutes: '@@MINUTES@@' | json }}, "dispatch.within_minutes": {{ 'dispatch.within_minutes' | t: minutes: '@@MINUTES@@' | json }}},
+{%- endif %}
+{%- if cx_prev_armed and cx_exc_dsp %}
+"dspx": 1,
 {%- endif %}
 {%- if show_delivery or cx_draft_delivery %}
 "delivery": {"live": {{ show_delivery }}, "format": {{ cx_de.format | json }}, "pageLocale": {{ request.locale.iso_code | json }}, "minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}{% if cx_us %}, "us": {{ cx_us | json }}{% endif %}},

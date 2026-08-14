@@ -479,6 +479,10 @@
   // preview session and ONLY with the explanatory note attached —
   // real visitors keep the fail-closed v5.0 behavior byte-for-byte.
   var DISPATCH_PREVIEW_INVALID = 'Dispatch countdown can\'t render: the schedule is invalid or its translations are missing — check Features → Dispatch countdown in the app.';
+  // v12: the island emits dspx:1 (preview sessions only) when this product
+  // is exclusion-hidden for the market — the preview note must name THAT,
+  // never send the merchant to debug a valid schedule.
+  var DISPATCH_PREVIEW_EXCLUDED = 'Dispatch countdown is hidden here on purpose: this product is excluded for this market (Features → Dispatch countdown → Excluded products).';
 
   function dispatchPreviewNoteText(reason) {
     var d = cfg.dispatch && typeof cfg.dispatch === 'object' ? cfg.dispatch : {};
@@ -655,11 +659,13 @@
       var reason = schedule && remaining === null ? dispatchHiddenReason(schedule) : null;
       if (!schedule || (remaining === null && reason === null)) {
         // Invalid schedule/strings, or Intl rejected the timezone: no
-        // widget — a diagnostic note only, never a fake countdown.
+        // widget — a diagnostic note only, never a fake countdown. v12:
+        // an exclusion-hidden product (island dspx marker) gets the
+        // truthful note instead of a false invalid-schedule warning.
         var note = document.createElement('div');
-        note.className = 'cx-preview-note cx-preview-note--warn';
+        note.className = cfg.dspx === 1 ? 'cx-preview-note' : 'cx-preview-note cx-preview-note--warn';
         note.setAttribute('data-cx-note', 'dispatch');
-        note.textContent = DISPATCH_PREVIEW_INVALID;
+        note.textContent = cfg.dspx === 1 ? DISPATCH_PREVIEW_EXCLUDED : DISPATCH_PREVIEW_INVALID;
         insertAfter(note, anchor);
         return;
       }

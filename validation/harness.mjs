@@ -74,7 +74,12 @@ const CSS = `${EXT}/assets/cellexia-booster.css`;
 // ===================================================== 1. Liquid byte budget
 {
   const SHOPIFY_CAP = 102_400; // Shopify's hard cap on total Liquid in a theme app extension
-  const BUDGET = 95_000; // our own margin below the cap
+  // Documented budget move (v12, 2026-08-13): 95_000 -> 96_500 to admit the
+  // per-market product-exclusion gates (+946B across pdp/cart/amazon
+  // islands; total 95,705B at the move). Still 5.9KB under the Shopify cap;
+  // the v5.9 "documented pin move" precedent. NEXT Liquid work should slim
+  // before it spends.
+  const BUDGET = 96_500; // our own margin below the cap
   const FLOOR = 500; // a shipped block/snippet below this has been gutted
   const CEILING = 30_000; // a single file above this needs a Liquid diet
   let total = 0;
@@ -2387,6 +2392,208 @@ const EVIDENCE = {
         DEF.deliveryEstimate?.usStates?.federalHolidays === true,
       "v10: usStates module arrives OFF with selector + federal defaults on",
     );
+  }
+
+  // ---- v12 per-market product exclusions (delivery/dispatch/customs/tracked/ships)
+  {
+    // Liquid gates: each island computes its exclusion verdict from the
+    // page product GID + the market-keyed record; live AND draft paths are
+    // both bound (the byCountry-hidden precedent).
+    const pdp12 = read(`${EXT}/blocks/pdp-booster.liquid`);
+    ok(
+      pdp12.includes(
+        "assign cx_pgid = 'gid://shopify/Product/' | append: product.id",
+      ),
+      "v12: pdp-booster builds the page product GID once",
+    );
+    ok(
+      pdp12.includes("if cfg.dispatch.excludedByMarket[cx_market] contains cx_pgid"),
+      "v12: pdp-booster dispatch exclusion contains-check present",
+    );
+    ok(
+      pdp12.includes("if cfg.dispatch.enabled == true and cx_exc_dsp == false"),
+      "v12: pdp-booster live dispatch gate carries the exclusion flag",
+    );
+    ok(
+      pdp12.includes("unless cfg.dispatch.showOnPdp == false or cx_exc_dsp"),
+      "v12: pdp-booster draft dispatch gate carries the exclusion flag",
+    );
+    ok(
+      pdp12.includes("if cx_de.excludedByMarket[cx_market] contains cx_pgid"),
+      "v12: pdp-booster delivery exclusion folds into cx_del_hidden (live + draft)",
+    );
+    const az12 = read(`${EXT}/blocks/amazon-booster.liquid`);
+    ok(
+      az12.includes(
+        "assign az_pgid = 'gid://shopify/Product/' | append: product.id",
+      ),
+      "v12: amazon-booster builds the page product GID once",
+    );
+    ok(
+      az12.includes(
+        "if cx_de.excludedByMarket[cx_market] contains az_pgid or cfg.dispatch.excludedByMarket[cx_market] contains az_pgid",
+      ),
+      "v12: az_delivery_line hides on EITHER exclusion (folds into az_del_hidden, live + draft)",
+    );
+    ok(
+      az12.includes(
+        "if cfg.amazon.shipsFromExcludedByMarket[cx_market] contains az_pgid",
+      ),
+      "v12: amazon-booster ships-from exclusion contains-check present",
+    );
+    ok(
+      az12.includes(
+        "and block.settings.show_az_ships_from and az_exc_sf == false",
+      ),
+      "v12: live az_ships_from gate carries the exclusion flag",
+    );
+    ok(
+      az12.includes("if block.settings.show_az_ships_from and az_exc_sf == false"),
+      "v12: draft az_ships_from gate carries the exclusion flag",
+    );
+    ok(
+      az12.includes("{%- if az_any_micro and az_exc_sf == false %}"),
+      "v12: the shipsFrom member (micro ships row's ONLY source, incl. defaultLabel) is exclusion-gated",
+    );
+    const cartLiquid12 = read(`${EXT}/blocks/cart-booster.liquid`);
+    ok(
+      cartLiquid12.includes(
+        '"exc": {"d": {{ cx_exc_d | json }}, "e": {{ cx_exc_e | json }}},',
+      ),
+      "v12: cart island emits the current market's exclusion lists",
+    );
+    ok(
+      cartLiquid12.includes(
+        "assign cx_exc_d = cfg.dispatch.excludedByMarket[cx_market]",
+      ) &&
+        cartLiquid12.includes(
+          "assign cx_exc_e = cfg.deliveryEstimate.excludedByMarket[cx_market]",
+        ),
+      "v12: cart island exclusion assigns read the market-keyed records",
+    );
+    // Cart JS: the verdict runs BEFORE node build in both render functions,
+    // so a null return also means no impression (renderAll only tracks
+    // returned feature keys). The helper is deliberately CART-ONLY — it is
+    // not on the pdp/cart byte-twin lists (the dispatchSchedule rule).
+    const cartJs12 = read(CART_JS);
+    ok(
+      cartJs12.includes("function cartExcludedAny(list)"),
+      "v12: cellexia-cart.js carries the cart-only exclusion helper",
+    );
+    ok(
+      cartJs12.includes("if (cartExcludedAny(cfg.exc && cfg.exc.d)) return null;"),
+      "v12: renderDispatch bails on exclusion before build/beacon",
+    );
+    ok(
+      cartJs12.includes("if (cartExcludedAny(cfg.exc && cfg.exc.e)) return null;"),
+      "v12: renderDelivery bails on exclusion before build/beacon",
+    );
+    ok(
+      !read(PDP_JS).includes("cartExcludedAny"),
+      "v12: the exclusion helper stays cart-only (no pdp twin)",
+    );
+    // Checkout extensions: both read cart lines and gate on the records;
+    // the preview diagnoses name exclusion instead of blaming toggles.
+    ok(
+      read("extensions/checkout-trust/src/trust-logic.ts").includes(
+        "export function excludedProductInCart(",
+      ),
+      "v12: trust-logic exports the pure exclusion helper",
+    );
+    const trustTsx12 = read("extensions/checkout-trust/src/Checkout.tsx");
+    for (const lit of [
+      "'customsExcludedByMarket'",
+      "'trackedExcludedByMarket'",
+      "useCartLines()",
+      "!customsExcluded",
+      "!trackedExcluded",
+      // Review fix: the diagnosis only blames a WANTED-but-excluded row.
+      "(customsWantedBase && customsExcluded) ||",
+      "(trackedWantedBase && trackedExcluded),",
+      // Review fix: bundle components are inspected too.
+      "line?.lineComponents",
+    ]) {
+      ok(trustTsx12.includes(lit), `v12: checkout-trust Checkout.tsx carries ${lit}`);
+    }
+    const delTsx12 = read("extensions/checkout-delivery/src/Checkout.tsx");
+    for (const lit of [
+      "'excludedByMarket'",
+      "useCartLines()",
+      "!deliveryExcluded",
+      "excluded: deliveryExcluded",
+      "line?.lineComponents",
+    ]) {
+      ok(delTsx12.includes(lit), `v12: checkout-delivery Checkout.tsx carries ${lit}`);
+    }
+    // Review fix (preview honesty): an exclusion-hidden product in a
+    // verified PDP preview names the exclusion — never the false
+    // invalid-schedule warning. The island ships the marker only while a
+    // preview is armed; real visitors never receive it.
+    ok(
+      pdp12.includes('{%- if cx_prev_armed and cx_exc_dsp %}') &&
+        pdp12.includes('"dspx": 1,'),
+      "v12: pdp island emits the preview-only dspx exclusion marker",
+    );
+    const pdpJs12 = read(PDP_JS);
+    ok(
+      pdpJs12.includes("var DISPATCH_PREVIEW_EXCLUDED = ") &&
+        pdpJs12.includes(
+          "note.textContent = cfg.dspx === 1 ? DISPATCH_PREVIEW_EXCLUDED : DISPATCH_PREVIEW_INVALID;",
+        ),
+      "v12: mountDispatchPreview names the exclusion instead of blaming the schedule",
+    );
+    // Settings model: the five records resolve in the REAL emission and
+    // arrive EMPTY (exclusions are opt-in; {} = zero behavior change).
+    for (const p of [
+      "dispatch.excludedByMarket",
+      "deliveryEstimate.excludedByMarket",
+      "checkoutTrust.customsExcludedByMarket",
+      "checkoutTrust.trackedExcludedByMarket",
+      "amazon.shipsFromExcludedByMarket",
+    ]) {
+      ok(resolves(p), `v12: cfg path resolves in the real emission: ${p}`);
+    }
+    ok(
+      Object.keys(DEF.dispatch?.excludedByMarket ?? { x: 1 }).length === 0 &&
+        Object.keys(DEF.deliveryEstimate?.excludedByMarket ?? { x: 1 }).length === 0 &&
+        Object.keys(DEF.checkoutTrust?.customsExcludedByMarket ?? { x: 1 }).length === 0 &&
+        Object.keys(DEF.checkoutTrust?.trackedExcludedByMarket ?? { x: 1 }).length === 0 &&
+        Object.keys(DEF.amazon?.shipsFromExcludedByMarket ?? { x: 1 }).length === 0,
+      "v12: all five exclusion records default EMPTY (opt-in, zero behavior change)",
+    );
+    // Admin: each feature page renders the shared card, sends its record
+    // WHOLESALE in the save patch, and answers the picker's search intent.
+    for (const [route, lits] of [
+      [
+        "app/routes/app.features.dispatch.tsx",
+        ["MarketProductExclusionsCard", "excludedByMarket: state.excluded"],
+      ],
+      [
+        "app/routes/app.features.delivery.tsx",
+        ["MarketProductExclusionsCard", "excludedByMarket:"],
+      ],
+      [
+        "app/routes/app.features.checkout.tsx",
+        [
+          "MarketProductExclusionsCard",
+          "customsExcludedByMarket:",
+          "trackedExcludedByMarket:",
+        ],
+      ],
+      [
+        "app/routes/app.features.amazon.tsx",
+        ["MarketProductExclusionsCard", "shipsFromExcludedByMarket:"],
+      ],
+    ]) {
+      const routeSrc = read(route);
+      for (const lit of lits) {
+        ok(routeSrc.includes(lit), `v12: ${route} carries ${lit}`);
+      }
+      ok(
+        routeSrc.includes('"search_products"'),
+        `v12: ${route} answers the picker's search_products intent`,
+      );
+    }
   }
 }
 

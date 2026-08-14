@@ -16,7 +16,9 @@
  *  T2 TRUST LOGIC — resolveConfig safe defaults (v9 rows OFF unless an
  *     explicit true; a pre-V2 config renders byte-identically), enabled
  *     requires explicit true, clamps, resolvePreview inertness,
- *     isAllowedInMarket fail-closed matrix, diagnosis ordering.
+ *     isAllowedInMarket fail-closed matrix, diagnosis ordering, and the
+ *     v12 excludedProductInCart fail-open matrix (exact-GID match, own
+ *     market only; mutant m11-exclusion-dead pins the hit path).
  *  T3 COMPACT DATE — trustFormatDateCompact vs an INDEPENDENT
  *     Intl.DateTimeFormat expectation (different API path) across all 18
  *     checkout languages × the shared fixture stamps; fr 1er rule; ja/de/el
@@ -291,6 +293,7 @@ const L = await loadTrustLogic();
     trackedWanted: false,
     countryCode: undefined as string | undefined,
     trackedDateLabel: "",
+    excludedRows: false,
   };
   tap.check("T2: diagnosis: config missing first",
     L.trustPreviewDiagnosis({ ...diagBase, configFound: false, preview: basePv, attributeValue: "h", featureVisible: true }).includes("config metafield not found"));
@@ -309,6 +312,43 @@ const L = await loadTrustLogic();
     L.trustPreviewDiagnosis({ configFound: true, preview: basePv, attributeValue: "h", featureVisible: true, trackedWanted: true, countryCode: "FR", trackedDateLabel: "" }).includes("no delivery date can be computed for FR"));
   tap.check("T2: diagnosis: tracked wanted + formattable date -> falls through to toggled off",
     L.trustPreviewDiagnosis({ configFound: true, preview: basePv, attributeValue: "h", featureVisible: true, trackedWanted: true, countryCode: "FR", trackedDateLabel: "28 juillet" }).includes("toggled off"));
+  // v12 exclusion branch: sits AFTER the date-chain branches and BEFORE the
+  // toggled-off fallback — an exclusion-hidden row never reads as a toggle.
+  tap.check("T2: diagnosis: excluded rows named before toggled-off",
+    L.trustPreviewDiagnosis({ ...diagBase, configFound: true, preview: basePv, attributeValue: "h", featureVisible: true, excludedRows: true }).includes("excluded for this market"));
+  tap.check("T2: diagnosis: date-chain branch outranks exclusion",
+    L.trustPreviewDiagnosis({ configFound: true, preview: basePv, attributeValue: "h", featureVisible: true, trackedWanted: true, countryCode: undefined, trackedDateLabel: "", excludedRows: true }).includes("no shipping country yet"));
+
+  // v12 excludedProductInCart — fail-open matrix + the exact-GID match. The
+  // record maps market handle -> product GIDs; ONLY a listed product in the
+  // buyer's own market hides a row.
+  const EX = {
+    customsExcludedByMarket: {
+      us: ["gid://shopify/Product/1", "gid://shopify/Product/2"],
+    },
+  };
+  const P1 = "gid://shopify/Product/1";
+  const P9 = "gid://shopify/Product/9";
+  tap.check("T2v12: listed product in listed market -> excluded",
+    L.excludedProductInCart(EX, "customsExcludedByMarket", "us", [P9, P1]) === true);
+  tap.check("T2v12: unlisted product -> not excluded",
+    L.excludedProductInCart(EX, "customsExcludedByMarket", "us", [P9]) === false);
+  tap.check("T2v12: other market -> not excluded",
+    L.excludedProductInCart(EX, "customsExcludedByMarket", "eu", [P1]) === false);
+  tap.check("T2v12: unknown market -> fail open",
+    L.excludedProductInCart(EX, "customsExcludedByMarket", undefined, [P1]) === false);
+  tap.check("T2v12: empty cart -> not excluded",
+    L.excludedProductInCart(EX, "customsExcludedByMarket", "us", []) === false);
+  tap.check("T2v12: missing section -> fail open",
+    L.excludedProductInCart(undefined, "customsExcludedByMarket", "us", [P1]) === false);
+  tap.check("T2v12: malformed record -> fail open",
+    L.excludedProductInCart({ customsExcludedByMarket: "x" }, "customsExcludedByMarket", "us", [P1]) === false);
+  tap.check("T2v12: malformed list -> fail open",
+    L.excludedProductInCart({ customsExcludedByMarket: { us: "x" } }, "customsExcludedByMarket", "us", [P1]) === false);
+  tap.check("T2v12: numeric-tail lookalike never matches (exact GID equality)",
+    L.excludedProductInCart({ customsExcludedByMarket: { us: ["1"] } }, "customsExcludedByMarket", "us", [P1]) === false);
+  tap.check("T2v12: the OTHER record key is untouched",
+    L.excludedProductInCart(EX, "trackedExcludedByMarket", "us", [P1]) === false);
 }
 
 // ------------------------------------------------- T3 compact date formatter
@@ -496,6 +536,19 @@ const L = await loadTrustLogic();
     "trackedVisible || (inEditor && trackedDateLabel !== '')",
     "const renderClinical = showClinical || inEditor;",
     "const renderTrustpilot = showTrustpilot || inEditor;",
+    // v12 exclusions: cart lines read (bundle components included), both
+    // records checked against the buyer's market, both row derivations
+    // carry the veto (draft grants included), and the diagnosis receives
+    // ONLY the wanted-but-excluded verdict (review fix: an exclusion is
+    // never blamed for a row that was toggled/scoped off anyway).
+    "useCartLines()",
+    "line?.lineComponents",
+    "'customsExcludedByMarket'",
+    "'trackedExcludedByMarket'",
+    "const customsVisible = customsWantedBase && !customsExcluded;",
+    "const trackedWanted = trackedWantedBase && !trackedExcluded;",
+    "(customsWantedBase && customsExcluded) ||",
+    "(trackedWantedBase && trackedExcluded),",
   ]) {
     tap.check(`T5: Checkout.tsx anchor present: ${anchor}`, src.includes(anchor));
   }
@@ -566,6 +619,11 @@ if (!process.env.CX_SKIP_MUTANTS) {
         name: "m10-roworder-keeps-duplicates",
         find: "        !out.includes(entry as TrustRowKey)",
         replace: "        true",
+      },
+      {
+        name: "m11-exclusion-dead",
+        find: "    if (list.includes(id)) return true;",
+        replace: "    if (list.includes(id)) return false;",
       },
     ],
   });

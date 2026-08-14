@@ -7,6 +7,7 @@ import {
   useRevalidator,
   useSubmit,
 } from "@remix-run/react";
+import type { ShouldRevalidateFunctionArgs } from "@remix-run/react";
 import {
   Banner,
   BlockStack,
@@ -31,6 +32,7 @@ import {
   getSettings,
   resolveFeatureFlag,
   saveSettings,
+  validateExcludedByMarketPatch,
   type BoosterSettings,
   type DeepPartial,
   type DeliveryCountryOverride,
@@ -50,7 +52,10 @@ import {
 } from "../services/geo.server";
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import { listMarkets } from "../services/markets.server";
+import { getProductTitlesByIds } from "../services/products.server";
+import { listProductsWithBoosterStatus } from "../services/pdp-content.server";
 import { FeaturePageHeader } from "../components/FeaturePageHeader";
+import { MarketProductExclusionsCard } from "../components/MarketExclusions";
 
 /**
  * Delivery estimate + delivery guarantee (v5.9) — feature settings page.
@@ -87,6 +92,21 @@ interface SettingsSaveResult {
   ok: boolean;
   syncErrors: string[];
   geo?: GeoActionResult;
+}
+
+/** v12: the exclusion card's product-search response (the ProofForms picker
+ *  shape — the card's fetcher posts to the CURRENT route). Named here only
+ *  because this action, unlike dispatch's, annotates its return type. */
+interface ProductSearchResult {
+  intent: "search_products";
+  ok: boolean;
+  errors: string[];
+  products: {
+    gid: string;
+    title: string;
+    imageUrl: string | null;
+    status: string;
+  }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -448,6 +468,14 @@ function validateDeliveryPatch(patch: DeepPartial<BoosterSettings>): string[] {
       }
     }
   }
+  // v12: per-market product exclusions (fail-loud shape check — the shared
+  // validator lives beside the sanitizer in settings.server.ts).
+  errors.push(
+    ...validateExcludedByMarketPatch(
+      delivery.excludedByMarket,
+      "Excluded products",
+    ),
+  );
   return errors;
 }
 
@@ -788,6 +816,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     listMarkets(admin),
     getGeoStatus(session.shop),
   ]);
+  // v12: readable labels for the stored exclusion GIDs (fail-soft — a
+  // failed lookup degrades the tags to "Product <id>", never the page).
+  const exclusionTitles = await getProductTitlesByIds(
+    admin,
+    Object.values(settings.deliveryEstimate.excludedByMarket).flat(),
+  ).catch(() => ({}) as Record<string, string>);
   const now = new Date();
   const usStates = settings.deliveryEstimate.usStates;
   const exampleCodes = [
@@ -825,6 +859,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     settings,
     markets,
+    exclusionTitles,
     headerEnabled: resolveFeatureFlag(settings, "delivery_estimate"),
     // Canonical holiday data, passed through the loader — the component must
     // never import the .server module directly.
@@ -858,11 +893,45 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
+/**
+ * v12: the exclusion card's product search rides a POST fetcher to this
+ * route's action; Remix would revalidate the loader after it, and the
+ * loader-data reset would wipe unsaved form edits (including the exclusion
+ * row being built — review catch). Searches are read-only lookups: skip
+ * revalidation for them, keep it for every real mutation.
+ */
+export function shouldRevalidate({
+  formData,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  if (formData?.get("intent") === "search_products") return false;
+  return defaultShouldRevalidate;
+}
+
 export const action = async ({
   request,
-}: ActionFunctionArgs): Promise<SettingsSaveResult> => {
+}: ActionFunctionArgs): Promise<SettingsSaveResult | ProductSearchResult> => {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
+  // v12: the exclusion card's product search (the ProofForms picker
+  // convention — the picker's fetcher posts to the CURRENT route).
+  if (formData.get("intent") === "search_products") {
+    const result = await listProductsWithBoosterStatus(
+      admin,
+      String(formData.get("q") ?? ""),
+    );
+    return {
+      intent: "search_products" as const,
+      ok: result.ok,
+      errors: result.errors,
+      products: result.products.map((product) => ({
+        gid: product.id,
+        title: product.title,
+        imageUrl: product.imageUrl,
+        status: product.status,
+      })),
+    };
+  }
   // v10 geo intents branch BEFORE the settings-patch path — neither touches
   // settings.
   const geoIntent = formData.get("geoIntent");
@@ -1217,6 +1286,8 @@ interface DeliveryFormState {
   usFederalHolidays: boolean;
   usExtraHolidays: string;
   usOverrides: UsStateRowState[];
+  /** v12: per-market excluded products (market handle -> product GIDs). */
+  excluded: Record<string, string[]>;
   scopes: {
     delivery_estimate: ScopeState;
   };
@@ -1298,6 +1369,12 @@ function initialFormState(settings: BoosterSettings): DeliveryFormState {
     usFederalHolidays: us.federalHolidays,
     usExtraHolidays: us.extraHolidays.join(", "),
     usOverrides,
+    excluded: Object.fromEntries(
+      Object.entries(delivery.excludedByMarket).map(([handle, gids]) => [
+        handle,
+        [...gids],
+      ]),
+    ),
     scopes: {
       delivery_estimate: toScopeState(settings.marketScopes.delivery_estimate),
     },
@@ -1365,6 +1442,10 @@ function serializeForCompare(state: DeliveryFormState): string {
         ...rowToStateOverride(row),
       })),
     },
+    // Key order normalized so add-then-remove of a market compares clean.
+    excluded: Object.fromEntries(
+      Object.entries(state.excluded).sort(([a], [b]) => a.localeCompare(b)),
+    ),
     scopes: { delivery_estimate: toScopePatch(state.scopes.delivery_estimate) },
   });
 }
@@ -1626,6 +1707,7 @@ export default function DeliveryFeaturesPage() {
   const {
     settings,
     markets,
+    exclusionTitles,
     headerEnabled,
     holidayTable,
     globalExclusions,
@@ -1679,26 +1761,31 @@ export default function DeliveryFeaturesPage() {
     return () => clearInterval(timer);
   }, [geoStatus.status, revalidator]);
 
+  // v12: the action now also answers search_products (picker fetchers) —
+  // toast + banner read only settings-save results.
+  const saveResult =
+    actionData && "syncErrors" in actionData ? actionData : undefined;
+
   useEffect(() => {
-    if (!actionData) return;
+    if (!saveResult) return;
     // Geo intents ride the save envelope but are not saves: the build gets
     // one ack toast (the card polls the rest), test results render inline.
-    if (actionData.geo) {
-      if (actionData.geo.intent === "build") {
+    if (saveResult.geo) {
+      if (saveResult.geo.intent === "build") {
         shopify.toast.show("Download started — building in the background");
       }
       return;
     }
-    if (!actionData.ok) {
+    if (!saveResult.ok) {
       shopify.toast.show("Could not save settings", { isError: true });
-    } else if (actionData.syncErrors.length > 0) {
+    } else if (saveResult.syncErrors.length > 0) {
       shopify.toast.show("Saved, but the storefront sync failed", {
         isError: true,
       });
     } else {
       shopify.toast.show("Saved");
     }
-  }, [actionData, shopify]);
+  }, [saveResult, shopify]);
 
   const initial = useMemo(() => initialFormState(settings), [settings]);
   const dirty = serializeForCompare(state) !== serializeForCompare(initial);
@@ -1955,6 +2042,9 @@ export default function DeliveryFeaturesPage() {
           extraHolidays: parseExtraHolidays(state.usExtraHolidays),
           byState,
         },
+        // v12: wholesale-replaced record — always send the full map (an
+        // empty object clears every exclusion).
+        excludedByMarket: state.excluded,
       },
       marketScopes: {
         delivery_estimate: toScopePatch(state.scopes.delivery_estimate),
@@ -1980,7 +2070,7 @@ export default function DeliveryFeaturesPage() {
 
   // --- Geo card ------------------------------------------------------------
   const geoTest =
-    actionData?.geo && actionData.geo.intent === "test" ? actionData.geo : null;
+    saveResult?.geo && saveResult.geo.intent === "test" ? saveResult.geo : null;
 
   // Sample dates for the format mini previews: the real computed defaults
   // when available, otherwise a clearly generic placeholder.
@@ -2022,18 +2112,18 @@ export default function DeliveryFeaturesPage() {
           </Card>
         </Layout.Section>
 
-        {actionData && actionData.syncErrors.length > 0 ? (
+        {saveResult && saveResult.syncErrors.length > 0 ? (
           <Layout.Section>
             <Banner
-              tone={actionData.ok ? "warning" : "critical"}
+              tone={saveResult.ok ? "warning" : "critical"}
               title={
-                actionData.ok
+                saveResult.ok
                   ? "Saved, but the storefront sync reported errors"
                   : "Settings could not be saved"
               }
             >
               <BlockStack gap="100">
-                {actionData.syncErrors.map((error) => (
+                {saveResult.syncErrors.map((error) => (
                   <Text as="p" key={error}>
                     {error}
                   </Text>
@@ -3051,6 +3141,18 @@ export default function DeliveryFeaturesPage() {
                   ...previous,
                   scopes: { ...previous.scopes, delivery_estimate: scope },
                 }))
+              }
+            />
+
+            <MarketProductExclusionsCard
+              title="Excluded products"
+              description="Products excluded for a market never show the delivery promise on their own product page there, and a cart or checkout containing one hides the delivery promise for that whole order."
+              markets={markets}
+              value={state.excluded}
+              titles={exclusionTitles}
+              disabled={isSaving}
+              onChange={(next) =>
+                setState((previous) => ({ ...previous, excluded: next }))
               }
             />
           </BlockStack>

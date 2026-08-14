@@ -663,6 +663,40 @@ function proofReadiness(
  * the Preview Center shows the reason as a warning so the merchant knows why
  * a widget would render empty (or not at all) in the preview.
  */
+/**
+ * v12: one-line disclosure of a per-market product-exclusion record
+ * ("" when empty). Excluded products render nothing — live AND preview
+ * (the byCountry-hidden precedent) — so the Preview Center must say so
+ * instead of leaving a merchant staring at a blank widget.
+ */
+function exclusionNote(
+  record: Record<string, string[]>,
+  what: string,
+): string {
+  const entries = Object.entries(record ?? {}).filter(
+    ([, ids]) => Array.isArray(ids) && ids.length > 0,
+  );
+  if (entries.length === 0) return "";
+  const parts = entries
+    .map(([handle, ids]) => `${handle}: ${ids.length}`)
+    .join(", ");
+  return ` Note: excluded products never show ${what} (per-market counts — ${parts}); this applies in the preview too, though exclusions always follow the market you are actually browsing — the Preview Center's market simulation does not re-evaluate them, so verify an exclusion on that market's real storefront URL. Edit the list on the feature page's Excluded products card.`;
+}
+
+/** Appends the v12 exclusion disclosure to a readiness entry when active. */
+function withExclusionNote(
+  entry: FeatureReadiness,
+  record: Record<string, string[]>,
+  what: string,
+): FeatureReadiness {
+  const note = exclusionNote(record, what);
+  if (!note) return entry;
+  return {
+    ready: entry.ready,
+    reason: entry.reason ? entry.reason + note : note.trimStart(),
+  };
+}
+
 export function featureReadiness(
   settings: BoosterSettings,
   extras: FeatureReadinessExtras = {},
@@ -712,18 +746,30 @@ export function featureReadiness(
     reason:
       "Placed as a theme-editor block — not shown in the app's live preview. Use the theme editor preview for placement; market toggles still apply.",
   };
-  readiness.dispatch_countdown = dispatchReadiness(settings.dispatch);
-  readiness.delivery_estimate = deliveryReadiness(settings);
+  readiness.dispatch_countdown = withExclusionNote(
+    dispatchReadiness(settings.dispatch),
+    settings.dispatch.excludedByMarket,
+    "the countdown (product page + cart)",
+  );
+  readiness.delivery_estimate = withExclusionNote(
+    deliveryReadiness(settings),
+    settings.deliveryEstimate.excludedByMarket,
+    "the delivery promise (product page, cart and checkout)",
+  );
 
   // --- v9 checkout-trust V2 rows ------------------------------------------
   // Both render inside the checkout-trust module block (placed once in the
   // checkout editor); a preview draft grant on a row implies the module
   // chrome, so they stay previewable even while the module master is off.
-  readiness.checkout_customs = {
-    ready: true,
-    reason:
-      "Renders as a row inside the Checkout trust module block — the trust module block must be placed once in the checkout editor. Enable it only for markets where you genuinely cover customs and import fees.",
-  };
+  readiness.checkout_customs = withExclusionNote(
+    {
+      ready: true,
+      reason:
+        "Renders as a row inside the Checkout trust module block — the trust module block must be placed once in the checkout editor. Enable it only for markets where you genuinely cover customs and import fees.",
+    },
+    settings.checkoutTrust.customsExcludedByMarket,
+    "this row while one of them is in the cart",
+  );
   {
     // The tracked row shares the delivery guarantee's date engine, so its
     // honesty mirrors deliveryReadiness: an unresolvable warehouse timezone
@@ -736,12 +782,16 @@ export function featureReadiness(
     } catch {
       scheduleWarning = ` Warning: the warehouse timezone ("${settings.dispatch.timezone}") on the Dispatch countdown page cannot be resolved — the tracked-delivery row fails closed (renders nothing) until it is fixed.`;
     }
-    readiness.checkout_tracked = {
-      ready: true,
-      reason:
-        "Renders inside the Checkout trust module block with the Delivery guarantee's guaranteed-by date (same schedule, country overrides and holidays), in the buyer's language. The row appears only after the buyer enters a shipping address whose country a date can be computed for. It stands alone: it keeps rendering even while the Delivery guarantee feature is off — turn this row off to stop the promise." +
-        scheduleWarning,
-    };
+    readiness.checkout_tracked = withExclusionNote(
+      {
+        ready: true,
+        reason:
+          "Renders inside the Checkout trust module block with the Delivery guarantee's guaranteed-by date (same schedule, country overrides and holidays), in the buyer's language. The row appears only after the buyer enters a shipping address whose country a date can be computed for. It stands alone: it keeps rendering even while the Delivery guarantee feature is off — turn this row off to stop the promise." +
+          scheduleWarning,
+      },
+      settings.checkoutTrust.trackedExcludedByMarket,
+      "this row while one of them is in the cart",
+    );
   }
 
   // --- Amazon-pattern features (v6.1) --------------------------------------
@@ -757,16 +807,32 @@ export function featureReadiness(
       "Assembles a bordered decision card around the theme's existing buy area. If a product template lacks the expected theme anchors the card gracefully no-ops (nothing renders)." +
       embedNote,
   };
-  readiness.az_microcopy = {
-    ready: true,
-    reason:
-      "Replaces the app-injected PDP trust-badges strip while on. A trust-badges block placed manually in the theme editor cannot be auto-removed — remove that block by hand if you placed one." +
-      embedNote,
-  };
+  readiness.az_microcopy = withExclusionNote(
+    {
+      ready: true,
+      reason:
+        "Replaces the app-injected PDP trust-badges strip while on. A trust-badges block placed manually in the theme editor cannot be auto-removed — remove that block by hand if you placed one." +
+        embedNote,
+    },
+    // v12: the strip's "Ships from" ROW follows the ships-from exclusions
+    // even while az_ships_from itself is off — a microcopy-only merchant
+    // must not have to open the az_ships_from entry to learn that.
+    settings.amazon.shipsFromExcludedByMarket,
+    "the strip's Ships-from row (including the fallback label)",
+  );
   readiness.az_delivery_line = {
     ready: true,
     reason:
       "Replaces the standard delivery widget AND the PDP dispatch countdown line while on. Uses the same dispatch schedule and per-country delivery config as those features and stands alone: the Amazon embed ships that config itself, so this line renders even when the delivery estimate or dispatch countdown is switched off, hidden on product pages, or scoped to other markets. It still fails closed when the delivery settings are incomplete or the buyer's country is hidden for the delivery estimate. The free-shipping threshold clause follows the per-market thresholds." +
+      // v12: the line bundles both promises, so EITHER exclusion hides it.
+      (Object.values(settings.deliveryEstimate.excludedByMarket).some(
+        (ids) => ids.length > 0,
+      ) ||
+      Object.values(settings.dispatch.excludedByMarket).some(
+        (ids) => ids.length > 0,
+      )
+        ? " Note: products excluded from the delivery promise OR the dispatch countdown (Excluded products cards) never show this line on their product page — in the preview too."
+        : "") +
       embedNote,
   };
   readiness.az_stock_line = {
@@ -787,16 +853,20 @@ export function featureReadiness(
             reason:
               "No warehouse mapping and no default warehouse configured — the “Ships from” line renders nothing (fail closed). Add at least one country mapping or a default warehouse on the Amazon patterns page.",
           }
-        : {
-            ready: true,
-            reason:
-              `Replaces the theme's stock line while on (next to the “In Stock” line when that feature is also on). ${
-                settings.amazon.defaultWarehouse
-                  ? `Uses ${mapped} country mapping${mapped === 1 ? "" : "s"} with a default warehouse fallback.`
-                  : `Renders only for the ${mapped} mapped buyer countr${mapped === 1 ? "y" : "ies"} (no default warehouse set).`
-              } Renders in the saved display style — currently “${settings.amazon.shipsFromFormat}” (subtle = quiet gray microline, prominent = green local-shipping signal with the country in bold); the Preview Center can try either style without changing the live site.` +
-              embedNote,
-          };
+        : withExclusionNote(
+            {
+              ready: true,
+              reason:
+                `Replaces the theme's stock line while on (next to the “In Stock” line when that feature is also on). ${
+                  settings.amazon.defaultWarehouse
+                    ? `Uses ${mapped} country mapping${mapped === 1 ? "" : "s"} with a default warehouse fallback.`
+                    : `Renders only for the ${mapped} mapped buyer countr${mapped === 1 ? "y" : "ies"} (no default warehouse set).`
+                } Renders in the saved display style — currently “${settings.amazon.shipsFromFormat}” (subtle = quiet gray microline, prominent = green local-shipping signal with the country in bold); the Preview Center can try either style without changing the live site.` +
+                embedNote,
+            },
+            settings.amazon.shipsFromExcludedByMarket,
+            "ANY Ships-from line on their product page (this line and the microcopy row, including its fallback label)",
+          );
   }
   readiness.az_bought_count = {
     ready: true,

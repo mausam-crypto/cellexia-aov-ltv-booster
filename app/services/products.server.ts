@@ -349,3 +349,44 @@ export async function getVariantsByIds(
       availableForSale: node.availableForSale,
     }));
 }
+
+const PRODUCTS_BY_ID_QUERY = `#graphql
+  query cellexiaProductsById($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      ... on Product {
+        id
+        title
+      }
+    }
+  }
+`;
+
+/**
+ * v12: resolves product GIDs to titles for admin display (the per-market
+ * exclusion cards hydrate their stored GIDs through this on page load, so
+ * excluded products stay readable after a reload). Deduped, capped at 250
+ * ids per call (`nodes` limit); unknown/deleted ids simply drop out —
+ * callers fall back to the "Product <id>" tail label.
+ */
+export async function getProductTitlesByIds(
+  admin: AdminGraphqlClient,
+  ids: string[],
+): Promise<Record<string, string>> {
+  const unique = [
+    ...new Set(
+      ids.filter((id) => /^gid:\/\/shopify\/Product\/\d+$/.test(id)),
+    ),
+  ].slice(0, 250);
+  if (unique.length === 0) return {};
+  const response = await admin.graphql(PRODUCTS_BY_ID_QUERY, {
+    variables: { ids: unique },
+  });
+  const json = (await response.json()) as {
+    data?: { nodes?: ({ id: string; title: string } | null)[] };
+  };
+  const titles: Record<string, string> = {};
+  for (const node of json.data?.nodes ?? []) {
+    if (node?.id && typeof node.title === "string") titles[node.id] = node.title;
+  }
+  return titles;
+}

@@ -40,7 +40,9 @@ const {
   resolveFeatureFlag,
   restoreFlags,
   sanitizeSettings,
+  sanitizeExcludedByMarket,
   snapshotFlags,
+  validateExcludedByMarketPatch,
 } = M;
 
 let checks = 0;
@@ -818,6 +820,250 @@ for (const path of [
         merged.deliveryEstimate.usStates.federalHolidays === true &&
         Object.keys(merged.deliveryEstimate.usStates.byState).length === 0,
       "v10: pre-v10 store merges to the inert usStates defaults",
+    );
+  }
+}
+
+// --- 5c. v12 per-market product exclusions ---------------------------------
+// Five wholesale-replaced records (DYNAMIC_RECORD_KEYS: excludedByMarket ×2,
+// customsExcludedByMarket, trackedExcludedByMarket, shipsFromExcludedByMarket)
+// share ONE sanitizer. No FeatureKey — the usStates/boughtOnCards sub-module
+// precedent; none of the 35-count pins move.
+{
+  const RECORDS = [
+    ["dispatch", "excludedByMarket"],
+    ["deliveryEstimate", "excludedByMarket"],
+    ["checkoutTrust", "customsExcludedByMarket"],
+    ["checkoutTrust", "trackedExcludedByMarket"],
+    ["amazon", "shipsFromExcludedByMarket"],
+  ] as const;
+
+  // Inert defaults: all five records arrive EMPTY (opt-in, zero behavior
+  // change) and resolve in the real emission.
+  for (const [section, key] of RECORDS) {
+    const record = (DEFAULT_SETTINGS as any)[section][key];
+    ok(
+      typeof record === "object" &&
+        record !== null &&
+        Object.keys(record).length === 0,
+      `v12: ${section}.${key} defaults empty`,
+    );
+    ok(resolves(`${section}.${key}`), `v12: cfg path resolves in the real emission: ${section}.${key}`);
+  }
+
+  // Shared sanitizer: bad handles/entries drop, bare numeric ids self-heal
+  // to GIDs, duplicates collapse, empty lists vanish, >100 truncates.
+  {
+    const cleaned = sanitizeExcludedByMarket({
+      "us": [
+        "gid://shopify/Product/111",
+        "gid://shopify/Product/111", // dupe
+        222, // bare numeric -> self-heals
+        "333", // numeric string -> self-heals
+        "gid://shopify/ProductVariant/9", // wrong resource
+        "junk",
+        null,
+      ],
+      "eu-market": ["gid://shopify/Product/444"],
+      "BAD HANDLE": ["gid://shopify/Product/555"], // invalid key
+      "empty": ["junk-only"], // nothing valid left -> entry vanishes
+      "notalist": "gid://shopify/Product/666",
+    });
+    ok(
+      JSON.stringify(cleaned) ===
+        JSON.stringify({
+          us: [
+            "gid://shopify/Product/111",
+            "gid://shopify/Product/222",
+            "gid://shopify/Product/333",
+          ],
+          "eu-market": ["gid://shopify/Product/444"],
+        }),
+      "v12 sanitize: dedupe + numeric self-heal + bad keys/entries/empties dropped",
+    );
+    ok(
+      JSON.stringify(sanitizeExcludedByMarket(null)) === "{}" &&
+        JSON.stringify(sanitizeExcludedByMarket(["x"])) === "{}" &&
+        JSON.stringify(sanitizeExcludedByMarket("x")) === "{}",
+      "v12 sanitize: non-object input -> empty record",
+    );
+    const oversized = sanitizeExcludedByMarket({
+      us: Array.from({ length: 150 }, (_, i) => `gid://shopify/Product/${i + 1}`),
+    });
+    ok(
+      oversized.us.length === 100 &&
+        oversized.us[0] === "gid://shopify/Product/1" &&
+        oversized.us[99] === "gid://shopify/Product/100",
+      "v12 sanitize: per-market list caps at 100 (first-listed win)",
+    );
+  }
+
+  // The sanitizer runs at all five sites through sanitizeSettings.
+  {
+    const dirty = clone(DEFAULT_SETTINGS) as any;
+    for (const [section, key] of RECORDS) {
+      dirty[section][key] = {
+        us: ["gid://shopify/Product/12345", "junk"],
+        "BAD KEY": ["gid://shopify/Product/9"],
+      };
+    }
+    const cleaned = sanitizeSettings(dirty, DEFAULT_SETTINGS) as any;
+    for (const [section, key] of RECORDS) {
+      ok(
+        JSON.stringify(cleaned[section][key]) ===
+          JSON.stringify({ us: ["gid://shopify/Product/12345"] }),
+        `v12 sanitize wired: ${section}.${key} cleaned on save`,
+      );
+    }
+  }
+
+  // Wholesale replace: a patch record REPLACES the stored one (the
+  // DYNAMIC_RECORD_KEYS contract) — and the four distinct key names never
+  // collide with section names (dispatch's own merge stays key-driven).
+  {
+    const base = clone(DEFAULT_SETTINGS) as any;
+    base.dispatch.excludedByMarket = {
+      us: ["gid://shopify/Product/1"],
+      "eu-market": ["gid://shopify/Product/2"],
+    };
+    base.dispatch.cutoff = "09:30";
+    const patch = clone(DEFAULT_SETTINGS) as any;
+    patch.dispatch.excludedByMarket = { us: ["gid://shopify/Product/3"] };
+    delete patch.dispatch.cutoff;
+    const merged = mergeSettings(base, patch) as any;
+    ok(
+      JSON.stringify(merged.dispatch.excludedByMarket) ===
+        JSON.stringify({ us: ["gid://shopify/Product/3"] }),
+      "v12 merge: excludedByMarket replaced wholesale (stale eu-market row gone)",
+    );
+    ok(
+      merged.dispatch.cutoff === "09:30",
+      "v12 merge: the dispatch SECTION still deep-merges (record key names never collide with section names)",
+    );
+  }
+
+  // Back-compat: a stored pre-v12 blob (no exclusion records) merges to
+  // empty records — existing stores upgrade with zero behavior change.
+  {
+    const stored = clone(DEFAULT_SETTINGS) as any;
+    for (const [section, key] of RECORDS) delete stored[section][key];
+    const merged = mergeSettings(clone(DEFAULT_SETTINGS), stored) as any;
+    for (const [section, key] of RECORDS) {
+      ok(
+        JSON.stringify(merged[section][key]) === "{}",
+        `v12: pre-v12 store merges to empty ${section}.${key}`,
+      );
+    }
+  }
+
+  // Fail-loud admin validator: undefined passes, malformed shapes error,
+  // the numeric self-heal is legal, >100 errors.
+  {
+    ok(
+      validateExcludedByMarketPatch(undefined, "L").length === 0 &&
+        validateExcludedByMarketPatch(null, "L").length === 0,
+      "v12 validate: absent record -> no errors",
+    );
+    ok(
+      validateExcludedByMarketPatch("x", "L").length === 1 &&
+        validateExcludedByMarketPatch({ "BAD KEY": [] }, "L").length === 1 &&
+        validateExcludedByMarketPatch({ us: "x" }, "L").length === 1 &&
+        validateExcludedByMarketPatch({ us: ["junk"] }, "L").length === 1,
+      "v12 validate: malformed shapes fail loud",
+    );
+    ok(
+      validateExcludedByMarketPatch(
+        { us: ["gid://shopify/Product/1", "22", 33] },
+        "L",
+      ).length === 0,
+      "v12 validate: GIDs + self-healing numeric ids are legal",
+    );
+    ok(
+      validateExcludedByMarketPatch(
+        {
+          us: Array.from(
+            { length: 101 },
+            (_, i) => `gid://shopify/Product/${i + 1}`,
+          ),
+        },
+        "L",
+      ).length === 1,
+      "v12 validate: >100 per market fails loud (total 101 stays under the record cap)",
+    );
+  }
+
+  // Review fixes (v12b): real Shopify market handles are lowercase but NOT
+  // ASCII-only; prototype-pollution keys must never become record keys;
+  // leading-zero numerics self-heal to canonical GIDs; and each record has
+  // a TOTAL cap so a legal multi-market save can't overflow the metafield.
+  {
+    const accented = sanitizeExcludedByMarket({
+      "méxico": ["gid://shopify/Product/1"],
+    });
+    ok(
+      JSON.stringify(accented) ===
+        JSON.stringify({ "méxico": ["gid://shopify/Product/1"] }),
+      "v12b sanitize: accented lowercase market handle accepted",
+    );
+    ok(
+      validateExcludedByMarketPatch(
+        { "méxico": ["gid://shopify/Product/1"] },
+        "L",
+      ).length === 0,
+      "v12b validate: accented lowercase market handle accepted",
+    );
+    const polluted = sanitizeExcludedByMarket({
+      ["__proto__"]: ["gid://shopify/Product/1"],
+      constructor: ["gid://shopify/Product/2"],
+      us: ["gid://shopify/Product/3"],
+    });
+    ok(
+      JSON.stringify(polluted) ===
+        JSON.stringify({ us: ["gid://shopify/Product/3"] }) &&
+        Object.getPrototypeOf(polluted) === Object.prototype,
+      "v12b sanitize: __proto__/constructor keys dropped, prototype intact",
+    );
+    const healed = sanitizeExcludedByMarket({ us: ["007", 8] });
+    ok(
+      JSON.stringify(healed) ===
+        JSON.stringify({
+          us: ["gid://shopify/Product/7", "gid://shopify/Product/8"],
+        }),
+      "v12b sanitize: leading-zero numerics heal to canonical GIDs (never a dead entry)",
+    );
+    const capped = sanitizeExcludedByMarket({
+      "a-market": Array.from(
+        { length: 100 },
+        (_, i) => `gid://shopify/Product/${i + 1}`,
+      ),
+      "b-market": Array.from(
+        { length: 100 },
+        (_, i) => `gid://shopify/Product/${i + 1001}`,
+      ),
+    });
+    const cappedTotal = Object.values(capped).reduce(
+      (n, ids) => n + ids.length,
+      0,
+    );
+    ok(
+      cappedTotal === 150 && capped["a-market"].length === 100,
+      "v12b sanitize: record TOTAL caps at 150 across markets (metafield budget)",
+    );
+    ok(
+      validateExcludedByMarketPatch(
+        {
+          "a-market": Array.from(
+            { length: 90 },
+            (_, i) => `gid://shopify/Product/${i + 1}`,
+          ),
+          "b-market": Array.from(
+            { length: 90 },
+            (_, i) => `gid://shopify/Product/${i + 1001}`,
+          ),
+        },
+        "L",
+      ).some((e) => e.includes("in total")),
+      "v12b validate: record total >150 fails loud with the metafield reason",
     );
   }
 }

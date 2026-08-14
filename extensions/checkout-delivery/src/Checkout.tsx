@@ -10,6 +10,7 @@ import {
   useApi,
   useAppMetafields,
   useAttributeValues,
+  useCartLines,
   useLanguage,
   useLocalizationMarket,
   useShippingAddress,
@@ -206,6 +207,32 @@ function isAllowedInMarket(
 }
 
 /**
+ * v12 per-market product exclusions against
+ * `deliveryEstimate.excludedByMarket` (market handle -> product GIDs): the
+ * widget hides when ANY cart line's product is listed for the buyer's
+ * market. FAIL-OPEN on malformed config or unknown market — an exclusion
+ * is a targeted subtraction, never a reason to hide elsewhere. (Same
+ * helper as checkout-trust's excludedProductInCart in trust-logic.ts.)
+ */
+function excludedProductInCart(
+  section: unknown,
+  recordKey: string,
+  marketHandle: string | undefined,
+  productIds: ReadonlyArray<string>,
+): boolean {
+  if (!marketHandle || productIds.length === 0) return false;
+  if (!isPlainObject(section)) return false;
+  const record = section[recordKey];
+  if (!isPlainObject(record)) return false;
+  const list = record[marketHandle];
+  if (!Array.isArray(list)) return false;
+  for (const id of productIds) {
+    if (list.includes(id)) return true;
+  }
+  return false;
+}
+
+/**
  * Builds the merchant-facing reason shown when a preview cart (the
  * `_cx_preview` attribute present) would otherwise see nothing here.
  * Hardcoded English on purpose: merchant tool, never buyer copy.
@@ -215,6 +242,8 @@ function deliveryPreviewDiagnosis(input: {
   preview: PreviewConfig;
   attributeValue: string | undefined;
   featureVisible: boolean;
+  /** v12: hidden because the preview cart holds an excluded product. */
+  excluded: boolean;
   countryCode: string | undefined;
   computed: boolean;
 }): string {
@@ -226,6 +255,11 @@ function deliveryPreviewDiagnosis(input: {
   }
   if (input.attributeValue !== input.preview.tokenHash) {
     return 'preview link is stale — reopen the preview from the app (token rotated?)';
+  }
+  // v12: an exclusion-hidden widget must never read as "not enabled" —
+  // name the real reason first.
+  if (input.excluded) {
+    return 'this cart contains a product excluded for this market (Delivery guarantee → Excluded products) — the delivery promise stays hidden';
   }
   if (!input.featureVisible) {
     return 'the delivery guarantee feature is not draft-enabled for this preview';
@@ -321,6 +355,9 @@ function Extension() {
   const metafieldEntries = useAppMetafields();
   const market = useLocalizationMarket();
   const shippingAddress = useShippingAddress();
+  // v12 exclusions read the cart lines — product ids arrive as full GIDs
+  // ("gid://shopify/Product/<id>"), the exact form the settings store.
+  const cartLines = useCartLines();
   // v6.0.1: the CHECKOUT's own localization language (localization.language
   // via useLanguage — reactive isoCode like "fr" / "pt-PT" / "fr-CA"), the
   // checkout twin of the storefront's request.locale.iso_code pageLocale.
@@ -360,12 +397,40 @@ function Extension() {
   const draftEnabled =
     previewActive && preview.draftFlags.delivery_estimate === true;
 
+  // v12 per-market product exclusions: a cart line whose product is listed
+  // for the buyer's market hides the widget — draft grants included (the
+  // merchant preview shows the truth; the diagnosis names the reason).
+  const cartProductIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const line of cartLines) {
+      const id = line?.merchandise?.product?.id;
+      if (typeof id === 'string' && id) ids.push(id);
+      // Bundles: the top-level line carries the bundle PARENT's product —
+      // an excluded product sold inside a bundle appears only in
+      // lineComponents, so those are inspected too (review catch).
+      for (const component of line?.lineComponents ?? []) {
+        const componentId = component?.merchandise?.product?.id;
+        if (typeof componentId === 'string' && componentId) {
+          ids.push(componentId);
+        }
+      }
+    }
+    return ids;
+  }, [cartLines]);
+  const deliveryExcluded = excludedProductInCart(
+    configRoot?.deliveryEstimate,
+    'excludedByMarket',
+    marketHandle,
+    cartProductIds,
+  );
+
   // showInCheckout stays authoritative even for the armed draft preview,
   // matching the cart surface's draft-gating convention (showInCart gates
   // every cart draft path).
   const featureVisible =
-    (config.enabled && config.showInCheckout && allowedInMarket) ||
-    (draftEnabled && config.showInCheckout);
+    ((config.enabled && config.showInCheckout && allowedInMarket) ||
+      (draftEnabled && config.showInCheckout)) &&
+    !deliveryExcluded;
 
   // Surface format: live formatCheckout, overridden by the verified
   // preview's draft format when valid (never for real buyers — previewActive
@@ -412,6 +477,7 @@ function Extension() {
           preview,
           attributeValue: previewAttributeValue,
           featureVisible,
+          excluded: deliveryExcluded,
           countryCode,
           computed: result !== null,
         })
@@ -450,7 +516,16 @@ function Extension() {
   // Fail closed on any unformatted date — never show a half-filled promise.
   if (!shipLabel || !minLabel || !maxLabel) {
     if (inEditor) return <EditorPreviewCaption />;
-    return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
+    // This bail is only reachable with featureVisible true AND a computed
+    // result, so previewDiagnosis (computed for the opposite states) is
+    // always undefined here — a preview cart deserves its own reason
+    // instead of silent nothing (v12 review catch; pre-existing gap).
+    if (previewAttributePresent) {
+      return (
+        <PreviewDiagnostic reason="a delivery date was computed but could not be formatted for this language — the widget fails closed" />
+      );
+    }
+    return null;
   }
 
   const badgeLabel = translate('badge');

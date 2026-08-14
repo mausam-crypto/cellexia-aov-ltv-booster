@@ -206,6 +206,8 @@ assign cx_eff_delivery = true
 endif
 endunless
 endif
+assign cx_exc_d = cfg.dispatch.excludedByMarket[cx_market]
+assign cx_exc_e = cfg.deliveryEstimate.excludedByMarket[cx_market]
 assign cx_us = false
 if cx_country == 'US' and cx_de.usStates.enabled == true
 assign cx_us = cx_de.usStates
@@ -339,6 +341,9 @@ assign tp_stars_label = tp_stars | round: 1
 {%- endif %}
 {%- if cx_eff_dispatch or cx_draft_dispatch %}
 "dc": 1,
+{%- endif %}
+{%- if cx_exc_d or cx_exc_e %}
+"exc": {"d": {{ cx_exc_d | json }}, "e": {{ cx_exc_e | json }}},
 {%- endif %}
 {%- if cx_eff_delivery or cx_draft_delivery %}
 "delivery": {"live": {{ cx_eff_delivery }}, "format": {{ cx_de.formatCart | json }}, "pageLocale": {{ request.locale.iso_code | json }}, "minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}{% if cx_us %}, "us": {{ cx_us | json }}{% endif %}},

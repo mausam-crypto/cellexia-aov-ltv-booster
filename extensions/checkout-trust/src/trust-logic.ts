@@ -294,6 +294,36 @@ export function isAllowedInMarket(
 }
 
 /**
+ * v12 per-market product exclusions. `section` is a config section object
+ * (e.g. root.checkoutTrust for customsExcludedByMarket /
+ * trackedExcludedByMarket, root.deliveryEstimate for excludedByMarket);
+ * the record maps market handle -> product GIDs
+ * ("gid://shopify/Product/<id>" — cart-line merchandise.product.id
+ * matches directly). The row/widget hides when ANY cart line's product is
+ * listed for the buyer's market. FAIL-OPEN on malformed config or unknown
+ * market: an exclusion is a targeted per-market subtraction, never a
+ * reason to hide elsewhere — visibility everywhere else still belongs to
+ * the flag + market gates.
+ */
+export function excludedProductInCart(
+  section: unknown,
+  recordKey: string,
+  marketHandle: string | undefined,
+  productIds: ReadonlyArray<string>,
+): boolean {
+  if (!marketHandle || productIds.length === 0) return false;
+  if (!isPlainObject(section)) return false;
+  const record = section[recordKey];
+  if (!isPlainObject(record)) return false;
+  const list = record[marketHandle];
+  if (!Array.isArray(list)) return false;
+  for (const id of productIds) {
+    if (list.includes(id)) return true;
+  }
+  return false;
+}
+
+/**
  * Builds the merchant-facing reason shown when a preview cart (the
  * `_cx_preview` attribute is present) would otherwise see nothing here.
  * Checks run in order, most fundamental first. Hardcoded English on
@@ -311,6 +341,9 @@ export function trustPreviewDiagnosis(input: {
   countryCode: string | undefined;
   /** … or the fail-closed date chain produced no formattable label. */
   trackedDateLabel: string;
+  /** v12: a customs/tracked row is hidden because the preview cart holds a
+   *  product excluded for this market (never blame toggles for that). */
+  excludedRows: boolean;
 }): string {
   if (!input.configFound) {
     return 'config metafield not found — save Settings once in the app and check Setup & health';
@@ -332,6 +365,12 @@ export function trustPreviewDiagnosis(input: {
   }
   if (input.trackedWanted && input.trackedDateLabel === '') {
     return `no delivery date can be computed for ${input.countryCode} — country hidden, invalid schedule, no qualifying delivery day in range, or unformattable date`;
+  }
+  // v12: an exclusion-hidden customs/tracked row must never read as
+  // "toggled off" — name the real reason (the cart holds a product the
+  // merchant excluded for this market on Features → Checkout).
+  if (input.excludedRows) {
+    return 'this cart contains a product excluded for this market (Features → Checkout → Excluded products) — the customs/tracked row stays hidden';
   }
   return 'all trust module elements are toggled off';
 }

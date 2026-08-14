@@ -100,6 +100,31 @@
       "file": "extensions/cellexia-booster/blocks/proof-booster.liquid",
       "reason": "v8.22 wall/overlay design codes: the cx-endo-config island gains two lean members — \"ws\":1 when cfg.dermEndorsements.wallStyle == \"panel\" (official fixed-height panel wall) and \"os\":1 when cfg.dermEndorsements.overlayStyle == \"official\" (explainer overlay: intro + FAQ dropdowns + dermatologist roster). Absent members = the classic wall / list overlay, so a stale island keeps the v8.21 behavior. The overlay-content COPY (intro/FAQ/roster title/panel CTA) deliberately does NOT ride the island: it has non-blank English defaults and no locale-catalog fallback, so the proxy serves it translated-else-source in payload.copy (zero Liquid bytes). Pinned by sims/proof-gallery.cjs P/OF series + harness v8.22 block.",
       "wave": "v8.22"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+      "reason": "v12 per-market product exclusions: new cx_pgid assign ('gid://shopify/Product/' | append: product.id) + cx_exc_dsp flag off cfg.dispatch.excludedByMarket[cx_market] contains cx_pgid; the live dispatch gate gains `and cx_exc_dsp == false`, the draft gate becomes `unless cfg.dispatch.showOnPdp == false or cx_exc_dsp`; the delivery exclusion (cfg.deliveryEstimate.excludedByMarket) FOLDS into cx_del_hidden so live + draft delivery paths are both bound (the byCountry-hidden precedent). No island-member changes — an excluded product simply gets no dispatch/delivery emission, so beacons stay honest for free. Pinned by harness section-5 v12 block.",
+      "wave": "v12"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
+      "reason": "v12 per-market product exclusions: new az_pgid assign + two flags — the delivery/dispatch exclusion folds into az_del_hidden (az_delivery_line hides on EITHER list: the line bundles the delivery date AND the order-within countdown clause, so either promise being untrue for the product invalidates it — killing az_any_delivery also drops thresholdOk, which azTplPayload keys on), and az_exc_sf off cfg.amazon.shipsFromExcludedByMarket gates the live + draft az_ships_from paths AND the shipsFrom member emission ({%- if az_any_micro and az_exc_sf == false %}) — the member is the micro ships row's ONLY warehouse/defaultLabel source, and dropping `ships` alone would have flipped the micro fallback ON (the v6.8.1 yield rule inverts). Both JS read sites are null-guarded, so the absent member renders nothing. Pinned by harness section-5 v12 block.",
+      "wave": "v12"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+      "reason": "v12 per-market product exclusions: two assigns read the CURRENT market's lists (cx_exc_d = cfg.dispatch.excludedByMarket[cx_market], cx_exc_e = cfg.deliveryEstimate.excludedByMarket[cx_market]) and a new gated island member emits them ({%- if cx_exc_d or cx_exc_e %} \"exc\": {\"d\": .. | json, \"e\": .. | json},) between the dc and delivery members — the cart is client-mutable, so the verdict must be computed in JS at render time from state.cart, not baked at Liquid render. Pinned by harness section-5 v12 block; the deploy-safety island matrix parses the new branch.",
+      "wave": "v12"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+      "reason": "v12 per-market product exclusions: new CART-ONLY helper cartExcludedAny(list) (state.cart items vs 'gid://shopify/Product/' + product_id; deliberately NOT a pdp twin — the dispatchSchedule per-file rule) plus one early-return gate in renderDispatch (after the cfg.dc check, before the PREVIEW branch) and one in renderDelivery (after featureOn, before deliveryConfig): `if (cartExcludedAny(cfg.exc && cfg.exc.d|e)) return null;`. A null return means no node AND no impression (renderAll only tracks returned feature keys), and renderInto re-runs on every cart rebuild so client-side cart changes re-verdict without a reload. Exclusion applies in preview too (the byCountry-hidden precedent). Pinned by harness section-5 v12 block.",
+      "wave": "v12"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+      "reason": "v12 review fix (preview honesty): new DISPATCH_PREVIEW_EXCLUDED constant + a cfg.dspx === 1 branch in mountDispatchPreview's invalid-config path — an exclusion-hidden product in a verified preview session names the exclusion (plain cx-preview-note) instead of rendering the false DISPATCH_PREVIEW_INVALID schedule warning (the island suppresses the dispatch member for excluded products, which mountDispatchPreview otherwise reads as an invalid schedule). The dspx marker is emitted by pdp-booster.liquid ONLY while a preview is armed, so real visitors' payloads are byte-identical. Pinned by harness section-5 v12 block (marker emission + JS branch).",
+      "wave": "v12"
     }
   ]
 }

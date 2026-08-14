@@ -388,6 +388,15 @@ for (const [label, nowMs, over, expected] of computeCases) {
   for (const anchor of [
     'resolveDeliveryConfig(configRoot, countryCode, provinceCode)',
     'shippingAddress?.provinceCode',
+    // v12 per-market product exclusions: the widget reads the cart lines,
+    // checks deliveryEstimate.excludedByMarket for the buyer's market, the
+    // veto rides featureVisible (draft grants included), and the preview
+    // diagnosis names exclusion instead of "not enabled".
+    'useCartLines()',
+    "excludedProductInCart(",
+    "'excludedByMarket'",
+    '!deliveryExcluded',
+    'excluded: deliveryExcluded',
   ]) {
     tap.check(`Checkout.tsx anchor present: ${anchor}`, src.includes(anchor));
   }

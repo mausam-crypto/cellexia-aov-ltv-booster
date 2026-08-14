@@ -6,6 +6,7 @@ import {
   useNavigation,
   useSubmit,
 } from "@remix-run/react";
+import type { ShouldRevalidateFunctionArgs } from "@remix-run/react";
 import {
   Banner,
   BlockStack,
@@ -28,12 +29,16 @@ import {
   getSettings,
   resolveFeatureFlag,
   saveSettings,
+  validateExcludedByMarketPatch,
   type BoosterSettings,
   type DeepPartial,
 } from "../models/settings.server";
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import { listMarkets } from "../services/markets.server";
+import { getProductTitlesByIds } from "../services/products.server";
+import { listProductsWithBoosterStatus } from "../services/pdp-content.server";
 import { FeaturePageHeader } from "../components/FeaturePageHeader";
+import { MarketProductExclusionsCard } from "../components/MarketExclusions";
 
 interface AdminGraphqlClient {
   graphql: (
@@ -163,6 +168,14 @@ function validateDispatchPatch(patch: DeepPartial<BoosterSettings>): string[] {
       }
     }
   }
+  // v12: per-market product exclusions (fail-loud shape check — the shared
+  // validator lives beside the sanitizer in settings.server.ts).
+  errors.push(
+    ...validateExcludedByMarketPatch(
+      dispatch.excludedByMarket,
+      "Excluded products",
+    ),
+  );
   return errors;
 }
 
@@ -213,17 +226,58 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     getSettings(session.shop),
     listMarkets(admin),
   ]);
+  // v12: readable labels for the stored exclusion GIDs (fail-soft — a
+  // failed lookup degrades the tags to "Product <id>", never the page).
+  const exclusionTitles = await getProductTitlesByIds(
+    admin,
+    Object.values(settings.dispatch.excludedByMarket).flat(),
+  ).catch(() => ({}) as Record<string, string>);
   return {
     settings,
     markets,
+    exclusionTitles,
     // Combined flag for the shared page header (cheap — settings loaded).
     headerEnabled: resolveFeatureFlag(settings, "dispatch_countdown"),
   };
 };
 
+/**
+ * v12: the exclusion card's product search rides a POST fetcher to this
+ * route's action; Remix would revalidate the loader after it, and the
+ * loader-data reset would wipe unsaved form edits (including the exclusion
+ * row being built — review catch). Searches are read-only lookups: skip
+ * revalidation for them, keep it for every real mutation.
+ */
+export function shouldRevalidate({
+  formData,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  if (formData?.get("intent") === "search_products") return false;
+  return defaultShouldRevalidate;
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
+  // v12: the exclusion card's product search (the ProofForms picker
+  // convention — the picker's fetcher posts to the CURRENT route).
+  if (formData.get("intent") === "search_products") {
+    const result = await listProductsWithBoosterStatus(
+      admin,
+      String(formData.get("q") ?? ""),
+    );
+    return {
+      intent: "search_products" as const,
+      ok: result.ok,
+      errors: result.errors,
+      products: result.products.map((product) => ({
+        gid: product.id,
+        title: product.title,
+        imageUrl: product.imageUrl,
+        status: product.status,
+      })),
+    };
+  }
   return applySettingsPatch(session.shop, admin, formData.get("patch"));
 };
 
@@ -477,6 +531,8 @@ interface DispatchFormState {
   showOnPdp: boolean;
   showInCart: boolean;
   overrides: OverrideRowState[];
+  /** v12: per-market excluded products (market handle -> product GIDs). */
+  excluded: Record<string, string[]>;
   scopes: {
     dispatch_countdown: ScopeState;
   };
@@ -519,6 +575,12 @@ function initialFormState(settings: BoosterSettings): DispatchFormState {
     showOnPdp: dispatch.showOnPdp,
     showInCart: dispatch.showInCart,
     overrides,
+    excluded: Object.fromEntries(
+      Object.entries(dispatch.excludedByMarket).map(([handle, gids]) => [
+        handle,
+        [...gids],
+      ]),
+    ),
     scopes: {
       dispatch_countdown: toScopeState(settings.marketScopes.dispatch_countdown),
     },
@@ -544,6 +606,10 @@ function serializeForCompare(state: DispatchFormState): string {
       country: row.country.trim().toUpperCase(),
       ...schedule(row),
     })),
+    // Key order normalized so add-then-remove of a market compares clean.
+    excluded: Object.fromEntries(
+      Object.entries(state.excluded).sort(([a], [b]) => a.localeCompare(b)),
+    ),
     scopes: scopesToPatch(state.scopes),
   });
 }
@@ -790,7 +856,8 @@ function formatRemaining(totalMinutes: number): string {
 // ---------------------------------------------------------------------------
 
 export default function DispatchFeaturesPage() {
-  const { settings, markets, headerEnabled } = useLoaderData<typeof loader>();
+  const { settings, markets, exclusionTitles, headerEnabled } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -811,18 +878,23 @@ export default function DispatchFeaturesPage() {
     setNextRowId(Object.keys(settings.dispatch.byCountry).length);
   }, [settings]);
 
+  // v12: the action now also answers search_products (picker fetchers) —
+  // toast + banner read only settings-save results.
+  const saveResult =
+    actionData && "syncErrors" in actionData ? actionData : undefined;
+
   useEffect(() => {
-    if (!actionData) return;
-    if (!actionData.ok) {
+    if (!saveResult) return;
+    if (!saveResult.ok) {
       shopify.toast.show("Could not save settings", { isError: true });
-    } else if (actionData.syncErrors.length > 0) {
+    } else if (saveResult.syncErrors.length > 0) {
       shopify.toast.show("Saved, but the storefront sync failed", {
         isError: true,
       });
     } else {
       shopify.toast.show("Saved");
     }
-  }, [actionData, shopify]);
+  }, [saveResult, shopify]);
 
   // Live clock for the preview card — set on mount only (a server-rendered
   // "now" would hydrate differently and mismatch), then ticked every 15s.
@@ -920,6 +992,9 @@ export default function DispatchFeaturesPage() {
         showOnPdp: state.showOnPdp,
         showInCart: state.showInCart,
         byCountry,
+        // v12: wholesale-replaced record — always send the full map (an
+        // empty object clears every exclusion).
+        excludedByMarket: state.excluded,
       },
       marketScopes: scopesToPatch(state.scopes),
     };
@@ -970,18 +1045,18 @@ export default function DispatchFeaturesPage() {
           </Card>
         </Layout.Section>
 
-        {actionData && actionData.syncErrors.length > 0 ? (
+        {saveResult && saveResult.syncErrors.length > 0 ? (
           <Layout.Section>
             <Banner
-              tone={actionData.ok ? "warning" : "critical"}
+              tone={saveResult.ok ? "warning" : "critical"}
               title={
-                actionData.ok
+                saveResult.ok
                   ? "Saved, but the storefront sync reported errors"
                   : "Settings could not be saved"
               }
             >
               <BlockStack gap="100">
-                {actionData.syncErrors.map((error) => (
+                {saveResult.syncErrors.map((error) => (
                   <Text as="p" key={error}>
                     {error}
                   </Text>
@@ -1214,6 +1289,18 @@ export default function DispatchFeaturesPage() {
                   ...previous,
                   scopes: { ...previous.scopes, dispatch_countdown: scope },
                 }))
+              }
+            />
+
+            <MarketProductExclusionsCard
+              title="Excluded products"
+              description="Products excluded for a market never show the dispatch countdown on their own product page there, and a cart containing one hides the cart line for that whole order."
+              markets={markets}
+              value={state.excluded}
+              titles={exclusionTitles}
+              disabled={isSaving}
+              onChange={(next) =>
+                setState((previous) => ({ ...previous, excluded: next }))
               }
             />
           </BlockStack>

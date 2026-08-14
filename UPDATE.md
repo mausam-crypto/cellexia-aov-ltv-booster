@@ -263,6 +263,46 @@ strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
 
+v12 — PER-MARKET PRODUCT EXCLUSIONS (2026-08-13): five delivery-related
+promises can now exclude selected products per market (all optional; with
+no exclusions, nothing changes anywhere). Configured with a shared
+"Excluded products" card (pick a market, search-and-add products):
+
+- Delivery guarantee (Features → Delivery guarantee): an excluded
+  product's own page never shows the delivery promise in that market
+  (classic widget AND the Amazon-pattern delivery line), and a cart or
+  checkout containing one hides the cart widget and the checkout delivery
+  block for that whole order.
+- Dispatch countdown (Features → Dispatch countdown): the "order
+  within…" line disappears from the excluded product's page and from the
+  cart while one is in it. (The Amazon delivery line hides when the
+  product is excluded from EITHER feature — it bundles both promises.)
+- Checkout trust rows (Features → Checkout, one card per row): the
+  customs-free line and the tracked-delivery line each hide at checkout
+  while the cart contains one of their excluded products in that market.
+- Ships from (Features → Amazon patterns, "Excluded products — Ships
+  from"): the excluded product's page shows NO ships-from line at all in
+  that market — the stock-line row AND the microcopy row, including the
+  free-text fallback label.
+
+Exclusions apply to previews too (a hidden widget in the preview names
+the reason: the Preview Center readiness notes disclose active
+exclusions, and the checkout preview diagnostics say "excluded for this
+market" instead of blaming toggles). Excluded renders emit no analytics
+impressions, so conversion stats stay honest. Settings-wise these are
+five new per-market maps (product GIDs; up to 100 products per market and
+150 per feature — the settings blob rides size-capped metafields) riding
+the existing config metafields — NO new feature key, NO DB change, NO new
+scopes, NO locale keys, NO new extension or placement. Checkout matching
+also inspects bundle line components, and the whole wave passed a
+16-finding adversarial review (all confirmed findings fixed in-tree). DEPLOY: both halves per §3 (settings
+model + four admin pages + preview readiness in the app server; the three
+theme-extension blocks + cellexia-cart.js and both checkout extensions'
+Checkout.tsx/trust-logic.ts in the extensions half). Validation: the
+total-Liquid budget tripwire moved 95,000 → 96,500 (documented in
+harness.mjs; still ~5.9KB under Shopify's 102,400 cap) — next Liquid work
+should slim before it spends.
+
 v8.22 — REORDERABLE CHECKOUT TRUST LINES + CLEARER TRACKED-DELIVERY WORDING
 (2026-08-10; internal trust-module version v11/v11.1): (1) the Checkout page's
 trust module card gained a "Lines (display order)" list — every line keeps its

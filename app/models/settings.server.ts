@@ -521,6 +521,17 @@ export interface BoosterSettings {
     showCustoms: boolean;
     showTracked: boolean;
     /**
+     * v12: per-market product exclusions for the two v9 rows — market
+     * handle -> product GIDs ("gid://shopify/Product/<id>"). When the buyer's cart contains
+     * a listed product in that market, the row hides (live AND preview
+     * draft grants; the preview diagnosis names the reason). The checkout
+     * extension reads these from the shop config metafield and matches
+     * cart-line product GIDs directly. Dynamic records:
+     * replaced wholesale on save (DYNAMIC_RECORD_KEYS).
+     */
+    customsExcludedByMarket: Record<string, string[]>;
+    trackedExcludedByMarket: Record<string, string[]>;
+    /**
      * v11 display order of the six trust rows in checkout. Always a full
      * permutation of CHECKOUT_TRUST_ROWS after sanitize (unknown keys drop,
      * duplicates dedupe, missing keys append in default order), so ordering
@@ -767,6 +778,15 @@ export interface BoosterSettings {
       string,
       { cutoff: string; timezone: string; days: number[] }
     >;
+    /**
+     * v12: per-market product exclusions — market handle -> product GIDs
+     * ("gid://shopify/Product/<id>"). A listed product never shows the countdown on its own
+     * product page in that market, and a cart containing one hides the cart
+     * line there (live AND preview — the byCountry `hidden` precedent).
+     * Dynamic record: replaced wholesale on save (DYNAMIC_RECORD_KEYS
+     * "excludedByMarket"); sanitizeExcludedByMarket re-validates entries.
+     */
+    excludedByMarket: Record<string, string[]>;
   };
   /**
    * PDP delivery estimator + delivery guarantee (v5.9). Renders below/next to
@@ -813,6 +833,15 @@ export interface BoosterSettings {
     showInCheckout: boolean;
     /** Per-country (ISO2) overrides; `hidden: true` = never show there. */
     byCountry: Record<string, DeliveryCountryOverride>;
+    /**
+     * v12: per-market product exclusions — market handle -> product GIDs
+     * ("gid://shopify/Product/<id>"). A listed product never shows the delivery promise on its
+     * own product page in that market (classic widget AND az_delivery_line),
+     * and a cart containing one hides the cart widget and the checkout
+     * block there (live AND preview). Dynamic record: replaced wholesale on
+     * save (DYNAMIC_RECORD_KEYS "excludedByMarket").
+     */
+    excludedByMarket: Record<string, string[]>;
     /**
      * United States state-level module (v10). Rides delivery_estimate — no
      * FeatureKey of its own (the boughtOnCards precedent) — and only ever
@@ -938,6 +967,16 @@ export interface BoosterSettings {
      * (e.g. a city or warehouse name), trimmed + length-capped on save.
      */
     shipsFromDefault: string;
+    /**
+     * v12: per-market product exclusions for "Ships from" — market handle
+     * -> product GIDs ("gid://shopify/Product/<id>"). On a listed product's page in that
+     * market NO ships-from renders: the az_ships_from line AND the
+     * az_microcopy ships row (including its shipsFromDefault free-text
+     * fallback — the Liquid island suppresses BOTH the `ships` and the
+     * `shipsFrom` members). Dynamic record: replaced wholesale on save
+     * (DYNAMIC_RECORD_KEYS).
+     */
+    shipsFromExcludedByMarket: Record<string, string[]>;
   };
   /**
    * Per-feature market targeting. A feature is visible in market M only when
@@ -1054,6 +1093,8 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     // zero new checkout content until it enables them explicitly.
     showCustoms: false,
     showTracked: false,
+    customsExcludedByMarket: {},
+    trackedExcludedByMarket: {},
     rowOrder: [...CHECKOUT_TRUST_ROWS],
   },
   clinicalStudy: {
@@ -1145,6 +1186,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     showOnPdp: true,
     showInCart: true,
     byCountry: {},
+    excludedByMarket: {},
   },
   deliveryEstimate: {
     enabled: false,
@@ -1159,6 +1201,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     showInCart: true,
     showInCheckout: true,
     byCountry: {},
+    excludedByMarket: {},
     usStates: {
       enabled: false,
       selector: true,
@@ -1187,6 +1230,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     shipsFromByCountry: {},
     defaultWarehouse: "",
     shipsFromDefault: "",
+    shipsFromExcludedByMarket: {},
   },
   marketScopes: defaultMarketScopes(),
 };
@@ -1224,7 +1268,151 @@ const DYNAMIC_RECORD_KEYS = new Set([
   // Matching is by BARE key name anywhere in the tree, so any future record
   // named byState is wholesale-replaced too.
   "byState",
+  // v12 per-market product-exclusion records (market-handle keyed, default
+  // {}). Four DISTINCT names on purpose: naming one of them after a section
+  // ("dispatch") would wholesale-replace that section's merge. Matching is
+  // by bare key name, so dispatch.excludedByMarket and
+  // deliveryEstimate.excludedByMarket share the first entry.
+  "excludedByMarket",
+  "customsExcludedByMarket",
+  "trackedExcludedByMarket",
+  "shipsFromExcludedByMarket",
 ]);
+
+/**
+ * v12 shared cleaner for the per-market product-exclusion records
+ * (dispatch / deliveryEstimate / checkoutTrust ×2 / amazon). Keys must be
+ * Shopify market handles (the freeShipping.byMarket key rule); values
+ * become deduped arrays of product GIDs — bare numeric ids self-heal to
+ * the GID form (the proxy.proof.tsx coercion precedent). Invalid keys and
+ * empty lists are dropped; each market keeps at most 100 products (the
+ * settings blob rides two 65,536-char json metafields, and the storefront
+ * check is a linear `contains`). All five records share this rule —
+ * DYNAMIC_RECORD_KEYS replaces them wholesale on merge, so every entry is
+ * re-validated here on every save.
+ */
+/**
+ * v12 market-handle rule shared by the exclusion sanitizer + validator.
+ * Shopify market handles are lowercase but NOT ASCII-only ("México" →
+ * "méxico"), so the freeShipping.byMarket ASCII slug rule would silently
+ * reject real handles the admin card itself offers (review catch). Accept
+ * any lowercase, whitespace/quote/angle-free key up to 64 chars, and
+ * refuse the prototype-pollution names outright (`clean["__proto__"] = x`
+ * on a plain object writes the PROTOTYPE, not an own property).
+ */
+function isExclusionMarketHandle(handle: string): boolean {
+  if (handle.length < 1 || handle.length > 64) return false;
+  if (/[\s"'<>\\]/.test(handle)) return false;
+  if (handle !== handle.toLowerCase()) return false;
+  if (/^(__proto__|constructor|prototype)$/.test(handle)) return false;
+  return true;
+}
+
+/** v12: per-record ceiling on TOTAL excluded products across all markets.
+ *  Five records ride two 65,536-char json metafields next to everything
+ *  else (the v10 usStates worst case alone is ~47KB documented), so the
+ *  per-market 100-cap is not enough on its own — without a record total, a
+ *  legal multi-market save could overflow the metafield and wedge every
+ *  later sync (review catch). 150 GIDs ≈ 4.7KB per record worst case. */
+const EXCLUSION_RECORD_TOTAL_CAP = 150;
+
+export function sanitizeExcludedByMarket(
+  raw: unknown,
+): Record<string, string[]> {
+  const productGid = /^gid:\/\/shopify\/Product\/[1-9]\d{0,19}$/;
+  const numericId = /^\d{1,20}$/;
+  const clean: Record<string, string[]> = {};
+  if (!isPlainObject(raw)) return clean;
+  let total = 0;
+  for (const [handle, list] of Object.entries(raw)) {
+    if (!isExclusionMarketHandle(handle) || !Array.isArray(list)) continue;
+    if (total >= EXCLUSION_RECORD_TOTAL_CAP) break;
+    const ids: string[] = [];
+    for (const entry of list) {
+      let id =
+        typeof entry === "string"
+          ? entry.trim()
+          : typeof entry === "number" && Number.isInteger(entry) && entry > 0
+            ? String(entry)
+            : "";
+      // Numeric self-heal (the proxy.proof.tsx precedent) — leading zeros
+      // stripped so "007" can never mint a GID no product ever has.
+      if (numericId.test(id)) {
+        id = `gid://shopify/Product/${id.replace(/^0+(?=\d)/, "")}`;
+      }
+      if (productGid.test(id) && !ids.includes(id)) ids.push(id);
+      if (ids.length >= 100 || total + ids.length >= EXCLUSION_RECORD_TOTAL_CAP) {
+        break;
+      }
+    }
+    if (ids.length > 0) {
+      clean[handle] = ids;
+      total += ids.length;
+    }
+  }
+  return clean;
+}
+
+/**
+ * v12 fail-loud validator for an incoming excludedByMarket patch record.
+ * The four admin actions call this BEFORE saveSettings so a malformed
+ * payload errors loudly instead of being silently trimmed by
+ * sanitizeExcludedByMarket (bad market handles / non-product entries are
+ * merchant-visible errors here; the bare-numeric-id self-heal is allowed).
+ * `undefined`/`null` (field not in the patch) is valid — records are only
+ * validated when actually sent.
+ */
+export function validateExcludedByMarketPatch(
+  record: unknown,
+  label: string,
+): string[] {
+  if (record === undefined || record === null) return [];
+  if (!isPlainObject(record)) {
+    return [`${label}: excluded products must be a map of market handles.`];
+  }
+  const errors: string[] = [];
+  const gidOk = /^gid:\/\/shopify\/Product\/\d{1,20}$/;
+  const numericOk = /^\d{1,20}$/;
+  let total = 0;
+  for (const [handle, list] of Object.entries(record)) {
+    if (!isExclusionMarketHandle(handle)) {
+      errors.push(`${label}: "${handle}" is not a valid market handle.`);
+      continue;
+    }
+    if (!Array.isArray(list)) {
+      errors.push(
+        `${label}: the excluded-product list for "${handle}" must be an array.`,
+      );
+      continue;
+    }
+    if (list.length > 100) {
+      errors.push(
+        `${label}: at most 100 excluded products per market ("${handle}").`,
+      );
+    }
+    total += list.length;
+    for (const entry of list) {
+      const value =
+        typeof entry === "number" && Number.isInteger(entry)
+          ? String(entry)
+          : entry;
+      if (
+        typeof value !== "string" ||
+        !(gidOk.test(value.trim()) || numericOk.test(value.trim()))
+      ) {
+        errors.push(
+          `${label}: "${String(entry)}" is not a product id (market "${handle}").`,
+        );
+      }
+    }
+  }
+  if (total > EXCLUSION_RECORD_TOTAL_CAP) {
+    errors.push(
+      `${label}: at most ${EXCLUSION_RECORD_TOTAL_CAP} excluded products in total across markets — remove some before saving (the settings blob rides a size-capped metafield).`,
+    );
+  }
+  return errors;
+}
 
 /** Deep-merge stored/partial settings over defaults so new fields added in
  *  later app versions always have sane values. Arrays are replaced, not merged. */
@@ -1450,6 +1638,13 @@ export function sanitizeSettings(
   next.checkoutTrust.rowOrder = normalizeTrustRowOrder(
     next.checkoutTrust.rowOrder,
   );
+  // v12: per-market product exclusions for the customs/tracked rows.
+  next.checkoutTrust.customsExcludedByMarket = sanitizeExcludedByMarket(
+    next.checkoutTrust.customsExcludedByMarket,
+  );
+  next.checkoutTrust.trackedExcludedByMarket = sanitizeExcludedByMarket(
+    next.checkoutTrust.trackedExcludedByMarket,
+  );
 
   if (next.freeShipping.mode !== "auto" && next.freeShipping.mode !== "manual") {
     next.freeShipping.mode = DEFAULT_SETTINGS.freeShipping.mode;
@@ -1585,6 +1780,8 @@ export function sanitizeSettings(
       }
     }
     d.byCountry = cleanByCountry;
+    // v12: per-market product exclusions (wholesale-replaced record).
+    d.excludedByMarket = sanitizeExcludedByMarket(d.excludedByMarket);
   }
 
   {
@@ -1682,6 +1879,8 @@ export function sanitizeSettings(
       if (Object.keys(clean).length > 0) cleanByCountry[code] = clean;
     }
     de.byCountry = cleanByCountry;
+    // v12: per-market product exclusions (wholesale-replaced record).
+    de.excludedByMarket = sanitizeExcludedByMarket(de.excludedByMarket);
     // v10 US state module (rides delivery_estimate — no FeatureKey).
     const us = de.usStates;
     const cutoffOk = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -2053,6 +2252,10 @@ export function sanitizeSettings(
       }
     }
     az.shipsFromByCountry = cleanMap;
+    // v12: per-market product exclusions for "Ships from" (wholesale-replaced).
+    az.shipsFromExcludedByMarket = sanitizeExcludedByMarket(
+      az.shipsFromExcludedByMarket,
+    );
     const fallback =
       typeof az.defaultWarehouse === "string"
         ? az.defaultWarehouse.toUpperCase()
