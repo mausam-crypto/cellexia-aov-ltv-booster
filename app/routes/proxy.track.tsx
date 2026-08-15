@@ -14,6 +14,17 @@ import { recordEvent } from "../services/analytics.server";
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.public.appProxy(request);
   if (!session) {
+    // v13.1: no offline session row for this shop means EVERY beacon dies
+    // here, and the fire-and-forget sender never notices. Log it so a
+    // session-storage wipe (db reset, sqlite→postgres move without the
+    // Session rows) shows up in the server logs instead of as silent zeros.
+    const shopParam =
+      new URL(request.url).searchParams.get("shop") ?? "unknown shop";
+    console.warn(
+      `[cellexia-track] beacon rejected for ${shopParam}: no offline session ` +
+        "for this shop — open the app once from the Shopify admin (or " +
+        "reinstall it) to restore the session row.",
+    );
     return Response.json({ ok: false }, { status: 401 });
   }
 

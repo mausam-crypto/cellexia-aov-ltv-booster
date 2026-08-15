@@ -24,9 +24,13 @@ const ALLOWED_FEATURES = new Set([
   "checkout_protection",
   "checkout_trust",
   // v9: checkout_customs / checkout_tracked are intentionally absent — the
-  // checkout-trust extension is pure display (no network calls), so its V2
-  // rows send no beacons (the az_cart_free_line precedent). Add them here
-  // AND to app.analytics.tsx FEATURE_LABELS if that ever changes.
+  // checkout-trust extension is pure display (verified: no fetch/sendBeacon
+  // anywhere in extensions/checkout-trust/src), so its V2 rows send no
+  // beacons. Add them here AND to app.analytics.tsx FEATURE_LABELS if that
+  // ever changes. (v13.1: this comment used to cite az_cart_free_line as the
+  // beacon-free precedent — that claim was the exact misdiagnosis that
+  // silently dropped its impressions; see the az entries below. Never assert
+  // a widget is beacon-free from memory: grep what the extension fires.)
   // PDP trust boosters (SPEC v3) — impression beacons from the five
   // product-page widgets.
   "clinical_study",
@@ -49,9 +53,7 @@ const ALLOWED_FEATURES = new Set([
   // Amazon-pattern boosters (v6.1, split v6.8) — the nine az_* widgets that
   // send impression/click beacons from cellexia-pdp.js. These keys were
   // missing since v6.1, so every az impression was silently dropped here;
-  // added in v6.8 alongside the stock/ships split. az_cart_free_line and
-  // az_cta_count are intentionally absent: they decorate existing theme
-  // elements and send no beacons.
+  // added in v6.8 alongside the stock/ships split.
   "az_buy_box",
   "az_microcopy",
   "az_delivery_line",
@@ -61,6 +63,17 @@ const ALLOWED_FEATURES = new Set([
   "az_bestseller_badge",
   "az_fbt",
   "az_similar_items",
+  // v13.1: the two cart decorators DO beacon, despite old comments in this
+  // file claiming both were beacon-free — renderAzFreeLine returns
+  // 'az_cart_free_line' into the cart impression lists, and
+  // decorateCtaButtons fires fireDrawerImpressions/firePageImpressions with
+  // 'az_cta_count' (cellexia-cart.js:948 and :3487-3488). Both keys were
+  // missing here, so every one of their impressions was silently dropped —
+  // the v6.1 az_* failure mode, twice more. The DROPPED logging in
+  // recordEvent below exists precisely so the next skew cannot stay
+  // invisible.
+  "az_cart_free_line",
+  "az_cta_count",
   // Site-wide session beacon (one per browser session) — powers the
   // experiment tracker's conversion-rate denominator.
   "site",
@@ -112,31 +125,99 @@ function sanitizeMarket(value: string | undefined): string | null {
   return value;
 }
 
+// v13.1: the drop log must survive a junk-beacon flood — the app proxy
+// forwards ANY body a visitor POSTs to /apps/cellexia/track with a valid
+// signature, so an attacker could otherwise bury the one diagnostic line
+// that reveals allowlist skew. One warn per unique (shop, feature, type)
+// per process; the Set is capped to bound memory, and repeats stay silent.
+const WARNED_DROPS = new Set<string>();
+const WARNED_DROPS_MAX = 500;
+
+function warnDropOnce(key: string, message: string): void {
+  if (WARNED_DROPS.has(key) || WARNED_DROPS.size >= WARNED_DROPS_MAX) return;
+  WARNED_DROPS.add(key);
+  console.warn(message);
+}
+
+// v13.1: during a database write outage every beacon would print a full
+// stack trace (one POST per widget impression) — collapse to at most one
+// stack per minute per process, counting what was suppressed in between.
+const DB_ERROR_LOG_INTERVAL_MS = 60_000;
+let dbErrorLastLoggedAt = 0;
+let dbErrorsSuppressed = 0;
+
 export async function recordEvent(
   shop: string,
   input: TrackEventInput,
 ): Promise<boolean> {
   if (!ALLOWED_FEATURES.has(input.feature) || !ALLOWED_TYPES.has(input.type)) {
+    // v13.1: key skew between the deployed extension and this allowlist has
+    // silently zeroed features three times (az_* v6.1→v6.8, then
+    // az_cart_free_line and az_cta_count until v13.1). The sender is
+    // fire-and-forget and the HTTP response is 200 either way, so this log
+    // line is the only place the skew can ever surface — it must be loud.
+    const feature = input.feature.slice(0, 100);
+    const type = input.type.slice(0, 100);
+    warnDropOnce(
+      `${shop}|allowlist|${feature}|${type}`,
+      `[cellexia-track] DROPPED beacon for ${shop}: feature=${JSON.stringify(
+        feature,
+      )} type=${JSON.stringify(type)} is not in the allowlists. If a ` +
+        "deployed widget legitimately sends this key, add it to " +
+        "ALLOWED_FEATURES/ALLOWED_TYPES (and FEATURE_LABELS in " +
+        "app.analytics.tsx). Repeats of this exact drop are not logged again " +
+        "until the server restarts.",
+    );
     return false;
   }
   // "session" is exclusively the site-wide beacon; pairing it with widget
   // features (or "site" with funnel types) would skew both the analytics
   // funnels and the experiment tracker's session counts.
   if ((input.feature === "site") !== (input.type === "session")) {
+    warnDropOnce(
+      `${shop}|mispaired|${input.feature}|${input.type}`,
+      `[cellexia-track] DROPPED mispaired beacon for ${shop}: ` +
+        `feature="${input.feature}" type="${input.type}" ` +
+        '("site" pairs only with "session"). Repeats of this exact drop are ' +
+        "not logged again until the server restarts.",
+    );
     return false;
   }
-  await prisma.event.create({
-    data: {
-      shop,
-      feature: input.feature,
-      type: input.type,
-      quantity: sanitizeQuantity(input.quantity),
-      revenue: sanitizeRevenue(input.revenue),
-      currency: sanitizeCurrency(input.currency),
-      market: sanitizeMarket(input.market),
-      meta: input.meta?.slice(0, 500) ?? null,
-    },
-  });
+  try {
+    await prisma.event.create({
+      data: {
+        shop,
+        feature: input.feature,
+        type: input.type,
+        quantity: sanitizeQuantity(input.quantity),
+        revenue: sanitizeRevenue(input.revenue),
+        currency: sanitizeCurrency(input.currency),
+        market: sanitizeMarket(input.market),
+        meta: input.meta?.slice(0, 500) ?? null,
+      },
+    });
+  } catch (error) {
+    // v13.1: a dead or misconfigured database must not 500 the proxy route
+    // (the sender ignores the response anyway) — but it must be loud here,
+    // without printing one stack per beacon during an outage.
+    const now = Date.now();
+    if (now - dbErrorLastLoggedAt >= DB_ERROR_LOG_INTERVAL_MS) {
+      const suppressedNote =
+        dbErrorsSuppressed > 0
+          ? `; ${dbErrorsSuppressed} similar failures suppressed since the last log`
+          : "";
+      console.error(
+        `[cellexia-track] FAILED to store event for ${shop} ` +
+          `(feature=${input.feature}, type=${input.type}${suppressedNote}):`,
+        error,
+      );
+      dbErrorLastLoggedAt = now;
+      dbErrorsSuppressed = 0;
+    } else {
+      dbErrorsSuppressed += 1;
+    }
+    return false;
+  }
   return true;
 }
 

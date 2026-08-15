@@ -39,6 +39,32 @@ function generatedProvider(): string | null {
 }
 
 function buildClient(): PrismaClient {
+  // v13.1: third defense layer. The v8.5 guard below only engages when
+  // DATABASE_URL IS a Postgres URL — an UNSET (or mistyped, e.g. missing
+  // colon) DATABASE_URL in production skipped both layers and silently ran
+  // the app on the baked-in file:dev.sqlite, a throwaway file wiped on every
+  // redeploy, with every health check green. Refuse to boot instead; the
+  // check lives here (not at module top) so bundling never executes it.
+  if (
+    process.env.NODE_ENV === "production" &&
+    !WANTS_POSTGRES &&
+    process.env.CELLEXIA_ALLOW_SQLITE !== "1"
+  ) {
+    throw new Error(
+      (DATABASE_URL === ""
+        ? "DATABASE_URL is not set in production. "
+        : "DATABASE_URL is set in production but does not start with postgres:// or postgresql:// — " +
+          "probably a typo (a file: URL is NOT honored, see below). ") +
+        "The app would silently run on the SQLite file baked into the build — SQLite mode IGNORES " +
+        "DATABASE_URL entirely (the dev schema hardcodes file:dev.sqlite, resolved next to the schema " +
+        "as prisma/dev.sqlite), and on Docker/Render that file is wiped at every redeploy: settings " +
+        "and analytics would be written into a black hole (the exact v8.5 audit failure). Fix: set " +
+        "DATABASE_URL to the production Postgres URL in the service's environment (build AND " +
+        "runtime), then rebuild and restart. CELLEXIA_ALLOW_SQLITE=1 skips this guard for deliberate " +
+        "throwaway deployments (tests, demos) — it still writes prisma/dev.sqlite, never the " +
+        "DATABASE_URL path.",
+    );
+  }
   if (WANTS_POSTGRES) {
     const provider = generatedProvider();
     if (provider !== null && provider !== "postgresql") {

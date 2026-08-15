@@ -117,6 +117,12 @@ Any Node host works (Fly.io, Render, Railway, Heroku, a VPS). A `Dockerfile` is 
 4. Start: `npm run setup && npm run start` (or the Docker image, which does both).
    `setup` is engine-aware: on Postgres it runs `db push` with the Postgres schema, on
    SQLite it runs the bundled migrations — safe as a boot command on either.
+   ⚠️ v13.1: with `NODE_ENV=production` (the Docker image sets it) the server now
+   REFUSES TO BOOT when `DATABASE_URL` is unset or not a `postgres://` URL — previously
+   it silently ran on the baked-in `prisma/dev.sqlite`, which is wiped on every redeploy
+   (analytics and settings written into a black hole). SQLite mode always uses that
+   local file and IGNORES `DATABASE_URL`; for a deliberate throwaway deployment set
+   `CELLEXIA_ALLOW_SQLITE=1`.
 5. Open the app from the store admin once — OAuth completes and sessions persist.
 
 ## 5. Store wiring (one-time, ~10 minutes — do these in order)

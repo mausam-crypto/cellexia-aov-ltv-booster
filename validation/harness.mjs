@@ -2838,6 +2838,33 @@ const EVIDENCE = {
     ok(dbSrc.includes(anchor), `v8.5: db.server.ts boot-guard anchor present: ${anchor}`);
   }
 
+  // (a3) v13.1: the v8.5 guard only engaged when DATABASE_URL WAS a Postgres
+  // URL — an UNSET/mistyped URL in production silently ran on the baked-in
+  // file:dev.sqlite. Production now refuses to boot in that state (explicit
+  // CELLEXIA_ALLOW_SQLITE=1 escape hatch for throwaway deploys), beacon
+  // drops in the analytics service are loud-but-deduped, and the two cart
+  // decorator keys that DO beacon are in the allowlist (both were silently
+  // dropped before — the third incident of the v6.1 az_* class).
+  for (const anchor of [
+    'process.env.NODE_ENV === "production"',
+    'process.env.CELLEXIA_ALLOW_SQLITE !== "1"',
+    "SQLite mode IGNORES",
+  ]) {
+    ok(dbSrc.includes(anchor), `v13.1: db.server.ts unset-URL guard anchor present: ${anchor}`);
+  }
+  const analyticsSrc = read("app/services/analytics.server.ts");
+  for (const anchor of [
+    '"az_cart_free_line"',
+    '"az_cta_count"',
+    "[cellexia-track] DROPPED beacon",
+    "function warnDropOnce",
+  ]) {
+    ok(
+      analyticsSrc.includes(anchor),
+      `v13.1: analytics allowlist/drop-logging anchor present: ${anchor}`,
+    );
+  }
+
   // (b) v8.4: every proof-library entry funnel asserts the models exist and
   // otherwise throws the actionable message (now v8.5-flow wording).
   const proofSrc = read("app/services/proof.server.ts");

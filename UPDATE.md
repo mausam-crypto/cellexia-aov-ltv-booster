@@ -64,6 +64,16 @@ through `scripts/prisma-env.mjs`, which picks the twin automatically whenever
 `DATABASE_URL` is a Postgres URL. **Never patch `prisma/schema.prisma` again,
 and never run bare `prisma generate` / `prisma migrate deploy` on the host.**
 
+**v13.1 addition:** with `NODE_ENV=production` the server now REFUSES TO BOOT
+when `DATABASE_URL` is unset or not a `postgres://` URL. Previously that state
+silently ran the app on the baked-in `prisma/dev.sqlite` (wiped at every
+redeploy — the v8.5 audit black hole) with every health check green. If the
+service fails to start after this update with a DATABASE_URL error, that is
+the guard doing its job: set `DATABASE_URL` to the production Postgres URL in
+the Render environment (build AND runtime) and redeploy. (SQLite mode always
+uses the local `prisma/dev.sqlite` and ignores `DATABASE_URL`; deliberate
+throwaway deployments can set `CELLEXIA_ALLOW_SQLITE=1`.)
+
 The one database step for this update — create the new tables (run it BEFORE
 or immediately WITH the server deploy, so the new code never serves against
 missing tables):
@@ -262,6 +272,61 @@ Run it after `npm ci` and before deploying; a red scoreboard means stop.
 strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
+
+v13.1 — TRACKING PIPELINE FIXES (2026-08-14): the merchant reports analytics
+stuck at zero while `_cellexia_upsell: cart` order properties prove the
+storefront widgets run. The app-side causes are fixed in-tree; the rest is
+deployment state that this update makes loud instead of silent. **APP SERVER
+ONLY — no extension changes, `npm run deploy` is NOT needed for v13.1** (if
+you deploy it anyway, nothing changes on the storefront).
+
+- Fixed two silently-dropped widgets: the cart drawer's green free-shipping
+  sentence (`az_cart_free_line`) and the cart button counter (`az_cta_count`)
+  both send impression beacons, but old comments claimed they were
+  beacon-free and their keys were missing from the server allowlist, so every
+  one of their impressions was thrown away with an HTTP 200 — the same
+  failure mode as the v6.1→v6.8 az_* incident. Both keys now record and both
+  have friendly labels on the Analytics page.
+- Every dropped beacon is now LOUD in the server logs
+  (`[cellexia-track] DROPPED …`) instead of silently answering ok, so a
+  future key mismatch between the deployed extension and the server can
+  never zero a feature invisibly again. The log is flood-safe: one line per
+  unique drop per server process, and database write failures on the beacon
+  path log at most one stack per minute (and no longer 500).
+- Beacons rejected for a missing offline session (e.g. after a database
+  reset) now log the shop and the fix instead of silently 401ing.
+- Production now REFUSES TO BOOT on an unset/non-Postgres `DATABASE_URL`
+  instead of silently writing to throwaway SQLite — see §2.
+- Validation: 7 new harness pins cover the guard, the allowlist keys and the
+  drop logging (suite now 7,295 checks).
+
+⚠️ The code fixes make problems visible; THREE deployment facts must ALSO be
+true before numbers flow — verify each after deploying:
+
+1. **App proxy**: `https://<store>/apps/cellexia/track` answers
+   `{"ok":true,"service":"cellexia-booster"}` (§4 step 7). Partner
+   Dashboard → the app → App setup → App proxy must be prefix `apps`,
+   subpath `cellexia`, URL = the app host + `/proxy`. EVERY beacon rides
+   this; while it is broken the only surviving signal is the
+   `_cellexia_upsell` order property (written by Shopify's own cart API,
+   never through the app server) — exactly the symptom reported.
+2. **Protected customer data**: Partner Dashboard → the app → API access →
+   Protected customer data access → request the app-level "Protected
+   customer data" (orders). Without approval Shopify never delivers
+   `orders/paid`, so the order cards (orders, AOV, attach and upsell rates)
+   stay empty forever even when everything else works. `read_orders` must
+   also be in the granted scopes (it is in the §1 scopes line; re-accept in
+   the admin if the install predates it).
+3. **DATABASE_URL on Render**: the production Postgres URL, present at build
+   AND runtime (§2). After this update a wrong value fails loudly at boot.
+
+Then re-run **Setup & health** in the app: "App proxy reachable",
+"Storefront pulse (beacons)" and "Order analytics data" watch this pipeline
+from now on. Testing note: any browser tab that ever opened a preview link
+mutes its own beacons for that tab session while the proxy is broken — after
+fixing the proxy, spot-check in a FRESH tab or incognito window so your own
+visit counts, and expect Event rows within minutes but order stats only
+after the next paid order.
 
 v13 — US STATE PROMPT + CHOSEN-STATE CHECKOUT COHERENCE (2026-08-14),
 built for running the state module WITHOUT the IP database:

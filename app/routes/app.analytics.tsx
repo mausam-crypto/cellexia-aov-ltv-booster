@@ -39,6 +39,8 @@ const FEATURE_LABELS: Record<string, string> = {
   free_shipping_bar: "Free-shipping bar",
   subscription_upsell: "Subscription switch",
   subscription_nudge: "Subscription nudge",
+  // The cart drawer's trust row reports under this same key, so this line
+  // aggregates the PDP badges and the cart row together.
   trust_badges: "Trust badges",
   trustpilot: "Trustpilot",
   guarantee: "Guarantee",
@@ -46,6 +48,29 @@ const FEATURE_LABELS: Record<string, string> = {
   checkout_upsell: "Checkout upsell",
   checkout_protection: "Order protection",
   checkout_trust: "Checkout trust",
+  // v13.1: friendly labels for every remaining key the storefront actually
+  // sends — these rows previously rendered with the raw key as their label.
+  cart_cross_sell: "Cart cross-sell",
+  dispatch_countdown: "Dispatch countdown",
+  delivery_estimate: "Delivery estimate",
+  clinical_study: "Clinical study",
+  verified_before_after: "Results gallery (before & after)",
+  batch_transparency: "Batch transparency",
+  empty_bottle_guarantee: "Empty-bottle guarantee",
+  derm_survey: "Dermatologist survey",
+  press: "Press band",
+  derm_endorsements: "Dermatologist endorsements",
+  az_buy_box: "Amazon-pattern buy box",
+  az_microcopy: "Amazon-pattern microcopy",
+  az_delivery_line: "Amazon-pattern delivery line",
+  az_stock_line: "Amazon-pattern stock line",
+  az_ships_from: "Amazon-pattern ships-from",
+  az_bought_count: "Amazon-pattern bought count",
+  az_bestseller_badge: "Bestseller badge",
+  az_fbt: "Frequently bought together",
+  az_similar_items: "You might also like",
+  az_cart_free_line: "Cart free-shipping sentence",
+  az_cta_count: "Cart button counter",
 };
 
 function formatMoney(value: number, currency: string | null): string {
