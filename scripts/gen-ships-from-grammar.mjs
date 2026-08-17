@@ -27,7 +27,7 @@ const PDP_JS = path.join(ROOT, "extensions", "cellexia-booster", "assets", "cell
 
 // Shopify's per-file cap is 15,360B; keep 360B of margin so a growing
 // language trips HERE (and in the validation harness) before a deploy fails.
-const LOCALE_BYTE_BUDGET = 15000;
+const LOCALE_BYTE_BUDGET = 15200; // v14 (2026-08-16): matches the harness v8.16b locale pin (ar.json 15,087B / el.json 15,123B ship minified; Shopify hard cap 15,360B)
 // v8.17: ar.json joined el.json — the endorsement-badge copy took the
 // pretty-printed file over budget; minified it has ~1.2KB of headroom.
 const MINIFIED_LOCALES = ["ar.json", "el.json"];

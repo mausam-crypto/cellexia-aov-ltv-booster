@@ -5767,3 +5767,320 @@ body.customer--b2b .cx-sub-remove {
     height: 92px;
   }
 }
+
+/* v14 rewards cart */
+
+/* v14 rewards — cart drawer + cart page (SPEC-v14 §6). Brand accent
+   #b1cded, ink #1d1d1b; logical properties throughout (RTL-safe). */
+
+/* rewards meter: the shipbar look (track/fill) + milestone marks */
+.cx-rw-meter {
+  margin-block-end: 14px;
+}
+
+.cx-rw-meter__msg {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cx-rw-meter__amount {
+  font-weight: 700;
+}
+
+.cx-rw-meter--done .cx-rw-meter__msg {
+  font-weight: 600;
+}
+
+.cx-rw-meter__track {
+  position: relative;
+  height: 6px;
+  border-radius: 6px;
+  background: #f4f4f4;
+  margin-block: 4px 12px;
+}
+
+.cx-rw-meter__fill {
+  height: 100%;
+  width: 0;
+  border-radius: 6px;
+  background: #b1cded;
+  transition: width 0.35s ease;
+}
+
+.cx-rw-meter--done .cx-rw-meter__fill {
+  background: #1d1d1b;
+}
+
+/* milestone marks: absolutely positioned on the track at --cx-rw-x (a
+   percentage of the scale, set by JS); done marks turn ink */
+.cx-rw-meter__mark {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: var(--cx-rw-x, 0%);
+  width: 12px;
+  height: 12px;
+  margin-inline-start: -6px;
+  margin-block-start: -6px;
+  border-radius: 50%;
+  border: 2px solid #b1cded;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.cx-rw-meter__mark[data-done] {
+  border-color: #1d1d1b;
+  background: #1d1d1b;
+}
+
+.cx-rw-meter__mark[data-kind="ship"] {
+  border-radius: 2px;
+}
+
+/* amount captions under the marks (JS adds them for <= 4 milestones —
+   four fit at 320px; the equal-width segments keep neighbours apart):
+   11px, ink at 60%, centred under the mark, the last one hugs the track
+   end so nothing overflows the drawer; the track leaves room below */
+.cx-rw-meter--caps .cx-rw-meter__track {
+  margin-block-end: 28px;
+}
+
+.cx-rw-meter__cap {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-start: 50%;
+  transform: translateX(-50%);
+  margin-block-start: 5px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: #1d1d1b;
+  opacity: 0.6;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+[dir="rtl"] .cx-rw-meter__cap {
+  transform: translateX(50%);
+}
+
+.cx-rw-meter__mark:last-child .cx-rw-meter__cap {
+  inset-inline-start: auto;
+  inset-inline-end: 50%;
+  transform: none;
+}
+
+/* "Add your free gift back" — quiet inline link under the track */
+.cx-rw-meter__back {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: #1d1d1b;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.cx-rw-meter__back:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* preview-only sample row (would-be gifts) */
+.cx-rw-meter__sample {
+  margin-block-start: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* set-savings nudge + reconciliation */
+.cx-rw-nudge {
+  margin-block-end: 14px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cx-rw-nudge__next {
+  margin: 0;
+  font-weight: 600;
+}
+
+.cx-rw-recon {
+  margin-block-end: 6px;
+  padding-block: 6px;
+  border-block: 1px solid #f4f4f4;
+}
+
+.cx-rw-recon__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #1d1d1b;
+}
+
+.cx-rw-recon__label {
+  flex: 1 1 auto;
+}
+
+.cx-rw-recon__val {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+/* gift rows in the THEME's own cart rows: quantity + remove controls and
+   the subscription control hidden; tag + quiet Remove/Swap in the title */
+[data-cx-gift] .remove-product,
+[data-cx-gift] .action--qty,
+[data-cx-gift] .js-qty--cart,
+[data-cx-gift] .cx-sub-remove-row {
+  display: none !important;
+}
+
+/* the struck original unit price before FREE in the gift row's price cell */
+.cx-rw-giftwas {
+  color: #808080;
+  font-weight: 400;
+  margin-inline-end: 2px;
+}
+
+/* the not-free notice (the gift is not lost, the order cannot take it now)
+   — renderNotice only knows success/error, so the info level lands here */
+.cx-notice--info {
+  border-color: #e3edf7;
+  background: #f6f9fc;
+}
+
+.cx-rw-giftctl {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-block-start: 4px;
+}
+
+.cx-rw-gifttag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 70px;
+  background: #b1cded;
+  color: #1d1d1b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.cx-rw-giftremove,
+.cx-rw-giftswap {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #808080;
+  text-decoration: none;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.cx-rw-giftremove:hover,
+.cx-rw-giftremove:focus-visible,
+.cx-rw-giftswap:hover,
+.cx-rw-giftswap:focus-visible {
+  color: #1d1d1b;
+  text-decoration: underline;
+}
+
+.cx-rw-giftremove:disabled,
+.cx-rw-giftswap:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* preview bar cart simulator (verified preview only) */
+.cx-preview-bar__sim {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.cx-preview-bar__input {
+  width: 64px;
+  padding: 2px 6px;
+  border: 1px solid #b1cded;
+  border-radius: 6px;
+  background: #fff;
+  color: #1d1d1b;
+  font: inherit;
+  font-size: 12px;
+}
+
+.cx-preview-bar__step {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #b1cded;
+  border-radius: 50%;
+  background: transparent;
+  color: #b1cded;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cx-preview-bar__count {
+  white-space: nowrap;
+}
+
+.cx-preview-bar__real {
+  border: 0;
+  background: transparent;
+  color: #b1cded;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  padding: 2px;
+}
+
+@media (max-width: 559px) {
+  .cx-preview-bar__sim {
+    display: none;
+  }
+}
+/* v14 rewards pdp */
+/* Set-savings PDP surfaces (cellexia-pdp.js azRw*): the quiet buy-box
+   row rides the az row family (12px ink, same margin rhythm as
+   .cx-az-bought); the FBT / similar captions sit under their h2 in the
+   Amazon secondary grey; the struck original total sits after the bold
+   discounted amount. Logical properties keep RTL pages honest. */
+.cx-az-row {
+  font-size: 12px;
+  line-height: 16px;
+  color: #1d1d1b;
+  margin-block: 6px 0;
+}
+.cx-rw-pdp {
+  font-weight: 600;
+  color: #067d62;
+}
+.cx-az-fbt__sub,
+.cx-az-similar__sub {
+  margin-block: -6px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #565959;
+}
+.cx-az-fbt__was {
+  margin-inline-start: 6px;
+  font-size: 14px;
+  color: #565959;
+  text-decoration: line-through;
+}

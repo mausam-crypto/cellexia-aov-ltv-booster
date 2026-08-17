@@ -1,5 +1,5 @@
 /**
- * Settings-derivation + 35-key flip proof (repo-resident port of the
+ * Settings-derivation + 37-key flip proof (repo-resident port of the
  * surviving scratchpad proof v68-settings-derivation-proof.ts — the rest
  * of that suite was wiped by OS tmp cleanup, which is why this file lives
  * in validation/ now).
@@ -7,7 +7,8 @@
  * Executes the REAL app/models/settings.server.ts (loaded live via
  * validation/lib/settings-loader.ts, prisma stubbed with a throwing proxy
  * — no mocks of the model itself) and proves:
- *   1. FEATURE_KEYS has 35 keys (v9: checkout_customs + checkout_tracked),
+ *   1. FEATURE_KEYS has 37 keys (v9: checkout_customs + checkout_tracked;
+ *      v14: set_savings + gift_tiers),
  *      az_ships_from right after az_stock_line;
  *   2. AMAZON_FLAG_FIELDS carries shipsFrom in the FEATURE_KEYS az_* order;
  *   3. DEFAULT_SETTINGS.amazon.shipsFrom === false (safe-by-default) and
@@ -17,8 +18,9 @@
  *      .mode/.markets, plus the untouched shared warehouse paths);
  *   5. sanitize: non-boolean shipsFrom falls back to false; a boolean
  *      survives; marketScopes.az_ships_from selected-mode round-trips;
- *   6. FEATURE_DEFS get/set round-trip + FEATURE_RAW_FIELD arm for ALL 35
- *      keys (the flip-test count tripwire, 31 -> 33 in v8, 33 -> 35 in v9);
+ *   6. FEATURE_DEFS get/set round-trip + FEATURE_RAW_FIELD arm for ALL 37
+ *      keys (the flip-test count tripwire, 31 -> 33 in v8, 33 -> 35 in v9,
+ *      35 -> 37 in v14 rewards);
  *   7. snapshotFlags/restoreFlags round-trips shipsFrom, and an older
  *      snapshot without amazonFlags leaves shipsFrom untouched;
  *   8. mergeSettings over a stored pre-v6.8 blob yields shipsFrom:false
@@ -43,6 +45,23 @@ const {
   sanitizeExcludedByMarket,
   snapshotFlags,
   validateExcludedByMarketPatch,
+  // v14 rewards
+  REWARDS_FLAG_FIELDS,
+  REWARDS_CAPS,
+  sanitizeSetSavingsTiers,
+  sanitizeGiftTiers,
+  validateSetSavingsPatch,
+  validateGiftTiersPatch,
+  // v14.2 presets
+  LADDER_PRESETS,
+  LADDER_PRESET_KEYS,
+  GIFT_PRESETS,
+  GIFT_PRESET_KEYS,
+  // v15 step-aside codes
+  DEFAULT_YIELD_TO_CODES,
+  sanitizeYieldToCodes,
+  // v15.1 server-written collision list
+  sanitizeBlockedCodes,
 } = M;
 
 let checks = 0;
@@ -58,13 +77,14 @@ function ok(cond: boolean, label: string) {
 const clone = <T,>(x: T): T => structuredClone(x);
 
 // --- 1. key inventory ------------------------------------------------------
-ok(FEATURE_KEYS.length === 35, `FEATURE_KEYS has 35 keys (got ${FEATURE_KEYS.length})`);
+// v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
+ok(FEATURE_KEYS.length === 37, `FEATURE_KEYS has 37 keys (got ${FEATURE_KEYS.length})`);
 ok(FEATURE_KEYS.includes("az_ships_from"), "az_ships_from is a FeatureKey");
 ok(
   FEATURE_KEYS.indexOf("az_ships_from") === FEATURE_KEYS.indexOf("az_stock_line") + 1,
   "az_ships_from sits right after az_stock_line",
 );
-ok(new Set(FEATURE_KEYS).size === 35, "FEATURE_KEYS has no duplicates");
+ok(new Set(FEATURE_KEYS).size === 37, "FEATURE_KEYS has no duplicates");
 // v9 trust-module V2 rows sit right after the module key, mirroring the
 // checkout block's order in the union.
 ok(
@@ -1072,7 +1092,7 @@ for (const path of [
   }
 }
 
-// --- 6. the 35-key flip round-trip (rebuilt flip-test tripwire) -------------
+// --- 6. the 37-key flip round-trip (rebuilt flip-test tripwire) -------------
 for (const key of FEATURE_KEYS) {
   const s = clone(DEFAULT_SETTINGS);
   FEATURE_DEFS[key].set(s, true);
@@ -1091,6 +1111,366 @@ for (const key of FEATURE_KEYS) {
   ok(
     raw.kind === "amazon" && raw.field === "shipsFrom",
     "FEATURE_RAW_FIELD.az_ships_from = {amazon, shipsFrom}",
+  );
+}
+
+// --- 6b. v14 rewards family (set_savings / gift_tiers) ----------------------
+// The two rewards masters are the LAST two FeatureKeys (appended, never
+// inserted — analytics/experiment payloads index by key name, but the
+// 35 -> 37 move must not reorder anything older). Their raw arm is the new
+// { kind: "rewards" } family mirroring REWARDS_FLAG_FIELDS, the masters
+// default OFF, and the tier sanitizers hold the SPEC caps.
+{
+  ok(
+    FEATURE_KEYS[FEATURE_KEYS.length - 2] === "set_savings" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 1] === "gift_tiers",
+    "v14: set_savings + gift_tiers are the last two FeatureKeys (appended)",
+  );
+  const rwKeys = FEATURE_KEYS.filter(
+    (k: string) => FEATURE_RAW_FIELD[k]?.kind === "rewards",
+  );
+  ok(
+    rwKeys.length === REWARDS_FLAG_FIELDS.length && rwKeys.length === 2,
+    "v14: one REWARDS_FLAG_FIELDS entry per rewards-kind key (2)",
+  );
+  ok(
+    FEATURE_RAW_FIELD.set_savings.kind === "rewards" &&
+      FEATURE_RAW_FIELD.set_savings.field === "setSavings" &&
+      FEATURE_RAW_FIELD.gift_tiers.kind === "rewards" &&
+      FEATURE_RAW_FIELD.gift_tiers.field === "giftTiers",
+    "v14: FEATURE_RAW_FIELD arms = {rewards, setSavings} / {rewards, giftTiers}",
+  );
+  ok(
+    DEFAULT_SETTINGS.rewards.setSavings.enabled === false &&
+      DEFAULT_SETTINGS.rewards.giftTiers.enabled === false &&
+      DEFAULT_SETTINGS.rewards.freeShip.enabled === false,
+    "v14: all three rewards masters default OFF",
+  );
+  ok(
+    DEFAULT_SETTINGS.marketScopes.set_savings?.mode === "all" &&
+      DEFAULT_SETTINGS.marketScopes.gift_tiers?.mode === "all",
+    "v14: default market scopes for set_savings / gift_tiers are all-markets",
+  );
+  const s = clone(DEFAULT_SETTINGS);
+  FEATURE_DEFS.set_savings.set(s, true);
+  ok(s.rewards.setSavings.enabled === true, "v14: set_savings def writes rewards.setSavings.enabled");
+  ok(s.rewards.giftTiers.enabled === false, "v14: set_savings def leaves giftTiers untouched (no sibling group)");
+  FEATURE_DEFS.gift_tiers.set(s, true);
+  ok(s.rewards.giftTiers.enabled === true, "v14: gift_tiers def writes rewards.giftTiers.enabled");
+  const snap = snapshotFlags(s);
+  ok(
+    snap.rewardsFlags?.setSavings === true && snap.rewardsFlags?.giftTiers === true,
+    "v14: snapshotFlags captures rewardsFlags for both masters",
+  );
+  s.rewards.setSavings.enabled = false;
+  s.rewards.giftTiers.enabled = false;
+  restoreFlags(s, snap);
+  ok(
+    s.rewards.setSavings.enabled === true && s.rewards.giftTiers.enabled === true,
+    "v14: restoreFlags puts both rewards masters back",
+  );
+  const old = clone(snap);
+  delete (old as any).rewardsFlags;
+  restoreFlags(s, old);
+  ok(
+    s.rewards.setSavings.enabled === true && s.rewards.giftTiers.enabled === true,
+    "v14: a pre-v14 snapshot (no rewardsFlags) never zeroes the rewards masters",
+  );
+
+  // Tier defaults + sanitizer caps (SPEC §1; v14.2 presets; v15 SET codes).
+  const ladder = (tiers: any[]) => tiers.map((t: any) => `${t.count}:${t.pct}:${t.code}`).join(",");
+  const ss = DEFAULT_SETTINGS.rewards.setSavings.tiers;
+  ok(
+    ladder(ss) === "2:5:SET2,3:10:SET3,4:15:SET4,6:20:SET6",
+    "v15: default set-savings tiers 2/3/4/6 -> 5/10/15/20 SET2/SET3/SET4/SET6 (compact, app-owned NEW codes)",
+  );
+  ok(
+    ladder(LADDER_PRESETS.compact) === "2:5:SET2,3:10:SET3,4:15:SET4,6:20:SET6" &&
+      ladder(LADDER_PRESETS.extended) === "2:5:SET2,3:10:SET3,5:20:SET5,10:30:SET10",
+    "v15: LADDER_PRESETS compact SET2/3/4/6 + extended SET2/3/5/10 pinned",
+  );
+  ok(
+    !JSON.stringify(LADDER_PRESETS).includes("KIT"),
+    "v15: no preset ever ships a KIT code (the store's historical codes are never ours)",
+  );
+  ok(
+    JSON.stringify(LADDER_PRESET_KEYS) === JSON.stringify(["compact", "extended", "custom"]) &&
+      DEFAULT_SETTINGS.rewards.setSavings.ladderPreset === "compact" &&
+      JSON.stringify(ss) === JSON.stringify(LADDER_PRESETS.compact) &&
+      ss !== LADDER_PRESETS.compact,
+    "v14.2: LADDER_PRESET_KEYS compact/extended/custom; default ladderPreset compact and tiers are a CLONE of the preset",
+  );
+  // v15 step-aside codes: default = the store's historical KIT codes;
+  // sanitizer trims/upper-cases/dedupes/caps and drops ladder codes; the
+  // retired keepLegacyCodes / aliasCodes keys vanish; the validator fails
+  // loud on malformed lists and on a yield code that is also a tier code.
+  ok(
+    JSON.stringify(DEFAULT_YIELD_TO_CODES) === JSON.stringify(["KIT2", "KIT3", "KIT5", "KIT10"]) &&
+      JSON.stringify(DEFAULT_SETTINGS.rewards.setSavings.yieldToCodes) === JSON.stringify(["KIT2", "KIT3", "KIT5", "KIT10"]),
+    "v15: yieldToCodes defaults to KIT2/KIT3/KIT5/KIT10 (DEFAULT_YIELD_TO_CODES)",
+  );
+  ok(REWARDS_CAPS.yieldToCodes === 20, "v15: REWARDS_CAPS.yieldToCodes = 20");
+  ok(
+    JSON.stringify(sanitizeYieldToCodes([" kit2 ", "kit2", "SET3", "bad code", "x", "KIT10"], LADDER_PRESETS.compact)) ===
+      JSON.stringify(["KIT2", "KIT10"]),
+    "v15: sanitizeYieldToCodes trims, upper-cases, dedupes, drops bad codes and ladder codes (SET3)",
+  );
+  ok(
+    sanitizeYieldToCodes(Array.from({ length: 30 }, (_, i) => `C${i + 10}`)).length === 20,
+    "v15: sanitizeYieldToCodes caps at 20 entries",
+  );
+  ok(
+    JSON.stringify(sanitizeYieldToCodes("nope")) === JSON.stringify(["KIT2", "KIT3", "KIT5", "KIT10"]) &&
+      sanitizeYieldToCodes([]).length === 0,
+    "v15: a non-array falls back to the defaults; an empty list is a real value (never step aside)",
+  );
+  ok(
+    !("keepLegacyCodes" in DEFAULT_SETTINGS.rewards.setSavings) &&
+      !("aliasCodes" in DEFAULT_SETTINGS.rewards.setSavings) &&
+      !("aliasCodesFor" in M) &&
+      !("LEGACY_KIT_CODES" in M),
+    "v15: keepLegacyCodes / aliasCodes / aliasCodesFor / LEGACY_KIT_CODES are gone from the settings model",
+  );
+  {
+    const legacyRow = clone(DEFAULT_SETTINGS) as any;
+    legacyRow.rewards.setSavings.keepLegacyCodes = true;
+    legacyRow.rewards.setSavings.aliasCodes = ["KIT5"];
+    legacyRow.rewards.setSavings.yieldToCodes = ["kit3", "SET2", "KIT3", "OTHER-1"];
+    const legacyClean = sanitizeSettings(legacyRow, DEFAULT_SETTINGS);
+    ok(
+      !("keepLegacyCodes" in legacyClean.rewards.setSavings) &&
+        !("aliasCodes" in legacyClean.rewards.setSavings) &&
+        JSON.stringify(legacyClean.rewards.setSavings.yieldToCodes) === JSON.stringify(["KIT3", "OTHER-1"]),
+      "v15: sanitizeSettings drops the retired keys and sanitizes yieldToCodes (SET2 = ladder code dropped, kit3 upper-cased/deduped)",
+    );
+    const merged = mergeSettings(clone(DEFAULT_SETTINGS), {
+      rewards: { setSavings: { keepLegacyCodes: false, aliasCodes: ["KIT5"], enabled: true } },
+    }) as any;
+    ok(
+      merged.rewards.setSavings.enabled === true &&
+        !("keepLegacyCodes" in merged.rewards.setSavings) &&
+        !("aliasCodes" in merged.rewards.setSavings),
+      "v15: mergeSettings ignores the retired keys in stored JSON (unknown keys never survive)",
+    );
+    const missing = clone(DEFAULT_SETTINGS) as any;
+    delete missing.rewards.setSavings.yieldToCodes;
+    ok(
+      JSON.stringify(sanitizeSettings(missing, DEFAULT_SETTINGS).rewards.setSavings.yieldToCodes) ===
+        JSON.stringify(["KIT2", "KIT3", "KIT5", "KIT10"]),
+      "v15: a pre-v15 row without yieldToCodes gets the defaults",
+    );
+    ok(
+      validateSetSavingsPatch({ yieldToCodes: ["KIT2", "OK-1"] }).length === 0 &&
+        validateSetSavingsPatch({ yieldToCodes: "KIT2" }).length === 1 &&
+        validateSetSavingsPatch({ yieldToCodes: ["bad code"] }).length === 1 &&
+        validateSetSavingsPatch({ yieldToCodes: Array.from({ length: 21 }, (_, i) => `C${i + 10}`) }).length === 1,
+      "v15: validateSetSavingsPatch fails loud on a non-list, a malformed code and > 20 entries",
+    );
+    ok(
+      validateSetSavingsPatch({ tiers: [{ count: 2, pct: 5, code: "SET2" }], yieldToCodes: ["set2"] }).length === 1,
+      "v15: validateSetSavingsPatch fails loud when a step-aside code is also a tier code of the same patch",
+    );
+    ok(
+      validateSetSavingsPatch({ keepLegacyCodes: "yes" }).length === 0,
+      "v15: the retired keepLegacyCodes field is no longer validated (ignored)",
+    );
+  }
+  // v15.1 blockedCodes: SERVER-WRITTEN by connectRewardsDiscounts (the ladder
+  // codes owned by a foreign discount). Default [], cap 6, sanitizer keeps
+  // only upper/trimmed/deduped codes PRESENT IN THE LADDER, non-array → [];
+  // the validator tolerates an echoed list of strings and rejects anything
+  // else; FEATURE_DEFS labels are the merchant words (no "Gift tiers").
+  {
+    ok(
+      Array.isArray(DEFAULT_SETTINGS.rewards.setSavings.blockedCodes) &&
+        DEFAULT_SETTINGS.rewards.setSavings.blockedCodes.length === 0,
+      "v15.1: rewards.setSavings.blockedCodes defaults to []",
+    );
+    ok(REWARDS_CAPS.blockedCodes === 6, "v15.1: REWARDS_CAPS.blockedCodes = 6 (one per tier at most)");
+    ok(typeof sanitizeBlockedCodes === "function", "v15.1: settings model exports sanitizeBlockedCodes(raw, ladder)");
+    ok(
+      JSON.stringify(sanitizeBlockedCodes([" set2 ", "set2", "SET3", "KIT2", 5, "", "SET99"], LADDER_PRESETS.compact)) ===
+        JSON.stringify(["SET2", "SET3"]),
+      "v15.1: sanitizeBlockedCodes trims/upper-cases/dedupes and keeps ONLY ladder codes (KIT2 / SET99 / non-strings dropped)",
+    );
+    ok(
+      sanitizeBlockedCodes("SET2", LADDER_PRESETS.compact).length === 0 &&
+        sanitizeBlockedCodes(undefined, LADDER_PRESETS.compact).length === 0 &&
+        sanitizeBlockedCodes(["SET2"], []).length === 0,
+      "v15.1: sanitizeBlockedCodes → [] for a non-array or when the ladder is empty",
+    );
+    const bigLadder = Array.from({ length: 6 }, (_, i) => ({ count: i + 2, pct: 5 * (i + 1), code: `SET${i + 2}` }));
+    ok(
+      sanitizeBlockedCodes([...bigLadder.map((t) => t.code), "SET2", "SET3"], bigLadder).length === 6,
+      "v15.1: sanitizeBlockedCodes caps at REWARDS_CAPS.blockedCodes (6)",
+    );
+    const row = clone(DEFAULT_SETTINGS) as any;
+    row.rewards.setSavings.blockedCodes = ["set2", "KIT2", "SET6", "SET6"];
+    const cleanRow = sanitizeSettings(row, DEFAULT_SETTINGS);
+    ok(
+      JSON.stringify(cleanRow.rewards.setSavings.blockedCodes) === JSON.stringify(["SET2", "SET6"]),
+      "v15.1: sanitizeSettings re-derives blockedCodes against the sanitized ladder (KIT2 dropped, upper-cased, deduped)",
+    );
+    const missingBlocked = clone(DEFAULT_SETTINGS) as any;
+    delete missingBlocked.rewards.setSavings.blockedCodes;
+    ok(
+      JSON.stringify(sanitizeSettings(missingBlocked, DEFAULT_SETTINGS).rewards.setSavings.blockedCodes) === "[]",
+      "v15.1: a pre-v15.1 row without blockedCodes gets []",
+    );
+    const patched = sanitizeSettings(
+      mergeSettings(clone(DEFAULT_SETTINGS), { rewards: { setSavings: { blockedCodes: ["SET3"] } } }),
+      DEFAULT_SETTINGS,
+    );
+    ok(
+      JSON.stringify(patched.rewards.setSavings.blockedCodes) === JSON.stringify(["SET3"]) &&
+        JSON.stringify(patched.rewards.setSavings.tiers) === JSON.stringify(LADDER_PRESETS.compact),
+      "v15.1: a Connect-style patch {rewards:{setSavings:{blockedCodes}}} survives merge+sanitize and leaves the tiers untouched",
+    );
+    ok(
+      validateSetSavingsPatch({ blockedCodes: ["SET2"] }).length === 0 &&
+        validateSetSavingsPatch({ blockedCodes: [] }).length === 0 &&
+        validateSetSavingsPatch({ blockedCodes: "SET2" }).length === 1 &&
+        validateSetSavingsPatch({ blockedCodes: [1] }).length === 1,
+      "v15.1: validateSetSavingsPatch tolerates an echoed list of strings and rejects a non-list / non-string entries",
+    );
+    ok(
+      FEATURE_DEFS.set_savings.label === "Set savings" && FEATURE_DEFS.gift_tiers.label === "Free gifts",
+      'v15.1: FEATURE_DEFS labels are "Set savings" / "Free gifts" (the Preview Center picker words)',
+    );
+  }
+  const giftShape = (tiers: any[]) =>
+    tiers
+      .map(
+        (t: any) =>
+          `${t.amount}:` +
+          t.slots
+            .map((slot: any[]) => slot.map((o: any) => (o.kind === "variant" ? o.handle : `samples${o.count}`)).join("|"))
+            .join("+"),
+      )
+      .join(",");
+  const VALUE_FIRST = "119:bamboo-beauty-towel+samples2,200:jawline-contour-tightening-cream+samples2,350:premium-leather-cosmetic-bag+samples3";
+  const CREAM_FIRST = "119:jawline-contour-tightening-cream+samples2,200:bamboo-beauty-towel+samples2,350:premium-leather-cosmetic-bag+samples3";
+  ok(
+    DEFAULT_SETTINGS.rewards.giftTiers.tiers.map((t: any) => t.amount).join(",") === "119,200,350",
+    "v14: default gift tiers 119/200/350 EUR",
+  );
+  ok(
+    giftShape(GIFT_PRESETS.value_first) === VALUE_FIRST && giftShape(GIFT_PRESETS.cream_first) === CREAM_FIRST,
+    "v14.2: GIFT_PRESETS value_first (towel/cream/bag) + cream_first (cream/towel/bag) pinned",
+  );
+  ok(
+    JSON.stringify(GIFT_PRESET_KEYS) === JSON.stringify(["value_first", "cream_first"]) &&
+      DEFAULT_SETTINGS.rewards.giftTiers.giftPreset === "value_first" &&
+      giftShape(DEFAULT_SETTINGS.rewards.giftTiers.tiers) === VALUE_FIRST &&
+      DEFAULT_SETTINGS.rewards.giftTiers.tiers !== GIFT_PRESETS.value_first,
+    "v14.2: GIFT_PRESET_KEYS value_first/cream_first; default giftPreset value_first and tiers are a CLONE of the preset",
+  );
+  ok(
+    GIFT_PRESETS.value_first.every((t: any) => t.slots[0][0].variantId === "") &&
+      GIFT_PRESETS.cream_first.every((t: any) => t.slots[0][0].variantId === ""),
+    "v14.2: gift presets ship handle-only variant options (Load defaults fills GIDs)",
+  );
+  ok(REWARDS_CAPS.setSavingsTiers === 6 && REWARDS_CAPS.giftTiers === 4, "v14: caps 6 KIT tiers / 4 gift tiers");
+  const unsorted = sanitizeSetSavingsTiers([
+    { count: 5, pct: 20, code: "kit5" },
+    { count: 2, pct: 5, code: "KIT2" },
+    { count: 2, pct: 7, code: "DUP2" },
+    { count: 3, pct: 10, code: "KIT2" },
+    { count: 1, pct: 50, code: "ONE" },
+    { count: 4, pct: 95, code: "TOOMUCH" },
+    { count: 7, pct: 15, code: "bad code" },
+  ]);
+  ok(
+    unsorted.map((t: any) => `${t.count}:${t.pct}:${t.code}`).join(",") === "2:5:KIT2,5:20:KIT5",
+    "v14: sanitizeSetSavingsTiers sorts by count, upper-cases codes, drops dup count/code, count<2, pct>90, bad codes",
+  );
+  ok(sanitizeSetSavingsTiers([]).length === 0, "v14: an empty tiers array is a real value (no tiers)");
+  ok(
+    sanitizeSetSavingsTiers("nope").length === 4,
+    "v14: a non-array falls back to the 4 default tiers",
+  );
+  ok(
+    sanitizeSetSavingsTiers(
+      [2, 3, 4, 5, 6, 7, 8, 9].map((count) => ({ count, pct: 5, code: `KIT${count}` })),
+    ).length === REWARDS_CAPS.setSavingsTiers,
+    "v14: set-savings tiers capped at REWARDS_CAPS.setSavingsTiers",
+  );
+  ok(
+    sanitizeGiftTiers([
+      { amount: 200, slots: [[{ kind: "samples", count: 2 }]] },
+      { amount: 119, slots: [[{ kind: "variant", handle: "some-gift" }]] },
+      { amount: 119, slots: [[{ kind: "variant", handle: "dup-amount" }]] },
+      { amount: 500, slots: [] },
+    ])
+      .map((t: any) => t.amount)
+      .join(",") === "119,200",
+    "v14: sanitizeGiftTiers sorts by amount, drops duplicate amounts and slot-less tiers",
+  );
+  ok(
+    validateSetSavingsPatch({ tiers: [{ count: 2, pct: 5, code: "KIT2" }] }).length === 0,
+    "v14: validateSetSavingsPatch accepts a clean tier",
+  );
+  ok(
+    validateSetSavingsPatch({ tiers: [{ count: 2, pct: 5, code: "not ok" }] }).length > 0,
+    "v14: validateSetSavingsPatch rejects a bad KIT code",
+  );
+  ok(
+    validateGiftTiersPatch({ tiers: [{ amount: -1, slots: [[{ kind: "samples", count: 1 }]] }] }).length > 0,
+    "v14: validateGiftTiersPatch rejects a negative amount",
+  );
+  // sanitizeSettings covers the rewards section: masters coerce to boolean,
+  // enums fall back, and the whole section survives a round-trip.
+  const dirty = clone(DEFAULT_SETTINGS) as any;
+  dirty.rewards.giftTiers.choice = "banana";
+  dirty.rewards.giftTiers.sampleRule = "whatever";
+  dirty.rewards.setSavings.enabled = "yes";
+  dirty.rewards.setSavings.ladderPreset = "mega";
+  dirty.rewards.giftTiers.giftPreset = 42;
+  const cleaned = sanitizeSettings(dirty, DEFAULT_SETTINGS);
+  ok(
+    cleaned.rewards.setSavings.ladderPreset === "compact" && cleaned.rewards.giftTiers.giftPreset === "value_first",
+    "v14.2: sanitizeSettings coerces unknown ladderPreset/giftPreset back to the defaults",
+  );
+  const kept = clone(DEFAULT_SETTINGS) as any;
+  kept.rewards.setSavings.ladderPreset = "custom";
+  kept.rewards.giftTiers.giftPreset = "cream_first";
+  const keptClean = sanitizeSettings(kept, DEFAULT_SETTINGS);
+  ok(
+    keptClean.rewards.setSavings.ladderPreset === "custom" && keptClean.rewards.giftTiers.giftPreset === "cream_first",
+    "v14.2: sanitizeSettings keeps valid ladderPreset (custom) / giftPreset (cream_first) values",
+  );
+  // A pre-v14.2 row (no preset fields) is labelled from its tier tables.
+  const legacyRow = clone(DEFAULT_SETTINGS) as any;
+  delete legacyRow.rewards.setSavings.ladderPreset;
+  delete legacyRow.rewards.giftTiers.giftPreset;
+  legacyRow.rewards.setSavings.tiers = clone(LADDER_PRESETS.extended);
+  legacyRow.rewards.giftTiers.tiers = clone(GIFT_PRESETS.cream_first);
+  legacyRow.rewards.giftTiers.tiers[0].slots[0][0].variantId = "gid://shopify/ProductVariant/1";
+  const legacyClean = sanitizeSettings(legacyRow, DEFAULT_SETTINGS);
+  ok(
+    legacyClean.rewards.setSavings.ladderPreset === "extended" && legacyClean.rewards.giftTiers.giftPreset === "cream_first",
+    "v14.2: missing preset fields are inferred from the tier tables (extended / cream_first, variantIds ignored)",
+  );
+  const customRow = clone(DEFAULT_SETTINGS) as any;
+  delete customRow.rewards.setSavings.ladderPreset;
+  delete customRow.rewards.giftTiers.giftPreset;
+  customRow.rewards.setSavings.tiers = [{ count: 2, pct: 5, code: "KIT2" }];
+  customRow.rewards.giftTiers.tiers = [{ amount: 99, slots: [[{ kind: "samples", count: 1 }]] }];
+  const customClean = sanitizeSettings(customRow, DEFAULT_SETTINGS);
+  ok(
+    customClean.rewards.setSavings.ladderPreset === "custom" && customClean.rewards.giftTiers.giftPreset === "custom",
+    "v14.2: missing preset fields over hand-made tables infer custom",
+  );
+  ok(
+    ["auto", "choose"].includes(cleaned.rewards.giftTiers.choice) &&
+      ["not_in_cart", "rotate", "fixed"].includes(cleaned.rewards.giftTiers.sampleRule),
+    "v14: sanitizeSettings coerces rewards enums back into their closed sets",
+  );
+  ok(typeof cleaned.rewards.setSavings.enabled === "boolean", "v14: sanitizeSettings coerces the set-savings master to a boolean");
+  const rt = sanitizeSettings(clone(DEFAULT_SETTINGS), DEFAULT_SETTINGS);
+  ok(
+    JSON.stringify(rt.rewards) === JSON.stringify(DEFAULT_SETTINGS.rewards),
+    "v14: sanitizeSettings round-trips DEFAULT_SETTINGS.rewards unchanged",
   );
 }
 
@@ -1127,4 +1507,4 @@ if (failures > 0) {
   console.error(`\n${failures}/${checks} CHECKS FAILED`);
   process.exit(1);
 }
-console.log(`ALL ${checks} CHECKS PASSED (settings derivation + 35-key flip proof)`);
+console.log(`ALL ${checks} CHECKS PASSED (settings derivation + 37-key flip proof)`);

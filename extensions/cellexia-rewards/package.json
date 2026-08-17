@@ -1,0 +1,30 @@
+{
+  "name": "cellexia-rewards",
+  "private": true,
+  "type": "module",
+  "version": "0.0.1",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "shopify app function build",
+    "typegen": "shopify app function typegen",
+    "test": "node ../../validation/sims/rewards-function.mjs"
+  },
+  "codegen": {
+    "schema": "schema.graphql",
+    "documents": "src/*.graphql",
+    "generates": {
+      "./generated/api.ts": {
+        "plugins": [
+          "typescript",
+          "typescript-operations"
+        ]
+      }
+    },
+    "config": {
+      "omitOperationSuffix": true
+    }
+  },
+  "dependencies": {
+    "@shopify/shopify_function": "^2.0.1"
+  }
+}

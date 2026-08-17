@@ -3,6 +3,10 @@
 Read `docs/theme-integration.md` FIRST. It contains the theme facts (CartJS, mini-cart DOM,
 variant-based volume pricing, Joy selling plans, design tokens) that every widget must respect.
 
+> **v14 (2026-08-16):** Set savings (KIT tiers), Gift tiers and the free-shipping
+> guarantee are specified in `docs/SPEC-v14-rewards.md` (binding contract) with the
+> plain-language rationale in `docs/PLAN-set-savings-gift-tiers.md`.
+
 ## Architecture
 
 - **Remix app** (`app/`): embedded Polaris admin. Settings stored in Prisma (`ShopSettings.data`,

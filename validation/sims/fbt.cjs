@@ -39,8 +39,22 @@ const SRC = fs.readFileSync(
 );
 
 const EXTRACTED = extractAll(SRC, {
-  vars: ["AZ_PROTECTION", "azFbtBusy", "azFbtPicksPromise"],
+  // v14 rewards: the FBT/similar pick loops call azRwSkip (gift/sachet/excluded
+  // filter) and azFbtUpdate/azFbtFinish/azMountSimilar call the set-savings
+  // caption helpers; the extraction carries them so the REAL pipeline runs.
+  vars: ["AZ_PROTECTION", "azFbtBusy", "azFbtPicksPromise", "RW_DEFAULTS"],
   functions: [
+    "cxRwTier",
+    "azRwT",
+    "azRwCfg",
+    "azRwTiers",
+    "azRwPct",
+    "azRwOn",
+    "azRwNum",
+    "azRwIdSet",
+    "azRwSkip",
+    "azRwSub",
+    "azRwFbtApply",
     "routeRoot",
     "insertAfter",
     "cxEl",

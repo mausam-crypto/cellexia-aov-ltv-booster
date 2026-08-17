@@ -26,6 +26,10 @@ export interface FeaturePageHeaderProps {
   statusLabel?: string;
   /** Optional market-reach caption, e.g. "All markets" or "2 markets". */
   reachCaption?: string;
+  /** v15: feature keys the Preview Center should preselect (defaults to
+   *  `[featureKey]`); the Rewards page passes both of its keys so the
+   *  header link matches the readiness row ("Set savings" + "Free gifts"). */
+  previewFeatureKeys?: string[];
 }
 
 export function FeaturePageHeader({
@@ -33,7 +37,10 @@ export function FeaturePageHeader({
   enabled,
   statusLabel,
   reachCaption,
+  previewFeatureKeys,
 }: FeaturePageHeaderProps) {
+  const previewKeys =
+    previewFeatureKeys && previewFeatureKeys.length > 0 ? previewFeatureKeys : [featureKey];
   return (
     <InlineStack gap="300" align="space-between" blockAlign="center" wrap>
       <InlineStack gap="200" blockAlign="center">
@@ -48,7 +55,7 @@ export function FeaturePageHeader({
       </InlineStack>
       <Button
         variant="plain"
-        url={`/app/preview?feature=${encodeURIComponent(featureKey)}`}
+        url={`/app/preview?feature=${encodeURIComponent(previewKeys.join(","))}`}
       >
         Preview this
       </Button>

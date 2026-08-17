@@ -1,0 +1,39 @@
+# v14 rewards — Discount Function ("the referee", SPEC-v14-rewards §8).
+# One function, two targets: cart lines (KIT set-savings codes + free gift
+# lines) and delivery options (free-shipping guarantee). Config comes ONLY
+# from the shop metafield $app:cellexia/rewards written by the server (§2.2).
+# Layout follows the official JS discount template
+# (Shopify/function-examples discounts/javascript/discount/default): the
+# export values map to the camelCase named exports of src/index.js
+# (cart-lines-discounts-generate-run -> cartLinesDiscountsGenerateRun).
+api_version = "2025-10"
+uid = "f7ee5967-6a19-15ab-06e2-81dc9b6faa9fb7cca9c6"
+
+[[extensions]]
+name = "Cellexia rewards"
+handle = "cellexia-rewards"
+type = "function"
+description = "Set savings (KIT tiers), free gift lines and the free-shipping guarantee for Cellexia AOV & LTV Booster."
+
+  [[extensions.targeting]]
+  target = "cart.lines.discounts.generate.run"
+  input_query = "src/cart_lines_discounts_generate_run.graphql"
+  export = "cart-lines-discounts-generate-run"
+
+  [[extensions.targeting]]
+  target = "cart.delivery-options.discounts.generate.run"
+  input_query = "src/cart_delivery_options_discounts_generate_run.graphql"
+  export = "cart-delivery-options-discounts-generate-run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"
+  watch = ["src/**/*.js"]
+  # The run modules use string literals ('PRODUCT', 'FIRST', 'ALL', ...) and never
+  # import generated types, so GraphQL type generation is skipped: the CLI's
+  # default JS typegen needs a locally fetched schema.graphql (only
+  # `shopify app function schema`, which needs a Partner login, writes it — a
+  # plain `npm run deploy` never does). "node -e 0" is a cross-platform no-op.
+  # To regenerate types for local editing: `npx shopify app function schema
+  # --path extensions/cellexia-rewards` then `npm run typegen` in this folder.
+  typegen_command = "node -e 0"

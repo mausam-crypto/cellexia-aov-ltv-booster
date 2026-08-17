@@ -7,9 +7,12 @@ import {
 } from "../models/settings.server";
 import {
   getPreviewState,
+  rewardsForMarket,
+  rewardsPreviewSections,
   tokenHashFor,
   verifyToken,
 } from "../services/preview.server";
+import { getRewardsState, pausedByMarket } from "../services/rewards.server";
 
 /**
  * Preview runtime config endpoint, reached through the Shopify App Proxy:
@@ -36,7 +39,7 @@ import {
  *                               //   "selected"-scope lists — the JS never
  *                               //   does scope logic itself.
  *     tokenHash,                // sha256 hex of the raw token — the exact
- *   }                           //   value the storefront runtime writes to
+ *                               //   value the storefront runtime writes to
  *                               //   the `_cx_preview` cart attribute so ANY
  *                               //   path into checkout carries it (checkout
  *                               //   extensions compare attribute ===
@@ -45,6 +48,28 @@ import {
  *                               //   verified raw-token bearer receives it,
  *                               //   and checkout sessions already see the
  *                               //   same hash via the shop metafield.
+ *     simCart,                  // v14: {spendCents, count} | null — the
+ *                               //   armed cart simulator (storefront
+ *                               //   rwSpendCents()/rwDistinctCount() return
+ *                               //   these; no cart mutation while set)
+ *     rehearsal,                // v14: true = live rehearsal (real cart
+ *                               //   mutations allowed on the preview cart)
+ *     rewardsForMarket,         // v14: {ssTiers, gtAmounts:{a,c}, gifts:
+ *                               //   [{vid,handle,title}]} — live + armed
+ *                               //   draft tiers for the simulated market
+ *                               //   (kept for backward compat)
+ *     rw,                       // v15: {ss, gt, paused, market} — the RAW
+ *                               //   rewards.setSavings / giftTiers sections
+ *                               //   with the armed draft tiers/amounts
+ *                               //   merged in + the market's paused gift
+ *                               //   variants: the same shape as the live
+ *                               //   #cx-rw-config island, so the storefront
+ *                               //   uses PREVIEW.rw when the island is
+ *                               //   absent. Draft rewards data reaches a
+ *                               //   browser ONLY through this token-verified
+ *                               //   endpoint — never through Liquid (the
+ *                               //   v15 "cart became empty" incident).
+ *   }
  * Invalid token → { valid: false } with 200 (no detail leakage, no retries).
  *
  * Unexpected server errors → { valid: false, retriable: true } with 503, so
@@ -73,9 +98,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return Response.json({ valid: false }, { headers: JSON_HEADERS });
     }
 
-    const [state, settings] = await Promise.all([
+    const [state, settings, rewardsState] = await Promise.all([
       getPreviewState(session.shop),
       getSettings(session.shop),
+      // Paused gift variants per market (stock watcher) — the live island
+      // reads them from the gift_stock metafield; the preview payload reads
+      // the same projection from RewardsState. Never fatal.
+      getRewardsState(session.shop).catch(() => null),
     ]);
     // verifyToken passed, so the row exists; guard anyway (deleted mid-flight).
     if (!state) {
@@ -83,6 +112,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     const simulatedMarket = state.simulatedMarket ?? null;
+    // Draft config only ever leaves the server while armed (defense in
+    // depth — disarmPreview clears it, but never trust a stale row).
+    const draftConfig = state.armed ? state.draftConfig : {};
     const liveEffectiveForMarket = Object.fromEntries(
       FEATURE_KEYS.map((key) => [
         key,
@@ -99,6 +131,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         marketSimulated: simulatedMarket !== null && simulatedMarket !== "",
         liveEffectiveForMarket,
         tokenHash: tokenHashFor(state.token),
+        simCart: draftConfig.simCart ?? null,
+        rehearsal: draftConfig.rehearsal === true,
+        rewardsForMarket: rewardsForMarket(
+          settings,
+          draftConfig,
+          simulatedMarket ?? "",
+        ),
+        rw: rewardsPreviewSections(
+          settings,
+          draftConfig,
+          simulatedMarket ?? "",
+          rewardsState ? pausedByMarket(rewardsState.giftStock) : {},
+        ),
       },
       { headers: JSON_HEADERS },
     );

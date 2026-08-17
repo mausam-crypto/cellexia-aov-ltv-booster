@@ -1,0 +1,65 @@
+# v14 rewards — input for cart.delivery-options.discounts.generate.run
+# (SPEC §8, free-shipping guarantee). Same line data as the cart-lines run
+# (units + spend need gift/protection/sachet classification) plus the
+# delivery groups with their option handles and costs.
+query DeliveryInput {
+  cart {
+    attribute(key: "_cx_preview") {
+      value
+    }
+    lines {
+      id
+      quantity
+      attribute(key: "_cellexia_gift") {
+        value
+      }
+      cost {
+        subtotalAmount {
+          amount
+          currencyCode
+        }
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            id
+            hasAnyTag(tags: ["sample-sachet"])
+          }
+        }
+      }
+      sellingPlanAllocation {
+        sellingPlan {
+          id
+        }
+      }
+    }
+    deliveryGroups {
+      id
+      deliveryOptions {
+        handle
+        cost {
+          amount
+        }
+      }
+    }
+  }
+  discount {
+    discountClasses
+  }
+  localization {
+    market {
+      handle
+    }
+    country {
+      isoCode
+    }
+  }
+  presentmentCurrencyRate
+  shop {
+    metafield(namespace: "$app:cellexia", key: "rewards") {
+      jsonValue
+    }
+  }
+}
