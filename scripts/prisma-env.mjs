@@ -85,6 +85,37 @@ function run(args) {
   });
 }
 
+// Retry wrapper for the `apply` step only (db push / migrate deploy) — this
+// is the one Prisma call that talks to a live database over the network at
+// boot time, so it's the one that can fail because the database is merely
+// *briefly* unreachable (a restart, a failover, a transient network blip)
+// rather than genuinely misconfigured. Without this, a brief DB hiccup during
+// boot makes the whole container exit(1) immediately, and the app stays down
+// until Render notices and retries — which can take longer than the DB
+// outage itself. `generate` never talks to the database (it only reads the
+// schema file), so it's never wrapped in this retry.
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function runWithRetry(args, attempts = 5, baseDelayMs = 2000) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      run(args);
+      return;
+    } catch (error) {
+      if (attempt === attempts) throw error;
+      const delayMs = baseDelayMs * 2 ** (attempt - 1);
+      console.error(
+        `\n[prisma-env] "prisma ${args.join(" ")}" failed (attempt ${attempt}/${attempts}) — ` +
+          `retrying in ${delayMs}ms. Expected if the database is mid-restart/briefly unreachable; ` +
+          `if every attempt fails the same way, the underlying error above is real.\n`,
+      );
+      sleep(delayMs);
+    }
+  }
+}
+
 const command = process.argv[2];
 if (!["generate", "apply", "setup"].includes(command ?? "")) {
   fail(`usage: node scripts/prisma-env.mjs <generate|apply|setup> (got: ${command})`);
@@ -108,8 +139,8 @@ if (command === "apply" || command === "setup") {
     // migration_lock.toml pins provider "sqlite") — `migrate deploy` can
     // never run against Postgres. All schema changes are additive, so
     // `db push` is the supported path (see UPDATE.md §2).
-    run(["db", "push", "--schema", schema]);
+    runWithRetry(["db", "push", "--schema", schema]);
   } else {
-    run(["migrate", "deploy", "--schema", schema]);
+    runWithRetry(["migrate", "deploy", "--schema", schema]);
   }
 }
