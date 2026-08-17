@@ -71,9 +71,6 @@ const FEATURE_LABELS: Record<string, string> = {
   az_similar_items: "You might also like",
   az_cart_free_line: "Cart free-shipping sentence",
   az_cta_count: "Cart button counter",
-  // v14 rewards (SPEC v14 §3).
-  set_savings: "Set savings",
-  gift_tiers: "Gift tiers",
 };
 
 function formatMoney(value: number, currency: string | null): string {

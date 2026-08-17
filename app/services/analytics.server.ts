@@ -74,11 +74,6 @@ const ALLOWED_FEATURES = new Set([
   // invisible.
   "az_cart_free_line",
   "az_cta_count",
-  // v14 rewards (SPEC v14 §3): the cart meter/nudge/gift sync and the PDP
-  // set-savings row beacon under these two keys (impression + the four
-  // rewards event types below).
-  "set_savings",
-  "gift_tiers",
   // Site-wide session beacon (one per browser session) — powers the
   // experiment tracker's conversion-rate denominator.
   "site",
@@ -94,12 +89,6 @@ const ALLOWED_TYPES = new Set([
   "protect_off",
   "conversion",
   "session",
-  // v14 rewards: a gift tier reached (meta {tier}), a KIT code newly applied
-  // to the cart, a free gift auto-added / removed (meta {tier}).
-  "tier_reached",
-  "code_applied",
-  "gift_added",
-  "gift_removed",
 ]);
 
 const MAX_QUANTITY = 10000;

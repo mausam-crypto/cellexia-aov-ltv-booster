@@ -238,31 +238,5 @@
       "one": "Finalizar a encomenda ({{ count }} artigo)",
       "other": "Finalizar a encomenda ({{ count }} artigos)"
     }
-  },
-  "rewards": {
-    "meter_gift_away": "Faltam {{ amount }} para receber {{ gift }} de oferta (no valor de {{ value }})",
-    "meter_gift_unlocked": "Oferta desbloqueada: {{ gift }}",
-    "meter_all": "Todas as recompensas desbloqueadas — aproveite!",
-    "set_add_one": "Adicione mais 1 produto e poupe {{ pct }}% em tudo",
-    "set_add_more": "Adicione mais {{ count }} produtos e poupe {{ pct }}% em tudo",
-    "set_saving": "Desconto de conjunto −{{ amount }} ({{ code }})",
-    "set_title": "Complete o seu conjunto e poupe {{ pct }}%",
-    "subtotal": "Subtotal",
-    "free": "GRÁTIS",
-    "gift_tag": "Oferta",
-    "gift_added": "Oferta adicionada ao seu carrinho",
-    "gift_back": "Voltar a adicionar a sua oferta",
-    "gift_unavailable": "A sua oferta não pode ser aplicada a esta encomenda neste momento",
-    "remove": "Remover",
-    "swap": "Trocar oferta",
-    "sample_set": "Conjunto de amostras",
-    "pdp_line": "Adicione qualquer segundo produto e poupe {{ pct }}% em ambos",
-    "pdp_line_next": "Adicione este produto ao carrinho e poupe {{ pct }}% no seu conjunto",
-    "fbt_caption": "Compre os {{ count }} em conjunto e poupe pelo menos {{ pct }}%",
-    "fbt_add_save": "Adicionar os {{ count }} e poupar {{ pct }}%",
-    "similar_caption": "Adicione qualquer um destes e poupe {{ pct }}% em ambos",
-    "meter_gift_away_plain": "Faltam {{ amount }} para receber {{ gift }} de oferta",
-    "set_title_more": "Complete o seu conjunto — {{ pct }}% de desconto em tudo o que adicionar",
-    "fbt_add_save_both": "Adicionar ambos e poupar {{ pct }}%"
   }
 }

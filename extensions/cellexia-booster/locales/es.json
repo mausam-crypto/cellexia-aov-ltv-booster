@@ -238,31 +238,5 @@
       "one": "Tramitar el pedido ({{ count }} producto)",
       "other": "Tramitar el pedido ({{ count }} productos)"
     }
-  },
-  "rewards": {
-    "meter_gift_away": "Te faltan {{ amount }} para recibir gratis {{ gift }} (valorado en {{ value }})",
-    "meter_gift_unlocked": "Regalo gratis desbloqueado: {{ gift }}",
-    "meter_all": "¡Has desbloqueado todas las recompensas, disfrútalas!",
-    "set_add_one": "Añade 1 producto más y ahorra un {{ pct }}% en todo",
-    "set_add_more": "Añade {{ count }} productos más y ahorra un {{ pct }}% en todo",
-    "set_saving": "Ahorro por set −{{ amount }} ({{ code }})",
-    "set_title": "Completa tu set y ahorra un {{ pct }}%",
-    "subtotal": "Subtotal",
-    "free": "GRATIS",
-    "gift_tag": "Regalo gratis",
-    "gift_added": "Regalo gratis añadido a tu cesta",
-    "gift_back": "Vuelve a añadir tu regalo gratis",
-    "gift_unavailable": "Tu regalo gratis no se puede aplicar a este pedido ahora mismo",
-    "remove": "Quitar",
-    "swap": "Cambiar regalo",
-    "sample_set": "Set de muestras",
-    "pdp_line": "Añade cualquier segundo producto y ahorra un {{ pct }}% en ambos",
-    "pdp_line_next": "Añade este producto a tu cesta y ahorra un {{ pct }}% en tu set",
-    "fbt_caption": "Compra los {{ count }} juntos y ahorra al menos un {{ pct }}%",
-    "fbt_add_save": "Añadir los {{ count }} y ahorrar un {{ pct }}%",
-    "similar_caption": "Añade cualquiera de estos y ahorra un {{ pct }}% en ambos",
-    "meter_gift_away_plain": "Te faltan {{ amount }} para recibir gratis {{ gift }}",
-    "set_title_more": "Completa tu set — {{ pct }}% de descuento en todo lo que añadas",
-    "fbt_add_save_both": "Añadir ambos y ahorrar un {{ pct }}%"
   }
 }

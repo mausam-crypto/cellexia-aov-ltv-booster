@@ -37,27 +37,10 @@ import { authenticate } from "../shopify.server";
  * exact epoch math amazon-booster.liquid uses (age >= 0 and <= 3888000 s),
  * so a stale or absent count simply OMITS the field and the card decorator
  * can never render an outdated claim.
- *
- * v14: every entry (cart map AND productsByHandle) gains `"s": 1` when the
- * product carries the `sample-sachet` tag — the storefront's sachet flag
- * (excluded from set-savings counting, FBT/similar picks and cross-sell;
- * mirrors the cart-booster.liquid "products" map).
- *
- * v15: every productsByHandle entry additionally carries `"t"` (product
- * title) and `"h"` (handle) — the cart runtime resolves the gift-tier
- * products (option handles + samplePool) through this endpoint lazily
- * instead of an all_products loop inside the cart island (the v15 island
- * isolation); the cart map is unchanged.
  */
 
 const sanitizeHandle = (handle: string) =>
   handle.toLowerCase().replace(/[^a-z0-9-_]/g, "");
-
-/** v15 handles-mode identity: product title + handle (the cart runtime's
- *  lazy gift-product lookup; the recommendations payload never reaches
- *  the cart, so the proxy is the only title source there). */
-const TITLE_LIQUID = (accessor: string) => `,
-        "t": {{ ${accessor}.title | json }}, "h": {{ ${accessor}.handle | json }}`;
 
 /** Per-product bestseller flag data (v6.4, handles mode only — see the
  *  contract note above). Rendered through Liquid, so the metafield value
@@ -89,7 +72,7 @@ const PRODUCT_BODY_LIQUID = (accessor: string, withBestseller = false) => `{
               {%- endfor -%}
             ]}{%- unless forloop.last -%},{%- endunless -%}
           {%- endfor -%}
-        ]{%- if ${accessor}.tags contains 'sample-sachet' -%}, "s": 1{%- endif -%}${withBestseller ? TITLE_LIQUID(accessor) + BESTSELLER_LIQUID(accessor) : ""}
+        ]${withBestseller ? BESTSELLER_LIQUID(accessor) : ""}
       }`;
 
 const CART_PRODUCTS_LIQUID = `"products": {

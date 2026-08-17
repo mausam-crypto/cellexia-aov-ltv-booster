@@ -804,62 +804,6 @@ function toScopePatch(scope: ScopeState): ScopeState {
   return scope.mode === "all" ? { mode: "all", markets: [] } : scope;
 }
 
-/**
- * v13.2: human "Market reach" caption for a pattern card, computed from the
- * FORM state (unsaved edits included) so the line under each toggle tracks
- * the picker in the Market targeting card live. Names come from the store's
- * market list. STALE HANDLES (a market deleted/renamed in Shopify after the
- * scope was saved) never match `localization.market.handle` in Liquid, so a
- * scope made only of stale handles is hidden everywhere — the caption says
- * so instead of reporting "1 market" (review F3, the Markets page's v8.13 F2
- * rule); each stale handle is labelled "(market not found)". When the market
- * list failed to load (markets.length === 0) handles are shown raw — a
- * failed load must not be reported as a hidden feature. Mirrors the hub's
- * marketReach() wording ("All markets" / "N markets") and adds the names.
- */
-function azReachCaption(
-  scope: ScopeState,
-  markets: { handle: string; name: string }[],
-): string {
-  if (scope.mode !== "selected") return "All markets";
-  if (azSelectionHidesEverywhere(scope, markets)) {
-    return "No markets selected — hidden everywhere";
-  }
-  const nameByHandle = new Map(markets.map((m) => [m.handle, m.name]));
-  const names = [...scope.markets]
-    .sort()
-    .map((handle) =>
-      markets.length === 0
-        ? handle
-        : (nameByHandle.get(handle) ?? `${handle} (market not found)`),
-    );
-  const count =
-    names.length === 1 ? "1 market" : `${names.length} markets`;
-  return `${count}: ${names.join(", ")}`;
-}
-
-/** True when a "selected" scope can never match a live market: no handles
- *  at all, or (with the store's market list loaded) only handles the store
- *  no longer has. Shared by the reach caption and the picker's warning so
- *  the two never disagree. */
-function azSelectionHidesEverywhere(
-  scope: ScopeState,
-  markets: { handle: string }[],
-): boolean {
-  if (scope.mode !== "selected") return false;
-  if (scope.markets.length === 0) return true;
-  if (markets.length === 0) return false;
-  const known = new Set(markets.map((m) => m.handle));
-  return scope.markets.every((handle) => !known.has(handle));
-}
-
-/** DOM id of a pattern's block inside the Market targeting card — the
- *  "Edit markets" link on each feature card scrolls to it, and
- *  /app/features/amazon#market-<key> deep-links land on it. */
-function azMarketAnchorId(key: AzKey): string {
-  return `market-${key}`;
-}
-
 interface LoaderShape {
   features: Record<AzKey, boolean>;
   amazon: {
@@ -924,14 +868,8 @@ function serializeForCompare(state: AmazonFormState): string {
     excluded: Object.fromEntries(
       Object.entries(state.excluded).sort(([a], [b]) => a.localeCompare(b)),
     ),
-    // v13.2 (review F6): market handles are a SET — compare sorted so
-    // un-ticking a market back to the saved selection clears the dirty
-    // flag (the Markets page's serializeMatrixForCompare rule).
     scopes: Object.fromEntries(
-      AZ_KEYS.map((key) => {
-        const scope = toScopePatch(state.scopes[key]);
-        return [key, { mode: scope.mode, markets: [...scope.markets].sort() }];
-      }),
+      AZ_KEYS.map((key) => [key, toScopePatch(state.scopes[key])]),
     ),
   });
 }
@@ -1016,19 +954,10 @@ export default function AmazonFeaturesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const loaderShape: LoaderShape = { features, amazon, scopes };
-  // v13.2 (review F5): key the saved-state memo on CONTENT, not on loader
-  // object identity. Every revalidation (a per-product row save, a translate
-  // run, any fetcher POST other than the v12-skipped search) hands Remix
-  // fresh objects, and the reset effect below then wiped every unsaved
-  // page-level edit — flags, scopes, a fresh "Apply to all" — although the
-  // saved settings had not changed. With a content key the effect only
-  // fires when the saved settings really differ (own Save: state already
-  // equals the new initial, so the reset is a no-op).
-  const initialKey = JSON.stringify({ features, amazon, scopes });
   const initial = useMemo(
     () => initialFormState({ features, amazon, scopes }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [initialKey],
+    [features, amazon, scopes],
   );
   const [state, setState] = useState<AmazonFormState>(() =>
     initialFormState(loaderShape),
@@ -1263,26 +1192,6 @@ export default function AmazonFeaturesPage() {
 
   const isNavigating = navigation.state !== "idle";
 
-  // v13.2: market-targeting discoverability. The Market targeting card sits
-  // at the very bottom of this long page (the v8.6 "couldn't find the market
-  // control" pattern) — every feature card now shows its reach and an "Edit
-  // markets" link that scrolls to that pattern's block in the card;
-  // /app/features/amazon#market-<key> (and #market-targeting) deep-link the
-  // same way on mount (the hub's #display-density precedent).
-  const scrollToMarketAnchor = (id: string) => {
-    if (typeof document === "undefined") return;
-    document
-      .getElementById(id)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const hash = window.location.hash;
-    if (hash === "#market-targeting" || hash.startsWith("#market-az_")) {
-      scrollToMarketAnchor(hash.slice(1));
-    }
-  }, []);
-
   return (
     <Page
       title="Amazon patterns"
@@ -1401,22 +1310,6 @@ export default function AmazonFeaturesPage() {
                       }))
                     }
                   />
-                  {/* v13.2: reach summary (tracks unsaved picks) + jump link
-                      to this pattern's block in the Market targeting card. */}
-                  <InlineStack gap="200" blockAlign="center" wrap>
-                    <Text as="p" tone="subdued" variant="bodySm">
-                      Market reach:{" "}
-                      {azReachCaption(state.scopes[feature.key], markets)}
-                    </Text>
-                    <Button
-                      variant="plain"
-                      onClick={() =>
-                        scrollToMarketAnchor(azMarketAnchorId(feature.key))
-                      }
-                    >
-                      Edit markets
-                    </Button>
-                  </InlineStack>
                   <Text as="p" tone="subdued" variant="bodySm">
                     {feature.how}
                   </Text>
@@ -1970,20 +1863,14 @@ export default function AmazonFeaturesPage() {
         </Layout.Section>
 
         <Layout.Section>
-          {/* v13.2: anchor target for the "Edit markets" links above and for
-              /app/features/amazon#market-targeting deep links. */}
-          <div id="market-targeting">
           <Card>
             <BlockStack gap="300">
               <Text as="h2" variant="headingMd">
                 Market targeting
               </Text>
               <Text as="p" tone="subdued" variant="bodySm">
-                Limit each pattern to selected markets. “All markets” is the
-                default. A feature must also be enabled above to appear
-                anywhere. Markets are read live from your store (Settings →
-                Markets in Shopify admin); the same controls also live on the
-                app's Markets page.
+                Limit each pattern to selected markets. A feature must also be
+                enabled above to appear anywhere.
               </Text>
               {markets.length === 0 ? (
                 <Text as="p" tone="subdued" variant="bodySm">
@@ -1994,24 +1881,11 @@ export default function AmazonFeaturesPage() {
               {AZ_FEATURE_COPY.map((feature) => {
                 const scope = state.scopes[feature.key];
                 return (
-                  <div key={feature.key} id={azMarketAnchorId(feature.key)}>
-                  <BlockStack gap="200">
+                  <BlockStack key={feature.key} gap="200">
                     <Divider />
                     <Text as="h3" variant="headingSm">
                       {feature.title}
                     </Text>
-                    {feature.key === "az_buy_box" ? (
-                      <Text as="p" tone="subdued" variant="bodySm">
-                        This scopes the bordered card itself. The four
-                        Amazon rows inside it — Compound delivery line,
-                        In-stock line, Ships-from line and Trust microcopy
-                        rows — each have their own market setting below; to
-                        hide the whole buy box outside these markets, give
-                        those four the same selection (or use the button
-                        under this picker to copy it to every pattern on
-                        this page).
-                      </Text>
-                    ) : null}
                     <ChoiceList
                       title="Market visibility"
                       titleHidden
@@ -2056,11 +1930,7 @@ export default function AmazonFeaturesPage() {
                                     }
                                   />
                                 ))}
-                                {/* v13.2: same predicate as the reach
-                                    caption — a selection made only of
-                                    handles the store no longer has is
-                                    hidden everywhere too. */}
-                                {azSelectionHidesEverywhere(scope, markets) ? (
+                                {scope.markets.length === 0 ? (
                                   <Text
                                     as="p"
                                     tone="critical"
@@ -2095,55 +1965,11 @@ export default function AmazonFeaturesPage() {
                         }));
                       }}
                     />
-                    {feature.key === "az_buy_box" ? (
-                      // v13.2: one click to scope the WHOLE buy box (card +
-                      // every row) — copies this selection into all eleven
-                      // az scopes in local state; Save persists via the
-                      // existing full-scope patch. Deliberately not a shared
-                      // master scope: each pattern stays independently
-                      // targetable afterwards (the AMAZON_FLAG_FIELDS "no
-                      // shared master" rule extends to scopes).
-                      <InlineStack gap="200" blockAlign="center" wrap>
-                        <Button
-                          variant="plain"
-                          onClick={() =>
-                            setState((previous) => {
-                              const source = previous.scopes.az_buy_box;
-                              return {
-                                ...previous,
-                                scopes: Object.fromEntries(
-                                  AZ_KEYS.map((key) => [
-                                    key,
-                                    {
-                                      mode: source.mode,
-                                      markets: [...source.markets],
-                                    },
-                                  ]),
-                                ) as Record<AzKey, ScopeState>,
-                              };
-                            })
-                          }
-                        >
-                          Apply this selection to all Amazon patterns
-                        </Button>
-                        <Text as="span" tone="subdued" variant="bodySm">
-                          Copies the buy-box card's markets to ALL eleven
-                          patterns on this page — the four rows inside the
-                          card, the bought count, the bestseller badge,
-                          Frequently bought together, Similar items, and the
-                          two cart-drawer patterns (free-shipping sentence,
-                          button item count). Nothing is saved until you
-                          click Save; each pattern stays editable afterwards.
-                        </Text>
-                      </InlineStack>
-                    ) : null}
                   </BlockStack>
-                  </div>
                 );
               })}
             </BlockStack>
           </Card>
-          </div>
         </Layout.Section>
       </Layout>
     </Page>

@@ -180,16 +180,6 @@
    "file": "validation/sims/deploy-safety.cjs",
    "floorBytes": 9000,
    "phase": "required"
-  },
-  {
-   "file": "validation/sims/rewards-tiers.mjs",
-   "floorBytes": 7000,
-   "phase": "required"
-  },
-  {
-   "file": "validation/sims/rewards-function.mjs",
-   "floorBytes": 15000,
-   "phase": "required"
   }
  ]
 }

@@ -12,8 +12,6 @@ languages via **Translate & Adapt**, and integrate with **Joy Subscription** (na
 | Cart drawer | Volume upgrade tiles — swap a 1-unit line to the 2-unit (−15%) or 3-unit (−20%) variant in one tap | Theme app embed |
 | Cart drawer | One-tap switch of a one-time line to the **Continuous Treatment Plan** (Joy selling plan, −5%) | Theme app embed |
 | Cart drawer | Compact trust row (secure checkout · guarantee · Trustpilot) | Theme app embed |
-| Cart drawer + PDP | **Set savings (v14, v15)** — auto-applies the app's OWN codes SET2/SET3/SET4/SET6 (5/10/15/20 %) when the cart holds 2/3/4/6 *different* products (default "compact" preset; "extended" 2/3/5/10 → SET2/SET3/SET5/SET10 at 5/10/20/30 %, or custom); v15: existing store discounts are NEVER touched — the app *steps aside* for the codes in `yieldToCodes` (default KIT2/KIT3/KIT5/KIT10: a shopper using one keeps it, the app never adds/stacks its SET code); nudge to the next tier, cross-sell reframed "Complete your set & save", PDP buy-box line + FBT/YMAL captions; enforced by the app's Discount Function; rewards data isolated in its own live-only `#cx-rw-config` tag | Theme app embed + Discount Function |
-| Cart drawer | **Gift tiers (v14)** — free gift lines auto-added/removed at per-market spend thresholds (100 % off by the Function), rewards meter (gifts + free shipping milestones), gift pools with fallback order and sample sets, per-warehouse stock watch, free-shipping guarantee (≥ 2 full-size units or threshold met) | Theme app embed + Discount Function |
 | Product page | Trust badges under the add-to-cart button | Theme app embed (auto-inject) + app block |
 | Product page | Money-back guarantee badge, Trustpilot strip, subscription nudge | Theme app embed (auto-inject) + app blocks |
 | Anywhere | Clinical study results band (stat numbers + translated labels) | App block |
@@ -181,13 +179,6 @@ Host the Remix backend anywhere Node runs (Fly.io, Render, Heroku…). Set env v
 5. **Analytics** — orders/paid webhook is registered automatically on deploy;
    protected-customer-data access (orders) must be approved in the Partner dashboard for
    production.
-6. **Rewards (v14/v15)** — app nav → Rewards → follow the "Ready to go live?" checklist:
-   *Create discount codes* (creates the app's own SET codes + the two automatic
-   discounts; existing discounts are never modified), Free gifts tab (preset, sachets,
-   *Suggest from local prices*, warehouses, *Refresh stock*), *Preview looks right*, then
-   switch the two features on per market (Markets & go live tab). Publish the gift
-   products to the Online Store first (UPDATE.md §4 item 8). Setup & health gains the
-   *Storefront config islands* self-test (v15).
 
 ## Translate & Adapt workflow
 

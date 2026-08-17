@@ -7,18 +7,11 @@ import {
 import { PDP_METAOBJECT_TYPES } from "./metaobjects.server";
 import { getPreviewState } from "./preview.server";
 import { listMarkets } from "./markets.server";
-import {
-  findRewardsFunctionId,
-  getRewardsState,
-  pausedByMarket,
-  readDiscountNodes,
-} from "./rewards.server";
 
 /**
  * Setup & health checks (SPEC v4 §B).
  *
- * runHealthChecks(admin, session) returns the SEVENTEEN ordered checks (v14:
- * + rewards-discounts, gift-products; v15: + storefront-islands), always
+ * runHealthChecks(admin, session) returns the TWELVE ordered checks, always
  * fresh (the Setup page uses it). getCachedHealth(admin, session) is the
  * cheap variant for high-traffic surfaces (dashboard banner): it reuses a
  * per-shop summary for up to five minutes; invalidateHealthCache(shop)
@@ -1134,42 +1127,10 @@ function looksPasswordProtected(html: string): boolean {
  * carrier gone, wrong-app deploy, or a dead extension reference) and FAILS
  * loudly. Every fetch/read failure still degrades to `warn`.
  */
-/**
- * v15: the storefront HTML both page-level checks read — fetched ONCE per
- * health run (deployed-extension + storefront-islands share it). `home` and
- * `product` are null when the fetch failed; `product` is also null when the
- * store has no product / products.json is unreachable.
- */
-export interface StorefrontPages {
-  home: string | null;
-  product: string | null;
-  productHandle: string | null;
-}
-
-async function loadStorefrontPages(shop: string): Promise<StorefrontPages> {
-  const home = await fetchStorefrontText(`https://${shop}/`);
-  let handle: string | null = null;
-  const productsJson = await fetchStorefrontText(`https://${shop}/products.json?limit=1`);
-  if (productsJson) {
-    try {
-      const parsed = JSON.parse(productsJson) as { products?: { handle?: unknown }[] };
-      const first = parsed.products?.[0]?.handle;
-      handle = typeof first === "string" && first !== "" ? first : null;
-    } catch {
-      handle = null;
-    }
-  }
-  const product = handle
-    ? await fetchStorefrontText(`https://${shop}/products/${encodeURIComponent(handle)}`)
-    : null;
-  return { home, product, productHandle: handle };
-}
-
 async function checkDeployedExtension(
   shop: string,
   settings: BoosterSettings | null,
   embeds: EmbedsSnapshot | null,
-  pages: StorefrontPages | Promise<StorefrontPages>,
 ): Promise<HealthCheck> {
   return runCheck(
     "deployed-extension",
@@ -1184,12 +1145,34 @@ async function checkDeployedExtension(
         fixHint,
       };
       try {
-        const { home, product: productPage } = await pages;
+        const home = await fetchStorefrontText(`https://${shop}/`);
         let presence = extensionPresence(home);
+        let productPage: string | null = null;
+
         if (!presence.present) {
           // Fallback: the first product page (embeds also render there, and
           // some themes only load our assets on product templates).
-          presence = extensionPresence(productPage);
+          const productsJson = await fetchStorefrontText(
+            `https://${shop}/products.json?limit=1`,
+          );
+          let handle: string | null = null;
+          if (productsJson) {
+            try {
+              const parsed = JSON.parse(productsJson) as {
+                products?: { handle?: unknown }[];
+              };
+              const first = parsed.products?.[0]?.handle;
+              handle = typeof first === "string" && first !== "" ? first : null;
+            } catch {
+              handle = null;
+            }
+          }
+          if (handle) {
+            productPage = await fetchStorefrontText(
+              `https://${shop}/products/${encodeURIComponent(handle)}`,
+            );
+            presence = extensionPresence(productPage);
+          }
         }
 
         if (presence.present) {
@@ -1234,120 +1217,6 @@ async function checkDeployedExtension(
       }
     },
   );
-}
-
-// ---------------------------------------------------------------------------
-// v15. storefront-islands — every Cellexia config island on the fetched pages
-// must be valid JSON (the "cart became empty" incident detector)
-// ---------------------------------------------------------------------------
-
-/** The JSON islands this app's theme extension emits (id → owner). */
-export const STOREFRONT_ISLAND_IDS = [
-  "cx-cart-config",
-  "cx-rw-config",
-  "cx-az-config",
-  "cx-pdp-config",
-] as const;
-
-/**
- * Pure: finds every `<script type="application/json" id="<id>">…</script>`
- * island in `html` and JSON.parses its text. Returns one entry per island
- * present (absent islands are simply not listed — a page that does not
- * render a feature has nothing to validate). On a parse failure the entry
- * carries the parser message and a 160-char excerpt around the failure
- * position (a "Liquid error" substring is called out — the v15 incident:
- * one Liquid problem inside a shared island invalidates the WHOLE island and
- * every widget that reads it vanishes).
- */
-export function inspectStorefrontIslands(
-  html: string,
-  ids: readonly string[] = STOREFRONT_ISLAND_IDS,
-): { id: string; ok: boolean; detail: string }[] {
-  const out: { id: string; ok: boolean; detail: string }[] = [];
-  for (const id of ids) {
-    const open = new RegExp(
-      `<script[^>]*\\bid=["']${id}["'][^>]*>`,
-      "i",
-    );
-    const m = open.exec(html);
-    if (!m) continue;
-    const start = m.index + m[0].length;
-    const end = html.indexOf("</script>", start);
-    const text = end === -1 ? html.slice(start) : html.slice(start, end);
-    try {
-      JSON.parse(text);
-      out.push({ id, ok: true, detail: `#${id} parses (${text.length} chars)` });
-    } catch (error) {
-      const message = errorMessage(error);
-      const posMatch = /position (\d+)/i.exec(message);
-      const pos = posMatch ? Number(posMatch[1]) : -1;
-      let excerptAt = pos;
-      if (excerptAt < 0) {
-        const liquidAt = text.indexOf("Liquid error");
-        excerptAt = liquidAt >= 0 ? liquidAt : 0;
-      }
-      const from = Math.max(0, excerptAt - 80);
-      const excerpt = text
-        .slice(from, from + 160)
-        .replace(/\s+/g, " ")
-        .trim();
-      const liquid = text.includes("Liquid error")
-        ? " The island text contains a Liquid error message — a Liquid problem inside the island invalidated the whole JSON."
-        : "";
-      out.push({
-        id,
-        ok: false,
-        detail: `#${id} is not valid JSON: ${message}.${liquid} Excerpt: …${excerpt}…`,
-      });
-    }
-  }
-  return out;
-}
-
-async function checkStorefrontIslands(
-  pages: StorefrontPages | Promise<StorefrontPages>,
-): Promise<HealthCheck> {
-  return runCheck("storefront-islands", "Storefront config islands parse", async () => {
-    const fixHint =
-      "Disarm the preview / turn the affected feature off in Markets and re-run; send this message to support.";
-    const { home, product } = await pages;
-    if (home === null && product === null) {
-      return {
-        status: "warn" as const,
-        detail:
-          "could not fetch the storefront home or product page (network / password page) — nothing to inspect",
-        fixHint: "Re-run the checks; if the store is password-protected this check cannot see the pages.",
-      };
-    }
-    const results: { page: string; id: string; ok: boolean; detail: string }[] = [];
-    if (home !== null) {
-      for (const r of inspectStorefrontIslands(home)) results.push({ page: "home", ...r });
-    }
-    if (product !== null) {
-      for (const r of inspectStorefrontIslands(product)) results.push({ page: "product page", ...r });
-    }
-    const failures = results.filter((r) => !r.ok);
-    if (failures.length > 0) {
-      return {
-        status: "fail" as const,
-        detail: failures.map((f) => `${f.page}: ${f.detail}`).join(" | "),
-        fixHint,
-      };
-    }
-    if (results.length === 0) {
-      return {
-        status: "pass" as const,
-        detail: "No Cellexia config island on the fetched pages (features off or embeds disabled) — nothing to parse.",
-        fixHint: "Nothing to do.",
-      };
-    }
-    const seen = [...new Set(results.map((r) => `#${r.id}`))].join(", ");
-    return {
-      status: "pass" as const,
-      detail: `${results.length} island(s) parse as valid JSON on the fetched pages (${seen}).`,
-      fixHint: "Nothing to do.",
-    };
-  });
 }
 
 /**
@@ -1627,247 +1496,6 @@ async function checkMarketReach(
   });
 }
 
-// ---------------------------------------------------------------------------
-// 15. rewards-discounts (v14 — SPEC v14 §3)
-// ---------------------------------------------------------------------------
-
-async function checkRewardsDiscounts(
-  admin: AdminGraphqlClient,
-  shop: string,
-  settings: BoosterSettings,
-): Promise<HealthCheck> {
-  return runCheck("rewards-discounts", "Discount codes", async () => {
-    const rw = settings.rewards;
-    const wantSs = rw.setSavings.enabled;
-    const wantGt = rw.giftTiers.enabled;
-    const wantFs = rw.freeShip.enabled;
-    const state = await getRewardsState(shop);
-    const nodes = state.nodes;
-    const anyNode =
-      Object.keys(nodes.kit).length > 0 || Boolean(nodes.gift) || Boolean(nodes.ship);
-    if (!wantSs && !wantGt && !wantFs && !anyNode) {
-      return {
-        status: "pass" as const,
-        detail: "Set savings, gift tiers and the free-shipping guarantee are off — nothing to verify.",
-        fixHint:
-          "When you enable one, press “Create discount codes” on the Rewards page.",
-      };
-    }
-    let deployedFunctionId = "";
-    try {
-      deployedFunctionId = await findRewardsFunctionId(admin);
-    } catch (error) {
-      return {
-        status: "warn" as const,
-        detail: `Could not list Shopify Functions (${errorMessage(error)}).`,
-        fixHint: "Re-run the checks; if it persists, verify the write_discounts scope was granted.",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    if (!deployedFunctionId) {
-      return {
-        status: "fail" as const,
-        detail:
-          "The Cellexia rewards discount function is not deployed, so no set-savings code, free gift or free-shipping discount can apply at checkout.",
-        fixHint: "Deploy the extensions (npm run deploy), then press “Create discount codes” on the Rewards page.",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    const problems: string[] = [];
-    if (state.functionId && state.functionId !== deployedFunctionId) {
-      problems.push(
-        "the connected discounts point at a different function id than the deployed one — press “Create discount codes” again",
-      );
-    }
-    const missing: string[] = [];
-    // v15.1: codes Connect found owned by another discount (server-written
-    // rewards.setSavings.blockedCodes) — the app never attaches them; the
-    // tier is simply unavailable until the merchant changes the code.
-    const blocked = new Set(rw.setSavings.blockedCodes ?? []);
-    if (wantSs) {
-      for (const tier of rw.setSavings.tiers) {
-        if (blocked.has(tier.code)) {
-          problems.push(
-            `code ${tier.code} is already used by another discount in your store, so that tier is skipped (change the code in the table or delete that discount yourself)`,
-          );
-        } else if (!nodes.kit[tier.code]) missing.push(`code ${tier.code}`);
-      }
-      // v15: no alias requirement — the store's historical codes are never
-      // ours; the app steps aside for them (yieldToCodes) instead.
-    }
-    if (wantGt && !nodes.gift) missing.push("“Cellexia free gifts”");
-    if (wantFs && !nodes.ship) missing.push("“Cellexia free shipping”");
-    const ids = [...Object.values(nodes.kit), nodes.gift, nodes.ship].filter(Boolean);
-    if (ids.length > 0) {
-      let statuses: Awaited<ReturnType<typeof readDiscountNodes>>;
-      try {
-        statuses = await readDiscountNodes(admin, ids);
-      } catch (error) {
-        // Most often a missing read/write_discounts scope on an older install.
-        return {
-          status: "warn" as const,
-          detail: `Could not read the discount nodes from Shopify: ${errorMessage(error)}`,
-          fixHint:
-            "Grant the write_discounts scope (open the app once so Shopify asks for the new permission, or reinstall) and re-run the health check.",
-          fixUrl: "/app/features/rewards",
-        };
-      }
-      for (const [code, id] of Object.entries(nodes.kit)) {
-        const st = statuses[id];
-        if (!st?.exists) missing.push(`code ${code} (deleted in Shopify)`);
-        else if (st.status !== "ACTIVE") problems.push(`code ${code} is ${st.status}`);
-        else if (st.functionId && st.functionId !== deployedFunctionId) {
-          problems.push(`code ${code} points at another function`);
-        }
-      }
-      for (const [key, label] of [
-        ["gift", "“Cellexia free gifts”"],
-        ["ship", "“Cellexia free shipping”"],
-      ] as const) {
-        const id = nodes[key];
-        if (!id) continue;
-        const st = statuses[id];
-        if (!st?.exists) missing.push(`${label} (deleted in Shopify)`);
-        else if (st.status !== "ACTIVE") problems.push(`${label} is ${st.status}`);
-        else if (st.functionId && st.functionId !== deployedFunctionId) {
-          problems.push(`${label} points at another function`);
-        }
-      }
-    }
-    if (missing.length > 0 || problems.length > 0) {
-      const enabledButMissing = missing.length > 0;
-      return {
-        status: enabledButMissing ? ("fail" as const) : ("warn" as const),
-        detail: [
-          missing.length ? `Missing discounts: ${missing.join(", ")}.` : "",
-          problems.length ? `Problems: ${problems.join("; ")}.` : "",
-        ]
-          .filter(Boolean)
-          .join(" "),
-        fixHint:
-          "Open the Rewards page and press “Create discount codes”. If a code is already used by another discount in your store, change the code in the table or delete that discount yourself — the app never touches discounts it did not create.",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    return {
-      status: "pass" as const,
-      detail: `${Object.keys(nodes.kit).length} set-savings code discount(s), the free-gift and free-shipping automatic discounts are ACTIVE and bound to the deployed function.`,
-      fixHint: "Nothing to do.",
-    };
-  });
-}
-
-// ---------------------------------------------------------------------------
-// 16. gift-products (v14 — every gift option / sachet must be sellable)
-// ---------------------------------------------------------------------------
-
-const GIFT_PRODUCTS_QUERY = `#graphql
-  query cellexiaHealthGiftProducts($query: String!) {
-    products(first: 50, query: $query) {
-      nodes { id handle status publishedAt }
-    }
-  }
-`;
-
-async function checkGiftProducts(
-  admin: AdminGraphqlClient,
-  shop: string,
-  settings: BoosterSettings,
-): Promise<HealthCheck> {
-  return runCheck("gift-products", "Gift products sellable", async () => {
-    const gt = settings.rewards.giftTiers;
-    if (!gt.enabled) {
-      return {
-        status: "pass" as const,
-        detail: "Gift tiers are off — nothing to verify.",
-        fixHint: "Nothing to do.",
-      };
-    }
-    const handles = new Set<string>();
-    let handleless = 0;
-    for (const tier of gt.tiers) {
-      for (const slot of tier.slots) {
-        for (const option of slot) {
-          if (option.kind !== "variant") continue;
-          if (option.handle) handles.add(option.handle);
-          else handleless += 1;
-        }
-      }
-    }
-    for (const entry of gt.samplePool) handles.add(entry.handle);
-    if (handles.size === 0) {
-      return {
-        status: gt.tiers.length === 0 ? ("fail" as const) : ("warn" as const),
-        detail:
-          gt.tiers.length === 0
-            ? "Gift tiers are enabled but no tier is configured — the meter has nothing to show."
-            : "Gift tiers hold no product option (samples only) and the sample pool is empty — nothing can be given.",
-        fixHint: "Open the Rewards page: add gift products or load the sachet pool.",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    const query = [...handles].map((h) => `handle:${h}`).join(" OR ");
-    const json = await graphqlJson<{
-      data?: {
-        products?: {
-          nodes?: { id: string; handle: string; status: string; publishedAt: string | null }[];
-        };
-      };
-    }>(admin, GIFT_PRODUCTS_QUERY, { query });
-    const found = new Map(
-      (json.data?.products?.nodes ?? []).map((p) => [p.handle, p] as const),
-    );
-    const missing = [...handles].filter((h) => !found.has(h));
-    const inactive = [...found.values()].filter((p) => p.status !== "ACTIVE").map((p) => p.handle);
-    const unpublished = [...found.values()]
-      .filter((p) => p.status === "ACTIVE" && !p.publishedAt)
-      .map((p) => p.handle);
-    const state = await getRewardsState(shop);
-    const paused = pausedByMarket(state.giftStock);
-    const pausedMarkets = Object.keys(paused);
-    if (missing.length || inactive.length || unpublished.length) {
-      return {
-        status: "fail" as const,
-        detail: [
-          missing.length ? `Not found: ${missing.join(", ")}.` : "",
-          inactive.length ? `Not active: ${inactive.join(", ")}.` : "",
-          unpublished.length
-            ? `Not published to the Online Store (the storefront cannot add them): ${unpublished.join(", ")}.`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" "),
-        fixHint:
-          "Make every gift product Active and published to the Online Store (hidden from search/collections is fine), or replace the option on the Rewards page.",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    if (handleless > 0 || pausedMarkets.length > 0) {
-      return {
-        status: "warn" as const,
-        detail: [
-          handleless > 0
-            ? `${handleless} gift option(s) have no product handle and cannot render.`
-            : "",
-          pausedMarkets.length > 0
-            ? `Gift options are paused for low stock in: ${pausedMarkets.join(", ")}.`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" "),
-        fixHint:
-          "Review the gift options and the stock table on the Rewards page (paused options un-pause by themselves when stock returns).",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    return {
-      status: "pass" as const,
-      detail: `All ${handles.size} gift/sample products exist, are Active and published; no option is paused for stock.`,
-      fixHint: "Nothing to do.",
-    };
-  });
-}
-
 export async function runHealthChecks(
   admin: AdminGraphqlClient,
   session: SessionLike,
@@ -1890,11 +1518,10 @@ export async function runHealthChecks(
       fixHint: "Check the app database, then re-run the checks.",
     };
     const theme = await fetchThemeFiles(admin);
-    const pages = loadStorefrontPages(shop);
     return [
       crashed,
       await checkAppProxy(shop),
-      await checkDeployedExtension(shop, null, embedsEnabledFromTheme(theme), pages),
+      await checkDeployedExtension(shop, null, embedsEnabledFromTheme(theme)),
       {
         id: "storefront-pulse",
         label: "Storefront pulse (beacons)",
@@ -1924,28 +1551,10 @@ export async function runHealthChecks(
       await checkOrdersData(shop),
       await checkPreviewHygiene(shop),
       await checkProofDatabase(),
-      {
-        id: "rewards-discounts",
-        label: "Discount codes",
-        status: "fail",
-        detail: "Skipped — settings could not be loaded.",
-        fixHint: "Fix the settings load error above first.",
-      },
-      {
-        id: "gift-products",
-        label: "Gift products sellable",
-        status: "fail",
-        detail: "Skipped — settings could not be loaded.",
-        fixHint: "Fix the settings load error above first.",
-      },
-      await checkStorefrontIslands(pages),
     ];
   }
 
   const theme = await fetchThemeFiles(admin);
-  // v15: one storefront fetch (home + first product page) shared by the
-  // deployed-extension probe and the storefront-islands parser.
-  const pages = loadStorefrontPages(shop);
   const [
     configMetafields,
     appProxy,
@@ -1961,13 +1570,10 @@ export async function runHealthChecks(
     ordersData,
     previewHygiene,
     proofDatabase,
-    rewardsDiscounts,
-    giftProducts,
-    storefrontIslands,
   ] = await Promise.all([
     checkConfigMetafields(admin, shop, settings),
     checkAppProxy(shop),
-    checkDeployedExtension(shop, settings, embedsEnabledFromTheme(theme), pages),
+    checkDeployedExtension(shop, settings, embedsEnabledFromTheme(theme)),
     checkStorefrontPulse(shop, settings),
     checkMarketReach(admin, settings),
     checkThemeEmbeds(theme, themeEditorUrl),
@@ -1979,9 +1585,6 @@ export async function runHealthChecks(
     checkOrdersData(shop),
     checkPreviewHygiene(shop),
     checkProofDatabase(),
-    checkRewardsDiscounts(admin, shop, settings),
-    checkGiftProducts(admin, shop, settings),
-    checkStorefrontIslands(pages),
   ]);
 
   return [
@@ -1999,9 +1602,6 @@ export async function runHealthChecks(
     ordersData,
     previewHygiene,
     proofDatabase,
-    rewardsDiscounts,
-    giftProducts,
-    storefrontIslands,
   ];
 }
 

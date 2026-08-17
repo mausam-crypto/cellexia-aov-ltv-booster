@@ -1,9 +1,9 @@
 /**
- * Flip-test — the 37-FeatureKey flip / scope / snapshot / selective-restore
+ * Flip-test — the 35-FeatureKey flip / scope / snapshot / selective-restore
  * tripwire, executed against the REAL app/models/settings.server.ts
  * (imported directly — the prisma client is constructed but never queried).
  *
- * Per key (all 37; v14 rewards added set_savings + gift_tiers):
+ * Per key (all 35):
  *  - FEATURE_DEFS get/set round-trip surfaces through resolveFeatureFlag;
  *  - FEATURE_RAW_FIELD arm exists and its raw field is the one the def
  *    actually flips;
@@ -47,8 +47,7 @@ const clone = <T>(x: T): T => structuredClone(x);
 const MARKETS = ["ch", "eu", "us"];
 
 // --- inventory ---------------------------------------------------------------
-// v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
-ok(FEATURE_KEYS.length === 37, `37 FeatureKeys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 35, `35 FeatureKeys (got ${FEATURE_KEYS.length})`);
 ok(new Set(FEATURE_KEYS).size === FEATURE_KEYS.length, "no duplicate keys");
 ok(AMAZON_FLAG_FIELDS.length === FEATURE_KEYS.filter((k) => k.startsWith("az_")).length,
   "one amazon flag field per az_* key");
@@ -59,8 +58,6 @@ function rawValue(s: BoosterSettings, key: FeatureKey): boolean {
   if (raw.kind === "section") return s[raw.field].enabled;
   // v9: the two checkout-trust row sub-flags live inside checkoutTrust.
   if (raw.kind === "checkoutTrust") return s.checkoutTrust[raw.field];
-  // v14: the two rewards masters live at rewards.<setSavings|giftTiers>.enabled.
-  if (raw.kind === "rewards") return s.rewards[raw.field].enabled;
   return s.amazon[raw.field];
 }
 
@@ -222,9 +219,7 @@ for (const key of FEATURE_KEYS) {
           ? typeof snap.sectionEnabled[raw.field] === "boolean"
           : raw.kind === "checkoutTrust"
             ? typeof snap.checkoutTrustSubFlags?.[raw.field] === "boolean"
-            : raw.kind === "rewards"
-              ? typeof snap.rewardsFlags?.[raw.field] === "boolean"
-              : typeof snap.amazonFlags?.[raw.field] === "boolean";
+            : typeof snap.amazonFlags?.[raw.field] === "boolean";
     ok(captured, `snapshot captures the raw field of ${key}`);
   }
   ok(typeof snap.cartMaster === "boolean", "snapshot captures the cart master");
@@ -283,50 +278,6 @@ for (const key of FEATURE_KEYS) {
     "v9: module scope widened by exactly the flip market");
 }
 
-// --- v14 rewards family: raw arm, independent masters, snapshot shape ----------
-// set_savings / gift_tiers are two independent masters (siblings [] — no
-// overlap group like cart_*): flipping one never touches the other, the
-// snapshot carries them under rewardsFlags, and a pre-v14 snapshot (no
-// rewardsFlags key) is skipped, never zeroed (the amazonFlags precedent).
-{
-  ok(FEATURE_RAW_FIELD.set_savings.kind === "rewards" &&
-     FEATURE_RAW_FIELD.set_savings.field === "setSavings" &&
-     FEATURE_RAW_FIELD.gift_tiers.kind === "rewards" &&
-     FEATURE_RAW_FIELD.gift_tiers.field === "giftTiers",
-    "v14: FEATURE_RAW_FIELD arms = {rewards, setSavings} / {rewards, giftTiers}");
-  const s = clone(DEFAULT_SETTINGS);
-  applyFlipForMarket(s, "set_savings", "all", true, MARKETS);
-  ok(s.rewards.setSavings.enabled === true && s.rewards.giftTiers.enabled === false,
-    "v14: flipping set_savings never touches the gift_tiers master (independent masters)");
-  applyFlipForMarket(s, "gift_tiers", "ch", true, MARKETS);
-  ok(s.rewards.setSavings.enabled === true &&
-     s.marketScopes.set_savings.mode === "all" &&
-     s.marketScopes.gift_tiers.mode === "selected" &&
-     s.marketScopes.gift_tiers.markets.join(",") === "ch",
-    "v14: a scoped gift_tiers flip leaves the set_savings scope alone");
-  const snap = snapshotFlags(s);
-  ok(snap.rewardsFlags?.setSavings === true && snap.rewardsFlags?.giftTiers === true,
-    "v14: snapshotFlags carries rewardsFlags for both masters");
-  s.rewards.setSavings.enabled = false;
-  s.rewards.giftTiers.enabled = false;
-  s.marketScopes.gift_tiers = { mode: "all", markets: [] };
-  restoreFlagsSelective(s, snap, ["gift_tiers"]);
-  ok(s.rewards.giftTiers.enabled === true &&
-     s.marketScopes.gift_tiers.mode === "selected" &&
-     s.rewards.setSavings.enabled === false,
-    "v14: selective restore of gift_tiers puts back its master + scope and NOT set_savings");
-  restoreFlags(s, snap);
-  ok(s.rewards.setSavings.enabled === true, "v14: full restore puts the set_savings master back");
-  const old = clone(snap) as Partial<typeof snap>;
-  delete old.rewardsFlags;
-  restoreFlags(s, old as typeof snap);
-  ok(s.rewards.setSavings.enabled === true && s.rewards.giftTiers.enabled === true,
-    "v14: restoreFlags with a pre-v14 snapshot never zeroes the rewards masters");
-  restoreFlagsSelective(s, old as typeof snap, ["set_savings"]);
-  ok(s.rewards.setSavings.enabled === true,
-    "v14: restoreFlagsSelective skips a missing rewardsFlags field, never zeroes it");
-}
-
 // --- v8.3 legacy-density coercion: the REAL getSettings load-path composition --
 // A stored v8.2 blob (compact boolean, NO density key) must load as ultra —
 // mergeSettings fills the missing key from DEFAULT_SETTINGS ("full"), so the
@@ -366,4 +317,4 @@ if (failures > 0) {
   console.error(`\n${failures}/${checks} CHECKS FAILED`);
   process.exit(1);
 }
-console.log(`ALL ${checks} CHECKS PASSED (37-key flip/scope/snapshot/selective-restore vs the real settings.server.ts)`);
+console.log(`ALL ${checks} CHECKS PASSED (35-key flip/scope/snapshot/selective-restore vs the real settings.server.ts)`);

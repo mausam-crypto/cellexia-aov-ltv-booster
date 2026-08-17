@@ -34,11 +34,8 @@ under ~3 minutes.
   the equivalence baseline for future waves. Re-baseline deliberately, per
   wave, never as a side effect.
 - **harness.mjs** — structural tripwires, each self-checking against
-  vacuity: Liquid byte budget (≤99,500 own budget under Shopify's 102,400
-  cap — documented pin moves: 95,000 → 96,500 in v12, → 99,500 in v14
-  rewards; the NEXT Liquid work must slim before it spends) + per-file
-  floor/ceiling (+ v14 per-file caps for the cart/amazon islands);
-  PREVIEW COVERAGE (all 37 FEATURE_KEYS
+  vacuity: Liquid byte budget (≤95,000 own budget under Shopify's 102,400
+  cap) + per-file floor/ceiling; PREVIEW COVERAGE (all 35 FEATURE_KEYS
   parsed live from settings.server.ts, each pinned to real storefront
   markers / checkout gates); PICKER COVERAGE (FEATURE_GROUPS, GROUPS,
   CONFIGURE_URL, fallback-group code); CLASS COVERAGE (every emitted cx-*
@@ -60,25 +57,12 @@ under ~3 minutes.
   sanitize anchors, emission defaults, the three island "cm" literals,
   the .cx-press__quote[hidden] guard + endorsement pre-line rule); SUITE
   INVENTORY (manifest-enforced file floors + the pending→required
-  ratchet); v14 REWARDS block (cart/amazon island gates + "rw" members,
-  Discount Function extension toml/targets/handle, functionHandle wiring,
-  scopes + inventory webhook, checkout RewardsSafetyNet literals, preview
-  keys, 21-key rewards.* locale superset with the el/ar byte-cap
-  exemptions + RW_DEFAULTS parity, gen-ships LOCALE_BYTE_BUDGET); v15
-  isolation pins (the cart rewards data in its OWN `#cx-rw-config` tag gated
-  live-only, no "rw" member / gifts map / all_products in the shared island,
-  amazon rw member live-only, cart JS reads the tag and never cfg.rw,
-  PREVIEW.rw swap, yieldToCodes, app-owned SET presets, retired alias/legacy
-  keys gone, rewards.server has NO delete/deactivate mutation names and no
-  replaceExisting, exact foreign-code sentence, detectStoreCodes, hv map,
-  two-step metafieldsSet + warnings, storefront-islands health check in
-  BOTH arrays, preview-config "rw" + rewardsPreviewSections).
+  ratchet).
 - **settings-derivation.ts** — port of the surviving v6.8 proof: executes
-  the REAL settings.server.ts and proves the 37-key inventory, amazon-flag
+  the REAL settings.server.ts and proves the 35-key inventory, amazon-flag
   mirroring, safe defaults, cfg-path resolution, sanitize round-trips,
-  the 37-key flip tripwire, snapshot/restore, pre-v6.8 merge back-compat,
-  and (v14) the rewards family: raw arm / snapshot shape / tier sanitizer
-  caps + defaults.
+  the 35-key flip tripwire, snapshot/restore, and pre-v6.8 merge
+  back-compat .
 - **lib/** — shared helpers: `util.mjs` (normalization, checker,
   live FEATURE_KEYS parser), `settings-loader.ts` (loads the real settings
   model with prisma stubbed into `lib/.gen/`, regenerated from the current
@@ -90,7 +74,7 @@ under ~3 minutes.
   checkout-trust, native-dates, plurals, translation-service,
   crosssell-pipeline, fbt, badge-cards, az-split, subscribed-upgrade,
   survey-methodology, proof-gallery, proof-server, threshold-snap,
-  flip-test, deploy-safety, rewards-tiers, rewards-function.
+  flip-test.
   The nine most safety-critical (dispatch-tz, delivery, plurals,
   crosssell, az-split, survey-methodology, proof-gallery, proof-server,
   checkout-trust) are mutation-tested: 3+ targeted mutants each, applied
@@ -156,24 +140,9 @@ under ~3 minutes.
   - **threshold-snap.ts** — real shipping.server.ts vs a mock Admin client:
     the 60.01→60 snap matrix, zone rate rules, lowest-per-market attribution,
     rest-of-world/unmatched zones, never-throw error paths.
-  - **flip-test.ts** — all 37 FeatureKeys through the real settings model:
+  - **flip-test.ts** — all 35 FeatureKeys through the real settings model:
     flip round-trips, market scoping, applyFlipForMarket isolation,
-    snapshot/restore, selective restore + the cart overlap group; v14
-    rewards family (independent masters, rewardsFlags snapshot, pre-v14
-    snapshot skip).
-  - **rewards-tiers.mjs** — v14: cxRwTier/cxRwNext extracted from BOTH
-    theme assets, byte-identical twin (per function + contiguous slice),
-    tier fixtures (default ladder 0..12, unsorted, empty, malformed) on
-    both engines + a seeded cross-engine parity sweep, and the cart-only /
-    pdp-only helper-name rule (the v12 per-file precedent).
-  - **rewards-function.mjs** — v14: the REAL Discount Function pure logic
-    (extensions/cellexia-rewards/src/logic.js + run modules, imported
-    directly): config/draft selection, tier code grant/refuse (v15: a
-    stale ss.alias list is ignored, SET preset codes grant, a store KIT
-    code on a SET ladder grants nothing), gift grants (cumulative on/off,
-    samples/max-lines caps, market amounts vs EUR fallback), free-shipping
-    units/threshold + cheapest option, wrong class → nothing, wrappers
-    never throw.
+    snapshot/restore, selective restore + the cart overlap group.
   - **sims/lib/** — shared vm-extraction helpers (`extract.cjs`), the
     documented mini-DOM (`mini-dom.cjs`), the mutation harness
     (`mutants.cjs`, mutant copies under `validation/.generated/`, never
