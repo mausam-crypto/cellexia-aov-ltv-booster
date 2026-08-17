@@ -83,6 +83,10 @@ model OrderStat {
   hasSubscription    Boolean  @default(false)
   hasProtection      Boolean  @default(false)
   upsellAttributed   Boolean  @default(false)
+  // v14 rewards: the KIT set-savings code redeemed on the order ("" = none)
+  // and the number of free-gift lines (`_cellexia_gift` line property).
+  kitCode            String   @default("")
+  giftLines          Int      @default(0)
   market             String?
   countryCode        String?
   processedAt        DateTime
@@ -273,4 +277,19 @@ model GeoStateDb {
   builtAt   DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+}
+
+// v14 rewards (docs/SPEC-v14-rewards.md §3): per-shop state of the Discount
+// Function nodes + gift stock. `nodes` json: {kit:{KIT2:"gid://shopify/
+// DiscountCodeNode/..",...}, gift:"gid://shopify/DiscountAutomaticNode/..",
+// ship:"gid://…", units:{<variantId>:2,...}, vp:{<variantId>:<productId>},
+// prot:"<productId>"} — units/vp/prot are refreshed by buildUnitMap at
+// Connect / Rewards-page save so the metafield sync never calls the API.
+// `giftStock` json: {t, byMarket:{<market>:{<variantId>:{avail, paused}}}}.
+model RewardsState {
+  shop        String   @id
+  functionId  String   @default("")
+  nodes       String   @default("{}")
+  giftStock   String   @default("{}")
+  updatedAt   DateTime @updatedAt
 }

@@ -37,6 +37,11 @@ import { authenticate } from "../shopify.server";
  * exact epoch math amazon-booster.liquid uses (age >= 0 and <= 3888000 s),
  * so a stale or absent count simply OMITS the field and the card decorator
  * can never render an outdated claim.
+ *
+ * v14: every entry (cart map AND productsByHandle) gains `"s": 1` when the
+ * product carries the `sample-sachet` tag — the storefront's sachet flag
+ * (excluded from set-savings counting, FBT/similar picks and cross-sell;
+ * mirrors the cart-booster.liquid "products" map).
  */
 
 const sanitizeHandle = (handle: string) =>
@@ -72,7 +77,7 @@ const PRODUCT_BODY_LIQUID = (accessor: string, withBestseller = false) => `{
               {%- endfor -%}
             ]}{%- unless forloop.last -%},{%- endunless -%}
           {%- endfor -%}
-        ]${withBestseller ? BESTSELLER_LIQUID(accessor) : ""}
+        ]{%- if ${accessor}.tags contains 'sample-sachet' -%}, "s": 1{%- endif -%}${withBestseller ? BESTSELLER_LIQUID(accessor) : ""}
       }`;
 
 const CART_PRODUCTS_LIQUID = `"products": {

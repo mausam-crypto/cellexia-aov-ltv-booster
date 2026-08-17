@@ -237,5 +237,31 @@
       "one": "Siirry kassalle ({{ count }} tuote)",
       "other": "Siirry kassalle ({{ count }} tuotetta)"
     }
+  },
+  "rewards": {
+    "meter_gift_away": "Enää {{ amount }} ilmaiseen lahjaan: {{ gift }} (arvo {{ value }})",
+    "meter_gift_unlocked": "Ilmainen lahja avattu: {{ gift }}",
+    "meter_all": "Kaikki edut avattu — nauti!",
+    "set_add_one": "Lisää vielä 1 tuote ja säästä {{ pct }}% kaikesta",
+    "set_add_more": "Lisää vielä {{ count }} tuotetta ja säästä {{ pct }}% kaikesta",
+    "set_saving": "Settialennus −{{ amount }} ({{ code }})",
+    "set_title": "Täydennä settisi ja säästä {{ pct }}%",
+    "subtotal": "Välisumma",
+    "free": "ILMAINEN",
+    "gift_tag": "Ilmainen lahja",
+    "gift_added": "Ilmainen lahja lisätty ostoskoriisi",
+    "gift_back": "Lisää ilmainen lahjasi takaisin",
+    "gift_unavailable": "Ilmaista lahjaasi ei voi lisätä tähän tilaukseen juuri nyt",
+    "remove": "Poista",
+    "swap": "Vaihda lahja",
+    "sample_set": "Näytesetti",
+    "pdp_line": "Lisää mikä tahansa toinen tuote ja säästä {{ pct }}% molemmista",
+    "pdp_line_next": "Lisää tämä ostoskoriin ja säästä {{ pct }}% setistäsi",
+    "fbt_caption": "Osta kaikki {{ count }} yhdessä ja säästä vähintään {{ pct }}%",
+    "fbt_add_save": "Lisää kaikki {{ count }} ja säästä {{ pct }}%",
+    "similar_caption": "Lisää jokin näistä ja säästä {{ pct }}% molemmista",
+    "meter_gift_away_plain": "Enää {{ amount }} ilmaiseen lahjaan: {{ gift }}",
+    "set_title_more": "Täydennä settisi — {{ pct }}% alennus kaikesta, mitä lisäät",
+    "fbt_add_save_both": "Lisää molemmat ja säästä {{ pct }}%"
   }
 }

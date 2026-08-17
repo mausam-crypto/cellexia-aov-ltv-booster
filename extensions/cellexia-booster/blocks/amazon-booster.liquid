@@ -1,14 +1,14 @@
 {%- if request.page_type == 'product' -%}
 {%- assign cfg = app.metafields.cellexia.config.value -%}
 {%- if cfg -%}
-{%- assign cx_market = localization.market.handle | default: '' -%}
-{%- assign cx_country = localization.country.iso_code | upcase -%}
-{%- assign cx_prev = cfg.preview -%}
-{%- assign cx_prev_armed = false -%}
-{%- if cx_prev.armed == true -%}
-{%- assign cx_prev_armed = true -%}
-{%- endif -%}
 {%- liquid
+assign cx_market = localization.market.handle | default: ''
+assign cx_country = localization.country.iso_code | upcase
+assign cx_prev = cfg.preview
+assign cx_prev_armed = false
+if cx_prev.armed == true
+assign cx_prev_armed = true
+endif
 assign cx_pdp_flags = product.metafields.cellexia.pdp_flags.value
 assign az_bought_n = cx_pdp_flags.boughtCount | default: 0
 assign az_set_epoch = 0
@@ -136,15 +136,15 @@ if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
 assign az_eff_similar = true
 endif
 endif
-assign cx_draft_az_buybox = false
-assign cx_draft_az_micro = false
-assign cx_draft_az_delivery = false
-assign cx_draft_az_stock = false
-assign cx_draft_az_ships = false
-assign cx_draft_az_bought = false
-assign cx_draft_az_best = false
-assign cx_draft_az_fbt = false
-assign cx_draft_az_similar = false
+assign cx_rw = cfg.rewards.setSavings
+assign az_eff_ss = false
+if cx_rw.enabled == true
+assign cx_scope = cfg.marketScopes.set_savings
+if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign az_eff_ss = true
+endif
+endif
+# cx_draft_* stay nil (falsy) unless armed — v14 diet
 if cx_prev_armed
 assign cx_prev_flags = cx_prev.draftFlags
 if block.settings.show_az_buy_box
@@ -192,6 +192,9 @@ if cx_prev_flags.az_similar_items == true or cfg.amazon.similarItems == true
 assign cx_draft_az_similar = true
 endif
 endif
+if cx_prev_flags.set_savings == true or cx_rw.enabled == true
+assign cx_draft_ss = true
+endif
 endif
 assign az_any_buybox = false
 if az_eff_buybox or cx_draft_az_buybox
@@ -229,12 +232,16 @@ assign az_any_similar = false
 if az_eff_similar or cx_draft_az_similar
 assign az_any_similar = true
 endif
+assign az_any_ss = false
+if az_eff_ss or cx_draft_ss
+assign az_any_ss = true
+endif
 assign az_any = false
-if az_any_buybox or az_any_micro or az_any_delivery or az_any_stock or az_any_ships or az_any_bought or az_any_best or az_any_fbt or az_any_similar
+if az_any_buybox or az_any_micro or az_any_delivery or az_any_stock or az_any_ships or az_any_bought or az_any_best or az_any_fbt or az_any_similar or az_any_ss
 assign az_any = true
 endif
 assign az_need_product = false
-if az_any_stock or az_any_ships or az_any_fbt or az_any_similar
+if az_any_stock or az_any_ships or az_any_fbt or az_any_similar or az_any_ss
 assign az_need_product = true
 endif
 assign az_need_ships = false
@@ -329,6 +336,21 @@ endif
 {%- endfor -%}
 ]},
 {%- endif %}
+{%- if az_any_ss %}
+"rw": {"live": {{ az_eff_ss }}, "tiers": {{ cx_rw.tiers | json }}, "sf": {"pdp": {{ cx_rw.surfaces.pdpLine | json }}, "sim": {{ cx_rw.surfaces.similarCaption | json }}, "fbt": {{ cx_rw.surfaces.fbtCaption | json }}}, "excl": {{ cx_rw.setSavingsExcludedByMarket[cx_market] | json }}, "giftPids": [
+{%- liquid
+for az_t in cfg.rewards.giftTiers.tiers
+for az_s in az_t.slots
+for az_o in az_s
+echo all_products[az_o.handle].id | json | append: ','
+endfor
+endfor
+endfor
+for az_o in cfg.rewards.giftTiers.samplePool
+echo all_products[az_o.handle].id | json | append: ','
+endfor
+-%}0]},
+{%- endif %}
 "strings": {
 "_": 1
 {%- if az_any_delivery %}
@@ -359,10 +381,9 @@ endif
 {%- if az_any_fbt %}
 ,"amazon.fbt_title": {{ 'amazon.fbt_title' | t | json }}
 ,"amazon.fbt_total": {{ 'amazon.fbt_total' | t | json }}
-,"amazon.fbt_add_1": {{ 'amazon.fbt_add' | t: count: 1 | json }}
-,"amazon.fbt_add_2": {{ 'amazon.fbt_add' | t: count: 2 | json }}
-,"amazon.fbt_add_3": {{ 'amazon.fbt_add' | t: count: 3 | json }}
-,"amazon.fbt_add_4": {{ 'amazon.fbt_add' | t: count: 4 | json }}
+{%- for az_n in (1..4) %}
+,"amazon.fbt_add_{{ az_n }}": {{ 'amazon.fbt_add' | t: count: az_n | json }}
+{%- endfor %}
 ,"amazon.fbt_add_both": {{ 'amazon.fbt_add_both' | t | json }}
 ,"amazon.fbt_this_item": {{ 'amazon.fbt_this_item' | t | json }}
 {%- endif %}
@@ -371,6 +392,12 @@ endif
 {%- endif %}
 {%- if az_any_similar %}
 ,"amazon.similar_title": {{ 'amazon.similar_title' | t | json }}
+{%- endif %}
+{%- if az_any_ss %}
+{%- assign az_rwk = 'pdp_line,pdp_line_next,fbt_caption,fbt_add_save,similar_caption,fbt_add_save_both' | split: ',' -%}
+{%- for az_k in az_rwk %}
+,"rw.{{ az_k }}": {{ 'rewards.' | append: az_k | t: pct: '@@PCT@@', count: '@@COUNT@@' | json }}
+{%- endfor %}
 {%- endif %}
 },
 {%- if cx_prev_armed %}
@@ -385,7 +412,8 @@ endif
 "az_bought_count": {{ az_eff_bought }},
 "az_bestseller_badge": {{ az_eff_best }},
 "az_fbt": {{ az_eff_fbt }},
-"az_similar_items": {{ az_eff_similar }}
+"az_similar_items": {{ az_eff_similar }},
+"set_savings": {{ az_eff_ss }}
 }
 }
 </script>

@@ -1027,6 +1027,15 @@ function hashCanonical(
           { field: "checkoutTrust", on: snapshot.sectionEnabled.checkoutTrust },
         ];
       }
+      // v14 rewards-kind raw flags (setSavings / giftTiers under
+      // rewards.<field>.enabled) ride the same array; the field names cannot
+      // collide with section/amazon/checkoutTrust names, and experiments
+      // without them hash byte-identically to before.
+      if (raw?.kind === "rewards") {
+        return [
+          { field: raw.field, on: snapshot.rewardsFlags?.[raw.field] ?? null },
+        ];
+      }
       return raw?.kind === "section"
         ? [{ field: raw.field, on: snapshot.sectionEnabled[raw.field] }]
         : [];

@@ -231,5 +231,31 @@
     "cta_count": {
       "other": "レジに進む（{{ count }}点の商品）"
     }
+  },
+  "rewards": {
+    "meter_gift_away": "あと{{ amount }}で{{ gift }}（{{ value }}相当）が無料に",
+    "meter_gift_unlocked": "無料プレゼント獲得：{{ gift }}",
+    "meter_all": "すべての特典を獲得しました。お楽しみください！",
+    "set_add_one": "あと1点追加で全品{{ pct }}%オフ",
+    "set_add_more": "あと{{ count }}点追加で全品{{ pct }}%オフ",
+    "set_saving": "セット割引 −{{ amount }}（{{ code }}）",
+    "set_title": "セットを揃えて{{ pct }}%オフ",
+    "subtotal": "小計",
+    "free": "無料",
+    "gift_tag": "無料プレゼント",
+    "gift_added": "無料プレゼントをカートに追加しました",
+    "gift_back": "無料プレゼントをもう一度追加",
+    "gift_unavailable": "現在、このご注文には無料プレゼントを適用できません",
+    "remove": "削除",
+    "swap": "プレゼントを変更",
+    "sample_set": "サンプルセット",
+    "pdp_line": "他の商品をもう1点追加すると、2点とも{{ pct }}%オフ",
+    "pdp_line_next": "この商品をカートに追加すると、セットが{{ pct }}%オフ",
+    "fbt_caption": "{{ count }}点まとめて購入で{{ pct }}%以上オフ",
+    "fbt_add_save": "{{ count }}点すべて追加して{{ pct }}%オフ",
+    "similar_caption": "こちらの商品を追加すると、2点とも{{ pct }}%オフ",
+    "meter_gift_away_plain": "あと{{ amount }}で{{ gift }}が無料に",
+    "set_title_more": "セットを揃えて — 追加する商品すべてが{{ pct }}%オフ",
+    "fbt_add_save_both": "2点とも追加して{{ pct }}%オフ"
   }
 }

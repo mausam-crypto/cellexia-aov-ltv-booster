@@ -82,7 +82,11 @@ export type FeatureKey =
   | "az_fbt"
   | "az_similar_items"
   | "az_cart_free_line"
-  | "az_cta_count";
+  | "az_cta_count"
+  // v14 rewards (docs/SPEC-v14-rewards.md §1) — appended at the END so every
+  // existing index-based consumer keeps its positions.
+  | "set_savings"
+  | "gift_tiers";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "cart_volume_upsell",
@@ -120,6 +124,9 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "az_similar_items",
   "az_cart_free_line",
   "az_cta_count",
+  // v14 rewards — appended last (35 → 37 keys).
+  "set_savings",
+  "gift_tiers",
 ];
 
 /**
@@ -143,6 +150,15 @@ export const AMAZON_FLAG_FIELDS = [
   "ctaCount",
 ] as const;
 export type AmazonFlagField = (typeof AMAZON_FLAG_FIELDS)[number];
+
+/**
+ * v14: the two rewards feature flags, stored as `rewards.<field>.enabled`
+ * (each sub-section has its own master; no shared switch — the amazon
+ * convention). Array order mirrors FEATURE_KEYS' rewards order
+ * (set_savings, gift_tiers).
+ */
+export const REWARDS_FLAG_FIELDS = ["setSavings", "giftTiers"] as const;
+export type RewardsFlagField = (typeof REWARDS_FLAG_FIELDS)[number];
 
 /**
  * PDP placement choices for the az_fbt / az_similar_items sections (v6.5).
@@ -379,6 +395,136 @@ export interface MarketThreshold {
   amount: number;
   currencyCode: string;
 }
+
+/**
+ * v14 rewards (docs/SPEC-v14-rewards.md §1). A gift option is either ONE
+ * specific product variant ("variant") or N sachets drawn from
+ * `giftTiers.samplePool` ("samples"). `handle` lets Liquid render live
+ * product data via all_products; `variantId` is the GID the storefront adds
+ * (may be "" in the shipped defaults until the admin "Load defaults" fills
+ * it from the store — the sanitizer keeps handle-only options).
+ */
+export interface GiftOption {
+  /** "variant" = a specific gift product; "samples" = N sachets from samplePool */
+  kind: "variant" | "samples";
+  variantId: string;
+  handle: string;
+  /** kind samples: number of sachets (1..6); kind variant: 1 */
+  count: number;
+}
+export interface GiftTier {
+  /** Default threshold in EUR (shop currency); per-market amounts live in giftThresholdsByMarket */
+  amount: number;
+  /** Every slot is granted; within a slot the FIRST available option is used
+   *  (fallback order); "choose" mode lets the shopper swap within a slot.
+   *  ≤ 3 slots, ≤ 3 options per slot. */
+  slots: GiftOption[][];
+}
+/** A set-savings tier: `count` different eligible products → `pct` % off via code `code`. */
+export interface SetSavingsTier {
+  count: number;
+  pct: number;
+  code: string;
+}
+
+/**
+ * v14.2 ladder presets. `compact` (2/3/4/6 → 5/10/15/20 %) is the shipped
+ * default — the store sells 11 full-size products, so a 10-product tier is
+ * unreachable for most carts; `extended` (2/3/5/10 → 5/10/20/30 %) is the
+ * v14.0 ladder. `custom` means the tier table was hand-edited; the tiers
+ * array is always the truth (`ladderPreset` is an admin convenience only).
+ */
+export const LADDER_PRESETS = {
+  compact: [
+    { count: 2, pct: 5, code: "KIT2" },
+    { count: 3, pct: 10, code: "KIT3" },
+    { count: 4, pct: 15, code: "KIT4" },
+    { count: 6, pct: 20, code: "KIT6" },
+  ],
+  extended: [
+    { count: 2, pct: 5, code: "KIT2" },
+    { count: 3, pct: 10, code: "KIT3" },
+    { count: 5, pct: 20, code: "KIT5" },
+    { count: 10, pct: 30, code: "KIT10" },
+  ],
+} satisfies Record<string, SetSavingsTier[]>;
+export const LADDER_PRESET_KEYS = ["compact", "extended", "custom"] as const;
+export type LadderPreset = (typeof LADDER_PRESET_KEYS)[number];
+/** Every KIT code any preset ever shipped. v14.3: the ones NOT in the
+ *  configured ladder are ALIAS codes (typed by a shopper they grant the tier
+ *  the cart qualifies for) while `keepLegacyCodes` is on; when it is off,
+ *  Connect's "Replace existing" deactivates the foreign ones instead. */
+export const LEGACY_KIT_CODES = ["KIT2", "KIT3", "KIT4", "KIT5", "KIT6", "KIT10"] as const;
+
+/**
+ * v14.3: derived alias list = LEGACY_KIT_CODES minus the ladder codes
+ * (upper-cased, deduped) when `keepLegacyCodes`, else []. Pure — works on any
+ * partial shape (the sanitizer calls it before the section is complete).
+ */
+export function aliasCodesFor(settings: {
+  rewards?: { setSavings?: { keepLegacyCodes?: unknown; tiers?: unknown } };
+}): string[] {
+  const ss = settings.rewards?.setSavings;
+  if (!ss || ss.keepLegacyCodes === false) return [];
+  const ladder = new Set<string>();
+  if (Array.isArray(ss.tiers)) {
+    for (const t of ss.tiers) {
+      if (isPlainObject(t) && typeof t.code === "string") {
+        ladder.add(t.code.trim().toUpperCase());
+      }
+    }
+  }
+  const out: string[] = [];
+  for (const raw of LEGACY_KIT_CODES) {
+    const code = raw.toUpperCase();
+    if (ladder.has(code) || out.includes(code)) continue;
+    out.push(code);
+  }
+  return out;
+}
+
+const giftVariant = (handle: string): GiftOption => ({
+  kind: "variant",
+  variantId: "",
+  handle,
+  count: 1,
+});
+const giftSamples = (count: number): GiftOption => ({
+  kind: "samples",
+  variantId: "",
+  handle: "",
+  count,
+});
+
+/**
+ * v14.2 gift presets (EUR, cumulative; handles + empty variantIds — the admin
+ * "Load defaults" fills GIDs from the store). `value_first` (shipped default)
+ * leads with the towel so the €119 headline gift is a value item and the
+ * cream (the store's hero SKU) is earned at €200; `cream_first` is the v14.0
+ * order. `giftPreset` is informational — the tiers array is always the truth.
+ */
+export const GIFT_PRESETS = {
+  value_first: [
+    { amount: 119, slots: [[giftVariant("bamboo-beauty-towel")], [giftSamples(2)]] },
+    { amount: 200, slots: [[giftVariant("jawline-contour-tightening-cream")], [giftSamples(2)]] },
+    { amount: 350, slots: [[giftVariant("premium-leather-cosmetic-bag")], [giftSamples(3)]] },
+  ],
+  cream_first: [
+    { amount: 119, slots: [[giftVariant("jawline-contour-tightening-cream")], [giftSamples(2)]] },
+    { amount: 200, slots: [[giftVariant("bamboo-beauty-towel")], [giftSamples(2)]] },
+    { amount: 350, slots: [[giftVariant("premium-leather-cosmetic-bag")], [giftSamples(3)]] },
+  ],
+} satisfies Record<string, GiftTier[]>;
+/** Loadable presets (the "Load defaults" choices); the stored field may also be "custom". */
+export const GIFT_PRESET_KEYS = ["value_first", "cream_first"] as const;
+export const GIFT_PRESET_VALUES = [...GIFT_PRESET_KEYS, "custom"] as const;
+export type GiftPreset = (typeof GIFT_PRESET_VALUES)[number];
+
+/** Closed enums of the v14 gift-tier section (sanitized like the others). */
+export const GIFT_CHOICE_MODES = ["auto", "choose"] as const;
+export type GiftChoiceMode = (typeof GIFT_CHOICE_MODES)[number];
+export const GIFT_SAMPLE_RULES = ["not_in_cart", "rotate", "fixed"] as const;
+export type GiftSampleRule = (typeof GIFT_SAMPLE_RULES)[number];
 
 export interface BoosterSettings {
   version: number;
@@ -990,6 +1136,93 @@ export interface BoosterSettings {
     shipsFromExcludedByMarket: Record<string, string[]>;
   };
   /**
+   * v14 rewards (docs/SPEC-v14-rewards.md §1): set savings (KIT tiers),
+   * gift tiers and the free-shipping guarantee. The Discount Function reads
+   * NONE of this directly — metafields.server.ts projects it into the small
+   * `$app:cellexia/rewards` shop metafield (numeric ids, short keys).
+   */
+  rewards: {
+    setSavings: {
+      /** FeatureKey set_savings master. */
+      enabled: boolean;
+      /** ≤ 6 tiers, counts strictly increasing, pct 1..90, code
+       *  /^[A-Z0-9_-]{2,32}$/ unique. Default LADDER_PRESETS.compact
+       *  (2/3/4/6 → 5/10/15/20 %). */
+      tiers: SetSavingsTier[];
+      /** v14.2: which preset the tier table came from ("custom" once
+       *  hand-edited). Informational — `tiers` is always the truth. */
+      ladderPreset: LadderPreset;
+      /** Subscription lines count + get the saving on the FIRST order only
+       *  (Function node: appliesOnSubscription true, recurringCycleLimit 1). */
+      includeSubscriptions: boolean;
+      /** Per-surface merchandising switches (all default true). */
+      surfaces: {
+        pdpLine: boolean;
+        similarCaption: boolean;
+        fbtCaption: boolean;
+        cartNudge: boolean;
+        crossSellReframe: boolean;
+      };
+      /** DYNAMIC record: market handle -> product GIDs excluded from
+       *  counting + discount in that market (sanitizeExcludedByMarket rule). */
+      setSavingsExcludedByMarket: Record<string, string[]>;
+      /** "" → Function message "Set savings −{pct}%"; ≤ 60 chars, may contain {pct}. */
+      checkoutMessage: string;
+      /** v14.3: keep every old KIT code working — LEGACY_KIT_CODES entries not
+       *  in the ladder become ALIAS codes (typed by a shopper they grant the
+       *  tier the cart qualifies for; never auto-attached). Default true. */
+      keepLegacyCodes: boolean;
+      /** v14.3 DERIVED, read-only in the admin: aliasCodesFor(settings) —
+       *  recomputed by sanitizeSettings on every save so the raw settings
+       *  section (cart island `rw.ss.aliasCodes`) already carries it. */
+      aliasCodes: string[];
+    };
+    giftTiers: {
+      /** FeatureKey gift_tiers master. */
+      enabled: boolean;
+      /** A reached tier keeps every lower tier's gifts (default true). */
+      cumulative: boolean;
+      /** "auto" = first available option per slot; "choose" = shopper may swap. */
+      choice: GiftChoiceMode;
+      /** Cap on gift lines per cart (1..8, default 6 — v14.1: room for the
+       *  variant gift of every reached tier plus samples; the plan orders
+       *  variant slots first, then samples, then caps). */
+      maxGiftLines: number;
+      /** How sample sachets are picked from samplePool. */
+      sampleRule: GiftSampleRule;
+      /** ≤ 4 tiers, EUR amounts strictly increasing. Default GIFT_PRESETS.value_first. */
+      tiers: GiftTier[];
+      /** v14.2: which gift preset "Load defaults" applied last ("custom" once
+       *  hand-edited). Informational — `tiers` is always the truth. */
+      giftPreset: GiftPreset;
+      /** DYNAMIC record: market handle -> {amounts (one per tier index),
+       *  currencyCode} — explicit per-market amounts in the market currency. */
+      giftThresholdsByMarket: Record<string, { amounts: number[]; currencyCode: string }>;
+      /** Sachet variants usable as samples: ≤ 9 {variantId, handle} (REWARDS_CAPS.samplePool). */
+      samplePool: { variantId: string; handle: string }[];
+      /** DYNAMIC record: market handle -> location GIDs that ship that market
+       *  (inventory awareness; ≤ 6 locations per market). */
+      warehouseByMarket: Record<string, string[]>;
+      /** Stock floor: a gift option pauses in a market when available <
+       *  max(minUnits, sachet ? 100 : 0). `days` is kept for the future
+       *  days-of-cover rule (unused in v14). */
+      stockFloor: { days: number; minUnits: number };
+      /** Show the meter's free-shipping milestone from freeShipping.byMarket. */
+      showShippingMilestone: boolean;
+    };
+    /** Free-shipping guarantee: an automatic SHIPPING discount run by the
+     *  same Function. NOT a FeatureKey — its own MarketScope below. */
+    freeShip: {
+      enabled: boolean;
+      /** Full-size units ≥ minUnits → free standard shipping (0 = rule off). */
+      minUnits: number;
+      /** Spend ≥ freeShipping.byMarket[market] (explicit entries only, never
+       *  the 150 fallback) → free standard shipping. */
+      byThreshold: boolean;
+      scope: MarketScope;
+    };
+  };
+  /**
    * Per-feature market targeting. A feature is visible in market M only when
    * its flags are on AND (scope.mode === "all" || scope.markets includes M).
    * Market handles are Shopify Markets handles (e.g. "ireland").
@@ -1244,6 +1477,51 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     shipsFromDefault: "",
     shipsFromExcludedByMarket: {},
   },
+  // v14 rewards — both masters OFF (safe-by-default); the free-shipping
+  // guarantee is opt-in per market. Gift defaults ship with handles + empty
+  // variantIds (the admin "Load defaults" fills GIDs from the store).
+  // v14.2: ladder = LADDER_PRESETS.compact, gifts = GIFT_PRESETS.value_first.
+  rewards: {
+    setSavings: {
+      enabled: false,
+      tiers: structuredClone(LADDER_PRESETS.compact),
+      ladderPreset: "compact",
+      includeSubscriptions: true,
+      surfaces: {
+        pdpLine: true,
+        similarCaption: true,
+        fbtCaption: true,
+        cartNudge: true,
+        crossSellReframe: true,
+      },
+      setSavingsExcludedByMarket: {},
+      checkoutMessage: "",
+      keepLegacyCodes: true,
+      // = aliasCodesFor(compact ladder, keepLegacyCodes true) — kept literal so
+      // DEFAULT_SETTINGS stays a plain object; the sanitizer recomputes it.
+      aliasCodes: ["KIT5", "KIT10"],
+    },
+    giftTiers: {
+      enabled: false,
+      cumulative: true,
+      choice: "auto",
+      maxGiftLines: 6,
+      sampleRule: "not_in_cart",
+      tiers: structuredClone(GIFT_PRESETS.value_first),
+      giftPreset: "value_first",
+      giftThresholdsByMarket: {},
+      samplePool: [],
+      warehouseByMarket: {},
+      stockFloor: { days: 3, minUnits: 25 },
+      showShippingMilestone: true,
+    },
+    freeShip: {
+      enabled: false,
+      minUnits: 2,
+      byThreshold: true,
+      scope: { mode: "all", markets: [] },
+    },
+  },
   marketScopes: defaultMarketScopes(),
 };
 
@@ -1289,6 +1567,14 @@ const DYNAMIC_RECORD_KEYS = new Set([
   "customsExcludedByMarket",
   "trackedExcludedByMarket",
   "shipsFromExcludedByMarket",
+  // v14 rewards per-market records (market-handle keyed, default {}):
+  // rewards.setSavings.setSavingsExcludedByMarket (exclusion rule),
+  // rewards.giftTiers.giftThresholdsByMarket ({amounts[], currencyCode}) and
+  // rewards.giftTiers.warehouseByMarket (location GID lists). Distinct names
+  // on purpose (see the v12 note above).
+  "setSavingsExcludedByMarket",
+  "giftThresholdsByMarket",
+  "warehouseByMarket",
 ]);
 
 /**
@@ -1422,6 +1708,642 @@ export function validateExcludedByMarketPatch(
     errors.push(
       `${label}: at most ${EXCLUSION_RECORD_TOTAL_CAP} excluded products in total across markets — remove some before saving (the settings blob rides a size-capped metafield).`,
     );
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// v14 rewards sanitizers + fail-loud validators (SPEC v14 §1)
+// ---------------------------------------------------------------------------
+
+/** Caps shared by the sanitizers (silent backstop) and the validators (loud). */
+export const REWARDS_CAPS = {
+  setSavingsTiers: 6,
+  giftTiers: 4,
+  giftSlots: 3,
+  giftOptionsPerSlot: 3,
+  samplesPerOption: 6,
+  // 9, not 12: the storefront sachet picker renders from an all_products
+  // Liquid page capped at 20 unique handles (Shopify's all_products limit),
+  // and 11 full-size + 9 sachet handles is exactly that page.
+  samplePool: 9,
+  thresholdMarkets: 60,
+  thresholdAmountMax: 1000000,
+  warehouseMarkets: 60,
+  warehouseLocations: 6,
+  maxGiftLines: 8,
+  checkoutMessage: 60,
+} as const;
+
+const KIT_CODE_PATTERN = /^[A-Z0-9_-]{2,32}$/;
+const LOCATION_GID_PATTERN = /^gid:\/\/shopify\/Location\/\d+$/;
+const PRODUCT_HANDLE_PATTERN = /^[a-z0-9][a-z0-9-_]{0,254}$/;
+
+/** Numeric variant ids self-heal to the GID form (the exclusion precedent). */
+function coerceVariantGid(raw: unknown): string {
+  const value =
+    typeof raw === "string"
+      ? raw.trim()
+      : typeof raw === "number" && Number.isInteger(raw) && raw > 0
+        ? String(raw)
+        : "";
+  if (/^\d{1,20}$/.test(value)) {
+    return `gid://shopify/ProductVariant/${value.replace(/^0+(?=\d)/, "")}`;
+  }
+  return VARIANT_GID_PATTERN.test(value) ? value : "";
+}
+
+/**
+ * Set-savings tiers: valid entries only, sorted by count, duplicate counts
+ * and duplicate codes dropped (first wins), at most 6. Codes are
+ * upper-cased before matching so "kit2" round-trips to "KIT2" (the
+ * storefront compares codes case-sensitively against cart.discount_codes,
+ * which Shopify reports upper-cased). A non-array falls back to the
+ * defaults; an empty array is a real value ("no tiers").
+ */
+export function sanitizeSetSavingsTiers(raw: unknown): SetSavingsTier[] {
+  if (!Array.isArray(raw)) {
+    return structuredClone(DEFAULT_SETTINGS.rewards.setSavings.tiers);
+  }
+  const clean: SetSavingsTier[] = [];
+  const seenCounts = new Set<number>();
+  const seenCodes = new Set<string>();
+  const sorted = raw
+    .filter(
+      (t): t is Record<string, unknown> =>
+        isPlainObject(t) &&
+        Number.isInteger(t.count) &&
+        (t.count as number) >= 2 &&
+        (t.count as number) <= 50 &&
+        typeof t.pct === "number" &&
+        Number.isFinite(t.pct) &&
+        t.pct >= 1 &&
+        t.pct <= 90 &&
+        typeof t.code === "string",
+    )
+    .sort((a, b) => (a.count as number) - (b.count as number));
+  for (const t of sorted) {
+    const code = (t.code as string).trim().toUpperCase();
+    const count = t.count as number;
+    if (!KIT_CODE_PATTERN.test(code)) continue;
+    if (seenCounts.has(count) || seenCodes.has(code)) continue;
+    seenCounts.add(count);
+    seenCodes.add(code);
+    clean.push({ count, pct: Math.round((t.pct as number) * 100) / 100, code });
+    if (clean.length >= REWARDS_CAPS.setSavingsTiers) break;
+  }
+  return clean;
+}
+
+/** v14.2: which ladder preset a (sanitized) tier table equals — "custom" otherwise. */
+export function inferLadderPreset(tiers: SetSavingsTier[]): LadderPreset {
+  const key = JSON.stringify(tiers);
+  if (key === JSON.stringify(LADDER_PRESETS.compact)) return "compact";
+  if (key === JSON.stringify(LADDER_PRESETS.extended)) return "extended";
+  return "custom";
+}
+
+/** v14.2: which gift preset a tier table equals by amounts + slot shape
+ *  (variant handles / sample counts; variantIds ignored — "Load defaults"
+ *  fills them from the store) — "custom" otherwise. */
+export function inferGiftPreset(tiers: GiftTier[]): GiftPreset {
+  const shape = (list: GiftTier[]) =>
+    JSON.stringify(
+      list.map((t) => [
+        t.amount,
+        t.slots.map((slot) =>
+          slot.map((o) => (o.kind === "variant" ? `v:${o.handle}` : `s:${o.count}`)),
+        ),
+      ]),
+    );
+  const key = shape(tiers);
+  for (const preset of GIFT_PRESET_KEYS) {
+    if (key === shape(GIFT_PRESETS[preset])) return preset;
+  }
+  return "custom";
+}
+
+function sanitizeGiftOption(raw: unknown): GiftOption | null {
+  if (!isPlainObject(raw)) return null;
+  if (raw.kind === "samples") {
+    const count = raw.count;
+    if (
+      !Number.isInteger(count) ||
+      (count as number) < 1 ||
+      (count as number) > REWARDS_CAPS.samplesPerOption
+    ) {
+      return null;
+    }
+    return { kind: "samples", variantId: "", handle: "", count: count as number };
+  }
+  if (raw.kind === "variant") {
+    const variantId = coerceVariantGid(raw.variantId);
+    const handle =
+      typeof raw.handle === "string" && PRODUCT_HANDLE_PATTERN.test(raw.handle)
+        ? raw.handle
+        : "";
+    // A variant option needs at least a handle (Liquid all_products lookup);
+    // the shipped defaults carry handle-only options until "Load defaults".
+    if (!handle && !variantId) return null;
+    return { kind: "variant", variantId, handle, count: 1 };
+  }
+  return null;
+}
+
+/**
+ * Gift tiers: ≤ 4 tiers sorted by EUR amount (duplicates dropped), each with
+ * ≤ 3 non-empty slots of ≤ 3 valid options; a tier left without slots is
+ * dropped. A non-array falls back to the defaults.
+ */
+export function sanitizeGiftTiers(raw: unknown): GiftTier[] {
+  if (!Array.isArray(raw)) {
+    return structuredClone(DEFAULT_SETTINGS.rewards.giftTiers.tiers);
+  }
+  const clean: GiftTier[] = [];
+  const seen = new Set<number>();
+  const sorted = raw
+    .filter(
+      (t): t is Record<string, unknown> =>
+        isPlainObject(t) &&
+        typeof t.amount === "number" &&
+        Number.isFinite(t.amount) &&
+        t.amount >= 0 &&
+        t.amount <= REWARDS_CAPS.thresholdAmountMax,
+    )
+    .sort((a, b) => (a.amount as number) - (b.amount as number));
+  for (const t of sorted) {
+    const amount = Math.round((t.amount as number) * 100) / 100;
+    if (seen.has(amount)) continue;
+    const slots: GiftOption[][] = [];
+    for (const slot of Array.isArray(t.slots) ? t.slots : []) {
+      if (!Array.isArray(slot)) continue;
+      const options: GiftOption[] = [];
+      for (const option of slot) {
+        const clean = sanitizeGiftOption(option);
+        if (clean) options.push(clean);
+        if (options.length >= REWARDS_CAPS.giftOptionsPerSlot) break;
+      }
+      if (options.length > 0) slots.push(options);
+      if (slots.length >= REWARDS_CAPS.giftSlots) break;
+    }
+    if (slots.length === 0) continue;
+    seen.add(amount);
+    clean.push({ amount, slots });
+    if (clean.length >= REWARDS_CAPS.giftTiers) break;
+  }
+  return clean;
+}
+
+/** giftThresholdsByMarket: ≤ 60 markets; ISO-4217 currency; amounts (≤ 8)
+ *  must ALL be finite, > 0, ≤ 1,000,000 and strictly increasing tier by tier,
+ *  otherwise the whole market entry drops (a 0 or a non-increasing amount is
+ *  never kept — the Function/storefront would treat it as "reached at 0"). */
+export function sanitizeGiftThresholdsByMarket(
+  raw: unknown,
+): Record<string, { amounts: number[]; currencyCode: string }> {
+  const clean: Record<string, { amounts: number[]; currencyCode: string }> = {};
+  if (!isPlainObject(raw)) return clean;
+  const currencyKey = /^[A-Z]{3}$/;
+  let markets = 0;
+  for (const [handle, entry] of Object.entries(raw)) {
+    if (markets >= REWARDS_CAPS.thresholdMarkets) break;
+    if (!isExclusionMarketHandle(handle) || !isPlainObject(entry)) continue;
+    const currencyCode =
+      typeof entry.currencyCode === "string"
+        ? entry.currencyCode.toUpperCase()
+        : "";
+    if (!currencyKey.test(currencyCode)) continue;
+    const rawAmounts = Array.isArray(entry.amounts) ? entry.amounts.slice(0, 8) : [];
+    if (rawAmounts.length === 0) continue;
+    const amounts: number[] = [];
+    let valid = true;
+    for (const a of rawAmounts) {
+      const rounded =
+        typeof a === "number" && Number.isFinite(a) ? Math.round(a * 100) / 100 : NaN;
+      if (
+        !(rounded > 0) ||
+        rounded > REWARDS_CAPS.thresholdAmountMax ||
+        (amounts.length > 0 && rounded <= amounts[amounts.length - 1])
+      ) {
+        valid = false;
+        break;
+      }
+      amounts.push(rounded);
+    }
+    if (!valid) continue;
+    clean[handle] = { amounts, currencyCode };
+    markets += 1;
+  }
+  return clean;
+}
+
+/** warehouseByMarket: ≤ 60 markets × ≤ 6 Location GIDs (deduped). */
+export function sanitizeWarehouseByMarket(
+  raw: unknown,
+): Record<string, string[]> {
+  const clean: Record<string, string[]> = {};
+  if (!isPlainObject(raw)) return clean;
+  let markets = 0;
+  for (const [handle, list] of Object.entries(raw)) {
+    if (markets >= REWARDS_CAPS.warehouseMarkets) break;
+    if (!isExclusionMarketHandle(handle) || !Array.isArray(list)) continue;
+    const ids: string[] = [];
+    for (const entry of list) {
+      let id =
+        typeof entry === "string"
+          ? entry.trim()
+          : typeof entry === "number" && Number.isInteger(entry) && entry > 0
+            ? String(entry)
+            : "";
+      if (/^\d{1,20}$/.test(id)) {
+        id = `gid://shopify/Location/${id.replace(/^0+(?=\d)/, "")}`;
+      }
+      if (LOCATION_GID_PATTERN.test(id) && !ids.includes(id)) ids.push(id);
+      if (ids.length >= REWARDS_CAPS.warehouseLocations) break;
+    }
+    if (ids.length > 0) {
+      clean[handle] = ids;
+      markets += 1;
+    }
+  }
+  return clean;
+}
+
+/** samplePool: ≤ REWARDS_CAPS.samplePool (9) {variantId GID, handle} entries, deduped by variant. */
+export function sanitizeSamplePool(
+  raw: unknown,
+): { variantId: string; handle: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const clean: { variantId: string; handle: string }[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    if (!isPlainObject(entry)) continue;
+    const variantId = coerceVariantGid(entry.variantId);
+    const handle =
+      typeof entry.handle === "string" && PRODUCT_HANDLE_PATTERN.test(entry.handle)
+        ? entry.handle
+        : "";
+    if (!variantId || !handle || seen.has(variantId)) continue;
+    seen.add(variantId);
+    clean.push({ variantId, handle });
+    if (clean.length >= REWARDS_CAPS.samplePool) break;
+  }
+  return clean;
+}
+
+function sanitizeMarketScope(raw: unknown): MarketScope {
+  const marketHandlePattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
+  if (
+    isPlainObject(raw) &&
+    raw.mode === "selected" &&
+    Array.isArray(raw.markets)
+  ) {
+    return {
+      mode: "selected",
+      markets: [
+        ...new Set(
+          raw.markets.filter(
+            (handle): handle is string =>
+              typeof handle === "string" && marketHandlePattern.test(handle),
+          ),
+        ),
+      ].slice(0, 50),
+    };
+  }
+  return structuredClone(ALL_MARKETS_SCOPE);
+}
+
+/**
+ * v14 fail-loud validator for a `rewards.setSavings` PATCH (partial section
+ * as sent by the admin action) — the validateExcludedByMarketPatch contract:
+ * `undefined`/`null` fields are simply not validated; anything present must
+ * be well-formed or the save errors loudly instead of being silently trimmed
+ * by sanitizeSettings.
+ */
+export function validateSetSavingsPatch(patch: unknown): string[] {
+  if (patch === undefined || patch === null) return [];
+  if (!isPlainObject(patch)) return ["Set savings: settings must be an object."];
+  const errors: string[] = [];
+  const label = "Set savings";
+  if (patch.tiers !== undefined && patch.tiers !== null) {
+    if (!Array.isArray(patch.tiers)) {
+      errors.push(`${label}: tiers must be a list.`);
+    } else {
+      if (patch.tiers.length > REWARDS_CAPS.setSavingsTiers) {
+        errors.push(`${label}: at most ${REWARDS_CAPS.setSavingsTiers} tiers.`);
+      }
+      let lastCount = 1;
+      const codes = new Set<string>();
+      patch.tiers.forEach((t, i) => {
+        const n = i + 1;
+        if (!isPlainObject(t)) {
+          errors.push(`${label}: tier ${n} is malformed.`);
+          return;
+        }
+        if (!Number.isInteger(t.count) || (t.count as number) < 2 || (t.count as number) > 50) {
+          errors.push(`${label}: tier ${n} needs a whole product count between 2 and 50.`);
+        } else if ((t.count as number) <= lastCount) {
+          errors.push(`${label}: tier ${n} product count must be higher than the previous tier's.`);
+        } else {
+          lastCount = t.count as number;
+        }
+        if (typeof t.pct !== "number" || !Number.isFinite(t.pct) || t.pct < 1 || t.pct > 90) {
+          errors.push(`${label}: tier ${n} percentage must be between 1 and 90.`);
+        }
+        const code = typeof t.code === "string" ? t.code.trim().toUpperCase() : "";
+        if (!KIT_CODE_PATTERN.test(code)) {
+          errors.push(`${label}: tier ${n} code must be 2–32 characters (A–Z, 0–9, _ or -).`);
+        } else if (codes.has(code)) {
+          errors.push(`${label}: code "${code}" is used twice.`);
+        } else {
+          codes.add(code);
+        }
+      });
+    }
+  }
+  if (
+    patch.checkoutMessage !== undefined &&
+    patch.checkoutMessage !== null &&
+    (typeof patch.checkoutMessage !== "string" ||
+      Array.from(patch.checkoutMessage).length > REWARDS_CAPS.checkoutMessage)
+  ) {
+    errors.push(`${label}: the checkout message must be text of at most ${REWARDS_CAPS.checkoutMessage} characters.`);
+  }
+  for (const field of ["enabled", "includeSubscriptions", "keepLegacyCodes"] as const) {
+    if (patch[field] !== undefined && patch[field] !== null && typeof patch[field] !== "boolean") {
+      errors.push(`${label}: "${field}" must be true or false.`);
+    }
+  }
+  if (patch.surfaces !== undefined && patch.surfaces !== null) {
+    if (!isPlainObject(patch.surfaces)) {
+      errors.push(`${label}: surfaces must be an object of switches.`);
+    } else {
+      for (const [k, v] of Object.entries(patch.surfaces)) {
+        if (typeof v !== "boolean") errors.push(`${label}: surface "${k}" must be true or false.`);
+      }
+    }
+  }
+  errors.push(
+    ...validateExcludedByMarketPatch(
+      patch.setSavingsExcludedByMarket,
+      "Set savings exclusions",
+    ),
+  );
+  return errors;
+}
+
+/** v14 fail-loud validator for a `rewards.giftTiers` PATCH (same contract). */
+export function validateGiftTiersPatch(patch: unknown): string[] {
+  if (patch === undefined || patch === null) return [];
+  if (!isPlainObject(patch)) return ["Gift tiers: settings must be an object."];
+  const errors: string[] = [];
+  const label = "Gift tiers";
+  let tierCount: number | null = null;
+  if (patch.tiers !== undefined && patch.tiers !== null) {
+    if (!Array.isArray(patch.tiers)) {
+      errors.push(`${label}: tiers must be a list.`);
+    } else {
+      tierCount = patch.tiers.length;
+      if (patch.tiers.length > REWARDS_CAPS.giftTiers) {
+        errors.push(`${label}: at most ${REWARDS_CAPS.giftTiers} tiers.`);
+      }
+      let last = -1;
+      patch.tiers.forEach((t, i) => {
+        const n = i + 1;
+        if (!isPlainObject(t)) {
+          errors.push(`${label}: tier ${n} is malformed.`);
+          return;
+        }
+        if (
+          typeof t.amount !== "number" ||
+          !Number.isFinite(t.amount) ||
+          t.amount < 0 ||
+          t.amount > REWARDS_CAPS.thresholdAmountMax
+        ) {
+          errors.push(`${label}: tier ${n} amount must be between 0 and ${REWARDS_CAPS.thresholdAmountMax}.`);
+        } else if (t.amount <= last) {
+          errors.push(`${label}: tier ${n} amount must be higher than the previous tier's.`);
+        } else {
+          last = t.amount;
+        }
+        if (!Array.isArray(t.slots) || t.slots.length === 0) {
+          errors.push(`${label}: tier ${n} needs at least one gift slot.`);
+          return;
+        }
+        if (t.slots.length > REWARDS_CAPS.giftSlots) {
+          errors.push(`${label}: tier ${n} has more than ${REWARDS_CAPS.giftSlots} slots.`);
+        }
+        t.slots.forEach((slot, j) => {
+          if (!Array.isArray(slot) || slot.length === 0) {
+            errors.push(`${label}: tier ${n} slot ${j + 1} needs at least one option.`);
+            return;
+          }
+          if (slot.length > REWARDS_CAPS.giftOptionsPerSlot) {
+            errors.push(`${label}: tier ${n} slot ${j + 1} has more than ${REWARDS_CAPS.giftOptionsPerSlot} options.`);
+          }
+          slot.forEach((option, k) => {
+            const where = `tier ${n} slot ${j + 1} option ${k + 1}`;
+            if (!isPlainObject(option)) {
+              errors.push(`${label}: ${where} is malformed.`);
+              return;
+            }
+            if (option.kind === "samples") {
+              if (
+                !Number.isInteger(option.count) ||
+                (option.count as number) < 1 ||
+                (option.count as number) > REWARDS_CAPS.samplesPerOption
+              ) {
+                errors.push(`${label}: ${where} sample count must be 1–${REWARDS_CAPS.samplesPerOption}.`);
+              }
+            } else if (option.kind === "variant") {
+              const vid = coerceVariantGid(option.variantId);
+              const handle =
+                typeof option.handle === "string" &&
+                PRODUCT_HANDLE_PATTERN.test(option.handle)
+                  ? option.handle
+                  : "";
+              if (option.variantId && !vid) {
+                errors.push(`${label}: ${where} has an invalid variant id.`);
+              }
+              if (!vid && !handle) {
+                errors.push(`${label}: ${where} needs a product (variant or handle).`);
+              }
+            } else {
+              errors.push(`${label}: ${where} kind must be "variant" or "samples".`);
+            }
+          });
+        });
+      });
+    }
+  }
+  if (patch.giftThresholdsByMarket !== undefined && patch.giftThresholdsByMarket !== null) {
+    if (!isPlainObject(patch.giftThresholdsByMarket)) {
+      errors.push(`${label}: per-market amounts must be a map of market handles.`);
+    } else {
+      const entries = Object.entries(patch.giftThresholdsByMarket);
+      if (entries.length > REWARDS_CAPS.thresholdMarkets) {
+        errors.push(`${label}: at most ${REWARDS_CAPS.thresholdMarkets} markets with explicit amounts.`);
+      }
+      for (const [handle, entry] of entries) {
+        if (!isExclusionMarketHandle(handle)) {
+          errors.push(`${label}: "${handle}" is not a valid market handle.`);
+          continue;
+        }
+        if (!isPlainObject(entry) || !Array.isArray(entry.amounts)) {
+          errors.push(`${label}: amounts for "${handle}" must be {amounts, currencyCode}.`);
+          continue;
+        }
+        if (typeof entry.currencyCode !== "string" || !/^[A-Za-z]{3}$/.test(entry.currencyCode)) {
+          errors.push(`${label}: "${handle}" needs a 3-letter currency code.`);
+        }
+        if (tierCount !== null && entry.amounts.length !== tierCount) {
+          errors.push(`${label}: "${handle}" needs exactly one amount per tier (${tierCount}).`);
+        }
+        let previous = 0;
+        for (const a of entry.amounts) {
+          if (typeof a !== "number" || !Number.isFinite(a) || a <= 0 || a > REWARDS_CAPS.thresholdAmountMax) {
+            errors.push(`${label}: "${handle}" amount "${String(a)}" must be greater than 0 and at most ${REWARDS_CAPS.thresholdAmountMax}.`);
+            break;
+          }
+          if (a <= previous) {
+            errors.push(`${label}: "${handle}" amounts must increase tier by tier.`);
+            break;
+          }
+          previous = a;
+        }
+      }
+    }
+  }
+  if (patch.warehouseByMarket !== undefined && patch.warehouseByMarket !== null) {
+    if (!isPlainObject(patch.warehouseByMarket)) {
+      errors.push(`${label}: the warehouse map must be a map of market handles.`);
+    } else {
+      const entries = Object.entries(patch.warehouseByMarket);
+      if (entries.length > REWARDS_CAPS.warehouseMarkets) {
+        errors.push(`${label}: at most ${REWARDS_CAPS.warehouseMarkets} markets in the warehouse map.`);
+      }
+      for (const [handle, list] of entries) {
+        if (!isExclusionMarketHandle(handle)) {
+          errors.push(`${label}: "${handle}" is not a valid market handle (warehouse map).`);
+          continue;
+        }
+        if (!Array.isArray(list)) {
+          errors.push(`${label}: locations for "${handle}" must be a list.`);
+          continue;
+        }
+        if (list.length > REWARDS_CAPS.warehouseLocations) {
+          errors.push(`${label}: at most ${REWARDS_CAPS.warehouseLocations} locations per market ("${handle}").`);
+        }
+        for (const id of list) {
+          const value = typeof id === "number" && Number.isInteger(id) ? String(id) : id;
+          if (
+            typeof value !== "string" ||
+            !(LOCATION_GID_PATTERN.test(value.trim()) || /^\d{1,20}$/.test(value.trim()))
+          ) {
+            errors.push(`${label}: "${String(id)}" is not a location id (market "${handle}").`);
+          }
+        }
+      }
+    }
+  }
+  if (patch.samplePool !== undefined && patch.samplePool !== null) {
+    if (!Array.isArray(patch.samplePool)) {
+      errors.push(`${label}: the sample pool must be a list.`);
+    } else {
+      if (patch.samplePool.length > REWARDS_CAPS.samplePool) {
+        errors.push(`${label}: at most ${REWARDS_CAPS.samplePool} sachets in the sample pool.`);
+      }
+      for (const entry of patch.samplePool) {
+        if (
+          !isPlainObject(entry) ||
+          !coerceVariantGid(entry.variantId) ||
+          typeof entry.handle !== "string" ||
+          !PRODUCT_HANDLE_PATTERN.test(entry.handle)
+        ) {
+          errors.push(`${label}: every sample-pool entry needs a variant id and a product handle.`);
+          break;
+        }
+      }
+    }
+  }
+  if (
+    patch.maxGiftLines !== undefined &&
+    patch.maxGiftLines !== null &&
+    (!Number.isInteger(patch.maxGiftLines) ||
+      (patch.maxGiftLines as number) < 1 ||
+      (patch.maxGiftLines as number) > REWARDS_CAPS.maxGiftLines)
+  ) {
+    errors.push(`${label}: max gift lines must be a whole number between 1 and ${REWARDS_CAPS.maxGiftLines}.`);
+  }
+  if (
+    patch.choice !== undefined &&
+    patch.choice !== null &&
+    !(GIFT_CHOICE_MODES as readonly unknown[]).includes(patch.choice)
+  ) {
+    errors.push(`${label}: choice must be "auto" or "choose".`);
+  }
+  if (
+    patch.sampleRule !== undefined &&
+    patch.sampleRule !== null &&
+    !(GIFT_SAMPLE_RULES as readonly unknown[]).includes(patch.sampleRule)
+  ) {
+    errors.push(`${label}: sample rule must be "not_in_cart", "rotate" or "fixed".`);
+  }
+  if (patch.stockFloor !== undefined && patch.stockFloor !== null) {
+    if (!isPlainObject(patch.stockFloor)) {
+      errors.push(`${label}: stock floor must be {days, minUnits}.`);
+    } else {
+      const sf = patch.stockFloor;
+      if (sf.days !== undefined && (!Number.isInteger(sf.days) || (sf.days as number) < 0 || (sf.days as number) > 60)) {
+        errors.push(`${label}: stock floor days must be a whole number 0–60.`);
+      }
+      if (
+        sf.minUnits !== undefined &&
+        (!Number.isInteger(sf.minUnits) || (sf.minUnits as number) < 0 || (sf.minUnits as number) > 100000)
+      ) {
+        errors.push(`${label}: stock floor minimum units must be a whole number 0–100000.`);
+      }
+    }
+  }
+  for (const field of ["enabled", "cumulative", "showShippingMilestone"] as const) {
+    if (patch[field] !== undefined && patch[field] !== null && typeof patch[field] !== "boolean") {
+      errors.push(`${label}: "${field}" must be true or false.`);
+    }
+  }
+  return errors;
+}
+
+/** v14 fail-loud validator for a `rewards.freeShip` PATCH (same contract). */
+export function validateFreeShipPatch(patch: unknown): string[] {
+  if (patch === undefined || patch === null) return [];
+  if (!isPlainObject(patch)) return ["Free-shipping guarantee: settings must be an object."];
+  const errors: string[] = [];
+  const label = "Free-shipping guarantee";
+  for (const field of ["enabled", "byThreshold"] as const) {
+    if (patch[field] !== undefined && patch[field] !== null && typeof patch[field] !== "boolean") {
+      errors.push(`${label}: "${field}" must be true or false.`);
+    }
+  }
+  if (
+    patch.minUnits !== undefined &&
+    patch.minUnits !== null &&
+    (!Number.isInteger(patch.minUnits) || (patch.minUnits as number) < 0 || (patch.minUnits as number) > 50)
+  ) {
+    errors.push(`${label}: minimum units must be a whole number between 0 and 50 (0 = rule off).`);
+  }
+  if (patch.scope !== undefined && patch.scope !== null) {
+    const scope = patch.scope;
+    if (
+      !isPlainObject(scope) ||
+      (scope.mode !== "all" && scope.mode !== "selected") ||
+      (scope.mode === "selected" &&
+        (!Array.isArray(scope.markets) ||
+          scope.markets.some(
+            (h) => typeof h !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(h),
+          )))
+    ) {
+      errors.push(`${label}: market scope must be {mode: "all" | "selected", markets: [handles]}.`);
+    }
   }
   return errors;
 }
@@ -2285,6 +3207,90 @@ export function sanitizeSettings(
         : "";
   }
 
+  // v14 rewards (SPEC v14 §1) — silent backstop for payloads that bypass the
+  // admin form (the validate*Patch trio fails loud at the same numbers).
+  {
+    const D = DEFAULT_SETTINGS.rewards;
+    const ss = next.rewards.setSavings;
+    if (typeof ss.enabled !== "boolean") ss.enabled = D.setSavings.enabled;
+    ss.tiers = sanitizeSetSavingsTiers(ss.tiers);
+    // v14.2: closed enum; an unknown/missing value (pre-v14.2 rows) is
+    // inferred from the tier table so a stored extended ladder is never
+    // labelled "compact" (the admin keeps it consistent from then on).
+    if (!LADDER_PRESET_KEYS.includes(ss.ladderPreset as LadderPreset)) {
+      ss.ladderPreset = inferLadderPreset(ss.tiers);
+    }
+    if (typeof ss.includeSubscriptions !== "boolean") {
+      ss.includeSubscriptions = D.setSavings.includeSubscriptions;
+    }
+    if (!isPlainObject(ss.surfaces)) {
+      ss.surfaces = structuredClone(D.setSavings.surfaces);
+    }
+    for (const field of Object.keys(D.setSavings.surfaces) as (keyof typeof D.setSavings.surfaces)[]) {
+      if (typeof ss.surfaces[field] !== "boolean") {
+        ss.surfaces[field] = D.setSavings.surfaces[field];
+      }
+    }
+    ss.setSavingsExcludedByMarket = sanitizeExcludedByMarket(
+      ss.setSavingsExcludedByMarket,
+    );
+    // Code-point cap (the endorsement-copy precedent) so a boundary emoji
+    // can never make the Function's message or the metafield JSON invalid.
+    ss.checkoutMessage =
+      typeof ss.checkoutMessage === "string"
+        ? Array.from(ss.checkoutMessage.trim())
+            .slice(0, REWARDS_CAPS.checkoutMessage)
+            .join("")
+        : "";
+    // v14.3: keepLegacyCodes (default true) + DERIVED aliasCodes — always
+    // recomputed from keepLegacyCodes + the sanitized ladder (whatever the
+    // payload carried is discarded: read-only in the admin).
+    if (typeof ss.keepLegacyCodes !== "boolean") {
+      ss.keepLegacyCodes = D.setSavings.keepLegacyCodes;
+    }
+    ss.aliasCodes = aliasCodesFor(next);
+
+    const gt = next.rewards.giftTiers;
+    if (typeof gt.enabled !== "boolean") gt.enabled = D.giftTiers.enabled;
+    if (typeof gt.cumulative !== "boolean") gt.cumulative = D.giftTiers.cumulative;
+    if (!GIFT_CHOICE_MODES.includes(gt.choice as GiftChoiceMode)) {
+      gt.choice = D.giftTiers.choice;
+    }
+    gt.maxGiftLines = Math.round(
+      clampNumber(gt.maxGiftLines, 1, REWARDS_CAPS.maxGiftLines, D.giftTiers.maxGiftLines),
+    );
+    if (!GIFT_SAMPLE_RULES.includes(gt.sampleRule as GiftSampleRule)) {
+      gt.sampleRule = D.giftTiers.sampleRule;
+    }
+    gt.tiers = sanitizeGiftTiers(gt.tiers);
+    if (!GIFT_PRESET_VALUES.includes(gt.giftPreset as GiftPreset)) {
+      gt.giftPreset = inferGiftPreset(gt.tiers);
+    }
+    gt.giftThresholdsByMarket = sanitizeGiftThresholdsByMarket(
+      gt.giftThresholdsByMarket,
+    );
+    gt.samplePool = sanitizeSamplePool(gt.samplePool);
+    gt.warehouseByMarket = sanitizeWarehouseByMarket(gt.warehouseByMarket);
+    if (!isPlainObject(gt.stockFloor)) {
+      gt.stockFloor = structuredClone(D.giftTiers.stockFloor);
+    }
+    gt.stockFloor = {
+      days: Math.round(clampNumber(gt.stockFloor.days, 0, 60, D.giftTiers.stockFloor.days)),
+      minUnits: Math.round(
+        clampNumber(gt.stockFloor.minUnits, 0, 100000, D.giftTiers.stockFloor.minUnits),
+      ),
+    };
+    if (typeof gt.showShippingMilestone !== "boolean") {
+      gt.showShippingMilestone = D.giftTiers.showShippingMilestone;
+    }
+
+    const fs = next.rewards.freeShip;
+    if (typeof fs.enabled !== "boolean") fs.enabled = D.freeShip.enabled;
+    fs.minUnits = Math.round(clampNumber(fs.minUnits, 0, 50, D.freeShip.minUnits));
+    if (typeof fs.byThreshold !== "boolean") fs.byThreshold = D.freeShip.byThreshold;
+    fs.scope = sanitizeMarketScope(fs.scope);
+  }
+
   const marketHandlePattern = /^[a-z0-9][a-z0-9-]{0,63}$/;
   const sanitizedScopes = defaultMarketScopes();
   for (const key of FEATURE_KEYS) {
@@ -2624,6 +3630,23 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     },
     siblings: [],
   },
+  // v14 rewards: each sub-section owns its master (no shared switch).
+  set_savings: {
+    label: "Set savings (KIT tiers)",
+    get: (s) => s.rewards.setSavings.enabled,
+    set: (s, on) => {
+      s.rewards.setSavings.enabled = on;
+    },
+    siblings: [],
+  },
+  gift_tiers: {
+    label: "Gift tiers",
+    get: (s) => s.rewards.giftTiers.enabled,
+    set: (s, on) => {
+      s.rewards.giftTiers.enabled = on;
+    },
+    siblings: [],
+  },
 };
 
 function scopeFor(settings: BoosterSettings, key: FeatureKey): MarketScope {
@@ -2722,6 +3745,8 @@ export const FEATURE_RAW_FIELD: Record<
   | { kind: "section"; field: StandaloneSectionField }
   | { kind: "amazon"; field: AmazonFlagField }
   | { kind: "checkoutTrust"; field: CheckoutTrustSubFlagField }
+  // v14: rewards.<field>.enabled (setSavings / giftTiers).
+  | { kind: "rewards"; field: RewardsFlagField }
 > = {
   cart_volume_upsell: { kind: "cart", field: "showVolumeUpsell" },
   free_shipping_bar: { kind: "cart", field: "showFreeShippingBar" },
@@ -2758,6 +3783,8 @@ export const FEATURE_RAW_FIELD: Record<
   az_similar_items: { kind: "amazon", field: "similarItems" },
   az_cart_free_line: { kind: "amazon", field: "cartFreeLine" },
   az_cta_count: { kind: "amazon", field: "ctaCount" },
+  set_savings: { kind: "rewards", field: "setSavings" },
+  gift_tiers: { kind: "rewards", field: "giftTiers" },
 };
 
 /**
@@ -2781,6 +3808,9 @@ export interface FlagsSnapshot {
   /** The two v9 checkout-trust row sub-flags. Optional for the same
    *  old-snapshot back-compat reason as amazonFlags. */
   checkoutTrustSubFlags?: Record<CheckoutTrustSubFlagField, boolean>;
+  /** v14 rewards masters (rewards.setSavings.enabled / rewards.giftTiers
+   *  .enabled). Optional for the same old-snapshot back-compat reason. */
+  rewardsFlags?: Record<RewardsFlagField, boolean>;
   marketScopes: Record<FeatureKey, MarketScope>;
 }
 
@@ -2805,6 +3835,12 @@ export function snapshotFlags(settings: BoosterSettings): FlagsSnapshot {
         settings.checkoutTrust[field],
       ]),
     ) as Record<CheckoutTrustSubFlagField, boolean>,
+    rewardsFlags: Object.fromEntries(
+      REWARDS_FLAG_FIELDS.map((field) => [
+        field,
+        settings.rewards[field].enabled,
+      ]),
+    ) as Record<RewardsFlagField, boolean>,
     marketScopes: structuredClone(settings.marketScopes),
   };
 }
@@ -2830,6 +3866,11 @@ export function restoreFlags(
   for (const field of CHECKOUT_TRUST_SUB_FLAG_FIELDS) {
     const value = snapshot.checkoutTrustSubFlags?.[field];
     if (typeof value === "boolean") settings.checkoutTrust[field] = value;
+  }
+  // v14: same skip-if-absent contract for pre-v14 snapshots.
+  for (const field of REWARDS_FLAG_FIELDS) {
+    const value = snapshot.rewardsFlags?.[field];
+    if (typeof value === "boolean") settings.rewards[field].enabled = value;
   }
   settings.marketScopes = structuredClone(snapshot.marketScopes);
   return settings;
@@ -2873,6 +3914,10 @@ export function restoreFlagsSelective(
     if (raw?.kind === "amazon") {
       const value = snapshot.amazonFlags?.[raw.field];
       if (typeof value === "boolean") settings.amazon[raw.field] = value;
+    }
+    if (raw?.kind === "rewards") {
+      const value = snapshot.rewardsFlags?.[raw.field];
+      if (typeof value === "boolean") settings.rewards[raw.field].enabled = value;
     }
     if (raw?.kind === "checkoutTrust") {
       // The row flip may have force-isolated the dormant SIBLING row, raised

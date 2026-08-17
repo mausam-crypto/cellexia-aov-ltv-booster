@@ -5,9 +5,14 @@ import {
   FEATURE_KEYS,
   SHIPS_FROM_FORMATS,
   getSettings,
+  sanitizeGiftThresholdsByMarket,
+  sanitizeGiftTiers,
+  sanitizeSetSavingsTiers,
   type BoosterSettings,
   type DeliveryEstimateFormat,
   type FeatureKey,
+  type GiftTier,
+  type SetSavingsTier,
   type ShipsFromFormat,
 } from "../models/settings.server";
 import {
@@ -63,7 +68,34 @@ export interface PreviewDraftConfig {
   deliveryFormatCheckout?: DeliveryEstimateFormat;
   /** az_ships_from display format previewed on the PRODUCT PAGE (v6.10). */
   shipsFromFormat?: ShipsFromFormat;
+  /**
+   * v14 cart simulator: the storefront's rwSpendCents()/rwDistinctCount()
+   * return these values inside the preview session and NO cart mutation
+   * happens. spendCents is in the cart's presentment currency
+   * (0..100,000,000), count 0..50.
+   */
+  simCart?: { spendCents: number; count: number };
+  /**
+   * v14 live rehearsal: real cart mutations (gift lines, KIT codes) are
+   * allowed on the merchant's preview cart — storefront AND checkout
+   * safety net. Only ever `true` (absent = off).
+   */
+  rehearsal?: boolean;
+  /**
+   * v14 draft rewards tiers/amounts, sanitized with the SAME settings
+   * sanitizers (bounded, tokenless). buildRewardsMetafield re-sanitizes
+   * them into the rewards metafield `draft` while armed.
+   */
+  rewards?: {
+    setSavingsTiers?: SetSavingsTier[];
+    giftTiers?: GiftTier[];
+    giftAmountsByMarket?: Record<string, { amounts: number[]; currencyCode: string }>;
+  };
 }
+
+/** v14 simCart bounds (SPEC §10). */
+export const SIM_CART_MAX_SPEND_CENTS = 100_000_000;
+export const SIM_CART_MAX_COUNT = 50;
 
 /** Parsed, validated snapshot of a shop's PreviewState row. */
 export interface PreviewSnapshot {
@@ -183,6 +215,41 @@ export function sanitizeDraftConfig(raw: unknown): PreviewDraftConfig {
     (SHIPS_FROM_FORMATS as readonly string[]).includes(shipsFromFormat)
   ) {
     out.shipsFromFormat = shipsFromFormat as ShipsFromFormat;
+  }
+  // v14 (SPEC §10) — keep BYTE-EQUIVALENT in behaviour with the twin inside
+  // metafields.server's loadPreviewPayload (which cannot import this module).
+  const simCart = (raw as Record<string, unknown>).simCart;
+  if (typeof simCart === "object" && simCart !== null && !Array.isArray(simCart)) {
+    const spend = Number((simCart as Record<string, unknown>).spendCents);
+    const count = Number((simCart as Record<string, unknown>).count);
+    if (Number.isFinite(spend) && Number.isFinite(count)) {
+      out.simCart = {
+        spendCents: Math.min(SIM_CART_MAX_SPEND_CENTS, Math.max(0, Math.floor(spend))),
+        count: Math.min(SIM_CART_MAX_COUNT, Math.max(0, Math.floor(count))),
+      };
+    }
+  }
+  if ((raw as Record<string, unknown>).rehearsal === true) {
+    out.rehearsal = true;
+  }
+  const rewards = (raw as Record<string, unknown>).rewards;
+  if (typeof rewards === "object" && rewards !== null && !Array.isArray(rewards)) {
+    const rw = rewards as Record<string, unknown>;
+    const draft: NonNullable<PreviewDraftConfig["rewards"]> = {};
+    if (Array.isArray(rw.setSavingsTiers)) {
+      draft.setSavingsTiers = sanitizeSetSavingsTiers(rw.setSavingsTiers);
+    }
+    if (Array.isArray(rw.giftTiers)) {
+      draft.giftTiers = sanitizeGiftTiers(rw.giftTiers);
+    }
+    if (
+      typeof rw.giftAmountsByMarket === "object" &&
+      rw.giftAmountsByMarket !== null &&
+      !Array.isArray(rw.giftAmountsByMarket)
+    ) {
+      draft.giftAmountsByMarket = sanitizeGiftThresholdsByMarket(rw.giftAmountsByMarket);
+    }
+    if (Object.keys(draft).length > 0) out.rewards = draft;
   }
   return out;
 }
@@ -400,6 +467,132 @@ export function buildPreviewEntryUrl(
   const market = sanitizeMarketHandle(options.market);
   if (market) params.set("market", market);
   return `https://${domain}/apps/cellexia/preview?${params.toString()}`;
+}
+
+// ---------------------------------------------------------------------------
+// v14 rewards preview helpers (SPEC §10) — pure, shared by preview-config
+// (storefront runtime) and the Preview Center (simulator chips)
+// ---------------------------------------------------------------------------
+
+export interface RewardsForMarket {
+  /** Set-savings tiers the preview session uses (draft wins over live). */
+  ssTiers: SetSavingsTier[];
+  /**
+   * Gift-tier amounts for the simulated market: the market's own record
+   * (draft giftAmountsByMarket, else settings giftThresholdsByMarket) with
+   * its currency, else the EUR defaults (draft giftTiers, else live). The
+   * storefront applies its thresholdCents() rule: amounts in the presentment
+   * currency are used as-is, EUR defaults are converted by the shop rate.
+   */
+  gtAmounts: { a: number[]; c: string };
+  /** Every gift option variant + samplePool entry ({vid, handle, title}). */
+  gifts: { vid: string; handle: string; title: string }[];
+}
+
+/**
+ * Resolves the rewards config the preview session should show for one
+ * market: live settings with the armed draftConfig overrides applied. Pure;
+ * `draftConfig` should be `{}` whenever the preview is disarmed. Titles are
+ * the product handles (no API call here — the storefront island carries the
+ * real titles via all_products).
+ */
+export function rewardsForMarket(
+  settings: BoosterSettings,
+  draftConfig: PreviewDraftConfig,
+  market: string,
+): RewardsForMarket {
+  const rw = settings.rewards;
+  const draft = draftConfig.rewards ?? {};
+  const ssTiers = (draft.setSavingsTiers ?? rw.setSavings.tiers).map((tier) => ({
+    count: tier.count,
+    pct: tier.pct,
+    code: tier.code,
+  }));
+  const gtTiers = draft.giftTiers ?? rw.giftTiers.tiers;
+  const record =
+    (market && draft.giftAmountsByMarket?.[market]) ||
+    (market && rw.giftTiers.giftThresholdsByMarket[market]) ||
+    null;
+  const gtAmounts =
+    record && Array.isArray(record.amounts) && record.amounts.length >= gtTiers.length
+      ? { a: gtTiers.map((_, i) => Number(record.amounts[i]) || 0), c: record.currencyCode }
+      : { a: gtTiers.map((tier) => tier.amount), c: "EUR" };
+  const gifts: RewardsForMarket["gifts"] = [];
+  const seen = new Set<string>();
+  const push = (variantId: string, handle: string) => {
+    const vid = /(\d+)$/.exec(variantId ?? "")?.[1] ?? "";
+    const key = vid || handle;
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    gifts.push({ vid, handle, title: handle });
+  };
+  for (const tier of gtTiers) {
+    for (const slot of tier.slots) {
+      for (const option of slot) {
+        if (option.kind === "variant") push(option.variantId, option.handle);
+      }
+    }
+  }
+  for (const entry of rw.giftTiers.samplePool) push(entry.variantId, entry.handle);
+  return { ssTiers, gtAmounts, gifts };
+}
+
+export interface SimCartChip {
+  label: string;
+  /** Spend to set (cents, presentment currency) — undefined = keep. */
+  spendCents?: number;
+  /** Product count to set — undefined = keep. */
+  count?: number;
+}
+
+/**
+ * Quick simulator presets for one market, computed from live + draft config:
+ * "Just below tier 1", "At tier N" (one per gift tier), "At free shipping"
+ * (the market's explicit free-shipping threshold when its currency matches
+ * the gift amounts' currency, else the shop-currency fallback only when the
+ * amounts are in the shop currency), and one "N products" chip per
+ * set-savings tier. All amounts are in `currency` (= gtAmounts.c).
+ */
+export function simCartChips(
+  settings: BoosterSettings,
+  draftConfig: PreviewDraftConfig,
+  market: string,
+): { currency: string; chips: SimCartChip[] } {
+  const { ssTiers, gtAmounts } = rewardsForMarket(settings, draftConfig, market);
+  const currency = gtAmounts.c;
+  const chips: SimCartChip[] = [];
+  const amounts = gtAmounts.a.filter((amount) => Number.isFinite(amount) && amount > 0);
+  if (amounts.length > 0) {
+    chips.push({
+      label: "Just below tier 1",
+      spendCents: Math.max(0, Math.round(amounts[0] * 100) - 100),
+      count: 1,
+    });
+    amounts.forEach((amount, index) => {
+      chips.push({
+        label: `At tier ${index + 1}`,
+        spendCents: Math.round(amount * 100),
+        count: Math.max(1, index + 1),
+      });
+    });
+  }
+  const fs = market ? settings.freeShipping.byMarket[market] : undefined;
+  let freeShip: number | null = null;
+  if (fs && fs.currencyCode === currency && fs.amount > 0) {
+    freeShip = fs.amount;
+  } else if (!fs && currency === "EUR" && settings.global.freeShippingThreshold > 0) {
+    freeShip = settings.global.freeShippingThreshold;
+  }
+  if (freeShip !== null) {
+    chips.push({
+      label: "At free shipping",
+      spendCents: Math.round(freeShip * 100),
+    });
+  }
+  for (const tier of ssTiers) {
+    chips.push({ label: `${tier.count} products (${tier.code})`, count: tier.count });
+  }
+  return { currency, chips };
 }
 
 // ---------------------------------------------------------------------------
@@ -929,5 +1122,66 @@ export function featureReadiness(
     "dermatologist endorsement",
     "dermatologist endorsements",
     );
+
+  // --- v14 rewards (SPEC §10) ---------------------------------------------
+  // Both render in the cart drawer from the cart's contents; the preview
+  // cart is never mutated (no gift lines, no KIT code) unless "Live
+  // rehearsal" is ticked, so the Preview Center's cart simulator is the
+  // honest way to walk the tiers without touching a real cart. The tier
+  // maths itself (the discount and the free gift line) needs the Discount
+  // Function's discounts connected on the Rewards page.
+  {
+    const ss = settings.rewards.setSavings;
+    const ssTiers = ss.tiers;
+    if (ssTiers.length === 0) {
+      readiness.set_savings = {
+        ready: false,
+        reason:
+          "No set-savings tiers configured — add at least one tier (products → % → code) on the Rewards page, or the nudge, captions and KIT code have nothing to show.",
+      };
+    } else {
+      const surfaces = [
+        ss.surfaces.cartNudge ? "cart nudge" : null,
+        ss.surfaces.crossSellReframe ? "cross-sell reframe" : null,
+        ss.surfaces.pdpLine ? "product-page line" : null,
+        ss.surfaces.fbtCaption ? "FBT caption" : null,
+        ss.surfaces.similarCaption ? "similar-items caption" : null,
+      ].filter((surface): surface is string => surface !== null);
+      readiness.set_savings = withExclusionNote(
+        {
+          ready: true,
+          reason:
+            `Shows: ${surfaces.length > 0 ? surfaces.join(", ") : "no surface (all five switches are off on the Rewards page)"} — ${ssTiers.length} tier${ssTiers.length === 1 ? "" : "s"} (${ssTiers.map((tier) => `${tier.count}→${tier.pct}% ${tier.code}`).join(", ")}). ` +
+            "In the preview the KIT code is NOT applied to your cart unless “Live rehearsal” is ticked — use the cart simulator below to walk the product counts; the real discount at checkout needs “Connect KIT codes & discounts” on the Rewards page (Setup & health: rewards-discounts).",
+        },
+        ss.setSavingsExcludedByMarket,
+        "the set-savings count or discount",
+      );
+    }
+    const gt = settings.rewards.giftTiers;
+    if (gt.tiers.length === 0) {
+      readiness.gift_tiers = {
+        ready: false,
+        reason:
+          "No gift tiers configured — add at least one tier (spend threshold + gift) on the Rewards page, or the meter has no milestones.",
+      };
+    } else {
+      const missingVariants = gt.tiers.some((tier) =>
+        tier.slots.some((slot) =>
+          slot.some((option) => option.kind === "variant" && !option.variantId),
+        ),
+      );
+      const marketsWithAmounts = Object.keys(gt.giftThresholdsByMarket).length;
+      readiness.gift_tiers = {
+        ready: !missingVariants,
+        reason:
+          `Shows the reward meter in the cart drawer with ${gt.tiers.length} gift tier${gt.tiers.length === 1 ? "" : "s"} (EUR ${gt.tiers.map((tier) => tier.amount).join(" / ")}${marketsWithAmounts > 0 ? `; ${marketsWithAmounts} market${marketsWithAmounts === 1 ? "" : "s"} with own amounts` : "; no per-market amounts yet — other currencies convert the EUR defaults"}). ` +
+          (missingVariants
+            ? "Some gift options have no product variant selected yet (press “Load defaults” or pick variants on the Rewards page) — those slots render nothing. "
+            : "") +
+          "In the preview the free gift is shown as a sample row and NOT added to your cart unless “Live rehearsal” is ticked — use the cart simulator below to walk the spend thresholds; the real free-gift discount at checkout needs “Connect KIT codes & discounts” on the Rewards page.",
+      };
+    }
+  }
   return readiness;
 }

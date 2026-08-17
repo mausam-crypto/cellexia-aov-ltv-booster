@@ -237,5 +237,31 @@
       "one": "Tovább a pénztárhoz ({{ count }} termék)",
       "other": "Tovább a pénztárhoz ({{ count }} termék)"
     }
+  },
+  "rewards": {
+    "meter_gift_away": "Már csak {{ amount }} választ el az ajándéktól: {{ gift }} ({{ value }} értékben)",
+    "meter_gift_unlocked": "Ajándék feloldva: {{ gift }}",
+    "meter_all": "Minden jutalmat feloldottál — jó szórakozást!",
+    "set_add_one": "Adj hozzá még 1 terméket, és spórolj {{ pct }}%-ot mindenen",
+    "set_add_more": "Adj hozzá még {{ count }} terméket, és spórolj {{ pct }}%-ot mindenen",
+    "set_saving": "Szettkedvezmény −{{ amount }} ({{ code }})",
+    "set_title": "Tedd teljessé a szettedet, és spórolj {{ pct }}%-ot",
+    "subtotal": "Részösszeg",
+    "free": "INGYENES",
+    "gift_tag": "Ajándék",
+    "gift_added": "Az ajándékot hozzáadtuk a kosaradhoz",
+    "gift_back": "Add vissza az ajándékodat",
+    "gift_unavailable": "Az ajándékod jelenleg nem adható hozzá ehhez a rendeléshez",
+    "remove": "Eltávolítás",
+    "swap": "Ajándék cseréje",
+    "sample_set": "Mintacsomag",
+    "pdp_line": "Adj hozzá bármilyen második terméket, és spórolj {{ pct }}%-ot mindkettőn",
+    "pdp_line_next": "Tedd a kosaradba, és spórolj {{ pct }}%-ot a szetteden",
+    "fbt_caption": "Vedd meg mind a {{ count }} terméket együtt, és spórolj legalább {{ pct }}%-ot",
+    "fbt_add_save": "Mind a {{ count }} hozzáadása {{ pct }}% kedvezménnyel",
+    "similar_caption": "Adj hozzá egyet ezek közül, és spórolj {{ pct }}%-ot mindkettőn",
+    "meter_gift_away_plain": "Már csak {{ amount }} választ el az ajándéktól: {{ gift }}",
+    "set_title_more": "Tedd teljessé a szettedet — {{ pct }}% kedvezmény mindenre, amit hozzáadsz",
+    "fbt_add_save_both": "Mindkettő hozzáadása {{ pct }}% kedvezménnyel"
   }
 }

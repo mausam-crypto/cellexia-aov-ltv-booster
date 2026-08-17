@@ -28,6 +28,16 @@
  * unusable. Both key off the same featureOn()/effective helpers, so
  * verified preview sessions see the replacement while live visitors see
  * the standard widgets.
+ *
+ * v14 rewards (SPEC-v14-rewards): set_savings (KIT tiers — the drawer
+ * keeps the right KIT discount code on the cart and nudges toward the
+ * next tier; cross-sell reframed as "complete your set") and gift_tiers
+ * (spend thresholds per market — the rewards meter replaces the shipbar,
+ * free gifts are added/removed as real cart lines carrying the
+ * _cellexia_gift property and dressed FREE inside the theme's own rows).
+ * See the "v14 rewards" region before renderInto(). Spend everywhere
+ * (shipbar, az free line, meter) is now rwSpendCents(): original line
+ * prices excluding gift + protection lines.
  */
 (function () {
   'use strict';
@@ -99,7 +109,11 @@
     dispatch: 'dispatch_countdown',
     delivery: 'delivery_estimate',
     azCartFreeLine: 'az_cart_free_line',
-    azCtaCount: 'az_cta_count'
+    azCtaCount: 'az_cta_count',
+    // v14 rewards (SPEC-v14 §4): the two new FeatureKeys ride the same
+    // Liquid-precomputed effective flags — anyEffectiveLive() sees them.
+    setSavings: 'set_savings',
+    giftTiers: 'gift_tiers'
   };
 
   function featureOn(key) {
@@ -257,7 +271,10 @@
     crossSellAdding: null,
     // Pending re-queued decoration pass (a decorate request arrived while
     // state.busy — never swallow it, retry until busy clears).
-    decorateTimer: null
+    decorateTimer: null,
+    // v14 rewards: per-render snapshot from rwSnapshot() — cross-sell
+    // reframe pct + gift/sachet skip sets (null when no rewards island).
+    rw: null
   };
 
   function shopRate() {
@@ -595,6 +612,7 @@
         // right here (the list observer runs another pass on its own tick
         // as a safety net; the pass is idempotent).
         decorateSubscriptionRows();
+        rwDecorateGiftRows(); // v14: the rebuilt rows lose their gift dressing too
         return;
       }
     } catch (e) { /* fall through to our own refresh */ }
@@ -607,7 +625,9 @@
       }
       var subtotalEls = document.querySelectorAll('.mini-cart__footer [data-cart-subtotal], .mini-cart__footer .subtotal, .mini-cart__footer .mini-cart__subtotal');
       if (cart && subtotalEls.length) {
-        for (var j = 0; j < subtotalEls.length; j++) subtotalEls[j].textContent = money(cart.items_subtotal_price);
+        // v14: total_price (after KIT / gift discounts) once the rewards
+        // island exists; pre-v14 behaviour (items_subtotal_price) otherwise
+        for (var j = 0; j < subtotalEls.length; j++) subtotalEls[j].textContent = money(RW ? cart.total_price : cart.items_subtotal_price);
       }
     } catch (e) { /* noop */ }
   }
@@ -631,7 +651,9 @@
         // text. The theme's own .checkout-subtotal span INSIDE the
         // stored original still matches and stays current for restore.
         var subtotals = document.querySelectorAll('.mini-cart__footer .sub-total .total, .mini-cart__actions .btn span:not(.cx-azcta-label):not(.cx-azcta-original)');
-        for (var j = 0; j < subtotals.length; j++) subtotals[j].textContent = money(cart.items_subtotal_price);
+        // v14: total_price (after KIT / gift discounts) once the rewards
+        // island exists; pre-v14 behaviour (items_subtotal_price) otherwise
+        for (var j = 0; j < subtotals.length; j++) subtotals[j].textContent = money(RW ? cart.total_price : cart.items_subtotal_price);
         state.themeStale = cart;
       }
     } catch (e) { /* noop */ }
@@ -923,7 +945,7 @@
     // v6.7 Liquid diet: the gated cfg.af island flag carries the old
     // template-emission gate; the node itself is JS-built.
     if (cfg.af !== 1) return null;
-    var subtotal = Number(state.cart.items_subtotal_price) || 0;
+    var subtotal = rwSpendCents(); // v14: spend excludes gift + protection lines (was items_subtotal_price)
     var qualified = subtotal >= goal;
     // String availability decides renderability BEFORE any DOM work.
     if (qualified && !azStr('amazon.qualifies')) return null;
@@ -961,7 +983,7 @@
     if (!featureOn('shipbar') || !state.cart) return null;
     var goal = thresholdCents();
     if (!(goal > 0)) return null;
-    var subtotal = Number(state.cart.items_subtotal_price) || 0;
+    var subtotal = rwSpendCents(); // v14: spend excludes gift + protection lines (was items_subtotal_price)
     var wrap = el('div', 'cx-shipbar');
     wrap.setAttribute('data-cx-feature', 'free_shipping_bar');
     if (subtotal >= goal) wrap.className += ' cx-shipbar--unlocked';
@@ -1011,6 +1033,7 @@
     var seen = {};
     var count = 0;
     state.cart.items.forEach(function (item) {
+      if (rwIsGift(item)) return; // v14: a free gift line is not a product the offers attribute to
       var pid = String(item.product_id);
       if (!seen[pid]) {
         seen[pid] = true;
@@ -1114,6 +1137,7 @@
     if (featureOn('volume')) {
       var volumeLines = [];
       state.cart.items.forEach(function (item) {
+        if (state.rw && state.rw.skipK[String(item.key)]) return; // v14: gift / sachet lines never get offers
         var candidates = upgradeCandidates(item);
         if (candidates.length) volumeLines.push({ item: item, candidates: candidates });
       });
@@ -1129,6 +1153,7 @@
     if (featureOn('subscription') && !isB2B()) {
       var subLines = [];
       state.cart.items.forEach(function (item) {
+        if (state.rw && state.rw.skipK[String(item.key)]) return; // v14: gift / sachet lines never get offers
         if (itemHasPlan(item)) return;
         var plan = findPlanForItem(item);
         if (plan) subLines.push({ item: item, plan: plan });
@@ -1238,6 +1263,7 @@
       var hide = !vid ||
         inCartProducts[String(pid)] === true ||
         inCartVariants[String(vid)] === true ||
+        (state.rw && state.rw.skipV[String(vid)] === true) || // v14: gift-pool / sachet variants
         visible >= cap;
       if (hide) {
         if (row.parentNode) row.parentNode.removeChild(row);
@@ -1255,6 +1281,11 @@
     // wins over the translated default.
     var o = cfg.overrides.crossSellTitle;
     if (typeof o === 'string' && /\S/.test(o)) return o;
+    // v14 set-savings reframe (surfaces.crossSellReframe, rwSnapshot):
+    // "Complete your set & save P%" while one more product reaches a tier;
+    // "P% off everything you add" while a tier is active and the next one
+    // needs two or more products
+    if (state.rw && state.rw.pct > 0) return rwT(state.rw.mode === 'more' ? 'set_title_more' : 'set_title', { pct: state.rw.pct });
     return t('crosssell.title');
   }
 
@@ -1285,12 +1316,27 @@
     var prices = cxEl('span', 'cx-crosssell__prices');
     cxSp(prices);
     var price = cxEl('span', 'cx-crosssell__price');
-    price.textContent = crosssellMoneyText(row, 'pf', 'c');
-    prices.appendChild(price);
-    if (typeof row.cf === 'string' && row.cf) {
-      var cmp = cxEl('s', 'cx-crosssell__compare');
-      cmp.textContent = crosssellMoneyText(row, 'cf', 'cc');
-      prices.appendChild(cmp);
+    // v14: reframe pct for THIS row — 0 when the row's product is excluded
+    // for the market (the KIT code would not discount it; the title reframe
+    // still applies). Inline: the extracted-function sims stub state.rw.
+    var rwPct = state.rw && state.rw.pct > 0 && !(state.rw.exc && state.rw.exc[String(row.p)] === true) ? state.rw.pct : 0;
+    if (rwPct > 0) {
+      // v14 set-savings reframe: the price once added (KIT tier one more
+      // product reaches), the current price struck — not for products the
+      // KIT code would not discount (market exclusions)
+      price.textContent = money(Math.round((Number(row.c) || 0) * (1 - rwPct / 100)));
+      prices.appendChild(price);
+      var was = cxEl('s', 'cx-crosssell__compare');
+      was.textContent = crosssellMoneyText(row, 'pf', 'c');
+      prices.appendChild(was);
+    } else {
+      price.textContent = crosssellMoneyText(row, 'pf', 'c');
+      prices.appendChild(price);
+      if (typeof row.cf === 'string' && row.cf) {
+        var cmp = cxEl('s', 'cx-crosssell__compare');
+        cmp.textContent = crosssellMoneyText(row, 'cf', 'cc');
+        prices.appendChild(cmp);
+      }
     }
     info.appendChild(prices);
     cxSp(info);
@@ -1405,6 +1451,7 @@
       if (seen[pid]) continue;
       seen[pid] = true;
       if (String(item.handle || '') === PROTECTION_HANDLE) continue;
+      if (state.rw && state.rw.skipK[String(item.key)] === true) continue; // v14: gift / sachet lines never anchor
       anchors.push(item);
     }
     return anchors;
@@ -1492,6 +1539,7 @@
         var p = products[i];
         if (!p || typeof p.handle !== 'string' || !p.handle) continue;
         if (p.handle === PROTECTION_HANDLE) continue;
+        if (state.rw && state.rw.skipH[p.handle] === true) continue; // v14: gift-pool / sachet products never recommended
         if (p.id != null && ex.products[String(p.id)] === true) continue;
         if (seen[p.handle]) continue;
         seen[p.handle] = true;
@@ -1571,9 +1619,18 @@
     var info = el('span', 'cx-crosssell__info');
     info.appendChild(el('span', 'cx-crosssell__name', row.title || ''));
     var prices = el('span', 'cx-crosssell__prices');
-    prices.appendChild(el('span', 'cx-crosssell__price', money(row.priceCents)));
-    if (Number(row.compareAtCents) > Number(row.priceCents)) {
-      prices.appendChild(el('s', 'cx-crosssell__compare', money(row.compareAtCents)));
+    var rwPct = state.rw && state.rw.pct > 0
+      && !(state.rw.exc && state.rw.exc[String(row.productId)] === true)
+      && !(state.rw.skipH && state.rw.skipH[String(row.handle)] === true) ? state.rw.pct : 0; // v14: see crosssellBuildRow
+    if (rwPct > 0) {
+      // v14 set-savings reframe (see crosssellBuildRow)
+      prices.appendChild(el('span', 'cx-crosssell__price', money(Math.round((Number(row.priceCents) || 0) * (1 - rwPct / 100)))));
+      prices.appendChild(el('s', 'cx-crosssell__compare', money(row.priceCents)));
+    } else {
+      prices.appendChild(el('span', 'cx-crosssell__price', money(row.priceCents)));
+      if (Number(row.compareAtCents) > Number(row.priceCents)) {
+        prices.appendChild(el('s', 'cx-crosssell__compare', money(row.compareAtCents)));
+      }
     }
     info.appendChild(prices);
     li.appendChild(info);
@@ -1594,7 +1651,7 @@
     try {
       var box = el('div', 'cx-crosssell');
       box.setAttribute('data-cx-feature', 'cart_cross_sell');
-      box.appendChild(el('p', 'cx-crosssell__title heading--five', cfg.overrides.crossSellTitle || t('crosssell.title')));
+      box.appendChild(el('p', 'cx-crosssell__title heading--five', crosssellTitleText())); // v14: reframe-aware (same override gate as manual)
       var list = el('ul', 'cx-crosssell__list list-reset');
       var items = [];
       for (var i = 0; i < cached.length; i++) {
@@ -3201,6 +3258,1445 @@
     }
   }
 
+  // ============================================================ v14 rewards
+  //
+  // Set savings (KIT tiers) + gift tiers — SPEC-v14-rewards §4/§6/§7. The
+  // Liquid island emits cfg.rw ONLY when either feature is effective or
+  // draft-armed for this market (the byte-capped block ships the two
+  // settings sections verbatim instead of lean re-keyed copies):
+  //   rw.ss     rewards.setSavings — tiers [{count,pct,code}],
+  //             includeSubscriptions, surfaces, setSavingsExcludedByMarket,
+  //             aliasCodes (v14.3 legacy KIT aliases, server-computed);
+  //   rw.gt     rewards.giftTiers — tiers [{amount (EUR), slots [[{kind,
+  //             variantId, handle, count}]]}], cumulative, choice,
+  //             maxGiftLines, sampleRule, samplePool, giftThresholdsByMarket,
+  //             showShippingMilestone;
+  //   rw.paused the stock watcher's paused variant ids for THIS market
+  //             (Liquid-resolved from the gift_stock metafield) or null;
+  //   rw.gifts  "<numeric variantId>" -> {h handle, t title, c cents, a
+  //             available} for every option variant + samplePool entry
+  //             (all_products lookup at render; the "_" filler key only
+  //             carries the JSON comma).
+  // Per-market gift amounts / product exclusions are looked up by market
+  // handle here (rwMarket(): the verified preview's simulated market, else
+  // cfg.market) — a data lookup, never scope logic: visibility still comes
+  // exclusively from cfg.effective / PREVIEW through featureOn(). Every
+  // path fails closed: no island, no tiers, no strings -> render nothing,
+  // mutate nothing. Cart mutations (KIT code sync, gift add/remove) ride
+  // the quiet path, single-flight, one correction per cart signature, and
+  // never inside a preview session unless it is a live rehearsal.
+
+  // ---- v14 rewards: shared tier helpers (TWIN of cellexia-pdp.js)
+  function cxRwTier(tiers, count) {
+    var best = null;
+    if (!tiers || !tiers.length) return null;
+    for (var i = 0; i < tiers.length; i++) {
+      var tr = tiers[i];
+      if (tr && Number(tr.count) > 0 && Number(tr.count) <= count && (!best || Number(tr.count) > Number(best.count))) best = tr;
+    }
+    return best;
+  }
+  function cxRwNext(tiers, count) {
+    var best = null;
+    if (!tiers || !tiers.length) return null;
+    for (var i = 0; i < tiers.length; i++) {
+      var tr = tiers[i];
+      if (tr && Number(tr.count) > count && (!best || Number(tr.count) < Number(best.count))) best = tr;
+    }
+    return best;
+  }
+
+  // ---- v14 rewards: cart
+  var RW = cfg.rw && typeof cfg.rw === 'object' ? cfg.rw : null;
+  var RW_GIFT_PROP = '_cellexia_gift'; // gift-line property (value = tier number as a string)
+  // Island sentinel letters per param name (Liquid: t: amount: '@@A@@' ...
+  // — one-letter sentinels keep the strings loop under the Liquid cap).
+  var RW_SENTINELS = { amount: 'A', pct: 'P', count: 'N', code: 'C', gift: 'G', value: 'V' };
+  // English defaults (§7) — used whenever the island string is missing or a
+  // Shopify "Translation missing" marker (el/ar are byte-capped locales).
+  var RW_DEFAULTS = {
+    meter_gift_away: "You're {{ amount }} away from a free {{ gift }} (worth {{ value }})",
+    meter_gift_unlocked: 'Free gift unlocked: {{ gift }}',
+    meter_all: 'All rewards unlocked — enjoy!',
+    set_add_one: 'Add 1 more product to save {{ pct }}% on everything',
+    set_add_more: 'Add {{ count }} more products to save {{ pct }}% on everything',
+    set_saving: 'Set savings −{{ amount }} ({{ code }})',
+    set_title: 'Complete your set & save {{ pct }}%',
+    subtotal: 'Subtotal',
+    free: 'FREE',
+    gift_tag: 'Free gift',
+    gift_added: 'Free gift added to your cart',
+    gift_back: 'Add your free gift back',
+    gift_unavailable: "Your free gift can't be applied to this order right now",
+    remove: 'Remove',
+    swap: 'Swap gift',
+    sample_set: 'Sample set',
+    pdp_line: 'Add any second product, save {{ pct }}% on both',
+    pdp_line_next: 'Add this to your cart and save {{ pct }}% on your set',
+    fbt_caption: 'Buy all {{ count }} together, save at least {{ pct }}%',
+    fbt_add_save: 'Add all {{ count }} & save {{ pct }}%',
+    similar_caption: 'Add any of these, save {{ pct }}% on both',
+    // v14 polish (appended in en.default order — the locale table is a prefix)
+    meter_gift_away_plain: "You're {{ amount }} away from a free {{ gift }}",
+    set_title_more: 'Complete your set — {{ pct }}% off everything you add',
+    fbt_add_save_both: 'Add both & save {{ pct }}%'
+  };
+  // Sync state: one correction per cart signature (sig), single flight
+  // (busy); lastReached seeds silently on the first pass so a page load
+  // never fires tier_reached; reloaded caps the cart-page reload at one.
+  var rwCode = { sig: null, busy: false };
+  // failed: vids whose add was refused this page (never retried); known:
+  // gift vids seen in state.cart on our last pass; ours: vids our last pass
+  // removed itself (a known vid gone WITHOUT us = the theme's own control
+  // removed it -> remembered like a quiet Remove).
+  var rwGift = { sig: null, busy: false, lastReached: null, reloaded: false, failed: {}, known: {}, ours: {} };
+
+  function rwT(key, params) {
+    // Island string "rw.<key>" (decoded like t()) or the inline default;
+    // substitutes the @@<letter>@@ sentinel AND the {{ name }} form (the
+    // defaults use the latter). Result must only ever reach textContent.
+    var s = azStr('rw.' + key);
+    s = s ? decodeEntities(s) : (RW_DEFAULTS[key] || key);
+    if (params) {
+      Object.keys(params).forEach(function (p) {
+        var value = String(params[p]);
+        s = s.split('@@' + (RW_SENTINELS[p] || p.toUpperCase()) + '@@').join(value);
+        s = s.replace(new RegExp('\\{\\{\\s*' + p + '\\s*\\}\\}', 'g'), value);
+      });
+    }
+    return s;
+  }
+
+  function rwSs() { return RW && RW.ss && typeof RW.ss === 'object' ? RW.ss : null; }
+  function rwGt() { return RW && RW.gt && typeof RW.gt === 'object' ? RW.gt : null; }
+  function rwGifts() { return RW && RW.gifts && typeof RW.gifts === 'object' ? RW.gifts : {}; }
+  function rwMarket() { return PREVIEW && PREVIEW.market ? PREVIEW.market : MARKET; }
+  function rwSim() { return PREVIEW && PREVIEW.sim && typeof PREVIEW.sim === 'object' ? PREVIEW.sim : null; }
+
+  function rwNum(id) {
+    // Numeric id from a GID / number / numeric string ('' when unusable).
+    var s = String(id == null ? '' : id).split('/').pop();
+    return /^\d+$/.test(s) ? s : '';
+  }
+
+  function rwSsTiers() {
+    // KIT tiers: the preview draft tiers (preview-config rewardsForMarket.
+    // ssTiers) win inside a verified preview; every tier must be usable.
+    var ss = rwSs();
+    var tiers = PREVIEW && PREVIEW.rw && Array.isArray(PREVIEW.rw.ssTiers) ? PREVIEW.rw.ssTiers
+      : (ss && Array.isArray(ss.tiers) ? ss.tiers : []);
+    return tiers.filter(function (tr) {
+      return !!(tr && Number(tr.count) > 0 && Number(tr.pct) > 0 && typeof tr.code === 'string' && tr.code);
+    });
+  }
+
+  function rwAliasCodes() {
+    // v14.3 legacy alias codes (settings rewards.setSavings.aliasCodes, the
+    // server-computed list — LEGACY_KIT_CODES minus the ladder): the rest of
+    // the KIT family. Typed by a shopper an alias grants the qualifying tier
+    // (Function); the storefront recognises them, keeps them, and NEVER
+    // attaches one itself. Upper-cased, deduped, ladder codes dropped.
+    var ss = rwSs();
+    var list = ss && Array.isArray(ss.aliasCodes) ? ss.aliasCodes : [];
+    var kit = {};
+    rwSsTiers().forEach(function (tr) { kit[String(tr.code).toUpperCase()] = true; });
+    var seen = {};
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      if (typeof list[i] !== 'string') continue;
+      var c = list[i].trim().toUpperCase();
+      if (!c || kit[c] || seen[c]) continue;
+      seen[c] = true;
+      out.push(c);
+    }
+    return out;
+  }
+
+  function rwGtTiers() {
+    var gt = rwGt();
+    return gt && Array.isArray(gt.tiers) ? gt.tiers : [];
+  }
+
+  function rwPool() {
+    // samplePool -> [{vid numeric, h handle}] (unusable entries dropped)
+    var gt = rwGt();
+    var out = [];
+    var pool = gt && Array.isArray(gt.samplePool) ? gt.samplePool : [];
+    for (var i = 0; i < pool.length; i++) {
+      var vid = pool[i] ? rwNum(pool[i].variantId) : '';
+      if (vid) out.push({ vid: vid, h: pool[i].handle ? String(pool[i].handle) : '' });
+    }
+    return out;
+  }
+
+  function rwPaused() {
+    var out = {};
+    var list = RW && Array.isArray(RW.paused) ? RW.paused : [];
+    for (var i = 0; i < list.length; i++) {
+      var vid = rwNum(list[i]);
+      if (vid) out[vid] = true;
+    }
+    return out;
+  }
+
+  function rwIsGift(item) {
+    var p = item && item.properties;
+    return !!(p && typeof p === 'object' && p[RW_GIFT_PROP] != null && String(p[RW_GIFT_PROP]) !== '');
+  }
+
+  function rwGiftTierOf(item) {
+    var n = rwIsGift(item) ? Math.floor(Number(item.properties[RW_GIFT_PROP])) : 0;
+    return n > 0 ? n : 0;
+  }
+
+  function rwIsProtection(item) {
+    return !!item && String(item.handle || '') === PROTECTION_HANDLE;
+  }
+
+  function rwIsSachet(item) {
+    // sachet = products-map "s" flag (tag sample-sachet, Liquid + proxy) OR
+    // a samplePool variant
+    if (!item) return false;
+    var p = productFor(item);
+    if (p && p.s === 1) return true;
+    var pool = rwPool();
+    for (var i = 0; i < pool.length; i++) {
+      if (pool[i].vid === String(item.variant_id)) return true;
+    }
+    return false;
+  }
+
+  function rwExcludedIds() {
+    // set-savings product ids excluded for the market (numeric string -> true)
+    var out = {};
+    var ss = rwSs();
+    var rec = ss && ss.setSavingsExcludedByMarket && typeof ss.setSavingsExcludedByMarket === 'object' ? ss.setSavingsExcludedByMarket : null;
+    var list = rec ? rec[rwMarket()] : null;
+    if (!Array.isArray(list)) return out;
+    for (var i = 0; i < list.length; i++) {
+      var pid = rwNum(list[i]);
+      if (pid) out[pid] = true;
+    }
+    return out;
+  }
+
+  function rwExcluded(item) {
+    return rwExcludedIds()[String(item.product_id)] === true;
+  }
+
+  function rwSpendCents() {
+    // Σ original_line_price over non-gift, non-protection, non-sachet lines
+    // (a €1 sachet must not buy the gift tier — the Function's spendOf
+    // skips sachets the same way); simulated in a preview with a sim cart;
+    // items_subtotal_price when the cart payload lacks original_line_price.
+    var sim = rwSim();
+    if (sim) return Math.max(0, Math.round(Number(sim.spend) || 0));
+    if (!state.cart) return 0;
+    if (!RW) return Number(state.cart.items_subtotal_price) || 0; // no rewards island: pre-v14 subtotal
+    if (!Array.isArray(state.cart.items)) return 0;
+    var sum = 0;
+    var missing = false;
+    for (var i = 0; i < state.cart.items.length; i++) {
+      var item = state.cart.items[i];
+      if (!item || rwIsGift(item) || rwIsProtection(item) || rwIsSachet(item)) continue;
+      if (item.original_line_price == null) missing = true;
+      else sum += Number(item.original_line_price) || 0;
+    }
+    if (missing) return Number(state.cart.items_subtotal_price) || 0;
+    return sum;
+  }
+
+  function rwEligibleLines() {
+    // full-size, not a gift, not the protection product, not excluded for
+    // the market; subscription lines only when includeSubscriptions
+    var ss = rwSs();
+    var subs = !ss || ss.includeSubscriptions !== false;
+    var out = [];
+    if (!state.cart || !Array.isArray(state.cart.items)) return out;
+    for (var i = 0; i < state.cart.items.length; i++) {
+      var item = state.cart.items[i];
+      if (!item || rwIsGift(item) || rwIsProtection(item) || rwIsSachet(item) || rwExcluded(item)) continue;
+      if (!subs && itemHasPlan(item)) continue;
+      out.push(item);
+    }
+    return out;
+  }
+
+  function rwDistinctCount() {
+    var sim = rwSim();
+    if (sim) return Math.max(0, Math.floor(Number(sim.count) || 0));
+    var seen = {};
+    var n = 0;
+    rwEligibleLines().forEach(function (item) {
+      var pid = String(item.product_id);
+      if (!seen[pid]) { seen[pid] = true; n++; }
+    });
+    return n;
+  }
+
+  function rwUnits() {
+    // Full-size units: ladder position (variant position in the products
+    // map; 1 when unknown) × quantity over FULL-SIZE lines (non-gift,
+    // non-protection, non-sachet — the Function's unitsOf: the market
+    // exclusion list and the subscription toggle do not apply here)
+    var units = 0;
+    if (!state.cart || !Array.isArray(state.cart.items)) return 0;
+    state.cart.items.forEach(function (item) {
+      if (!item || rwIsGift(item) || rwIsProtection(item) || rwIsSachet(item)) return;
+      var product = productFor(item);
+      var v = product ? currentVariant(product, item.variant_id) : null;
+      var pos = v && Number(v.position) > 0 ? Number(v.position) : 1;
+      units += pos * (Number(item.quantity) || 0);
+    });
+    return units;
+  }
+
+  function rwGiftLines() {
+    var out = [];
+    if (!state.cart || !Array.isArray(state.cart.items)) return out;
+    for (var i = 0; i < state.cart.items.length; i++) {
+      if (rwIsGift(state.cart.items[i])) out.push(state.cart.items[i]);
+    }
+    return out;
+  }
+
+  function rwPaidSignature() {
+    // Line signature over NON-gift lines — gift adds must not rotate the
+    // sample choice (cartSignature() changes with every gift line).
+    var parts = [];
+    if (state.cart && Array.isArray(state.cart.items)) {
+      state.cart.items.forEach(function (item) {
+        if (rwIsGift(item)) return;
+        parts.push(String(item.variant_id) + 'x' + String(item.quantity));
+      });
+    }
+    parts.sort();
+    return String(state.cart && state.cart.token || '') + '|' + parts.join(',');
+  }
+
+  function rwGiftThresholdCents(i) {
+    // Tier i threshold in the cart's presentment currency: the market's
+    // own amount when its currency IS the presentment currency (preview:
+    // rewardsForMarket.gtAmounts {a,c} first), else the EUR default × the
+    // guarded shop rate — the thresholdCents() rule.
+    var gt = rwGt();
+    if (!gt) return 0;
+    var tiers = rwGtTiers();
+    var eur = tiers[i] ? Number(tiers[i].amount) : 0;
+    var a = 0;
+    var c = '';
+    var pv = PREVIEW && PREVIEW.rw && PREVIEW.rw.gtAmounts && typeof PREVIEW.rw.gtAmounts === 'object' ? PREVIEW.rw.gtAmounts : null;
+    var rec = gt.giftThresholdsByMarket && typeof gt.giftThresholdsByMarket === 'object' ? gt.giftThresholdsByMarket[rwMarket()] : null;
+    if (pv && Array.isArray(pv.a)) {
+      a = Number(pv.a[i]);
+      c = typeof pv.c === 'string' ? pv.c : '';
+    } else if (rec && Array.isArray(rec.amounts)) {
+      a = Number(rec.amounts[i]);
+      c = typeof rec.currencyCode === 'string' ? rec.currencyCode : '';
+    }
+    if (a > 0 && c && c === activeCurrency()) return Math.round(a * 100);
+    if (eur > 0) return Math.round(eur * 100 * shopRate());
+    return 0;
+  }
+
+  function rwReached() {
+    // index of the highest gift tier whose threshold <= spend, -1 none
+    var spend = rwSpendCents();
+    var tiers = rwGtTiers();
+    var best = -1;
+    var bestCents = 0;
+    for (var i = 0; i < tiers.length; i++) {
+      var cents = rwGiftThresholdCents(i);
+      if (cents > 0 && cents <= spend && cents >= bestCents) { best = i; bestCents = cents; }
+    }
+    return best;
+  }
+
+  // ---- session memories (all best-effort; storage failures are silent)
+  function rwMemGet(key) {
+    try {
+      var raw = window.sessionStorage ? window.sessionStorage.getItem(key) : null;
+      var parsed = raw ? JSON.parse(raw) : null;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) { return {}; }
+  }
+
+  function rwMemSet(key, obj) {
+    try { window.sessionStorage.setItem(key, JSON.stringify(obj)); } catch (e) { /* noop */ }
+  }
+
+  function rwSigGet(key) {
+    // persisted sync signature (plain string) — read BEFORE the in-memory
+    // sig so a page reload can never retry the same cart signature
+    try { return window.sessionStorage ? String(window.sessionStorage.getItem(key) || '') : ''; } catch (e) { return ''; }
+  }
+
+  function rwSigSet(key, s) {
+    try { window.sessionStorage.setItem(key, String(s || '')); } catch (e) { /* noop */ }
+  }
+
+  function rwGiftReplan() { rwGift.sig = null; rwSigSet('cx_rw_gift_sig', ''); }   // force the next gift pass to re-plan
+  function rwCodeReplan() { rwCode.sig = null; rwSigSet('cx_rw_code_sig', ''); }   // force the next code pass to re-plan
+
+  function rwRemovedSet() { return rwMemGet('cx_rw_gift_removed'); }   // vid -> true: shopper removed, never re-add
+  function rwUnfreeSet() { return rwMemGet('cx_rw_gift_unfree'); }     // vid -> true: was not free after refresh, never re-add
+  function rwChoices() { return rwMemGet('cx_rw_gift_choice'); }        // "<tier>:<slot>" -> option index (choose mode)
+  function rwGiftOff() { return rwMemGet('cx_rw_gift_off').t === 1; }  // a pass saw a not-free gift: no adds until "add back"
+
+  function rwRemember(key, vid, on) {
+    var set = rwMemGet(key);
+    if (on) set[vid] = true;
+    else delete set[vid];
+    rwMemSet(key, set);
+  }
+
+  function rwOptionVid(op) {
+    // numeric variant id of a "variant" option: its variantId ONLY — a
+    // handle-only option is skipped exactly like the Function skips it
+    if (!op || typeof op !== 'object') return '';
+    return rwNum(op.variantId);
+  }
+
+  function rwVariantOk(vid, paidHandles) {
+    // grantable now: known, available, not paused for the market, not
+    // remembered as not-free, and its product not already a PAID line
+    var g = rwGifts()[vid];
+    if (!g || typeof g !== 'object' || g.a === false) return false;
+    if (rwPaused()[vid] || rwUnfreeSet()[vid] || rwGift.failed[vid]) return false;
+    if (paidHandles && g.h && paidHandles[g.h]) return false;
+    return true;
+  }
+
+  function rwRotate(list, seed) {
+    if (list.length < 2) return list;
+    var k = seed % list.length;
+    return list.slice(k).concat(list.slice(0, k));
+  }
+
+  function rwNormTitle(s) {
+    // product-title key for the not_in_cart sample rule: lowercase, letters
+    // only (digits, spaces, punctuation dropped — non-ASCII letters kept),
+    // a trailing "sachet" / "1 sachet" / "sample" token removed
+    var k = String(s == null ? '' : s).toLowerCase().replace(/[^a-z\u00c0-\uffff]/g, '');
+    return k.replace(/(sachet|sample)$/, '');
+  }
+
+  function rwTitleInCart(title, paidTitles) {
+    // a sachet counts as "in cart" when its product title and a PAID line's
+    // product title start with each other after normalising (min 6 chars —
+    // "Lip Formula 1 sachet" vs "Lip Formula 50 ml", never "Neck" vs "Ne")
+    var a = rwNormTitle(title);
+    if (a.length < 6) return false;
+    for (var i = 0; i < paidTitles.length; i++) {
+      var b = paidTitles[i];
+      if (b.length < 6) continue;
+      if (a.indexOf(b) === 0 || b.indexOf(a) === 0) return true;
+    }
+    return false;
+  }
+
+  function rwPickSamples(n, ctx) {
+    // N sachet variants from the pool: sachets already granted in the cart
+    // stay (stability across passes), the rest fill by rule —
+    // not_in_cart: sachets whose PRODUCT TITLE matches no paid line's
+    // product title (rwTitleInCart — sachets are separate products, so a
+    // handle match never fires) first, then the others, each rotated by the
+    // paid-lines hash; rotate: rotated; fixed: pool order. Paused /
+    // not-free / used / unavailable excluded.
+    var gt = rwGt();
+    var rule = gt && typeof gt.sampleRule === 'string' ? gt.sampleRule : 'not_in_cart';
+    var paused = rwPaused();
+    var unfree = rwUnfreeSet();
+    var gifts = rwGifts();
+    var pool = rwPool().filter(function (e) {
+      var g = gifts[e.vid];
+      return !paused[e.vid] && !unfree[e.vid] && !rwGift.failed[e.vid] && !ctx.used[e.vid] && !(g && g.a === false);
+    });
+    var picks = [];
+    var i;
+    for (i = 0; i < ctx.existing.length && picks.length < n; i++) {
+      for (var j = 0; j < pool.length; j++) {
+        if (pool[j].vid === ctx.existing[i] && picks.indexOf(pool[j].vid) === -1) picks.push(pool[j].vid);
+      }
+    }
+    var rest = pool.filter(function (e) { return picks.indexOf(e.vid) === -1; });
+    if (rule === 'not_in_cart') {
+      var owns = function (e) {
+        var g = gifts[e.vid];
+        return !!ctx.paid[e.h] || rwTitleInCart(g && g.t, ctx.paidTitles || []);
+      };
+      var fresh = rest.filter(function (e) { return !owns(e); });
+      var owned = rest.filter(function (e) { return owns(e); });
+      rest = rwRotate(fresh, ctx.seed).concat(rwRotate(owned, ctx.seed));
+    } else if (rule === 'rotate') {
+      rest = rwRotate(rest, ctx.seed);
+    }
+    for (i = 0; i < rest.length && picks.length < n; i++) picks.push(rest[i].vid);
+    return picks;
+  }
+
+  function rwSlotOrder(ops, ti, si) {
+    // option order for a slot: fallback order, the shopper's swap choice
+    // (choose mode) moved to the front
+    var order = [];
+    for (var i = 0; i < ops.length; i++) order.push(i);
+    var gt = rwGt();
+    if (gt && gt.choice === 'choose') {
+      var chosen = Math.floor(Number(rwChoices()[ti + ':' + si]));
+      if (chosen >= 0 && chosen < ops.length) {
+        order.splice(order.indexOf(chosen), 1);
+        order.unshift(chosen);
+      }
+    }
+    return order;
+  }
+
+  function rwGiftPlan() {
+    // The wanted gift set for the current cart + the diff against the gift
+    // lines already in it: {reached, wanted[{vid,tier,slot}], back[{vid,
+    // tier}] (declined-but-earned, for the "add back" link), add, remove,
+    // reset (quantity > 1 -> 1), unfree (honesty rule), key}.
+    var gt = rwGt();
+    var tiers = rwGtTiers();
+    var reached = gt ? rwReached() : -1;
+    var maxLines = gt ? Math.floor(Number(gt.maxGiftLines)) : 4;
+    if (!(maxLines >= 1)) maxLines = 4;
+    var cum = !gt || gt.cumulative !== false;
+    var paid = {};
+    var paidTitles = [];
+    var giftLines = rwGiftLines();
+    var existing = [];
+    if (state.cart && Array.isArray(state.cart.items)) {
+      state.cart.items.forEach(function (item) {
+        if (rwIsGift(item)) existing.push(String(item.variant_id));
+        else if (item) {
+          if (item.handle) paid[String(item.handle)] = true;
+          if (item.product_title) paidTitles.push(rwNormTitle(item.product_title));
+        }
+      });
+    }
+    var used = {};
+    var removed = rwRemovedSet();
+    var pool = rwPool();
+    var poolDeclined = false;
+    for (var pi = 0; pi < pool.length; pi++) if (removed[pool[pi].vid]) poolDeclined = true;
+    var seed = Number(cardFlagHash(rwPaidSignature())) || 0;
+    var wanted = [];
+    var back = [];
+    // Slot walk in two passes so the maxGiftLines cap never drops the
+    // headline product of a reached tier behind lower-tier sachets: every
+    // "variant" slot (tier 1..reached, a slot's kind = its first option's)
+    // first, then the sample slots (highest tier first), then the cap.
+    var slotList = [];
+    for (var ti = (cum ? 0 : reached); ti >= 0 && ti <= reached; ti++) {
+      var slots = tiers[ti] && Array.isArray(tiers[ti].slots) ? tiers[ti].slots : [];
+      for (var si = 0; si < slots.length; si++) {
+        var ops = Array.isArray(slots[si]) ? slots[si] : [];
+        slotList.push({ ti: ti, si: si, ops: ops, samples: !!(ops[0] && ops[0].kind === 'samples') });
+      }
+    }
+    var walk = slotList.filter(function (s) { return !s.samples; })
+      .concat(slotList.filter(function (s) { return s.samples; }).sort(function (a, b) { return (b.ti - a.ti) || (a.si - b.si); }));
+    for (var wi = 0; wi < walk.length; wi++) {
+      var slot = walk[wi];
+      var order = rwSlotOrder(slot.ops, slot.ti, slot.si);
+      var done = false;
+      for (var oi = 0; oi < order.length && !done; oi++) {
+        var op = slot.ops[order[oi]];
+        if (!op || typeof op !== 'object') continue;
+        if (op.kind === 'samples') {
+          var n = Math.floor(Number(op.count));
+          if (!(n >= 1)) continue;
+          if (poolDeclined) { back.push({ vid: '', tier: slot.ti + 1 }); done = true; continue; }
+          var picks = rwPickSamples(n, { paid: paid, paidTitles: paidTitles, existing: existing, used: used, seed: seed });
+          if (!picks.length) continue;
+          for (var pk = 0; pk < picks.length; pk++) {
+            used[picks[pk]] = true;
+            wanted.push({ vid: picks[pk], tier: slot.ti + 1, slot: slot.si });
+          }
+          done = true;
+        } else {
+          var vid = rwOptionVid(op);
+          if (!vid || used[vid]) continue;
+          // a gift the shopper removed is never re-added and never
+          // replaced by the slot's next option (declined, not missing)
+          if (removed[vid]) { back.push({ vid: vid, tier: slot.ti + 1 }); done = true; continue; }
+          if (!rwVariantOk(vid, paid)) continue;
+          used[vid] = true;
+          wanted.push({ vid: vid, tier: slot.ti + 1, slot: slot.si });
+          done = true;
+        }
+      }
+    }
+    if (wanted.length > maxLines) wanted = wanted.slice(0, maxLines);
+    if (rwGiftOff()) {
+      // a gift line was NOT free after a refresh this session: no adds
+      // until the shopper asks for the gift back (churn guard); the
+      // earned tier still offers the add-back link
+      wanted = [];
+      if (reached >= 0 && !back.length) back.push({ vid: '', tier: reached + 1 });
+    }
+    var wantedByVid = {};
+    wanted.forEach(function (w) { wantedByVid[w.vid] = w; });
+    var add = [];
+    var remove = [];
+    var reset = [];
+    var unfree = [];
+    var seen = {};
+    giftLines.forEach(function (item) {
+      var vid = String(item.variant_id);
+      if (!wantedByVid[vid] || seen[vid]) { remove.push(item); return; }
+      seen[vid] = true;
+      if (Number(item.quantity) > 1) { reset.push(item); return; }
+      if (Number(item.final_line_price) > 0) unfree.push(item); // honesty: a gift that is not free after discounts goes
+    });
+    wanted.forEach(function (w) { if (!seen[w.vid]) add.push(w); });
+    var key = reached + '|' + wanted.map(function (w) { return w.vid; }).join(',');
+    return { reached: reached, wanted: wanted, back: back, add: add, remove: remove, reset: reset, unfree: unfree, key: key };
+  }
+
+  function rwCartCodes() {
+    var list = state.cart && Array.isArray(state.cart.discount_codes) ? state.cart.discount_codes : [];
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      if (c && typeof c.code === 'string' && c.code) out.push({ code: c.code, applicable: c.applicable === true });
+    }
+    return out;
+  }
+
+  function rwDesiredCode() {
+    // the KIT tier the cart qualifies for (or null): {code, count, pct}
+    var tier = cxRwTier(rwSsTiers(), rwDistinctCount());
+    return tier ? { code: String(tier.code), count: Number(tier.count), pct: Number(tier.pct) } : null;
+  }
+
+  function rwKitActive() {
+    // the applied + applicable KIT-family code on the cart, or null:
+    // a shopper-typed legacy ALIAS that is applicable wins ({code, tier:
+    // the qualifying tier, alias:true}), else a ladder code (any tier)
+    var tiers = rwSsTiers();
+    var codes = rwCartCodes();
+    var aliases = rwAliasCodes();
+    var i;
+    var j;
+    for (i = 0; i < codes.length; i++) {
+      if (!codes[i].applicable) continue;
+      for (j = 0; j < aliases.length; j++) {
+        if (aliases[j] === codes[i].code.toUpperCase()) return { code: codes[i].code, tier: cxRwTier(tiers, rwDistinctCount()), alias: true };
+      }
+    }
+    for (i = 0; i < codes.length; i++) {
+      if (!codes[i].applicable) continue;
+      for (j = 0; j < tiers.length; j++) {
+        if (String(tiers[j].code).toUpperCase() === codes[i].code.toUpperCase()) return { code: codes[i].code, tier: tiers[j], alias: false };
+      }
+    }
+    return null;
+  }
+
+  function rwKitSavingCents() {
+    // Σ line discounts on ELIGIBLE lines (original − final) while a KIT
+    // code is applicable — never total_discount (that includes the free
+    // gift lines); a preview without a real code estimates pct × spend.
+    if (rwKitActive()) {
+      var sum = 0;
+      rwEligibleLines().forEach(function (item) {
+        var d = (Number(item.original_line_price) || 0) - (Number(item.final_line_price) || 0);
+        if (d > 0) sum += d;
+      });
+      return Math.round(sum);
+    }
+    if (PREVIEW) {
+      var want = rwDesiredCode();
+      if (want) return Math.round(rwSpendCents() * want.pct / 100);
+    }
+    return 0;
+  }
+
+  function rwMutable() {
+    // may this pass mutate the cart? never mid-mutation, never in a
+    // preview session unless it is a live rehearsal without a simulated cart
+    if (!state.cart || state.busy) return false;
+    if (PREVIEW) return PREVIEW.rehearsal === true && !rwSim();
+    return true;
+  }
+
+  function rwOnCartPage() {
+    try {
+      return SETTINGS.cartPage !== false && !!document.querySelector('.cart__table');
+    } catch (e) { return false; }
+  }
+
+  function rwAfterMutation(cart, allowReload) {
+    // shared landing of the quiet syncs: adopt the cart, sync the theme
+    // (open drawer -> theme rebuild; closed -> quiet, the drawer-open
+    // observer catches up), cart page -> ONE reload per page view, and
+    // only when the caller saw the cart actually change (allowReload)
+    state.cart = cart;
+    if (allowReload === true && rwOnCartPage() && !rwGift.reloaded) {
+      rwGift.reloaded = true;
+      window.location.reload();
+      return;
+    }
+    safeThemeRefresh(cart, drawerIsOpen());
+    decorateSubscriptionRows();
+    rwDecorateGiftRows();
+  }
+
+  function rwSyncCode() {
+    // KIT code sync (§6): desired = the tier the cart qualifies for. KIT
+    // codes = every tier code; the shopper's own codes are ALWAYS kept.
+    // Desired already on the cart (applicable or not) -> nothing; else ONE
+    // cart/update.js {discount: nonKIT ∪ desired} per cart signature —
+    // a rejected/failed correction stands down for that signature.
+    // v14.3 legacy aliases (rwAliasCodes): a shopper-typed alias that is
+    // APPLICABLE is the active KIT code — no ladder code is added and an
+    // already-attached ladder code is removed (alias + foreign codes kept,
+    // at most ONE KIT-family code); an alias that is NOT applicable is
+    // left alone (kept in the union) and the ladder code is attached as
+    // usual. Aliases are never attached by the storefront.
+    try {
+      if (!featureOn('setSavings') || !rwMutable() || rwCode.busy || rwGift.busy || isB2B()) return;
+      var tiers = rwSsTiers();
+      if (!tiers.length) return;
+      var kit = {};
+      tiers.forEach(function (tr) { kit[String(tr.code).toUpperCase()] = true; });
+      var aliasSet = {};
+      rwAliasCodes().forEach(function (c) { aliasSet[c] = true; });
+      var codes = rwCartCodes();
+      var keep = [];
+      var has = false;
+      var stale = false;
+      var aliasOk = false;
+      codes.forEach(function (c) {
+        if (aliasSet[c.code.toUpperCase()] && c.applicable) aliasOk = true;
+      });
+      var want = aliasOk ? null : rwDesiredCode();
+      var sig = cartSignature() + '|' + (aliasOk ? '*alias' : (want ? want.code : ''));
+      if (rwSigGet('cx_rw_code_sig') === sig || rwCode.sig === sig) return;
+      codes.forEach(function (c) {
+        if (kit[c.code.toUpperCase()]) {
+          if (want && c.code.toUpperCase() === want.code.toUpperCase()) has = true;
+          else stale = true;
+        } else {
+          keep.push(c.code);
+        }
+      });
+      rwCode.sig = sig;
+      rwSigSet('cx_rw_code_sig', sig);
+      if ((want && has && !stale) || (!want && !stale)) return;
+      if (want) keep.push(want.code);
+      rwCode.busy = true;
+      cartRequest('cart/update.js', { discount: keep.join(',') })
+        .then(function () { return fetchCart(); })
+        .then(function (cart) {
+          rwCode.busy = false;
+          state.cart = cart;
+          // did the refetched cart take the correction? (wanted code now
+          // present, stale KIT codes gone) — only then may the cart page
+          // reload; otherwise the quiet landing only
+          var fixed = true;
+          var after = rwCartCodes();
+          var found = false;
+          after.forEach(function (c) {
+            if (!kit[c.code.toUpperCase()]) return;
+            if (want && c.code.toUpperCase() === want.code.toUpperCase()) found = true;
+            else fixed = false;
+          });
+          if (want && !found) fixed = false;
+          if (want) {
+            var applied = rwKitActive();
+            if (applied && !applied.alias && applied.code.toUpperCase() === want.code.toUpperCase()) {
+              // tier rides top-level (contract) AND as the proxy's string meta
+              track('set_savings', 'code_applied', { tier: want.count, meta: JSON.stringify({ tier: want.count }) });
+            }
+          }
+          rwAfterMutation(cart, fixed);
+        })
+        .catch(function () { rwCode.busy = false; }); // stand down for this signature
+    } catch (e) { rwCode.busy = false; }
+  }
+
+  function rwAddGifts(list) {
+    // ONE cart/add.js for every missing gift; a rejected batch (one sold-
+    // out variant fails the whole request) falls back to single adds so
+    // the grantable gifts still land. Resolves to the number added.
+    var items = list.map(function (w) {
+      var props = {};
+      props[RW_GIFT_PROP] = String(w.tier);
+      return { id: Number(w.vid), quantity: 1, properties: props };
+    });
+    return cartRequest('cart/add.js', { items: items })
+      .then(function () { return items.length; })
+      .catch(function () {
+        var n = 0;
+        var chain = Promise.resolve();
+        items.forEach(function (it) {
+          chain = chain.then(function () {
+            return cartRequest('cart/add.js', it).then(function () { n++; }, function () {
+              rwGift.failed[String(it.id)] = true; // refused (sold out / unpublished): not retried this page
+            });
+          });
+        });
+        return chain.then(function () { return n; });
+      });
+  }
+
+  function rwNoteKnownGifts() {
+    // A6: gift vids seen on our last pass that are gone now WITHOUT our own
+    // pass removing them = removed through the theme's own control ->
+    // remembered like the quiet Remove (never re-added; the meter's
+    // add-back link clears it). Only between our own flights.
+    if (rwGift.busy) return;
+    var present = {};
+    var learned = false;
+    rwGiftLines().forEach(function (item) { present[String(item.variant_id)] = true; });
+    Object.keys(rwGift.known).forEach(function (vid) {
+      if (!present[vid] && !rwGift.ours[vid]) { rwRemember('cx_rw_gift_removed', vid, true); learned = true; }
+    });
+    rwGift.known = present;
+    rwGift.ours = {};
+    // the meter rendered before this memory existed: one deferred render
+    // shows the add-back link now, not on the next refresh (no mutation
+    // may follow — the remaining wanted gifts can all be present already)
+    if (learned) window.setTimeout(renderAll, 0);
+  }
+
+  function rwPurgePaidGifts() {
+    // A7: giftTiers off while the island exists -> any stale gift line the
+    // Function no longer makes free (final_line_price > 0) goes, once per
+    // cart signature, quiet path, single flight. Never reloads.
+    if (!rwMutable() || rwGift.busy || rwCode.busy) return;
+    var sig = cartSignature() + '|off';
+    if (rwSigGet('cx_rw_gift_sig') === sig || rwGift.sig === sig) return;
+    rwGift.sig = sig;
+    rwSigSet('cx_rw_gift_sig', sig);
+    var lines = rwGiftLines().filter(function (item) { return Number(item.final_line_price) > 0; });
+    if (!lines.length) return;
+    rwGift.busy = true;
+    var chain = Promise.resolve();
+    lines.forEach(function (item) {
+      rwGift.ours[String(item.variant_id)] = true;
+      chain = chain.then(function () {
+        return cartRequest('cart/change.js', { id: item.key, quantity: 0 }).catch(function () { /* keep going */ });
+      });
+    });
+    chain
+      .then(function () { return fetchCart(); })
+      .then(function (cart) {
+        rwGift.busy = false;
+        rwAfterMutation(cart, false);
+      })
+      .catch(function () { rwGift.busy = false; }); // stand down for this signature
+  }
+
+  function rwSyncGifts() {
+    // Gift sync (§6), after the code sync: diff the wanted set against the
+    // gift lines — remove extras / lines above the reached tier / duplicates
+    // / not-free lines (honesty rule, remembered for the session), reset
+    // quantities to 1, add the missing ones in one request. Quiet path,
+    // single flight, one correction per cart signature (persisted for the
+    // session so a reload never retries it), never loops.
+    try {
+      if (!RW) return;
+      if (!featureOn('giftTiers')) { rwPurgePaidGifts(); return; }
+      if (!rwGt() || isB2B()) return; // B2B carts earn no gifts (the code sync / nudge rule)
+      rwNoteKnownGifts();
+      var plan = rwGiftPlan();
+      // A tier crossed on this pass shows ONE notice: after the add, naming
+      // the gift that landed (rwAddedLabel); a pass that cannot add (busy,
+      // preview, nothing to add) still says the tier unlocked.
+      var crossed = false;
+      if (rwGift.lastReached === null) {
+        rwGift.lastReached = plan.reached; // seed silently on the first pass
+      } else if (plan.reached > rwGift.lastReached) {
+        rwGift.lastReached = plan.reached;
+        crossed = true;
+        track('gift_tiers', 'tier_reached', { tier: plan.reached + 1, quantity: rwUnits(), meta: JSON.stringify({ tier: plan.reached + 1 }) });
+      } else if (plan.reached < rwGift.lastReached) {
+        rwGift.lastReached = plan.reached;
+      }
+      var unlockedLater = function (label) {
+        window.setTimeout(function () { setNotice('success', rwT('meter_gift_unlocked', { gift: label })); }, 0);
+      };
+      if (!rwMutable() || rwGift.busy || rwCode.busy) { if (crossed) unlockedLater(rwTierLabel(plan.reached)); return; }
+      var sig = cartSignature() + '|' + plan.key;
+      if (rwSigGet('cx_rw_gift_sig') === sig || rwGift.sig === sig) { if (crossed) unlockedLater(rwTierLabel(plan.reached)); return; }
+      rwGift.sig = sig;
+      rwSigSet('cx_rw_gift_sig', sig);
+      if (!plan.add.length && !plan.remove.length && !plan.reset.length && !plan.unfree.length) {
+        if (crossed) unlockedLater(rwTierLabel(plan.reached));
+        return;
+      }
+      rwGift.busy = true;
+      var removedTiers = [];
+      var added = 0;
+      var chain = Promise.resolve();
+      plan.remove.concat(plan.unfree).forEach(function (item) {
+        rwGift.ours[String(item.variant_id)] = true;
+        chain = chain.then(function () {
+          return cartRequest('cart/change.js', { id: item.key, quantity: 0 })
+            .then(function () { removedTiers.push(rwGiftTierOf(item)); }, function () { /* keep going */ });
+        });
+      });
+      plan.unfree.forEach(function (item) { rwRemember('cx_rw_gift_unfree', String(item.variant_id), true); });
+      if (plan.unfree.length) rwMemSet('cx_rw_gift_off', { t: 1 }); // A4: no more adds this session until "add back"
+      plan.reset.forEach(function (item) {
+        chain = chain.then(function () {
+          return cartRequest('cart/change.js', { id: item.key, quantity: 1 }).catch(function () { /* keep going */ });
+        });
+      });
+      if (plan.add.length) {
+        chain = chain.then(function () {
+          return rwAddGifts(plan.add).then(function (n) { added = n; });
+        });
+      }
+      chain
+        .then(function () { return fetchCart(); })
+        .then(function (cart) {
+          rwGift.busy = false;
+          removedTiers.forEach(function (tier) { track('gift_tiers', 'gift_removed', { tier: tier, meta: JSON.stringify({ tier: tier }) }); });
+          plan.add.slice(0, added).forEach(function (w) { track('gift_tiers', 'gift_added', { tier: w.tier, meta: JSON.stringify({ tier: w.tier }) }); });
+          rwAfterMutation(cart, added > 0); // a removal-only pass never reloads the cart page
+          // one notice per pass: not-free (info — the gift is not lost, the
+          // order just cannot take it now) > tier crossed + gifts landed
+          // (unlocked, named) > gifts landed (added) > tier crossed alone
+          if (plan.unfree.length) setNotice('info', rwT('gift_unavailable'));
+          else if (added > 0) setNotice('success', crossed ? rwT('meter_gift_unlocked', { gift: rwAddedLabel(plan.add.slice(0, added)) }) : rwT('gift_added'));
+          else if (crossed) setNotice('success', rwT('meter_gift_unlocked', { gift: rwTierLabel(plan.reached) }));
+        })
+        .catch(function () { rwGift.busy = false; }); // stand down for this signature
+    } catch (e) { rwGift.busy = false; }
+  }
+
+  function rwPerformGiftRemove(item, sourceNode) {
+    // The quiet "Remove" on a gift row: remembered for the session (never
+    // re-added; the meter shows the add-back link), then the
+    // performUnsubscribe flow (theme-row context, cart-page reload).
+    if (state.busy) return;
+    var vid = String(item.variant_id);
+    rwRemember('cx_rw_gift_removed', vid, true);
+    var onCartPage = false;
+    try {
+      var table = document.querySelector('.cart__table');
+      onCartPage = !!(table && sourceNode && table.contains(sourceNode));
+    } catch (e) { onCartPage = false; }
+    var wasDrawerOpen = drawerIsOpen();
+    state.busy = true;
+    renderAll();
+    cartRequest('cart/change.js', { id: item.key, quantity: 0 })
+      .then(function () { return fetchCart(); })
+      .then(function (cart) {
+        state.busy = false;
+        state.cart = cart;
+        rwGiftReplan();
+        track('gift_tiers', 'gift_removed', { tier: rwGiftTierOf(item), meta: JSON.stringify({ tier: rwGiftTierOf(item) }) });
+        if (onCartPage) {
+          window.location.reload();
+          return;
+        }
+        safeThemeRefresh(cart, wasDrawerOpen);
+        decorateSubscriptionRows();
+        rwDecorateGiftRows();
+      })
+      .catch(function () {
+        state.busy = false;
+        refresh();
+      });
+  }
+
+  function rwGiftBack() {
+    // "Add your free gift back": forget every remembered removal AND the
+    // not-free churn guard (A4), the next sync pass re-adds what the cart
+    // has earned.
+    rwMemSet('cx_rw_gift_removed', {});
+    rwMemSet('cx_rw_gift_off', {});
+    rwGiftReplan();
+    scheduleRefresh();
+  }
+
+  function rwSlotOf(item) {
+    // {ti, si} of the slot a gift line was granted from (its tier property
+    // + a variant/sample match), or null
+    var tier = rwGiftTierOf(item);
+    var tiers = rwGtTiers();
+    var slots = tier > 0 && tiers[tier - 1] && Array.isArray(tiers[tier - 1].slots) ? tiers[tier - 1].slots : [];
+    var vid = String(item.variant_id);
+    var inPool = rwPool().some(function (e) { return e.vid === vid; });
+    for (var si = 0; si < slots.length; si++) {
+      var ops = Array.isArray(slots[si]) ? slots[si] : [];
+      for (var oi = 0; oi < ops.length; oi++) {
+        var op = ops[oi];
+        if (!op) continue;
+        if (op.kind === 'samples' ? inPool : rwOptionVid(op) === vid) return { ti: tier - 1, si: si, oi: oi, ops: ops };
+      }
+    }
+    return null;
+  }
+
+  function rwSwapTarget(slot) {
+    // choose mode: the next option in the slot that could be granted now
+    if (!slot || slot.ops.length < 2) return -1;
+    var paid = {};
+    if (state.cart && Array.isArray(state.cart.items)) {
+      state.cart.items.forEach(function (item) { if (item && !rwIsGift(item) && item.handle) paid[String(item.handle)] = true; });
+    }
+    for (var k = 1; k < slot.ops.length; k++) {
+      var idx = (slot.oi + k) % slot.ops.length;
+      var op = slot.ops[idx];
+      if (!op) continue;
+      if (op.kind === 'samples') { if (rwPool().length) return idx; continue; }
+      var vid = rwOptionVid(op);
+      if (vid && rwVariantOk(vid, paid)) return idx;
+    }
+    return -1;
+  }
+
+  function rwPerformGiftSwap(item) {
+    var slot = rwSlotOf(item);
+    var idx = rwSwapTarget(slot);
+    if (idx < 0) return;
+    var choices = rwChoices();
+    choices[slot.ti + ':' + slot.si] = idx;
+    rwMemSet('cx_rw_gift_choice', choices);
+    rwGiftReplan(); // re-plan: the sync removes the old gift and adds the chosen one
+    scheduleRefresh();
+  }
+
+  function rwDressGiftRow(row, item) {
+    // Restyle ONE theme row as a gift row: qty/remove controls hidden by
+    // CSS on [data-cx-gift], the unit-price cell reads "~~€57.00~~ FREE"
+    // (the struck original unit price keeps the value visible), the line
+    // total reads FREE, a "Free gift" tag + quiet Remove (and Swap in
+    // choose mode) inside the row's title cell.
+    row.setAttribute('data-cx-gift', '1');
+    var free = rwT('free');
+    var was = Number(item.original_price) > 0 ? money(Number(item.original_price)) : '';
+    var unitEls = row.querySelectorAll('span.unit-price, td.col__price');
+    for (var u = 0; u < unitEls.length; u++) {
+      unitEls[u].textContent = '';
+      if (was) {
+        unitEls[u].appendChild(el('s', 'cx-rw-giftwas', was));
+        unitEls[u].appendChild(document.createTextNode(' '));
+      }
+      unitEls[u].appendChild(document.createTextNode(free));
+    }
+    var priceEls = row.querySelectorAll('.actions .price, td.col__total');
+    for (var i = 0; i < priceEls.length; i++) priceEls[i].textContent = free;
+    var title = row.querySelector('.product__info .title') || row.querySelector('.title');
+    if (!title) return;
+    var ctl = el('span', 'cx-rw-giftctl');
+    ctl.appendChild(el('span', 'cx-rw-gifttag', rwT('gift_tag')));
+    var rm = el('button', 'cx-rw-giftremove', rwT('remove'));
+    rm.type = 'button';
+    rm.disabled = state.busy;
+    rm.addEventListener('click', function () { rwPerformGiftRemove(item, rm); });
+    ctl.appendChild(rm);
+    var gt = rwGt();
+    if (gt && gt.choice === 'choose' && rwSwapTarget(rwSlotOf(item)) >= 0) {
+      var sw = el('button', 'cx-rw-giftswap', rwT('swap'));
+      sw.type = 'button';
+      sw.disabled = state.busy;
+      sw.addEventListener('click', function () { rwPerformGiftSwap(item); });
+      ctl.appendChild(sw);
+    }
+    title.appendChild(ctl);
+  }
+
+  function rwDecorateGiftRows() {
+    // Theme rows (.mini-cart__list .product--cart / the cart table's BODY
+    // tr.cart-row — its header row is <tr class="cart-row desktop-only">)
+    // matched by INDEX into state.cart.items — only when the counts agree
+    // (a stale cart skips the pass; the next refresh re-runs it) and the
+    // row's data-varid agrees; only a REALLY free line is dressed (honesty
+    // rule — the sync removes the others). Idempotent via data-cx-gift.
+    try {
+      if (!featureOn('giftTiers') || !state.cart || !Array.isArray(state.cart.items)) return;
+      // never mid-mutation: a Remove minted disabled would stay disabled
+      // behind the marker (renderAll re-runs the pass once busy clears)
+      if (state.busy) return;
+      var items = state.cart.items;
+      var lists = [document.querySelectorAll('.mini-cart__list .product--cart'), document.querySelectorAll('tr.cart-row:not(.desktop-only)')];
+      for (var l = 0; l < lists.length; l++) {
+        var rows = lists[l];
+        if (!rows.length || rows.length !== items.length) continue;
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i];
+          var item = items[i];
+          if (!row || !item || !rwIsGift(item)) continue;
+          if (row.getAttribute('data-cx-gift') === '1') continue;
+          var varid = row.getAttribute('data-varid');
+          if (varid && String(varid) !== String(item.variant_id)) continue;
+          if (Number(item.final_line_price) > 0) continue;
+          rwDressGiftRow(row, item);
+        }
+      }
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function rwFirstOption(ti) {
+    // the tier's headline gift: first slot's first grantable option (else
+    // its first option) -> {op, vid}
+    var tier = rwGtTiers()[ti];
+    var slot = tier && Array.isArray(tier.slots) && Array.isArray(tier.slots[0]) ? tier.slots[0] : [];
+    var first = null;
+    for (var i = 0; i < slot.length; i++) {
+      var op = slot[i];
+      if (!op || typeof op !== 'object') continue;
+      var vid = op.kind === 'samples' ? '' : rwOptionVid(op);
+      var cand = { op: op, vid: vid };
+      if (!first) first = cand;
+      if (op.kind === 'samples' ? rwPool().length > 0 : rwVariantOk(vid, null)) return cand;
+    }
+    return first;
+  }
+
+  function rwTierLabel(ti) {
+    var f = rwFirstOption(ti);
+    if (!f) return rwT('gift_tag');
+    if (f.op.kind === 'samples') return rwT('sample_set');
+    var g = rwGifts()[f.vid];
+    return g && typeof g.t === 'string' && g.t ? g.t : rwT('gift_tag');
+  }
+
+  function rwAddedLabel(list) {
+    // notice name for a pass that added gifts: the first added VARIANT
+    // option's product title, else the sample set
+    var gifts = rwGifts();
+    var pool = rwPool();
+    for (var i = 0; i < list.length; i++) {
+      var vid = String(list[i].vid);
+      var inPool = false;
+      for (var j = 0; j < pool.length; j++) if (pool[j].vid === vid) inPool = true;
+      var g = gifts[vid];
+      if (!inPool && g && typeof g.t === 'string' && g.t) return g.t;
+    }
+    return rwT('sample_set');
+  }
+
+  function rwTierValueCents(ti) {
+    // The headline gift's value: the price of the tier's headline option
+    // (rwFirstOption — slot 0's first grantable variant, so a handle-only
+    // first option never zeroes it), else slot 0's first option with a
+    // resolvable, known variant. Sample slots are never priced (a "worth
+    // €2.00" sample set reads worse than no value at all — the meter
+    // switches to the plain string under 100 cents).
+    var tier = rwGtTiers()[ti];
+    var slot = tier && Array.isArray(tier.slots) && Array.isArray(tier.slots[0]) ? tier.slots[0] : [];
+    var gifts = rwGifts();
+    var f = rwFirstOption(ti);
+    if (f && f.op.kind === 'samples') return 0;
+    var g = f && f.vid ? gifts[f.vid] : null;
+    if (g && Number(g.c) > 0) return Math.round(Number(g.c));
+    for (var i = 0; i < slot.length; i++) {
+      var op = slot[i];
+      if (!op || typeof op !== 'object' || op.kind === 'samples') continue;
+      var vid = rwOptionVid(op);
+      if (vid && gifts[vid] && Number(gifts[vid].c) > 0) return Math.round(Number(gifts[vid].c));
+    }
+    return 0;
+  }
+
+  function rwMilestones() {
+    // gift tiers (threshold > 0) + the free-shipping threshold (when the
+    // merchant shows it AND a free-shipping surface — shipbar or the az
+    // cart free line — is on), sorted by amount; {kind, cents, i, done}
+    var out = [];
+    var spend = rwSpendCents();
+    var tiers = rwGtTiers();
+    for (var i = 0; i < tiers.length; i++) {
+      var cents = rwGiftThresholdCents(i);
+      if (cents > 0) out.push({ kind: 'gift', cents: cents, i: i, done: spend >= cents });
+    }
+    var gt = rwGt();
+    if (gt && gt.showShippingMilestone !== false && (featureOn('shipbar') || featureOn('azCartFreeLine'))) {
+      var ship = thresholdCents();
+      if (ship > 0) out.push({ kind: 'ship', cents: ship, i: -1, done: spend >= ship });
+    }
+    out.sort(function (a, b) { return a.cents - b.cents; });
+    return out;
+  }
+
+  function rwMsgWithAmount(node, template, amountText) {
+    // sentinel split: text + <strong> amount + text (the shipbar idiom)
+    var parts = template.split(/@@A@@|@@AMOUNT@@|\{\{\s*amount\s*\}\}/);
+    node.appendChild(document.createTextNode(parts[0] || ''));
+    node.appendChild(el('strong', 'cx-rw-meter__amount', amountText));
+    if (parts.length > 1) node.appendChild(document.createTextNode(parts.slice(1).join('')));
+  }
+
+  function rwRenderMeter(container, suppressShip) {
+    // The rewards meter (§6) — replaces the shipbar while gift tiers are on:
+    // headline for the nearest unreached milestone, one track, absolutely
+    // positioned milestone marks. Returns the impression keys (gift_tiers,
+    // + free_shipping_bar when the shipping milestone rides on the meter and
+    // the shipbar feature is on) or null (fail closed -> the caller falls
+    // back to the plain shipbar). B2B carts (no gifts) render nothing.
+    if (!featureOn('giftTiers') || !state.cart || !rwGt() || isB2B()) return null;
+    var ms = rwMilestones();
+    if (!ms.length) return null;
+    try {
+      var spend = rwSpendCents();
+      var next = null;
+      var nextGift = null;
+      var hasShip = false;
+      var doneCount = 0;
+      for (var i = 0; i < ms.length; i++) {
+        if (ms[i].kind === 'ship') hasShip = true;
+        if (ms[i].done) doneCount++;
+        if (!next && !ms[i].done) next = ms[i];
+        if (!nextGift && !ms[i].done && ms[i].kind === 'gift') nextGift = ms[i];
+      }
+      var wrap = cxEl('div', 'cx-rw-meter', ['data-cx-feature', 'gift_tiers']);
+      if (!next) wrap.className += ' cx-rw-meter--done';
+      var msg = el('p', 'cx-rw-meter__msg');
+      var showMsg = true;
+      // v6.1 replacement semantics: while the az free line already says the
+      // shipping step, the headline moves on to the next gift (or drops)
+      var head = next && next.kind === 'ship' && suppressShip ? nextGift : next;
+      if (!next) {
+        msg.textContent = rwT('meter_all');
+      } else if (!head) {
+        showMsg = false;
+      } else if (head.kind === 'ship') {
+        rwMsgWithAmount(msg, t('shipbar.away_html'), money(head.cents - spend));
+      } else {
+        // the gift named + its value — the value-less string under €1 (a
+        // sample set, an unpriced or unknown variant)
+        var value = rwTierValueCents(head.i);
+        var params = { gift: rwTierLabel(head.i), value: money(value) };
+        rwMsgWithAmount(msg, rwT(value >= 100 ? 'meter_gift_away' : 'meter_gift_away_plain', params), money(head.cents - spend));
+      }
+      if (showMsg) wrap.appendChild(msg);
+      var track_ = el('div', 'cx-rw-meter__track');
+      track_.setAttribute('aria-hidden', 'true');
+      // Equal-width segments (n milestones -> n segments): the fill = done
+      // segments + the fraction of the current one, so every add moves the
+      // bar visibly even when the top tier sits far above the others.
+      var n = ms.length;
+      var fillPct = 100;
+      if (next) {
+        var from = doneCount > 0 ? ms[doneCount - 1].cents : 0;
+        var span = next.cents - from;
+        var frac = span > 0 ? Math.max(0, Math.min(1, (spend - from) / span)) : 0;
+        fillPct = Math.round(((doneCount + frac) / n) * 1000) / 10;
+      }
+      var fill = el('div', 'cx-rw-meter__fill');
+      fill.style.width = Math.min(100, fillPct) + '%';
+      track_.appendChild(fill);
+      var caps = n <= 4; // amount captions under the marks (4 fit at 320px)
+      if (caps) wrap.className += ' cx-rw-meter--caps';
+      for (var m = 0; m < n; m++) {
+        var mark = el('span', 'cx-rw-meter__mark');
+        var x = Math.round(((m + 1) / n) * 1000) / 10 + '%';
+        // CSS reads inset-inline-start: var(--cx-rw-x) (RTL-safe); engines
+        // without setProperty get the plain left offset
+        if (typeof mark.style.setProperty === 'function') mark.style.setProperty('--cx-rw-x', x);
+        else mark.style.left = x;
+        if (ms[m].done) mark.setAttribute('data-done', '1');
+        mark.setAttribute('data-kind', ms[m].kind);
+        mark.title = ms[m].kind === 'ship' ? t('shipbar.unlocked') : rwTierLabel(ms[m].i);
+        if (caps) mark.appendChild(el('span', 'cx-rw-meter__cap', (ms[m].done ? '✓ ' : '') + money(ms[m].cents)));
+        track_.appendChild(mark);
+      }
+      wrap.appendChild(track_);
+      var plan = rwGiftPlan();
+      if (plan.back.length && !rwSim()) {
+        var back = el('button', 'cx-rw-meter__back', rwT('gift_back'));
+        back.type = 'button';
+        back.disabled = state.busy;
+        back.addEventListener('click', rwGiftBack);
+        wrap.appendChild(back);
+      }
+      if (PREVIEW && plan.add.length && !rwMutable()) {
+        // preview without rehearsal: the would-be gifts as a sample row +
+        // the merchant note (English by design, preview-only DOM)
+        var sample = el('div', 'cx-rw-meter__sample');
+        for (var a = 0; a < plan.add.length; a++) {
+          var g = rwGifts()[plan.add[a].vid];
+          sample.appendChild(el('span', 'cx-rw-gifttag', rwT('gift_tag')));
+          sample.appendChild(document.createTextNode(' ' + (g && g.t ? g.t : plan.add[a].vid) + ' — ' + rwT('free') + ' '));
+        }
+        wrap.appendChild(sample);
+        wrap.appendChild(el('div', 'cx-preview-note', 'Preview sample — real visitors get this gift added to their cart automatically (tick "Live rehearsal" in the Preview Center to add it for real).'));
+      }
+      container.appendChild(wrap);
+      var keys = ['gift_tiers'];
+      if (hasShip && featureOn('shipbar')) keys.push('free_shipping_bar');
+      return keys;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function rwRenderNudge(container) {
+    // The set-savings line under the meter (§6): reconciliation (Subtotal
+    // / Set savings −X (CODE)) while a KIT discount is active + the next
+    // step ("Add N more products to save P% on everything"). B2B and
+    // surfaces.cartNudge off render nothing.
+    if (!featureOn('setSavings') || !state.cart || isB2B()) return null;
+    var ss = rwSs();
+    if (!ss || (ss.surfaces && ss.surfaces.cartNudge === false)) return null;
+    var tiers = rwSsTiers();
+    if (!tiers.length) return null;
+    try {
+      var distinct = rwDistinctCount();
+      var next = cxRwNext(tiers, distinct);
+      var active = rwKitActive();
+      var saving = rwKitSavingCents();
+      // The "add N more" line yields to the volume ladder in a one-product
+      // cart that has an upgrade path (the ladder's 15-20% beats a 5% set
+      // line; the cross-sell title carries the set message), and never asks
+      // for more than two products.
+      var more = next ? Number(next.count) - distinct : 0;
+      var showNext = !!next && more <= 2 && (distinct >= 2 || !rwEligibleLines().some(function (item) { return upgradeCandidates(item).length > 0; }));
+      if (!showNext && !(saving > 0)) return null;
+      var box = cxEl('div', 'cx-rw-nudge', ['data-cx-feature', 'set_savings']);
+      if (saving > 0) {
+        var code = active ? active.code : (rwDesiredCode() ? rwDesiredCode().code : '');
+        var recon = el('div', 'cx-rw-recon');
+        var r1 = el('div', 'cx-rw-recon__row');
+        r1.appendChild(el('span', 'cx-rw-recon__label', rwT('subtotal')));
+        r1.appendChild(el('span', 'cx-rw-recon__val', money(rwSpendCents())));
+        recon.appendChild(r1);
+        var r2 = el('div', 'cx-rw-recon__row');
+        r2.appendChild(el('span', 'cx-rw-recon__label', rwT('set_saving', { amount: money(saving), code: code })));
+        recon.appendChild(r2);
+        box.appendChild(recon);
+      }
+      if (showNext) {
+        box.appendChild(el('p', 'cx-rw-nudge__next', rwT(more === 1 ? 'set_add_one' : 'set_add_more', { count: more, pct: Number(next.pct) })));
+      }
+      container.appendChild(box);
+      return 'set_savings';
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function rwSnapshot() {
+    // Per-render derived context on state.rw (null without rewards): the
+    // cross-sell reframe (surfaces.crossSellReframe) — mode 'next' + the
+    // pct of the tier ONE more product reaches, or mode 'more' + the pct
+    // already active while the next tier needs two or more (the title then
+    // says "% off everything you add" instead of repeating the saving) —
+    // and the sachet / gift-LINE skip sets by variant id (skipV), handle
+    // (skipH) and cart line key (skipK) that keep them out of offers,
+    // cross-sell picks and anchors. Gift-pool PRODUCTS are normal products
+    // (a jawline cream is still recommended and still counts as a set
+    // member when paid); only sachets and gift lines are skipped. The
+    // cross-sell/offer builders read state.rw with null guards (the
+    // extracted-function sims stub state without it).
+    state.rw = null;
+    if (!RW) return;
+    var skipV = {};
+    var skipH = {};
+    var skipK = {};
+    rwPool().forEach(function (e) {
+      skipV[e.vid] = true;
+      if (e.h) skipH[e.h] = true;
+    });
+    if (state.cart && Array.isArray(state.cart.items)) {
+      state.cart.items.forEach(function (item) {
+        if (!item || !(rwIsGift(item) || rwIsSachet(item))) return;
+        if (item.key) skipK[String(item.key)] = true;
+        skipV[String(item.variant_id)] = true;
+        if (item.handle) skipH[String(item.handle)] = true;
+      });
+    }
+    var pct = 0;
+    var mode = '';
+    var ss = rwSs();
+    if (featureOn('setSavings') && ss && !(ss.surfaces && ss.surfaces.crossSellReframe === false) && !isB2B()) {
+      var tiers = rwSsTiers();
+      var distinct = rwDistinctCount();
+      var next = cxRwNext(tiers, distinct);
+      var cur = cxRwTier(tiers, distinct);
+      if (next && Number(next.count) === distinct + 1 && Number(next.pct) > 0) { pct = Number(next.pct); mode = 'next'; }
+      else if (next && cur && Number(cur.pct) > 0) { pct = Number(cur.pct); mode = 'more'; }
+      // top tier reached: the standard title, plain prices
+    }
+    state.rw = { pct: pct, mode: mode, skipV: skipV, skipH: skipH, skipK: skipK, exc: rwExcludedIds() };
+  }
+
+  function rwSimRead(server) {
+    // PREVIEW.sim: sessionStorage cx_preview_sim ({spend cents, count})
+    // written by the preview bar wins over preview-config simCart
+    // ({spendCents, count}); null = the real cart
+    var out = null;
+    try {
+      var raw = window.sessionStorage ? window.sessionStorage.getItem('cx_preview_sim') : null;
+      var parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.off === 1) return null; // "Real cart": explicit override of the server sim
+        out = { spend: Number(parsed.spend) || 0, count: Math.floor(Number(parsed.count)) || 0 };
+      }
+    } catch (e) { out = null; }
+    if (!out && server && typeof server === 'object') {
+      out = { spend: Number(server.spendCents) || 0, count: Math.floor(Number(server.count)) || 0 };
+    }
+    return out;
+  }
+
+  function rwSimWrite(sim) {
+    try {
+      window.sessionStorage.setItem('cx_preview_sim', JSON.stringify(sim || { off: 1 }));
+    } catch (e) { /* noop */ }
+    if (PREVIEW) PREVIEW.sim = sim || null;
+    rwGiftReplan();
+    rwCodeReplan();
+    scheduleRefresh();
+  }
+
+  function rwPreviewControls(bar) {
+    // Preview bar simulator (§6, merchant-facing English): spend amount in
+    // the presentment currency's major units + a products-count stepper;
+    // "Real cart" clears the override. Only when a rewards feature is on.
+    if (!(featureOn('giftTiers') || featureOn('setSavings'))) return;
+    var sim = rwSim();
+    var wrap = el('span', 'cx-preview-bar__sim');
+    var amount = el('input', 'cx-preview-bar__input');
+    amount.type = 'number';
+    amount.min = '0';
+    amount.step = '1';
+    amount.placeholder = 'Spend';
+    amount.setAttribute('aria-label', 'Simulated cart spend');
+    if (sim) amount.value = String(Math.round(sim.spend / 100));
+    var count = sim ? sim.count : 0;
+    var countLabel = el('span', 'cx-preview-bar__count', String(count) + ' products');
+    function commit() {
+      var spendUnits = Number(amount.value);
+      if (!(spendUnits >= 0)) spendUnits = 0;
+      count = Math.max(0, Math.min(50, count));
+      countLabel.textContent = String(count) + ' products';
+      rwSimWrite({ spend: Math.round(spendUnits * 100), count: count });
+    }
+    amount.addEventListener('change', commit);
+    var minus = el('button', 'cx-preview-bar__step', '−');
+    minus.type = 'button';
+    minus.setAttribute('aria-label', 'One product less');
+    minus.addEventListener('click', function () { count -= 1; commit(); });
+    var plus = el('button', 'cx-preview-bar__step', '+');
+    plus.type = 'button';
+    plus.setAttribute('aria-label', 'One product more');
+    plus.addEventListener('click', function () { count += 1; commit(); });
+    var real = el('button', 'cx-preview-bar__real', 'Real cart');
+    real.type = 'button';
+    real.addEventListener('click', function () {
+      amount.value = '';
+      count = 0;
+      countLabel.textContent = '0 products';
+      rwSimWrite(null);
+    });
+    wrap.appendChild(amount);
+    wrap.appendChild(minus);
+    wrap.appendChild(countLabel);
+    wrap.appendChild(plus);
+    wrap.appendChild(real);
+    bar.appendChild(wrap);
+  }
+
   function renderInto(root, context) {
     if (!root) return [];
     // v10: the synchronous state half (stored choice + fresh geo cache)
@@ -3208,6 +4704,7 @@
     // hidden verdict vetoes renderDispatch/renderDelivery themselves
     // (no node, no impression), never removes an already-counted one.
     deliveryUsPrime();
+    rwSnapshot(); // v14: per-render rewards context (reframe pct, skip sets)
     root.textContent = '';
     if (state.busy) root.classList.add('cx-busy');
     else root.classList.remove('cx-busy');
@@ -3227,9 +4724,18 @@
     // Delivery estimate directly after it (v6.0) — CRO order: urgency,
     // then reassurance, both above the shipbar.
     f = renderDelivery(root); if (f) features.push(f);
+    // v14 rewards meter replaces the shipbar while gift tiers are on (the
+    // shipping milestone rides on it); a meter that cannot render (no
+    // tiers) falls back to the plain bar. Then the set-savings nudge.
     // v6.1 replacement semantics: while the az sentence RENDERED, the
     // shipbar keeps its progress bar but drops its own message line.
-    f = renderShipbar(root, !!azFree); if (f) features.push(f);
+    var meter = featureOn('giftTiers') ? rwRenderMeter(root, !!azFree) : null;
+    if (meter) {
+      for (var mi = 0; mi < meter.length; mi++) features.push(meter[mi]);
+    } else {
+      f = renderShipbar(root, !!azFree); if (f) features.push(f);
+    }
+    f = rwRenderNudge(root); if (f) features.push(f);
     var offerFeatures = renderOffers(root, context);
     for (var i = 0; i < offerFeatures.length; i++) features.push(offerFeatures[i]);
     // CRO order: offers, then cross-sell, then social proof last.
@@ -3991,7 +5497,12 @@
         firePageImpressions(pageFeatures);
       }
       decorateSubscriptionRows();
+      rwDecorateGiftRows(); // v14: after the subscription pass (same rows)
       decorateCtaButtons();
+      // v14: quiet cart corrections — KIT code first, gifts after it (both
+      // single-flight, one correction per cart signature, never looping)
+      rwSyncCode();
+      rwSyncGifts();
     } catch (e) { /* never break the theme */ }
   }
 
@@ -4116,6 +5627,7 @@
         window.location.reload();
       });
       bar.appendChild(exit);
+      rwPreviewControls(bar); // v14: cart simulator (rewards features only)
       if (document.body && !document.getElementById('cx-preview-bar')) {
         document.body.appendChild(bar);
       }
@@ -4147,7 +5659,14 @@
           PREVIEW = {
             flags: data.draftFlags && typeof data.draftFlags === 'object' ? data.draftFlags : {},
             live: data.liveEffectiveForMarket && typeof data.liveEffectiveForMarket === 'object' ? data.liveEffectiveForMarket : {},
-            market: typeof data.simulatedMarket === 'string' && data.simulatedMarket ? data.simulatedMarket : ''
+            market: typeof data.simulatedMarket === 'string' && data.simulatedMarket ? data.simulatedMarket : '',
+            // v14 rewards (SPEC-v14 §10): simulated cart (sessionStorage
+            // cx_preview_sim wins over preview-config simCart), live
+            // rehearsal (real cart mutations allowed), and the simulated
+            // market's draft tiers / gift amounts (rewardsForMarket).
+            sim: rwSimRead(data.simCart),
+            rehearsal: data.rehearsal === true,
+            rw: data.rewardsForMarket && typeof data.rewardsForMarket === 'object' ? data.rewardsForMarket : null
           };
           try { window.sessionStorage.setItem('cx_preview_ok', '1'); } catch (e) { /* noop */ }
           injectPreviewBar();
