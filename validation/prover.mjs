@@ -16,7 +16,7 @@
  *     a migration cannot silently lose its builder. Empty today (all v6.7
  *     migrations are already IN the v68 baseline); future waves append.
  *   - the BYTE METER: per-file and total Liquid bytes vs the 102,400
- *     Shopify cap and the project's own 95,000 budget (the budget itself
+ *     Shopify cap and the project's own 99,500 budget (the budget itself
  *     is ENFORCED by harness.mjs; the meter here is the visible gauge).
  *
  * On an untouched tree this suite passes trivially — by design: the
@@ -129,7 +129,10 @@ for (const entry of TEMPLATE_REGISTRY) {
 
 // ---------------------------------------------------------------- byte meter
 const SHOPIFY_CAP = 102_400;
-const BUDGET = 95_000;
+// Gauge only — the ENFORCED budget lives in harness.mjs section 1 (moved
+// 95,000 -> 96,500 in v12 and 96,500 -> 99,500 in v14 rewards, 2026-08-16;
+// keep the two numbers in step so the meter's headroom line stays honest).
+const BUDGET = 99_500;
 let totalLiquid = 0;
 console.log("\n  byte meter (Liquid):");
 for (const dir of ["blocks", "snippets"]) {

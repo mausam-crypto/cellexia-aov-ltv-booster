@@ -265,5 +265,31 @@
       "many": "Proceed to checkout ({{ count }} items)",
       "other": "Proceed to checkout ({{ count }} items)"
     }
+  },
+  "rewards": {
+    "meter_gift_away": "You're {{ amount }} away from a free {{ gift }} (worth {{ value }})",
+    "meter_gift_unlocked": "Free gift unlocked: {{ gift }}",
+    "meter_all": "All rewards unlocked — enjoy!",
+    "set_add_one": "Add 1 more product to save {{ pct }}% on everything",
+    "set_add_more": "Add {{ count }} more products to save {{ pct }}% on everything",
+    "set_saving": "Set savings −{{ amount }} ({{ code }})",
+    "set_title": "Complete your set & save {{ pct }}%",
+    "subtotal": "Subtotal",
+    "free": "FREE",
+    "gift_tag": "Free gift",
+    "gift_added": "Free gift added to your cart",
+    "gift_back": "Add your free gift back",
+    "gift_unavailable": "Your free gift can't be applied to this order right now",
+    "remove": "Remove",
+    "swap": "Swap gift",
+    "sample_set": "Sample set",
+    "pdp_line": "Add any second product, save {{ pct }}% on both",
+    "pdp_line_next": "Add this to your cart and save {{ pct }}% on your set",
+    "fbt_caption": "Buy all {{ count }} together, save at least {{ pct }}%",
+    "fbt_add_save": "Add all {{ count }} & save {{ pct }}%",
+    "similar_caption": "Add any of these, save {{ pct }}% on both",
+    "meter_gift_away_plain": "You're {{ amount }} away from a free {{ gift }}",
+    "set_title_more": "Complete your set — {{ pct }}% off everything you add",
+    "fbt_add_save_both": "Add both & save {{ pct }}%"
   }
 }

@@ -7,7 +7,8 @@
  *   1. Liquid byte budget — total <= 95,000 (own budget under the 102,400
  *      Shopify theme-app-extension cap) + per-file floor/ceiling sanity.
  *   2. PREVIEW COVERAGE — FEATURE_KEYS parsed LIVE from settings.server.ts
- *      (35 keys); every key mapped to verified evidence in a real file
+ *      (37 keys — v14 rewards adds set_savings + gift_tiers); every key
+ *      mapped to verified evidence in a real file
  *      (storefront data-cx-feature markers / checkout extension gates /
  *      documented alias), both directions (no unmapped key, no stale map).
  *   3. PICKER COVERAGE — every key present in app.preview.tsx
@@ -44,6 +45,17 @@
  *      (drift = failure), Dockerfile prisma+scripts-before-npm-ci order,
  *      dev-URL safety + 2025-10 API pins, UPDATE.md + INSTALL.md
  *      deploy-guidance anchors.
+ *  v14 REWARDS (2026-08-16) — per-file island caps (cart 23,600 / amazon
+ *      19,700), cart "rw" + amazon set-savings island gates/members, the
+ *      (v15, 2026-08-17: the cart rewards data moved to its OWN live-only
+ *      #cx-rw-config tag; app-owned SET codes + yieldToCodes; Connect never
+ *      touches foreign discounts; two-step metafieldsSet; storefront-islands
+ *      health check; preview-config "rw" field), the
+ *      Discount Function extension (type/targets/handle == server
+ *      constants, functionHandle wiring), scopes + inventory webhook,
+ *      metafield keys, checkout RewardsSafetyNet, preview keys, the
+ *      24-key rewards.* locale superset (el/ar byte-cap exemptions) and
+ *      the RW_DEFAULTS inline-fallback parity.
  *
  * Run: node validation/harness.mjs
  */
@@ -77,9 +89,15 @@ const CSS = `${EXT}/assets/cellexia-booster.css`;
   // Documented budget move (v12, 2026-08-13): 95_000 -> 96_500 to admit the
   // per-market product-exclusion gates (+946B across pdp/cart/amazon
   // islands; total 95,705B at the move). Still 5.9KB under the Shopify cap;
-  // the v5.9 "documented pin move" precedent. NEXT Liquid work should slim
-  // before it spends.
-  const BUDGET = 96_500; // our own margin below the cap
+  // the v5.9 "documented pin move" precedent.
+  // Documented budget move (v14 rewards, 2026-08-16): 96_500 -> 99_500 for
+  // the cart-booster "rw" island (set-savings/gift-tier settings, resolved
+  // gift map, 16 rw.* strings; v15 moved the data into its own live-only
+  // #cx-rw-config tag with no gift map) + the amazon-booster set-savings island
+  // (+≈2,700B together; total 99,183B at the move). 3.2KB under the
+  // Shopify cap (102,400B). NEXT Liquid work MUST slim before it spends —
+  // there is no room for another documented pin move of this size.
+  const BUDGET = 99_500; // our own margin below the cap
   const FLOOR = 500; // a shipped block/snippet below this has been gutted
   const CEILING = 30_000; // a single file above this needs a Liquid diet
   let total = 0;
@@ -98,7 +116,8 @@ const CSS = `${EXT}/assets/cellexia-booster.css`;
 
 // ==================================================== 2. PREVIEW COVERAGE
 const FEATURE_KEYS = parseFeatureKeys();
-ok(FEATURE_KEYS.length === 35, `FEATURE_KEYS parsed live: 35 keys (got ${FEATURE_KEYS.length})`);
+// v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
+ok(FEATURE_KEYS.length === 37, `FEATURE_KEYS parsed live: 37 keys (got ${FEATURE_KEYS.length})`);
 
 /**
  * Evidence map: every FeatureKey -> at least one verified pattern in a real
@@ -146,6 +165,20 @@ const EVIDENCE = {
   az_similar_items: [{ file: PDP_JS, has: MARK("az_similar_items") }],
   az_cart_free_line: [{ file: CART_JS, has: MARK("az_cart_free_line") }],
   az_cta_count: [{ file: CART_JS, has: "'az_cta_count'", note: "CTA-count decorates the theme CTA button (gate key, no own marker)" }],
+  // v14 rewards: the cart nudge (rwRenderNudge) + the PDP set-savings row
+  // (azBuildRwPdp) both carry the marker; the checkout safety net attaches
+  // the KIT code under the same key.
+  set_savings: [
+    { file: CART_JS, has: MARK("set_savings") },
+    { file: PDP_JS, has: MARK("set_savings") },
+    { file: "extensions/checkout-protection/src/Checkout.tsx", has: "'set_savings'", note: "v14 RewardsSafetyNet KIT-attach gate" },
+  ],
+  // v14 rewards: the cart gift meter (rwRenderMeter) carries the marker; the
+  // checkout safety net's gift-honesty removal is gated on the same key.
+  gift_tiers: [
+    { file: CART_JS, has: MARK("gift_tiers") },
+    { file: "extensions/checkout-protection/src/Checkout.tsx", has: "'gift_tiers'", note: "v14 RewardsSafetyNet gift-honesty gate" },
+  ],
 };
 
 {
@@ -1317,6 +1350,7 @@ const EVIDENCE = {
     "cx-cart-config": "cart config-island id (getElementById)",
     "cx-pdp-config": "pdp config-island id (getElementById)",
     "cx-az-config": "amazon config-island id (getElementById)",
+    "cx-rw-config": "v15 rewards config-island id (getElementById; live-only separate tag)",
     "cx-batch-config": "batch config-island id (getElementById)",
     "cx-bottle-config": "bottle config-island id (getElementById)",
     "cx-study-config": "study config-island id (getElementById)",
@@ -2865,6 +2899,83 @@ const EVIDENCE = {
     );
   }
 
+  // (a4) v13.2: Amazon-page market targeting must stay DISCOVERABLE from the
+  // feature cards (merchant asked for per-market buy-box visibility that
+  // already existed at the bottom of the page — the v8.6 pattern again).
+  // Every pattern card shows its reach + an "Edit markets" jump link; the
+  // Market targeting card and each pattern block carry the anchor ids the
+  // links/hash effect target; the buy-box block explains that its rows are
+  // scoped separately and offers the apply-to-all copy action.
+  {
+    const azPageSrc = read("app/routes/app.features.amazon.tsx");
+    for (const anchor of [
+      "function azReachCaption(",
+      "function azMarketAnchorId(",
+      "return `market-${key}`;",
+      "azReachCaption(state.scopes[feature.key], markets)",
+      "Edit markets",
+      "scrollToMarketAnchor(azMarketAnchorId(feature.key))",
+      '<div id="market-targeting">',
+      "id={azMarketAnchorId(feature.key)}",
+      'hash === "#market-targeting" || hash.startsWith("#market-az_")',
+      "Apply this selection to all Amazon patterns",
+      "const source = previous.scopes.az_buy_box;",
+      "each have their own market",
+    ]) {
+      ok(
+        azPageSrc.includes(anchor),
+        `v13.2: app.features.amazon.tsx market-targeting discoverability anchor present: ${anchor}`,
+      );
+    }
+    // The apply-to-all copy must fan out over the real AZ key list, never a
+    // hand-typed subset (a new pattern must be covered automatically), and
+    // copy BOTH members of the ScopeState (mode + a fresh markets array —
+    // a shared array reference would let one pattern's checkbox mutate all).
+    ok(
+      /AZ_KEYS\.map\(\(key\) => \[\s*key,\s*\{\s*mode: source\.mode,\s*markets: \[\.\.\.source\.markets\],?\s*\}/.test(
+        azPageSrc,
+      ),
+      "v13.2: apply-to-all copies mode + a fresh markets array over AZ_KEYS",
+    );
+    // No shared Amazon master scope/flag was introduced (v8.6 rule: az
+    // patterns have NO shared master — flags or scopes). Pins the spellings
+    // THIS file would use (state.scopes.X / scopes[...] / flags.X / a quoted
+    // pseudo-key) — the v8.6 matrix pin covers app.markets.tsx.
+    ok(
+      !azPageSrc.includes("amazon.enabled") &&
+        !azPageSrc.includes("anyAzOn") &&
+        !/\b(scopes|marketScopes|flags)\??\.\s*(amazon|az_all|az_master|az_shared|enabled)\b/.test(
+          azPageSrc,
+        ) &&
+        !/["'](az_all|az_master|az_shared)["']/.test(azPageSrc),
+      "v13.2: no phantom shared Amazon master scope/flag introduced",
+    );
+    // The eleven-key list the fan-out rides is the real one (matches
+    // FEATURE_KEYS' az_* order in settings.server.ts).
+    ok(
+      /const AZ_KEYS = \[\s*"az_buy_box",\s*"az_microcopy",\s*"az_delivery_line",\s*"az_stock_line",\s*"az_ships_from",\s*"az_bought_count",\s*"az_bestseller_badge",\s*"az_fbt",\s*"az_similar_items",\s*"az_cart_free_line",\s*"az_cta_count",?\s*\] as const;/.test(
+        azPageSrc,
+      ),
+      "v13.2: AZ_KEYS literal carries all eleven az keys",
+    );
+    // Review F3/F5/F6 robustness pins: stale-handle-aware reach predicate
+    // shared by caption + warning, content-keyed reset memo, sorted dirty
+    // check on scopes.
+    for (const anchor of [
+      "function azSelectionHidesEverywhere(",
+      "azSelectionHidesEverywhere(scope, markets) ? (",
+      "(market not found)",
+      "const initialKey = JSON.stringify({ features, amazon, scopes });",
+      "[initialKey],",
+      "markets: [...scope.markets].sort() }",
+    ]) {
+      ok(
+        azPageSrc.includes(anchor),
+        `v13.2: review-robustness anchor present: ${anchor}`,
+      );
+    }
+  }
+
   // (b) v8.4: every proof-library entry funnel asserts the models exist and
   // otherwise throws the actionable message (now v8.5-flow wording).
   const proofSrc = read("app/services/proof.server.ts");
@@ -3202,5 +3313,541 @@ const EVIDENCE = {
     "v8.13: collectAllowedMetafieldGids body admits no display_name GID",
   );
 }
+
+// ============================================ v14 REWARDS (2026-08-16)
+// SPEC-v14-rewards.md — set savings (KIT tiers) + gift tiers + the free-
+// shipping guarantee: a Discount Function extension (the referee), a cart
+// "rw" island, an amazon set-savings island, the checkout safety net,
+// server metafield/webhook/scopes plumbing and 24 rewards.* locale keys
+// (21 at v14 + 3 appended by the v14.1 polish).
+// Behavior is pinned by sims/rewards-tiers.mjs (twin helpers + fixtures)
+// and sims/rewards-function.mjs (Function pure logic); these are the cheap
+// structural tripwires so a refactor cannot silently drop a wire.
+{
+  // (a) Per-file Liquid caps agreed for the wave (the two islands were
+  // byte-dieted to land under them; total sits 3.2KB under the Shopify
+  // cap after the section-1 budget move — see the section-1 comment).
+  const CART_LIQUID_CAP = 23_600;
+  const AZ_LIQUID_CAP = 19_700;
+  const cartLiquidBytes = bytesOf(`${EXT}/blocks/cart-booster.liquid`);
+  const azLiquidBytes = bytesOf(`${EXT}/blocks/amazon-booster.liquid`);
+  ok(
+    cartLiquidBytes <= CART_LIQUID_CAP,
+    `v14: cart-booster.liquid ${cartLiquidBytes}B <= ${CART_LIQUID_CAP}B (rw island cap — diet before you spend)`,
+  );
+  ok(
+    azLiquidBytes <= AZ_LIQUID_CAP,
+    `v14: amazon-booster.liquid ${azLiquidBytes}B <= ${AZ_LIQUID_CAP}B (set-savings island cap — diet before you spend)`,
+  );
+
+  // (b) Cart island: cfg.rewards alias, per-market effective flags for
+  // BOTH keys (master AND marketScopes), the two effective members the JS
+  // gates on, and the gated "rw" island member (settings sections verbatim
+  // + Liquid-resolved paused set + resolved gift map). The gate must
+  // precede the member — a gate-less "rw" would leak gift variant data to
+  // every visitor and inflate every cart page.
+  const cartLiquid14 = read(`${EXT}/blocks/cart-booster.liquid`);
+  ok(cartLiquid14.includes("{%- assign cx_rw = cfg.rewards -%}"), "v14: cart-booster.liquid aliases cx_rw = cfg.rewards");
+  for (const [flag, master, scope] of [
+    ["cx_eff_ss", "cx_rw.setSavings.enabled", "cfg.marketScopes.set_savings"],
+    ["cx_eff_gt", "cx_rw.giftTiers.enabled", "cfg.marketScopes.gift_tiers"],
+  ]) {
+    ok(
+      cartLiquid14.includes(`assign ${flag} = false\nif ${master}\nassign cx_scope = ${scope}\nif cx_scope.mode != 'selected' or cx_scope.markets contains cx_market\nassign ${flag} = true`),
+      `v14: cart island ${flag} = ${master} AND ${scope} allows cx_market`,
+    );
+  }
+  ok(
+    cartLiquid14.includes('"setSavings": {{ cx_eff_ss }},') && cartLiquid14.includes('"giftTiers": {{ cx_eff_gt }}'),
+    "v14: cart island effective map carries setSavings + giftTiers (always emitted, anyEffectiveLive() sees them)",
+  );
+  ok(
+    cartLiquid14.includes("or cx_rw.setSavings.enabled or cx_rw.giftTiers.enabled or cx_cart_draft_any -%}"),
+    "v14: the cart master gate admits either rewards master (island renders with everything else off)",
+  );
+  ok(
+    cartLiquid14.includes("if cx_prev_flags.set_savings or cx_prev_flags.gift_tiers or cx_rw.setSavings.enabled or cx_rw.giftTiers.enabled\nassign cx_draft_rw = true"),
+    "v14: armed preview computes cx_draft_rw from either draft flag / master",
+  );
+  // v15 LIQUID ISOLATION (the "cart became empty" incident): the rewards data
+  // is NOT a member of the shared #cx-cart-config island any more. It lives in
+  // its OWN <script id="cx-rw-config"> tag, emitted ONLY when a rewards
+  // feature is LIVE for the market (cx_eff_ss or cx_eff_gt — never on the
+  // draft flags), immediately after the main island, with no all_products
+  // loops / gifts map / capture blocks (a Liquid problem in that tag can only
+  // break that tag). The rw.* strings stay in the main island, gated on
+  // effective OR draft (inert text). Draft rewards data reaches a browser
+  // only through the token-verified preview-config endpoint (PREVIEW.rw).
+  const RW_STRINGS_GATE = "{%- if cx_eff_ss or cx_eff_gt or cx_draft_rw %}";
+  const RW_ISLAND_GATE = "{%- if cx_eff_ss or cx_eff_gt %}";
+  const RW_ISLAND = '<script type="application/json" id="cx-rw-config">{"ss": {{ cx_rw.setSavings | json }}, "gt": {{ cx_rw.giftTiers | json }}, "paused": {{ app.metafields.cellexia.gift_stock.value.paused[cx_market] | json }}}</script>';
+  const rwIslandAt = cartLiquid14.indexOf(RW_ISLAND);
+  const rwIslandGateAt = cartLiquid14.lastIndexOf(RW_ISLAND_GATE, rwIslandAt === -1 ? undefined : rwIslandAt);
+  const mainIslandAt = cartLiquid14.indexOf('id="cx-cart-config"');
+  const mainIslandEnd = mainIslandAt === -1 ? -1 : cartLiquid14.indexOf("</script>", mainIslandAt);
+  ok(rwIslandAt !== -1, "v15: cart-booster.liquid emits the separate #cx-rw-config script tag (ss / gt verbatim + paused, nothing else)");
+  ok(
+    rwIslandGateAt !== -1 && rwIslandAt !== -1 && cartLiquid14.slice(rwIslandGateAt + RW_ISLAND_GATE.length, rwIslandAt).trim() === "",
+    "v15: #cx-rw-config is gated on cx_eff_ss or cx_eff_gt ONLY (live for the market — never on cx_draft_rw / draft flags)",
+  );
+  ok(
+    rwIslandAt !== -1 && cartLiquid14.slice(rwIslandAt + RW_ISLAND.length, rwIslandAt + RW_ISLAND.length + 40).trim().startsWith("{%- endif %}"),
+    "v15: the #cx-rw-config tag is closed by its own endif on the next line",
+  );
+  ok(
+    mainIslandEnd !== -1 && rwIslandAt > mainIslandEnd && cartLiquid14.indexOf("cellexia-cart.js", rwIslandAt) > rwIslandAt,
+    "v15: #cx-rw-config sits AFTER the main #cx-cart-config island closes and BEFORE the cart script tag",
+  );
+  ok(
+    mainIslandAt !== -1 && !cartLiquid14.slice(mainIslandAt, mainIslandEnd).includes('"rw": {'),
+    "v15: the shared #cx-cart-config island carries NO \"rw\" member any more (isolation)",
+  );
+  ok(
+    !cartLiquid14.includes('"gifts": {"_": 0') && !/id="cx-rw-config"[^\n]*all_products/.test(cartLiquid14),
+    "v15: no gifts map / all_products look-ups in the rewards island (gift product data comes from cart-data at runtime)",
+  );
+  ok(
+    !cartLiquid14.includes("{%- assign cx_gt = ") && !cartLiquid14.includes("{%- capture cx_rw"),
+    "v15: no cx_gt rebuild / capture blocks for the rewards island",
+  );
+  ok(
+    (cartLiquid14.match(new RegExp(RW_STRINGS_GATE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length === 1 &&
+      cartLiquid14.indexOf('"rw.{{ k }}":', cartLiquid14.indexOf(RW_STRINGS_GATE)) > cartLiquid14.indexOf(RW_STRINGS_GATE),
+    "v15: exactly one effective-or-draft gate remains — the rw.* strings loop (inert text) inside the main island",
+  );
+  ok(
+    (cartLiquid14.match(/cx_draft_rw/g) ?? []).length === 3,
+    "v15: cx_draft_rw is referenced exactly 3× (assign, cx_cart_draft_any, strings gate) — never around data",
+  );
+  ok(
+    cartLiquid14.includes("]{%- if item.product.tags contains 'sample-sachet' -%}, \"s\": 1{%- endif -%}"),
+    "v14: cart island products map flags sample-sachet products with \"s\": 1",
+  );
+  ok(
+    read("app/routes/proxy.cart-data.tsx").includes("tags contains 'sample-sachet' -%}, \"s\": 1{%- endif -%}"),
+    "v14: proxy.cart-data PRODUCT_BODY_LIQUID emits the same \"s\": 1 sachet flag",
+  );
+
+  // (c) Amazon island: the set-savings member rides az_any_ss (effective
+  // OR draft), the effective map carries set_savings, and the alias reads
+  // the setSavings section only (the PDP never needs gift tiers).
+  const azLiquid14 = read(`${EXT}/blocks/amazon-booster.liquid`);
+  ok(azLiquid14.includes("assign cx_rw = cfg.rewards.setSavings"), "v14: amazon-booster.liquid aliases cx_rw = cfg.rewards.setSavings");
+  ok(
+    azLiquid14.includes("assign az_eff_ss = false\nif cx_rw.enabled == true\nassign cx_scope = cfg.marketScopes.set_savings\nif cx_scope.mode != 'selected' or cx_scope.markets contains cx_market\nassign az_eff_ss = true"),
+    "v14: amazon island az_eff_ss = master AND marketScopes.set_savings allows cx_market",
+  );
+  ok(
+    azLiquid14.includes("assign az_any_ss = false\nif az_eff_ss or cx_draft_ss\nassign az_any_ss = true"),
+    "v14: amazon island az_any_ss = effective OR draft-armed",
+  );
+  // v15: the amazon "rw" member is emitted ONLY when az_eff_ss (LIVE for the
+  // market) and carries just live/tiers/sf/excl — no giftPids, no
+  // all_products; the rw.* PDP strings keep riding az_any_ss (inert text).
+  const AZ_RW = '{%- if az_eff_ss %}\n"rw": {"live": true, "tiers": {{ cx_rw.tiers | json }}, "sf": {"pdp": {{ cx_rw.surfaces.pdpLine | json }}, "sim": {{ cx_rw.surfaces.similarCaption | json }}, "fbt": {{ cx_rw.surfaces.fbtCaption | json }}}, "excl": {{ cx_rw.setSavingsExcludedByMarket[cx_market] | json }}},\n{%- endif %}';
+  ok(azLiquid14.includes(AZ_RW), "v15: amazon island \"rw\" member (live/tiers/sf/excl only) gated on az_eff_ss (live), closed on the next line");
+  ok(!azLiquid14.includes("giftPids") && !/"rw": \{[^\n]*all_products/.test(azLiquid14), "v15: amazon rw member has no giftPids and no all_products look-ups");
+  ok(
+    azLiquid14.includes("{%- if az_any_ss %}\n{%- assign az_rwk = "),
+    "v15: the rw.* PDP strings still ride az_any_ss (effective OR draft — inert text)",
+  );
+  ok(azLiquid14.includes('"set_savings": {{ az_eff_ss }}'), "v14: amazon island effective map carries set_savings");
+  ok(
+    azLiquid14.includes("or az_any_similar or az_any_ss\n") && azLiquid14.includes("or az_any_fbt or az_any_similar or az_any_ss\n"),
+    "v14: az_any_ss joins az_any AND az_need_product (the cart-aware row needs the product id)",
+  );
+
+  // (d) Cart JS: the two FeatureKeys ride CART_FEATURE_KEYS, cfg.rw is
+  // read once behind an object guard, the gift-line property is the
+  // `_cellexia_` convention, the meter replaces the shipbar only while
+  // giftTiers is on, and the render/sync hooks are wired.
+  const cartJs14 = read(CART_JS);
+  ok(
+    cartJs14.includes("setSavings: 'set_savings',") && cartJs14.includes("giftTiers: 'gift_tiers'"),
+    "v14: CART_FEATURE_KEYS maps setSavings/giftTiers to the canonical FeatureKeys",
+  );
+  ok(
+    cartJs14.includes("document.getElementById('cx-rw-config')") && cartJs14.includes("var RW = readRwConfig();"),
+    "v15: cellexia-cart.js reads the separate #cx-rw-config island (readRwConfig) — never cfg.rw",
+  );
+  ok(!cartJs14.includes("cfg.rw"), "v15: no cfg.rw reads left in cellexia-cart.js (the main island has no rw member)");
+  ok(cartJs14.includes("if (PREVIEW.rw && (featureOn('setSavings') || featureOn('giftTiers'))) RW = PREVIEW.rw;"), "v15.1: inside a verified preview the runtime swaps in PREVIEW.rw ONLY when set savings or free gifts is live/drafted (preview-config \"rw\" field)");
+  ok(cartJs14.includes("function rwYieldCodes()") && cartJs14.includes("yieldToCodes"), "v15: rwYieldCodes() reads rw.ss.yieldToCodes (codes we step aside for)");
+  ok(!/alias/i.test(cartJs14.replace(/marker alias/g, "")), "v15: no alias-code logic left in cellexia-cart.js");
+  ok(cartJs14.includes("'cx_rw_gifts:'"), "v15: gift product data is fetched lazily from cart-data and cached under sessionStorage cx_rw_gifts:<hash>");
+  ok(cartJs14.includes("var RW_GIFT_PROP = '_cellexia_gift';"), "v14: gift-line property is _cellexia_gift (the _cellexia_ prefix convention)");
+  ok(
+    cartJs14.includes("var meter = featureOn('giftTiers') ? rwRenderMeter(root, !!azFree) : null;"),
+    "v14: renderInto mounts the gift meter only while giftTiers is on (shipbar fallback otherwise)",
+  );
+  ok(
+    cartJs14.includes("rwSnapshot(); // v14: per-render rewards context"),
+    "v14: renderInto takes the per-render rewards snapshot",
+  );
+  for (const hook of ["rwDecorateGiftRows();", "rwSyncCode();", "rwSyncGifts();"]) {
+    ok(cartJs14.includes(hook), `v14: cart render/sync hook wired: ${hook}`);
+  }
+  ok(
+    cartJs14.includes("function rwPreviewControls(bar)"),
+    "v14: preview bar gains the cart simulator controls (rwPreviewControls)",
+  );
+
+  // (e) PDP JS: buy-box row mount + order slot, cart-count reads the theme
+  // CartJS snapshot only (never a fetch), and the sample/gift/excluded
+  // skip filter is called from the FBT/similar pick loops.
+  const pdpJs14 = read(PDP_JS);
+  ok(pdpJs14.includes("'.cx-rw-pdp',"), "v14: AZ_BUYBOX_ORDER carries the .cx-rw-pdp slot");
+  ok(pdpJs14.includes("azMountRwPdp(); // v14 set-savings buy-box row"), "v14: azInit mounts the set-savings buy-box row");
+  ok(
+    pdpJs14.includes("function azRwCartCount()") && !/function azRwCartCount\(\)[\s\S]{0,1200}fetch\(/.test(pdpJs14),
+    "v14: azRwCartCount reads the CartJS snapshot, never fetches",
+  );
+  ok(
+    (pdpJs14.match(/azRwSkip\(/g) ?? []).length >= 4,
+    "v14: azRwSkip is applied in the FBT + similar pick/enrich stages (>= 4 call sites)",
+  );
+
+  // (f) CSS: both v14 blocks appended, cart before pdp (SPEC §13 order).
+  const css14 = read(CSS);
+  const cssCartAt = css14.indexOf("/* v14 rewards cart */");
+  const cssPdpAt = css14.indexOf("/* v14 rewards pdp */");
+  ok(cssCartAt !== -1 && cssPdpAt !== -1 && cssCartAt < cssPdpAt, "v14: cellexia-booster.css carries the cart block before the pdp block");
+  ok(css14.includes(".cx-rw-meter") && css14.includes(".cx-rw-pdp") && css14.includes("[data-cx-gift]"), "v14: meter / pdp row / gift-row rules styled");
+
+  // (g) Discount Function extension: one function, two targets, config from
+  // the $app:cellexia/rewards shop metafield ONLY, JS template layout.
+  const fnToml = read("extensions/cellexia-rewards/shopify.extension.toml");
+  ok(fnToml.includes('type = "function"'), "v14: cellexia-rewards extension type is function");
+  ok(fnToml.includes('api_version = "2025-10"'), "v14: cellexia-rewards api_version 2025-10");
+  ok(fnToml.includes('handle = "cellexia-rewards"'), "v14: cellexia-rewards handle pinned");
+  ok(
+    fnToml.includes('target = "cart.lines.discounts.generate.run"') &&
+      fnToml.includes('target = "cart.delivery-options.discounts.generate.run"'),
+    "v14: both Discount Function targets declared (cart lines + delivery options)",
+  );
+  ok(
+    fnToml.includes('export = "cart-lines-discounts-generate-run"') &&
+      fnToml.includes('export = "cart-delivery-options-discounts-generate-run"'),
+    "v14: both targeting exports declared (kebab-case export names)",
+  );
+  ok(fnToml.includes('path = "dist/function.wasm"'), "v14: build path dist/function.wasm (JS template layout)");
+  for (const f of [
+    "extensions/cellexia-rewards/package.json",
+    "extensions/cellexia-rewards/src/logic.js",
+    "extensions/cellexia-rewards/src/index.js",
+    "extensions/cellexia-rewards/src/cart_lines_discounts_generate_run.js",
+    "extensions/cellexia-rewards/src/cart_lines_discounts_generate_run.graphql",
+    "extensions/cellexia-rewards/src/cart_delivery_options_discounts_generate_run.js",
+    "extensions/cellexia-rewards/src/cart_delivery_options_discounts_generate_run.graphql",
+  ]) {
+    ok(exists(f), `v14: Function source present: ${f}`);
+  }
+  for (const q of [
+    "extensions/cellexia-rewards/src/cart_lines_discounts_generate_run.graphql",
+    "extensions/cellexia-rewards/src/cart_delivery_options_discounts_generate_run.graphql",
+  ]) {
+    ok(
+      read(q).includes('metafield(namespace: "$app:cellexia", key: "rewards")'),
+      `v14: ${q.split("/").pop()} reads the $app:cellexia/rewards config metafield`,
+    );
+  }
+  ok(
+    read("extensions/cellexia-rewards/src/cart_lines_discounts_generate_run.js").includes("export function cartLinesDiscountsGenerateRun(input)") &&
+      read("extensions/cellexia-rewards/src/cart_delivery_options_discounts_generate_run.js").includes("export function cartDeliveryOptionsDiscountsGenerateRun(input)"),
+    "v14: run modules export the camelCase entry points the toml exports map to",
+  );
+  const rewardsPkg = JSON.parse(read("extensions/cellexia-rewards/package.json"));
+  ok(
+    typeof rewardsPkg.dependencies?.["@shopify/shopify_function"] === "string",
+    "v14: cellexia-rewards depends on @shopify/shopify_function",
+  );
+
+  // (h) Server: the Function is addressed by HANDLE (Admin API 2025-10 —
+  // functionId is deprecated), and the handle/title constants equal the
+  // toml (a renamed extension would orphan Connect).
+  const rewardsSrv = read("app/services/rewards.server.ts");
+  ok(rewardsSrv.includes('export const REWARDS_FUNCTION_HANDLE = "cellexia-rewards";'), "v14: REWARDS_FUNCTION_HANDLE = cellexia-rewards (== toml handle)");
+  ok(rewardsSrv.includes('export const REWARDS_FUNCTION_TITLE = "Cellexia rewards";') && fnToml.includes('name = "Cellexia rewards"'), "v14: REWARDS_FUNCTION_TITLE == toml name");
+  ok(
+    (rewardsSrv.match(/functionHandle: REWARDS_FUNCTION_HANDLE,/g) ?? []).length >= 2,
+    "v14: discount create/update inputs address the Function via functionHandle: REWARDS_FUNCTION_HANDLE (code + automatic)",
+  );
+  for (const fn of ["connectRewardsDiscounts", "refreshGiftStock", "giftStockIsStale", "refreshUnitMap", "suggestGiftThresholds", "buildUnitMap"]) {
+    ok(rewardsSrv.includes(`export async function ${fn}(`) || rewardsSrv.includes(`export function ${fn}(`), `v14: rewards.server.ts exports ${fn}`);
+  }
+  // v14.2 presets / v15 app-owned SET codes + step-aside codes: the settings
+  // model exports both preset tables (SET codes only), DEFAULT_YIELD_TO_CODES
+  // + sanitizeYieldToCodes; the alias / legacy machinery is GONE; Connect
+  // takes NO options and NEVER deletes / deactivates / updates a foreign
+  // discount (the mutation names must not appear in the module at all); a
+  // foreign code is reported with the exact merchant sentence.
+  const settingsSrc142 = read("app/models/settings.server.ts");
+  for (const sym of ["LADDER_PRESETS", "LADDER_PRESET_KEYS", "GIFT_PRESETS", "GIFT_PRESET_KEYS", "DEFAULT_YIELD_TO_CODES"]) {
+    ok(settingsSrc142.includes(`export const ${sym} = `), `v15: settings.server.ts exports ${sym}`);
+  }
+  ok(settingsSrc142.includes("export function sanitizeYieldToCodes("), "v15: settings.server.ts exports sanitizeYieldToCodes(raw, ladder)");
+  ok(
+    settingsSrc142.includes('{ count: 2, pct: 5, code: "SET2" }') && settingsSrc142.includes('{ count: 10, pct: 30, code: "SET10" }') && !/code: "KIT\d+"/.test(settingsSrc142),
+    "v15: LADDER_PRESETS use app-owned SET codes (SET2/SET3/SET4/SET6, SET2/SET3/SET5/SET10) — never KIT",
+  );
+  ok(
+    settingsSrc142.includes('export const DEFAULT_YIELD_TO_CODES = ["KIT2", "KIT3", "KIT5", "KIT10"] as const;') &&
+      settingsSrc142.includes("yieldToCodes: [...DEFAULT_YIELD_TO_CODES],") &&
+      settingsSrc142.includes("ss.yieldToCodes = sanitizeYieldToCodes(ss.yieldToCodes, ss.tiers);"),
+    "v15: yieldToCodes defaults to the store's KIT2/KIT3/KIT5/KIT10 and sanitizeSettings re-sanitizes it against the ladder",
+  );
+  for (const gone of ["keepLegacyCodes: boolean", "aliasCodes: string[]", "export function aliasCodesFor(", "export const LEGACY_KIT_CODES"]) {
+    ok(!settingsSrc142.includes(gone), `v15: settings.server.ts no longer carries ${gone}`);
+  }
+  ok(!/keepLegacyCodes|aliasCodesFor|LEGACY_KIT_CODES|aliasCodes/.test(rewardsSrv), "v15: rewards.server.ts has no alias / legacy-code references");
+  ok(!rewardsSrv.includes("discountCodeDelete") && !rewardsSrv.includes("discountCodeDeactivate"), "v15: rewards.server.ts NEVER deletes or deactivates a discount (mutation names absent)");
+  ok(!rewardsSrv.includes("replaceExisting"), "v15: connectRewardsDiscounts has no replaceExisting option");
+  ok(
+    rewardsSrv.includes("export async function connectRewardsDiscounts(\n  admin: AdminGraphqlClient,\n  shop: string,\n  settings: BoosterSettings,\n): Promise<RewardsResult<RewardsStateSnapshot>> {"),
+    "v15: connectRewardsDiscounts(admin, shop, settings) — no options parameter",
+  );
+  ok(rewardsSrv.includes("export function isOurCodeNode(") && rewardsSrv.includes("if (isOurCodeNode(node, functionId, knownIds)) {"), "v15: Connect updates a code node ONLY when isOurCodeNode (our function id OR a recorded node id)");
+  ok(
+    rewardsSrv.includes("export function foreignCodeMessage(code: string): string {") &&
+      rewardsSrv.includes("return `Code ${code} is already used by another discount in your store. Change the code in the table or delete that discount yourself; the app never touches discounts it did not create.`;") &&
+      rewardsSrv.includes("errors.push(foreignCodeMessage(code));"),
+    "v15: a foreign discount owning a ladder code is reported with the exact merchant sentence and skipped",
+  );
+  ok(rewardsSrv.includes("export async function detectStoreCodes(") && rewardsSrv.includes('discountNodes(first: 50, after: $cursor, query: $query)') && rewardsSrv.includes('{ query: "method:code", cursor }'), "v15: detectStoreCodes lists existing store codes via discountNodes(query: method:code) + per-type codes (read-only)");
+  ok(
+    (rewardsSrv.match(/discountCodeAppUpdate\(id: \$id/g) ?? []).length === 1 && (rewardsSrv.match(/discountAutomaticAppUpdate\(id: \$id/g) ?? []).length === 1,
+    "v15: exactly one code-update and one automatic-update mutation (ours only)",
+  );
+  // v15.1 hv rule: FIRST VARIANT BY POSITION on both sides — the server
+  // never selects by availableForSale (a sold-out first variant must resolve
+  // to the same vid the storefront resolves to; the storefront then refuses
+  // to add it and falls to the next option, as the Function would).
+  ok(rewardsSrv.includes("hv: Record<string, string>;") && rewardsSrv.includes("nodes { id position }") && rewardsSrv.includes("const resolved = firstVid;"), "v15.1: buildUnitMap records handle -> FIRST variant by position (hv) for handle-only gift options");
+  ok(!rewardsSrv.includes("availableForSale") && !rewardsSrv.includes("firstAvailableVid"), "v15.1: rewards.server.ts has NO availableForSale-based hv selection (deterministic twin of the storefront first-variant rule)");
+  // v15.1 blockedCodes: Connect collects the ladder codes owned by a foreign
+  // discount and PERSISTS them (empty when none) through the settings model
+  // (saveSettings patch) BEFORE the metafield sync, which mirrors the
+  // updated settings; the settings model defaults/sanitizes/caps the field.
+  ok(rewardsSrv.includes('import { saveSettings, type BoosterSettings } from "../models/settings.server";'), "v15.1: rewards.server.ts imports saveSettings (blockedCodes persistence)");
+  ok(
+    rewardsSrv.includes("const blockedCodes: string[] = [];") &&
+      rewardsSrv.includes("errors.push(foreignCodeMessage(code));\n          delete nodes.kit[code];\n          blockedCodes.push(code);\n          continue;") &&
+      rewardsSrv.includes("rewards: { setSavings: { blockedCodes } },") &&
+      rewardsSrv.indexOf("rewards: { setSavings: { blockedCodes } },") < rewardsSrv.indexOf("const sync = await syncSettingsToMetafields(admin, synced);"),
+    "v15.1: connectRewardsDiscounts writes rewards.setSavings.blockedCodes (collided codes, [] when none) via saveSettings and syncs the UPDATED settings",
+  );
+  ok(
+    settingsSrc142.includes("blockedCodes: string[];") &&
+      settingsSrc142.includes("blockedCodes: [],") &&
+      settingsSrc142.includes("blockedCodes: 6,") &&
+      settingsSrc142.includes("export function sanitizeBlockedCodes(") &&
+      settingsSrc142.includes("ss.blockedCodes = sanitizeBlockedCodes(ss.blockedCodes, ss.tiers);"),
+    "v15.1: settings model carries rewards.setSavings.blockedCodes (default [], cap 6, sanitizeBlockedCodes against the ladder in sanitizeSettings)",
+  );
+  ok(settingsSrc142.includes('label: "Set savings",') && settingsSrc142.includes('label: "Free gifts",') && !settingsSrc142.includes('label: "Gift tiers"'), 'v15.1: FEATURE_DEFS labels are "Set savings" / "Free gifts"');
+  ok(!read("app/services/health.server.ts").includes("aliasCodesFor"), "v15: rewards-discounts health check has no alias requirement");
+  const mfAlias = read("app/services/metafields.server.ts");
+  ok(!mfAlias.includes("alias") , "v15: rewards metafield ss carries no `alias` (removed everywhere in metafields.server.ts)");
+  ok(mfAlias.includes("numeric(option.variantId) || (option.handle && hv[option.handle]) || \"\"") && mfAlias.includes('.filter((o) => o.k === "s" || o.vid !== "")'), "v15: buildRewardsMetafield resolves handle-only gift options through hv and drops unresolvable ones");
+  ok(mfAlias.includes("export interface SettingsSyncResult") && mfAlias.includes("warnings: string[];"), "v15: syncSettingsToMetafields returns {ok, errors, warnings}");
+  const mirrorsAt = mfAlias.indexOf("// STEP 1 (v15): the two config mirrors in ONE metafieldsSet call.");
+  const rewardsAt = mfAlias.indexOf("// STEP 2 (v15): the Discount Function's rewards projection");
+  ok(
+    mirrorsAt !== -1 && rewardsAt !== -1 && mirrorsAt < rewardsAt &&
+      (mfAlias.slice(mirrorsAt, rewardsAt).match(/admin\.graphql\(METAFIELDS_SET_MUTATION/g) ?? []).length === 1 &&
+      (mfAlias.slice(rewardsAt).match(/admin\.graphql\(METAFIELDS_SET_MUTATION/g) ?? []).length === 1 &&
+      mfAlias.slice(rewardsAt).includes("warnings.push(") && mfAlias.slice(rewardsAt).includes("return { ok: true, errors: [], warnings };"),
+    "v15: two-step metafieldsSet — mirrors first (own call), rewards metafield second (own call, failure = warning, never blocks step 1)",
+  );
+  const logicAlias = read("extensions/cellexia-rewards/src/logic.js");
+  ok(!logicAlias.includes("ss.alias") && !logicAlias.includes("function codeIn("), "v15: logic.js computeKit has no alias branch (exact qualifying ladder code only)");
+  ok(logicAlias.includes("if (String(tier.c).toUpperCase() !== String(code).toUpperCase()) return [];"), "v15: logic.js grants only the exact qualifying tier code (case-insensitive)");
+  // Metafields: the third metafieldsSet entry + the app-data gift_stock.
+  const mfSrc14 = read("app/services/metafields.server.ts");
+  ok(mfSrc14.includes('namespace: "$app:cellexia",\n            key: "rewards",'), "v14: syncSettingsToMetafields writes $app:cellexia/rewards (v15: in its own second call)");
+  ok(mfSrc14.includes('key: "gift_stock"'), "v14: writeGiftStockMetafield writes cellexia/gift_stock");
+  ok(mfSrc14.includes("export function buildRewardsMetafield(") || mfSrc14.includes("export async function buildRewardsMetafield("), "v14: buildRewardsMetafield exported");
+  // Scopes + webhook (template toml) + the route file that receives it.
+  const exampleToml14 = read("shopify.app.toml.example");
+  const scopesLine = exampleToml14.split("\n").find((l) => l.startsWith("scopes = "));
+  ok(!!scopesLine, "v14: .example toml has a scopes line");
+  for (const sc of ["write_discounts", "read_inventory", "read_locations"]) {
+    ok(!!scopesLine && scopesLine.includes(sc), `v14: .example toml scopes include ${sc}`);
+  }
+  ok(
+    exampleToml14.includes('topics = [ "inventory_levels/update" ]') && exampleToml14.includes('uri = "/webhooks/inventory/update"'),
+    "v14: .example toml subscribes inventory_levels/update -> /webhooks/inventory/update",
+  );
+  ok(exists("app/routes/webhooks.inventory.update.tsx"), "v14: inventory webhook route exists");
+  const invRoute = read("app/routes/webhooks.inventory.update.tsx");
+  ok(invRoute.includes("authenticate.webhook(") && invRoute.includes("refreshGiftStock"), "v14: inventory webhook authenticates and refreshes gift stock");
+  ok(
+    read("app/routes/webhooks.orders.paid.tsx").includes("kitCode") && read("app/routes/webhooks.orders.paid.tsx").includes("giftLines"),
+    "v14: orders/paid records kitCode + giftLines",
+  );
+  // Prisma twins + migration.
+  for (const schema of ["prisma/schema.prisma", "prisma/schema.postgres.prisma"]) {
+    const sch = read(schema);
+    ok(sch.includes("model RewardsState {"), `v14: ${schema} has RewardsState`);
+    ok(sch.includes("kitCode") && sch.includes("giftLines"), `v14: ${schema} OrderStat has kitCode + giftLines`);
+  }
+  ok(exists("prisma/migrations/20260816120000_v14_rewards/migration.sql"), "v14: rewards migration present");
+  // Analytics vocabulary + health checks.
+  const an14 = read("app/services/analytics.server.ts");
+  for (const lit of ['"set_savings"', '"gift_tiers"', '"tier_reached"', '"code_applied"', '"gift_added"', '"gift_removed"']) {
+    ok(an14.includes(lit), `v14: analytics allowlist carries ${lit}`);
+  }
+  const health14 = read("app/services/health.server.ts");
+  ok(health14.includes('runCheck("rewards-discounts"') && health14.includes('runCheck("gift-products"'), "v14: rewards-discounts + gift-products health checks present");
+  // v15 storefront-islands: parses every Cellexia JSON island on the fetched
+  // home + product page; registered in BOTH runHealthChecks arrays; the
+  // deployed-extension probe shares the same page fetch.
+  ok(health14.includes('runCheck("storefront-islands"') && health14.includes("export function inspectStorefrontIslands("), "v15: storefront-islands health check + pure inspectStorefrontIslands present");
+  ok(
+    health14.includes('"cx-cart-config",\n  "cx-rw-config",\n  "cx-az-config",\n  "cx-pdp-config",'),
+    "v15: storefront-islands inspects #cx-cart-config, #cx-rw-config, #cx-az-config, #cx-pdp-config",
+  );
+  ok(
+    health14.includes('"Disarm the preview / turn the affected feature off in Markets and re-run; send this message to support."') && health14.includes('text.includes("Liquid error")'),
+    "v15: storefront-islands fixHint + Liquid-error detection pinned",
+  );
+  ok((health14.match(/checkStorefrontIslands\(pages\)/g) ?? []).length === 2, "v15: storefront-islands registered in BOTH runHealthChecks arrays (crashed-settings + normal)");
+  ok((health14.match(/= loadStorefrontPages\(shop\);/g) ?? []).length === 2 && (health14.match(/checkDeployedExtension\([^;]*?, pages\)/g) ?? []).length === 2, "v15: one storefront page fetch per run, shared by deployed-extension + storefront-islands");
+  ok(!/“Connect KIT codes|Replace existing KIT/.test(health14), "v15: health fix hints say “Create discount codes”, never Connect KIT / Replace existing");
+
+  // (i) Checkout safety net (no new extension): gift honesty + KIT attach
+  // inside checkout-protection, gated on the two FeatureKeys.
+  const prot14 = read("extensions/checkout-protection/src/Checkout.tsx");
+  ok(prot14.includes("function RewardsSafetyNet()") && prot14.includes("<RewardsSafetyNet />"), "v14: RewardsSafetyNet declared and rendered");
+  ok(prot14.includes("'gift_tiers'") && prot14.includes("'set_savings'"), "v14: safety net gates on the gift_tiers / set_savings literals");
+  ok(prot14.includes("const GIFT_ATTRIBUTE = '_cellexia_gift';"), "v14: safety net reads the _cellexia_gift line property");
+  ok(prot14.includes("type: 'removeCartLine'") && prot14.includes("useDiscountCodes") && prot14.includes("useInstructions"), "v14: gift-honesty removal + KIT attach hooks present");
+  ok(prot14.includes("previewDraft.rehearsal"), "v14: checkout mutations inside a preview only during a live rehearsal");
+
+  // (j) Preview: proxy keys, readiness, fix links, admin registrations.
+  const pc14 = read("app/routes/proxy.preview-config.tsx");
+  for (const k of ["simCart:", "rehearsal:", "rewardsForMarket:", "rw: rewardsPreviewSections("]) {
+    ok(pc14.includes(k), `v14/v15: proxy.preview-config emits ${k.replace(/[:(].*$/, "")}`);
+  }
+  const ps14 = read("app/services/preview.server.ts");
+  ok(ps14.includes("readiness.set_savings =") && ps14.includes("readiness.gift_tiers ="), "v14: featureReadiness covers set_savings + gift_tiers");
+  ok(ps14.includes("export function rewardsForMarket(") && ps14.includes("export function simCartChips("), "v14: preview.server exports rewardsForMarket + simCartChips");
+  ok(
+    ps14.includes("export function rewardsPreviewSections(") && ps14.includes("export interface RewardsPreviewSections {") && ps14.includes("warnings: string[];"),
+    "v15: preview.server exports rewardsPreviewSections({ss, gt, paused, market}) and PreviewSyncResult carries warnings",
+  );
+  ok(!/“Live rehearsal”|Connect KIT codes/.test(ps14), "v15: preview readiness copy says “Test with my real cart” / “Create discount codes”");
+  // v15.1: merchant copy never shows a health-check id; disarm retries the
+  // mirror write once (the DB row is disarmed before the write, so a failed
+  // write leaves the storefront armed — the caller must surface sync.ok).
+  ok(!ps14.includes("Setup & health: rewards-discounts") && ps14.includes("(see Setup & health → Discount codes)"), "v15.1: preview readiness note points at “Setup & health → Discount codes” (no health-check id in merchant text)");
+  {
+    const disarmAt = ps14.indexOf("export async function disarmPreview(");
+    const rotateAt = ps14.indexOf("export async function rotateToken(");
+    const disarmBody = disarmAt !== -1 && rotateAt > disarmAt ? ps14.slice(disarmAt, rotateAt) : "";
+    ok(
+      (disarmBody.match(/await resyncMetafields\(admin, state\)/g) ?? []).length === 2 && disarmBody.includes("if (!sync.ok) {"),
+      "v15.1: disarmPreview retries resyncMetafields ONCE when the first mirror write fails (two calls, guarded by !sync.ok)",
+    );
+    const health151 = read("app/services/health.server.ts");
+    ok(health151.includes('runCheck("rewards-discounts", "Discount codes"') && health151.includes("rw.setSavings.blockedCodes"), 'v15.1: health rewards-discounts row is labelled "Discount codes" and reports blocked (foreign-owned) ladder codes');
+  }
+  const prev14 = read("app/routes/app.preview.tsx");
+  ok(
+    prev14.includes('set_savings: {\n    url: "/app/features/rewards",') && prev14.includes('gift_tiers: {\n    url: "/app/features/rewards",'),
+    "v14: NOT_READY_FIX_LINKS route both rewards keys to /app/features/rewards",
+  );
+  ok(exists("app/routes/app.features.rewards.tsx"), "v14: Rewards admin page exists");
+  ok(read("app/routes/app.tsx").includes('<Link to="/app/features/rewards">Rewards</Link>'), "v14: NavMenu carries the Rewards tab");
+  ok(read("app/routes/app.analytics.tsx").includes('set_savings: "Set savings"') && read("app/routes/app.analytics.tsx").includes('gift_tiers: "Gift tiers"'), "v14: analytics FEATURE_LABELS carry both keys");
+  ok(read("app/services/experiments.server.ts").includes('raw?.kind === "rewards"'), "v14: experiments canonical hash carries the rewards raw arm");
+
+  // (k) Locales: en.default is the 24-key superset (21 at v14; v14.1
+  // appended meter_gift_away_plain, set_title_more, fbt_add_save_both at
+  // the END); every locale carries the full group EXCEPT the two
+  // byte-capped minified files (el.json: 0 keys — 27B of headroom;
+  // ar.json: 17 keys — the 4 PDP keys + the 3 v14.1 keys dropped, prefix
+  // rule), whose missing keys the inline RW_DEFAULTS English tables cover;
+  // every locale's rewards keys are a subset of en.default's (no orphan
+  // keys).
+  const en14 = JSON.parse(read(`${EXT}/locales/en.default.json`));
+  const enRw = Object.keys(en14.rewards ?? {});
+  ok(enRw.length === 24, `v14: en.default.json rewards group has 24 keys (got ${enRw.length})`);
+  ok(
+    enRw.slice(21).join(",") === "meter_gift_away_plain,set_title_more,fbt_add_save_both",
+    "v14.1: the three polish keys are appended at the END of the rewards group in contract order",
+  );
+  ok(
+    en14.rewards.meter_gift_away === "You're {{ amount }} away from a free {{ gift }} (worth {{ value }})" &&
+      en14.rewards.gift_unavailable === "Your free gift can't be applied to this order right now" &&
+      en14.rewards.meter_gift_away_plain === "You're {{ amount }} away from a free {{ gift }}" &&
+      en14.rewards.set_title_more === "Complete your set — {{ pct }}% off everything you add" &&
+      en14.rewards.fbt_add_save_both === "Add both & save {{ pct }}%",
+    "v14.1: en.default carries the polish string contract verbatim (meter_gift_away names the gift, gift_unavailable, + 3 new)",
+  );
+  const LOCALE_EXEMPT = { "el.json": 0, "ar.json": 17 };
+  for (const lf of listFiles(`${EXT}/locales`, ".json")) {
+    const loc = JSON.parse(read(`${EXT}/locales/${lf}`));
+    const keys = Object.keys(loc.rewards ?? {});
+    ok(keys.every((k) => enRw.includes(k)), `v14: ${lf} rewards keys ⊆ en.default (no orphan keys)`);
+    if (lf in LOCALE_EXEMPT) {
+      ok(keys.length === LOCALE_EXEMPT[lf], `v14: ${lf} carries exactly ${LOCALE_EXEMPT[lf]} rewards keys (byte-capped exemption, RW_DEFAULTS covers the rest)`);
+      ok(keys.every((k, i) => k === enRw[i]), `v14: ${lf} carries its rewards keys in en.default table order (prefix rule)`);
+    } else {
+      ok(keys.length === 24, `v14: ${lf} carries all 24 rewards keys (got ${keys.length})`);
+    }
+    for (const k of keys) {
+      const enPh = [...String(en14.rewards[k]).matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)].map((m) => m[1]).sort().join(",");
+      const ph = [...String(loc.rewards[k]).matchAll(/\{\{\s*([a-z_]+)\s*\}\}/g)].map((m) => m[1]).sort().join(",");
+      ok(ph === enPh, `v14: ${lf} rewards.${k} placeholders match en.default (${enPh || "none"})`);
+    }
+  }
+  // Inline English fallback tables: cart carries all 24 keys, pdp the 5
+  // PDP keys + fbt_add_save_both — both in en.default order and with
+  // en.default's values.
+  const rwDefaultsOf = (src) => {
+    const at = src.indexOf("  var RW_DEFAULTS = {");
+    const end = src.indexOf("\n  };", at);
+    return [...src.slice(at, end).matchAll(/^\s+([a-z_]+):/gm)].map((m) => m[1]);
+  };
+  const cartDefaults = rwDefaultsOf(cartJs14);
+  const pdpDefaults = rwDefaultsOf(pdpJs14);
+  ok(cartDefaults.join(",") === enRw.join(","), "v14: cellexia-cart.js RW_DEFAULTS = the 24 en.default rewards keys in order");
+  ok(
+    pdpDefaults.join(",") === enRw.slice(16, 21).concat(["fbt_add_save_both"]).join(","),
+    "v14: cellexia-pdp.js RW_DEFAULTS = the 5 PDP keys (pdp_line..similar_caption) + fbt_add_save_both (v14.1)",
+  );
+  ok(
+    pdpJs14.includes("count === 2 ? azRwT('fbt_add_save_both'"),
+    "v14.1: FBT button reads rw.fbt_add_save_both for exactly two rows",
+  );
+  ok(
+    azLiquid14.includes("assign az_rwk = 'pdp_line,pdp_line_next,fbt_caption,fbt_add_save,similar_caption,fbt_add_save_both' | split: ','"),
+    "v14.1: amazon island emits rw.fbt_add_save_both",
+  );
+  // v14.1: gift-pool PRODUCTS are normal products on the PDP — only
+  // sachets (recs tag / proxy s flag) and market exclusions skip; a paid
+  // gift-pool line counts toward the set (mirrors rwEligibleLines).
+  ok(
+    !/azRwIdSet\(rw\.giftPids\)|azRwIdSet\(rw && rw\.giftPids\)/.test(pdpJs14),
+    "v14.1: cellexia-pdp.js no longer skips rw.giftPids products (FBT/similar/buy-box/cart count)",
+  );
+  // v14.1: the Function's spend ignores sachet lines (mirrors rwSpendCents).
+  ok(
+    read("extensions/cellexia-rewards/src/logic.js").includes("if (!l.gift && !l.prot && !l.sachet) s += l.amount;"),
+    "v14.1: logic.js spendOf skips sachet-classified lines",
+  );
+  ok(
+    read("app/models/settings.server.ts").includes("      maxGiftLines: 6,"),
+    "v14.1: DEFAULT_SETTINGS.rewards.giftTiers.maxGiftLines = 6",
+  );
+  // The grammar generator's post-write byte gate must match the v8.16b pin
+  // (15,200) — otherwise a re-run aborts on ar.json / el.json.
+  ok(
+    read("scripts/gen-ships-from-grammar.mjs").includes("const LOCALE_BYTE_BUDGET = 15200;"),
+    "v14: scripts/gen-ships-from-grammar.mjs LOCALE_BYTE_BUDGET = 15200 (matches the harness locale pin)",
+  );
+}
+
 
 finish();

@@ -238,5 +238,31 @@
       "one": "Passer la commande ({{ count }} article)",
       "other": "Passer la commande ({{ count }} articles)"
     }
+  },
+  "rewards": {
+    "meter_gift_away": "Plus que {{ amount }} pour recevoir {{ gift }} offert (valeur {{ value }})",
+    "meter_gift_unlocked": "Cadeau offert débloqué : {{ gift }}",
+    "meter_all": "Tous les avantages sont débloqués — profitez-en !",
+    "set_add_one": "Ajoutez 1 produit de plus et économisez {{ pct }}% sur tout",
+    "set_add_more": "Ajoutez {{ count }} produits de plus et économisez {{ pct }}% sur tout",
+    "set_saving": "Remise sur le set −{{ amount }} ({{ code }})",
+    "set_title": "Complétez votre set et économisez {{ pct }}%",
+    "subtotal": "Sous-total",
+    "free": "OFFERT",
+    "gift_tag": "Cadeau offert",
+    "gift_added": "Cadeau offert ajouté à votre panier",
+    "gift_back": "Remettre votre cadeau offert",
+    "gift_unavailable": "Votre cadeau offert ne peut pas être appliqué à cette commande pour le moment",
+    "remove": "Retirer",
+    "swap": "Changer de cadeau",
+    "sample_set": "Coffret d'échantillons",
+    "pdp_line": "Ajoutez n'importe quel deuxième produit et économisez {{ pct }}% sur les deux",
+    "pdp_line_next": "Ajoutez ce produit à votre panier et économisez {{ pct }}% sur votre set",
+    "fbt_caption": "Achetez les {{ count }} ensemble et économisez au moins {{ pct }}%",
+    "fbt_add_save": "Ajouter les {{ count }} et économiser {{ pct }}%",
+    "similar_caption": "Ajoutez l'un de ces produits et économisez {{ pct }}% sur les deux",
+    "meter_gift_away_plain": "Plus que {{ amount }} pour recevoir {{ gift }} offert",
+    "set_title_more": "Complétez votre set — {{ pct }}% de réduction sur tout ce que vous ajoutez",
+    "fbt_add_save_both": "Ajouter les deux et économiser {{ pct }}%"
   }
 }

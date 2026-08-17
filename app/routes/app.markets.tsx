@@ -195,6 +195,16 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
       { key: "checkout_tracked", label: "Tracked delivery line" },
     ],
   },
+  // v14 rewards (SPEC v14 §11): two standalone masters
+  // (rewards.setSavings.enabled / rewards.giftTiers.enabled), each with its
+  // own market scope. Configured on /app/features/rewards.
+  {
+    title: "Rewards",
+    features: [
+      { key: "set_savings", label: "Set savings (SET codes)" },
+      { key: "gift_tiers", label: "Free gifts" },
+    ],
+  },
 ];
 
 // v8.6 safety net (same contract as the Preview Center + Features hub
@@ -537,6 +547,21 @@ export default function MarketsPage() {
     }
     if (state.delivery_estimate.on !== initial.delivery_estimate.on) {
       patch.deliveryEstimate = { enabled: state.delivery_estimate.on };
+    }
+    // v14 rewards masters — independent flags under rewards.<section>.enabled
+    // (FEATURE_DEFS kind "rewards"); changed-only, like the az rows below.
+    if (
+      state.set_savings.on !== initial.set_savings.on ||
+      state.gift_tiers.on !== initial.gift_tiers.on
+    ) {
+      patch.rewards = {
+        ...(state.set_savings.on !== initial.set_savings.on
+          ? { setSavings: { enabled: state.set_savings.on } }
+          : {}),
+        ...(state.gift_tiers.on !== initial.gift_tiers.on
+          ? { giftTiers: { enabled: state.gift_tiers.on } }
+          : {}),
+      };
     }
 
     // v8.6 rows — simple one-boolean sections (client-safe mirror of the

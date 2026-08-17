@@ -238,5 +238,31 @@
       "one": "Procedi all'ordine ({{ count }} articolo)",
       "other": "Procedi all'ordine ({{ count }} articoli)"
     }
+  },
+  "rewards": {
+    "meter_gift_away": "Ti mancano {{ amount }} per ricevere in regalo {{ gift }} (valore {{ value }})",
+    "meter_gift_unlocked": "Regalo sbloccato: {{ gift }}",
+    "meter_all": "Tutti i vantaggi sbloccati — goditeli!",
+    "set_add_one": "Aggiungi 1 altro prodotto e risparmia il {{ pct }}% su tutto",
+    "set_add_more": "Aggiungi altri {{ count }} prodotti e risparmia il {{ pct }}% su tutto",
+    "set_saving": "Sconto set −{{ amount }} ({{ code }})",
+    "set_title": "Completa il tuo set e risparmia il {{ pct }}%",
+    "subtotal": "Subtotale",
+    "free": "GRATIS",
+    "gift_tag": "Regalo",
+    "gift_added": "Regalo aggiunto al tuo carrello",
+    "gift_back": "Riaggiungi il tuo regalo",
+    "gift_unavailable": "Il tuo regalo non può essere applicato a questo ordine al momento",
+    "remove": "Rimuovi",
+    "swap": "Cambia regalo",
+    "sample_set": "Set di campioni",
+    "pdp_line": "Aggiungi un secondo prodotto qualsiasi e risparmia il {{ pct }}% su entrambi",
+    "pdp_line_next": "Aggiungilo al carrello e risparmia il {{ pct }}% sul tuo set",
+    "fbt_caption": "Acquista tutti e {{ count }} insieme e risparmia almeno il {{ pct }}%",
+    "fbt_add_save": "Aggiungi tutti e {{ count }} e risparmia il {{ pct }}%",
+    "similar_caption": "Aggiungi uno di questi e risparmia il {{ pct }}% su entrambi",
+    "meter_gift_away_plain": "Ti mancano {{ amount }} per ricevere in regalo {{ gift }}",
+    "set_title_more": "Completa il tuo set — {{ pct }}% di sconto su tutto ciò che aggiungi",
+    "fbt_add_save_both": "Aggiungi entrambi e risparmia il {{ pct }}%"
   }
 }

@@ -1,0 +1,60 @@
+# v14 rewards — input for cart.lines.discounts.generate.run (SPEC §8).
+# Selects exactly what the referee needs: the preview cart attribute (draft
+# selection), per-line gift marker / cost / variant+product ids / sachet tag /
+# subscription flag, the discount classes of the node being evaluated, the
+# KIT code that triggered a code node, the buyer's market handle (country -> cfg.cm fallback),
+# the presentment rate (EUR gift thresholds -> cart currency) and the
+# server-written config metafield.
+query CartInput {
+  cart {
+    attribute(key: "_cx_preview") {
+      value
+    }
+    lines {
+      id
+      quantity
+      attribute(key: "_cellexia_gift") {
+        value
+      }
+      cost {
+        subtotalAmount {
+          amount
+          currencyCode
+        }
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            id
+            hasAnyTag(tags: ["sample-sachet"])
+          }
+        }
+      }
+      sellingPlanAllocation {
+        sellingPlan {
+          id
+        }
+      }
+    }
+  }
+  discount {
+    discountClasses
+  }
+  triggeringDiscountCode
+  localization {
+    market {
+      handle
+    }
+    country {
+      isoCode
+    }
+  }
+  presentmentCurrencyRate
+  shop {
+    metafield(namespace: "$app:cellexia", key: "rewards") {
+      jsonValue
+    }
+  }
+}

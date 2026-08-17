@@ -42,6 +42,7 @@ import {
 } from "../services/experiments.server";
 import { getCachedHealth } from "../services/health.server";
 import { getPreviewState } from "../services/preview.server";
+import prisma from "../db.server";
 
 interface AdminGraphqlClient {
   graphql: (
@@ -117,19 +118,86 @@ async function applySettingsPatch(
   }
 }
 
+/** v14 rewards dashboard aggregates (SPEC v14 §3 "Dashboard cards read
+ *  them"): OrderStat.kitCode / giftLines over the same 30-day window as the
+ *  analytics summary. Computed here (not in analytics.server.ts) so the
+ *  summary contract stays untouched; fail-soft to zeros. */
+interface RewardsOrderStats {
+  orders: number;
+  kitOrders: number;
+  kitByCode: { code: string; orders: number }[];
+  giftOrders: number;
+  giftLines: number;
+}
+
+async function getRewardsOrderStats(
+  shop: string,
+  days: number,
+): Promise<RewardsOrderStats> {
+  const empty: RewardsOrderStats = {
+    orders: 0,
+    kitOrders: 0,
+    kitByCode: [],
+    giftOrders: 0,
+    giftLines: 0,
+  };
+  try {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const rows = await prisma.orderStat.findMany({
+      where: { shop, processedAt: { gte: since } },
+      select: { kitCode: true, giftLines: true },
+    });
+    const byCode = new Map<string, number>();
+    let kitOrders = 0;
+    let giftOrders = 0;
+    let giftLines = 0;
+    for (const row of rows) {
+      const code = (row.kitCode ?? "").trim();
+      if (code !== "") {
+        kitOrders += 1;
+        byCode.set(code, (byCode.get(code) ?? 0) + 1);
+      }
+      const lines = row.giftLines ?? 0;
+      if (lines > 0) {
+        giftOrders += 1;
+        giftLines += lines;
+      }
+    }
+    return {
+      orders: rows.length,
+      kitOrders,
+      kitByCode: [...byCode.entries()]
+        .map(([code, orders]) => ({ code, orders }))
+        .sort((a, b) => b.orders - a.orders || a.code.localeCompare(b.code)),
+      giftOrders,
+      giftLines,
+    };
+  } catch (error) {
+    console.error("Rewards order stats failed:", error);
+    return empty;
+  }
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
-  const [settings, summary, runningExperiments, healthSummary, previewState] =
-    await Promise.all([
-      getSettings(session.shop),
-      getAnalyticsSummary(session.shop, 30),
-      listRunningExperiments(session.shop),
-      // Cached (5-min TTL): the dashboard must not re-run the full health
-      // suite — theme file reads included — on every load/revalidation. The
-      // Setup & health page keeps calling runHealthChecks for fresh results.
-      getCachedHealth(admin, session),
-      getPreviewState(session.shop),
-    ]);
+  const [
+    settings,
+    summary,
+    runningExperiments,
+    healthSummary,
+    previewState,
+    rewardsStats,
+  ] = await Promise.all([
+    getSettings(session.shop),
+    getAnalyticsSummary(session.shop, 30),
+    listRunningExperiments(session.shop),
+    // Cached (5-min TTL): the dashboard must not re-run the full health
+    // suite — theme file reads included — on every load/revalidation. The
+    // Setup & health page keeps calling runHealthChecks for fresh results.
+    getCachedHealth(admin, session),
+    getPreviewState(session.shop),
+    getRewardsOrderStats(session.shop, 30),
+  ]);
   const storePrefix = session.shop.replace(".myshopify.com", "");
   // Onboarding banner condition: every feature master flag is off (computed
   // through the canonical snapshot helper, never by re-deriving flag paths).
@@ -166,6 +234,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     settings,
     summary,
+    rewardsStats,
     allFeaturesOff,
     combinedFlags,
     experimentAlerts,
@@ -581,6 +650,7 @@ export default function Dashboard() {
   const {
     settings,
     summary,
+    rewardsStats,
     allFeaturesOff,
     combinedFlags,
     experimentAlerts,
@@ -844,6 +914,99 @@ export default function Dashboard() {
               ))}
             </BlockStack>
           </Card>
+        </Layout.Section>
+
+        {/* v14 rewards cards (SPEC v14 §11): OrderStat.kitCode / giftLines
+            aggregates over the same 30-day window as the stats above. */}
+        <Layout.Section>
+          <InlineStack gap="400" wrap align="start" blockAlign="stretch">
+            <Box minWidth="280px">
+              <Card>
+                <BlockStack gap="200">
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Text as="h2" variant="headingMd">
+                      Set savings (SET codes)
+                    </Text>
+                    <Badge tone={combinedFlags.set_savings ? "success" : undefined}>
+                      {combinedFlags.set_savings ? "Active" : "Off"}
+                    </Badge>
+                  </InlineStack>
+                  <Text as="p" variant="headingLg">
+                    {rewardsStats.orders > 0
+                      ? formatPercent(rewardsStats.kitOrders / rewardsStats.orders)
+                      : "—"}
+                  </Text>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Orders with a set-savings code ({rewardsStats.kitOrders} of{" "}
+                    {rewardsStats.orders}, {summary.days} days)
+                  </Text>
+                  {rewardsStats.kitByCode.length > 0 ? (
+                    <BlockStack gap="050">
+                      {rewardsStats.kitByCode.map((row) => (
+                        <InlineStack
+                          key={row.code}
+                          align="space-between"
+                          blockAlign="center"
+                        >
+                          <Text as="span" variant="bodySm">
+                            {row.code}
+                          </Text>
+                          <Text as="span" variant="bodySm" tone="subdued">
+                            {row.orders} {row.orders === 1 ? "order" : "orders"}
+                          </Text>
+                        </InlineStack>
+                      ))}
+                    </BlockStack>
+                  ) : (
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      No set-savings code redeemed yet.
+                    </Text>
+                  )}
+                  <InlineStack>
+                    <Button url="/app/features/rewards" variant="plain">
+                      Configure rewards
+                    </Button>
+                  </InlineStack>
+                </BlockStack>
+              </Card>
+            </Box>
+            <Box minWidth="280px">
+              <Card>
+                <BlockStack gap="200">
+                  <InlineStack align="space-between" blockAlign="center">
+                    <Text as="h2" variant="headingMd">
+                      Free gifts
+                    </Text>
+                    <Badge tone={combinedFlags.gift_tiers ? "success" : undefined}>
+                      {combinedFlags.gift_tiers ? "Active" : "Off"}
+                    </Badge>
+                  </InlineStack>
+                  <Text as="p" variant="headingLg">
+                    {rewardsStats.orders > 0
+                      ? formatPercent(rewardsStats.giftOrders / rewardsStats.orders)
+                      : "—"}
+                  </Text>
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Orders with a free gift ({rewardsStats.giftOrders} of{" "}
+                    {rewardsStats.orders}, {summary.days} days)
+                  </Text>
+                  <Text as="p" variant="bodySm">
+                    {rewardsStats.giftLines}{" "}
+                    {rewardsStats.giftLines === 1 ? "gift line" : "gift lines"}{" "}
+                    shipped
+                    {rewardsStats.giftOrders > 0
+                      ? ` · ${(rewardsStats.giftLines / rewardsStats.giftOrders).toFixed(2)} per gift order`
+                      : ""}
+                  </Text>
+                  <InlineStack>
+                    <Button url="/app/features/rewards" variant="plain">
+                      Configure rewards
+                    </Button>
+                  </InlineStack>
+                </BlockStack>
+              </Card>
+            </Box>
+          </InlineStack>
         </Layout.Section>
 
         <Layout.Section>

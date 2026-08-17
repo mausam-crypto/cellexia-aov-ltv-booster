@@ -64,7 +64,9 @@ hook runs the Prisma migrations automatically. Approve the OAuth scopes when pro
 
 > **Scopes** (already declared in `shopify.app.toml`): products, publications, orders,
 > locales, translations (read + write), markets, metaobjects (+definitions), files,
-> themes, shipping, price lists.
+> themes, shipping, price lists, discounts (write — v14 KIT codes / gift / shipping
+> discounts run by the app's Discount Function), inventory + locations (read — v14
+> gift-tier stock watch per warehouse).
 > **Production note:** the `orders/paid` webhook carries protected customer data — for
 > the production app, request **Protected customer data access → Orders** in the Partner
 > dashboard (App → API access). Without it, order analytics/experiment metrics stay empty
@@ -85,6 +87,12 @@ npm run deploy      # pushes theme extension + 4 checkout extensions + app confi
 
 `include_config_on_deploy = true` is set, so `shopify.app.toml` (scopes, webhooks, app
 proxy) ships with each version. Re-run `npm run deploy` after any extension change.
+
+> **v14:** `npm run deploy` also builds the **Cellexia rewards** Discount Function
+> (`extensions/cellexia-rewards`, JavaScript). The CLI downloads the Javy toolchain over
+> the network the first time; nothing to install by hand (GraphQL type generation is
+> skipped on purpose, see the extension's toml). After the first deploy open the app → **Rewards** → *Connect KIT codes &
+> discounts* (see UPDATE.md §4 item 8 for the full one-time wiring).
 
 ## 4. Production hosting (the Remix server)
 
