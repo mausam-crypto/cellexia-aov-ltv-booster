@@ -237,31 +237,5 @@
       "one": "Zur Kasse gehen ({{ count }} Artikel)",
       "other": "Zur Kasse gehen ({{ count }} Artikel)"
     }
-  },
-  "rewards": {
-    "meter_gift_away": "Nur noch {{ amount }} bis zu Ihrem Gratisgeschenk: {{ gift }} (Wert {{ value }})",
-    "meter_gift_unlocked": "Gratisgeschenk freigeschaltet: {{ gift }}",
-    "meter_all": "Alle Vorteile freigeschaltet – viel Freude!",
-    "set_add_one": "Fügen Sie 1 weiteres Produkt hinzu und sparen Sie {{ pct }}% auf alles",
-    "set_add_more": "Fügen Sie {{ count }} weitere Produkte hinzu und sparen Sie {{ pct }}% auf alles",
-    "set_saving": "Set-Rabatt −{{ amount }} ({{ code }})",
-    "set_title": "Vervollständigen Sie Ihr Set und sparen Sie {{ pct }}%",
-    "subtotal": "Zwischensumme",
-    "free": "GRATIS",
-    "gift_tag": "Gratisgeschenk",
-    "gift_added": "Gratisgeschenk zu Ihrem Warenkorb hinzugefügt",
-    "gift_back": "Gratisgeschenk wieder hinzufügen",
-    "gift_unavailable": "Ihr Gratisgeschenk kann dieser Bestellung derzeit nicht hinzugefügt werden",
-    "remove": "Entfernen",
-    "swap": "Geschenk tauschen",
-    "sample_set": "Probenset",
-    "pdp_line": "Fügen Sie ein beliebiges zweites Produkt hinzu und sparen Sie {{ pct }}% auf beide",
-    "pdp_line_next": "Legen Sie dieses Produkt in den Warenkorb und sparen Sie {{ pct }}% auf Ihr Set",
-    "fbt_caption": "Kaufen Sie alle {{ count }} zusammen und sparen Sie mindestens {{ pct }}%",
-    "fbt_add_save": "Alle {{ count }} hinzufügen und {{ pct }}% sparen",
-    "similar_caption": "Fügen Sie eines dieser Produkte hinzu und sparen Sie {{ pct }}% auf beide",
-    "meter_gift_away_plain": "Nur noch {{ amount }} bis zu Ihrem Gratisgeschenk: {{ gift }}",
-    "set_title_more": "Vervollständigen Sie Ihr Set — {{ pct }}% Rabatt auf alles, was Sie hinzufügen",
-    "fbt_add_save_both": "Beide hinzufügen und {{ pct }}% sparen"
   }
 }

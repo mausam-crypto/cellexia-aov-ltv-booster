@@ -4193,17 +4193,12 @@
         count++;
         total += Number(rows[i].getAttribute('data-price-cents')) || 0;
       }
-      // v14 set savings: discounted total + struck original + "Add all N
-      // & save" label once the checked count reaches a KIT tier. Isolated
-      // so the add-on can never take the classic total / labels down.
-      var rw = null;
-      try { rw = azRwFbtApply(node, total, count); } catch (e0) { rw = null; }
       var totalEl = node.querySelector('[data-cx-az-fbt-total]');
-      if (totalEl) totalEl.textContent = azMoney(rw ? rw.total : total);
+      if (totalEl) totalEl.textContent = azMoney(total);
       var btn = node.querySelector('[data-cx-az-fbt-add]');
       if (btn) {
-        var label = rw ? rw.label : '';
-        if (!label && count === 2) label = azT('amazon.fbt_add_both');
+        var label = '';
+        if (count === 2) label = azT('amazon.fbt_add_both');
         if (!label) label = azT('amazon.fbt_add_' + Math.min(Math.max(count, 1), 4));
         if (label) btn.textContent = label;
         btn.disabled = count < 1 || azFbtBusy;
@@ -4281,13 +4276,6 @@
     try {
       var rows = azFbtRows(node);
       if (rows.length < 2) return;
-      // v14 set savings caption under the h2: "Buy all N together, save at
-      // least X%" — N = every row, X = the tier N reaches ("at least":
-      // other cart products may land higher). No tier for N = no caption.
-      if (azRwOn('fbt')) {
-        var rwTier = cxRwTier(azRwTiers(), rows.length);
-        if (rwTier) azRwSub(node, 'cx-az-fbt__sub', azRwT('fbt_caption', { count: rows.length, pct: azRwPct(rwTier) }));
-      }
       azFbtSyncThis(node);
       var strip = node.querySelector('[data-cx-az-fbt-strip]');
       if (strip) {
@@ -4393,7 +4381,6 @@
       if (!pr || typeof pr.handle !== 'string' || !pr.handle) continue;
       if (pr.handle === p.handle || pr.handle === AZ_PROTECTION) continue;
       if (pr.id != null && p.id != null && String(pr.id) === String(p.id)) continue;
-      if (azRwSkip(pr, null)) continue; // v14: sachets / market-excluded (v14.1: gift-pool products stay)
       if (seen[pr.handle]) continue;
       if (pr.id != null && seen['#' + String(pr.id)]) continue;
       var title = typeof pr.title === 'string' ? pr.title : '';
@@ -4417,7 +4404,6 @@
       var rows = [];
       picks.forEach(function (pick) {
         var entry = byHandle[pick.handle];
-        if (azRwSkip(null, entry)) return; // v14: proxy-flagged sachet
         var variant = azFirstAvailableVariant(entry);
         if (!variant) return;
         rows.push({
@@ -4542,7 +4528,6 @@
               var pr = products[i];
               if (!pr || typeof pr.handle !== 'string' || !pr.handle) continue;
               if (pr.handle === p.handle || pr.handle === AZ_PROTECTION) continue;
-              if (azRwSkip(pr, null)) continue; // v14: sachets / market-excluded (v14.1: gift-pool products stay)
               if (seen[pr.handle]) continue;
               var title = typeof pr.title === 'string' ? pr.title : '';
               if (!title) continue;
@@ -4561,7 +4546,6 @@
               var overlap = [];
               picks.forEach(function (pick) {
                 var entry = byHandle[pick.handle];
-                if (azRwSkip(null, entry)) return; // v14: proxy-flagged sachet
                 var variant = azFirstAvailableVariant(entry);
                 if (!variant) return;
                 var card = { pick: pick, priceCents: variant.price, badge: azCardBadge(entry) };
@@ -4610,8 +4594,6 @@
             li.appendChild(a);
             list.appendChild(li);
           }
-          // v14 set savings caption under the h2 (entry tier %).
-          if (azRwOn('sim')) azRwSub(node, 'cx-az-similar__sub', azRwT('similar_caption', { pct: azRwPct(azRwTiers()[0]) }));
           var host = azSectionsContainer(azPlacement('sim'));
           if (!host) return;
           host.appendChild(node);
@@ -4638,7 +4620,6 @@
     '.cx-delivery',
     '.cx-az-stock',
     '.stock-msg',
-    '.cx-rw-pdp',
     '.pdp__options',
     '.pdp__actions--flex',
     '.cx-az-micro',
@@ -5144,268 +5125,6 @@
     }
   }
 
-  // ================================================================
-  // v14 rewards — PDP set-savings (KIT tier) surfaces. SPEC-v14 §5/§6/§7.
-  //
-  // The amazon-booster island carries a gated `rw` member ({live, tiers,
-  // sf:{pdp,sim,fbt}, excl, giftPids}) + `rw.*` strings ONLY when set
-  // savings is live for the market or draft-armed (az_any_ss); the
-  // effective/preview gate is azOn('set_savings') exactly like every
-  // other az key. Three read-only surfaces: the buy-box row, the FBT
-  // caption + struck total + "Add all N & save" label, and the similar
-  // caption. NO cart mutation here — the KIT code is attached by the
-  // cart runtime (cellexia-cart.js code sync) after any add; the
-  // Discount Function is the referee. Cart awareness for the buy-box row
-  // reads the theme's CartJS snapshot only (never a fetch).
-  // ================================================================
-
-  // ---- v14 rewards: shared tier helpers (TWIN of cellexia-cart.js) ----
-  // Byte-identical in both theme assets — validation/sims/rewards-tiers.mjs
-  // pins the twin. Tier objects are the settings shape {count, pct, code}.
-  function cxRwTier(tiers, count) {
-    var best = null;
-    if (!tiers || !tiers.length) return null;
-    for (var i = 0; i < tiers.length; i++) {
-      var tr = tiers[i];
-      if (tr && Number(tr.count) > 0 && Number(tr.count) <= count && (!best || Number(tr.count) > Number(best.count))) best = tr;
-    }
-    return best;
-  }
-  function cxRwNext(tiers, count) {
-    var best = null;
-    if (!tiers || !tiers.length) return null;
-    for (var i = 0; i < tiers.length; i++) {
-      var tr = tiers[i];
-      if (tr && Number(tr.count) > count && (!best || Number(tr.count) < Number(best.count))) best = tr;
-    }
-    return best;
-  }
-
-  // ---- v14 rewards: PDP-only helpers (azRw*) ----
-  // English defaults for the PDP keys (SPEC §7): used whenever the island
-  // string is missing or a "Translation missing" marker (el/ar may lack
-  // room for every key under the 15,200 B locale budget).
-  var RW_DEFAULTS = {
-    pdp_line: 'Add any second product, save {{ pct }}% on both',
-    pdp_line_next: 'Add this to your cart and save {{ pct }}% on your set',
-    fbt_caption: 'Buy all {{ count }} together, save at least {{ pct }}%',
-    fbt_add_save: 'Add all {{ count }} & save {{ pct }}%',
-    similar_caption: 'Add any of these, save {{ pct }}% on both',
-    fbt_add_save_both: 'Add both & save {{ pct }}%'
-  };
-
-  function azRwT(key, params) {
-    // Island string first (azT already treats '' / "Translation missing"
-    // as absent), else the inline English default with the same {{ }}
-    // substitution. textContent-only consumers.
-    var str = azT('rw.' + key, params);
-    if (str) return str;
-    str = typeof RW_DEFAULTS[key] === 'string' ? RW_DEFAULTS[key] : '';
-    if (str && params) {
-      Object.keys(params).forEach(function (p) {
-        str = str.replace(new RegExp('\\{\\{\\s*' + p + '\\s*\\}\\}', 'g'), String(params[p]));
-      });
-    }
-    return str;
-  }
-
-  function azRwCfg() {
-    // The gated island member — null unless Liquid emitted it (az_any_ss)
-    // with a real tier list.
-    var rw = AZ_CFG && AZ_CFG.rw;
-    return rw && typeof rw === 'object' && Array.isArray(rw.tiers) ? rw : null;
-  }
-
-  function azRwTiers() {
-    // Sane tiers only (count ≥ 1, pct 1..90), sorted ascending by count so
-    // tiers[0] is the entry tier the generic copy quotes.
-    var rw = azRwCfg();
-    var out = [];
-    if (!rw) return out;
-    for (var i = 0; i < rw.tiers.length; i++) {
-      var t = rw.tiers[i];
-      if (t && Number(t.count) >= 1 && Number(t.pct) >= 1 && Number(t.pct) <= 90) out.push(t);
-    }
-    out.sort(function (a, b) { return Number(a.count) - Number(b.count); });
-    return out;
-  }
-
-  function azRwPct(tier) {
-    return tier ? Number(tier.pct) || 0 : 0;
-  }
-
-  function azRwOn(surface) {
-    // surface = 'pdp' | 'sim' | 'fbt' — the feature gate (azOn: live
-    // effective for the market, or live ∪ draft inside a verified
-    // preview) AND the merchant's per-surface switch (missing = on, the
-    // settings default). Fail closed without tiers.
-    var rw = azRwCfg();
-    if (!rw || !azRwTiers().length) return false;
-    if (!azOn('set_savings')) return false;
-    var sf = rw.sf && typeof rw.sf === 'object' ? rw.sf : {};
-    return sf[surface] !== false;
-  }
-
-  function azRwNum(id) {
-    // 'gid://shopify/Product/123' | 123 | '123' -> '123' ('' on a miss).
-    var str = id == null ? '' : String(id);
-    var m = str.match(/(\d+)\s*$/);
-    return m ? m[1] : '';
-  }
-
-  function azRwIdSet(list) {
-    var set = {};
-    if (!Array.isArray(list)) return set;
-    for (var i = 0; i < list.length; i++) {
-      var k = azRwNum(list[i]);
-      if (k) set[k] = true;
-    }
-    return set;
-  }
-
-  function azRwSkip(pr, entry) {
-    // True when a recommendation product (pr: recs payload record) or its
-    // app-proxy record (entry: productsByHandle[handle], carries "s": 1
-    // for sample-sachet products since v14) must stay out of the FBT /
-    // similar picks: market-excluded (rw.excl) or a sachet (recs `tags`
-    // or proxy `s`). v14.1: gift-pool PRODUCTS are normal products — a
-    // paid jawline line earns the set saving in the cart runtime, so
-    // rw.giftPids no longer skips (only gift LINES and sachets are out;
-    // the island member stays, harmless). Only enforced while the island
-    // carries `rw` — untouched stores keep the pre-v14 pick behaviour
-    // byte for byte.
-    var rw = azRwCfg();
-    if (!rw) return false;
-    if (entry && entry.s === 1) return true;
-    var pid = pr ? azRwNum(pr.id) : '';
-    if (pid && azRwIdSet(rw.excl)[pid]) return true;
-    if (pr && Array.isArray(pr.tags)) {
-      for (var i = 0; i < pr.tags.length; i++) {
-        if (pr.tags[i] === 'sample-sachet') return true;
-      }
-    }
-    return false;
-  }
-
-  function azRwCartCount() {
-    // Distinct products ALREADY in the cart, other than this one, that
-    // would count toward a set: the theme's CartJS snapshot
-    // (window.CartJS.cart.items — never a fetch; missing = 0), skipping
-    // gift lines (_cellexia_gift), the protection product and market
-    // exclusions. v14.1: a PAID gift-pool product line counts (mirrors
-    // the cart runtime's eligible-line rule — only gift LINES are out);
-    // sachet lines the CartJS snapshot cannot classify count too (honest
-    // towards the cart runtime, which owns the final tier).
-    try {
-      var items = window.CartJS && window.CartJS.cart && window.CartJS.cart.items;
-      if (!items || !items.length) return 0;
-      var rw = azRwCfg();
-      var p = azProductData();
-      var self = p && p.id != null ? azRwNum(p.id) : '';
-      var excl = azRwIdSet(rw && rw.excl);
-      var seen = {};
-      var n = 0;
-      for (var i = 0; i < items.length; i++) {
-        var it = items[i];
-        if (!it) continue;
-        var pid = azRwNum(it.product_id);
-        if (!pid || pid === self || seen[pid]) continue;
-        if (it.handle === AZ_PROTECTION) continue;
-        if (it.properties && typeof it.properties === 'object' && it.properties._cellexia_gift) continue;
-        if (excl[pid]) continue;
-        seen[pid] = true;
-        n++;
-      }
-      return n;
-    } catch (e) { return 0; }
-  }
-
-  function azBuildRwPdp() {
-    // p.cx-az-row.cx-rw-pdp — the quiet buy-box line. Generic copy quotes
-    // the entry tier ("Add any second product, save 5% on both"); with
-    // ≥ 1 different eligible product already in the cart the line turns
-    // personal and quotes the tier the cart WOULD reach with this one.
-    var tiers = azRwTiers();
-    if (!tiers.length) return null;
-    var inCart = azRwCartCount();
-    var text = '';
-    if (inCart >= 1) {
-      var reach = cxRwTier(tiers, inCart + 1);
-      if (reach) text = azRwT('pdp_line_next', { pct: azRwPct(reach), count: inCart + 1 });
-    }
-    if (!text) text = azRwT('pdp_line', { pct: azRwPct(tiers[0]), count: Number(tiers[0].count) });
-    if (!text) return null;
-    var root = cxEl('p', 'cx-az-row cx-rw-pdp', ['data-cx-feature', 'set_savings']);
-    root.textContent = text;
-    return root;
-  }
-
-  function azMountRwPdp() {
-    // Buy-box row after .stock-msg (the classic + az line anchor);
-    // azMountBuyBox re-orders it via AZ_BUYBOX_ORDER. Skipped when THIS
-    // product cannot earn the saving (market-excluded) — the line must
-    // never promise a discount the referee refuses. v14.1: a gift-pool
-    // product's own page shows the row (bought, it is a normal paid line;
-    // sachets are not on the ladder anyway). Impression key set_savings,
-    // once.
-    try {
-      if (document.querySelector('.cx-rw-pdp')) return; // idempotent
-      if (!azRwOn('pdp')) return;
-      var rw = azRwCfg();
-      var p = azProductData();
-      var self = p && p.id != null ? azRwNum(p.id) : '';
-      if (!self) return;
-      if (azRwIdSet(rw.excl)[self]) return;
-      var grey = document.querySelector('.pdp__grey');
-      if (!grey) return;
-      var anchor = grey.querySelector('.stock-msg') || grey.querySelector('.pdp__actions--flex');
-      if (!anchor) return;
-      var node = azBuildRwPdp();
-      if (!node) return;
-      if (!insertAfter(node, anchor)) return;
-      track('set_savings');
-    } catch (e) { /* never break the theme */ }
-  }
-
-  function azRwSub(node, cls, text) {
-    // Caption paragraph right after the section's h2 (FBT / similar).
-    // Idempotent per class; textContent only.
-    if (!node || !text) return null;
-    if (node.querySelector('.' + cls)) return null;
-    var h = node.querySelector('h2');
-    if (!h) return null;
-    var sub = cxEl('p', cls);
-    sub.textContent = text;
-    return insertAfter(sub, h) ? sub : null;
-  }
-
-  function azRwFbtApply(node, total, count) {
-    // FBT money math for the checked rows: when the checked count reaches
-    // a KIT tier (fbt surface on) the total shows the discounted amount
-    // with the original struck (s.cx-az-fbt__was, kept next to the total
-    // strong) and the button reads rw.fbt_add_save (rw.fbt_add_save_both
-    // for exactly two rows — mirrors the classic amazon.fbt_add_both
-    // precedence). Returns {total, label} or null (classic total /
-    // labels; strike removed).
-    var was = node.querySelector('.cx-az-fbt__was');
-    var tier = azRwOn('fbt') ? cxRwTier(azRwTiers(), count) : null;
-    if (!tier) {
-      if (was && was.parentNode) was.parentNode.removeChild(was);
-      return null;
-    }
-    var pct = azRwPct(tier);
-    var totalEl = node.querySelector('[data-cx-az-fbt-total]');
-    if (!was && totalEl) {
-      was = cxEl('s', 'cx-az-fbt__was');
-      insertAfter(was, totalEl);
-    }
-    if (was) was.textContent = azMoney(total);
-    return {
-      total: Math.round(total * (100 - pct) / 100),
-      label: count === 2 ? azRwT('fbt_add_save_both', { count: count, pct: pct }) : azRwT('fbt_add_save', { count: count, pct: pct })
-    };
-  }
-
   // -------------------------------------------------------- az entry
 
   function azGapFillConfig() {
@@ -5440,7 +5159,6 @@
       azMountStock();
       azMountDeliveryLine();
       azMountMicrocopy();
-      azMountRwPdp(); // v14 set-savings buy-box row
       azMountFbt();
       azMountSimilar();
       azMountBuyBox();

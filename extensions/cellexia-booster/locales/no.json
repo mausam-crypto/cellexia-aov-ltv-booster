@@ -237,31 +237,5 @@
       "one": "Gå til kassen ({{ count }} vare)",
       "other": "Gå til kassen ({{ count }} varer)"
     }
-  },
-  "rewards": {
-    "meter_gift_away": "Du er {{ amount }} unna en gratis {{ gift }} (verdt {{ value }})",
-    "meter_gift_unlocked": "Gratis gave låst opp: {{ gift }}",
-    "meter_all": "Alle fordeler låst opp — kos deg!",
-    "set_add_one": "Legg til 1 produkt til og spar {{ pct }}% på alt",
-    "set_add_more": "Legg til {{ count }} produkter til og spar {{ pct }}% på alt",
-    "set_saving": "Settrabatt −{{ amount }} ({{ code }})",
-    "set_title": "Fullfør settet ditt og spar {{ pct }}%",
-    "subtotal": "Delsum",
-    "free": "GRATIS",
-    "gift_tag": "Gratis gave",
-    "gift_added": "Gratis gave lagt i handlekurven din",
-    "gift_back": "Legg til den gratis gaven din igjen",
-    "gift_unavailable": "Gaven din kan ikke legges til denne bestillingen akkurat nå",
-    "remove": "Fjern",
-    "swap": "Bytt gave",
-    "sample_set": "Prøvesett",
-    "pdp_line": "Legg til et hvilket som helst annet produkt og spar {{ pct }}% på begge",
-    "pdp_line_next": "Legg denne i handlekurven og spar {{ pct }}% på settet ditt",
-    "fbt_caption": "Kjøp alle {{ count }} sammen og spar minst {{ pct }}%",
-    "fbt_add_save": "Legg til alle {{ count }} og spar {{ pct }}%",
-    "similar_caption": "Legg til ett av disse og spar {{ pct }}% på begge",
-    "meter_gift_away_plain": "Du er {{ amount }} unna en gratis {{ gift }}",
-    "set_title_more": "Fullfør settet ditt — {{ pct }}% rabatt på alt du legger til",
-    "fbt_add_save_both": "Legg til begge og spar {{ pct }}%"
   }
 }

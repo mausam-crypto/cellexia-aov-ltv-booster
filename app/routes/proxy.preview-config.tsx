@@ -7,7 +7,6 @@ import {
 } from "../models/settings.server";
 import {
   getPreviewState,
-  rewardsForMarket,
   tokenHashFor,
   verifyToken,
 } from "../services/preview.server";
@@ -37,7 +36,7 @@ import {
  *                               //   "selected"-scope lists — the JS never
  *                               //   does scope logic itself.
  *     tokenHash,                // sha256 hex of the raw token — the exact
- *                               //   value the storefront runtime writes to
+ *   }                           //   value the storefront runtime writes to
  *                               //   the `_cx_preview` cart attribute so ANY
  *                               //   path into checkout carries it (checkout
  *                               //   extensions compare attribute ===
@@ -46,16 +45,6 @@ import {
  *                               //   verified raw-token bearer receives it,
  *                               //   and checkout sessions already see the
  *                               //   same hash via the shop metafield.
- *     simCart,                  // v14: {spendCents, count} | null — the
- *                               //   armed cart simulator (storefront
- *                               //   rwSpendCents()/rwDistinctCount() return
- *                               //   these; no cart mutation while set)
- *     rehearsal,                // v14: true = live rehearsal (real cart
- *                               //   mutations allowed on the preview cart)
- *     rewardsForMarket,         // v14: {ssTiers, gtAmounts:{a,c}, gifts:
- *                               //   [{vid,handle,title}]} — live + armed
- *                               //   draft tiers for the simulated market
- *   }
  * Invalid token → { valid: false } with 200 (no detail leakage, no retries).
  *
  * Unexpected server errors → { valid: false, retriable: true } with 503, so
@@ -94,9 +83,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     const simulatedMarket = state.simulatedMarket ?? null;
-    // Draft config only ever leaves the server while armed (defense in
-    // depth — disarmPreview clears it, but never trust a stale row).
-    const draftConfig = state.armed ? state.draftConfig : {};
     const liveEffectiveForMarket = Object.fromEntries(
       FEATURE_KEYS.map((key) => [
         key,
@@ -113,13 +99,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         marketSimulated: simulatedMarket !== null && simulatedMarket !== "",
         liveEffectiveForMarket,
         tokenHash: tokenHashFor(state.token),
-        simCart: draftConfig.simCart ?? null,
-        rehearsal: draftConfig.rehearsal === true,
-        rewardsForMarket: rewardsForMarket(
-          settings,
-          draftConfig,
-          simulatedMarket ?? "",
-        ),
       },
       { headers: JSON_HEADERS },
     );

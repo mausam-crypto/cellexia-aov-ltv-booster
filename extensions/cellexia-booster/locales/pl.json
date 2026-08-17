@@ -251,31 +251,5 @@
       "many": "Przejdź do kasy ({{ count }} produktów)",
       "other": "Przejdź do kasy ({{ count }} produktu)"
     }
-  },
-  "rewards": {
-    "meter_gift_away": "Brakuje Ci {{ amount }} do darmowego prezentu: {{ gift }} (o wartości {{ value }})",
-    "meter_gift_unlocked": "Darmowy prezent odblokowany: {{ gift }}",
-    "meter_all": "Wszystkie nagrody odblokowane — ciesz się nimi!",
-    "set_add_one": "Dodaj jeszcze 1 produkt i oszczędź {{ pct }}% na wszystkim",
-    "set_add_more": "Dodaj jeszcze {{ count }} produkty i oszczędź {{ pct }}% na wszystkim",
-    "set_saving": "Rabat na zestaw −{{ amount }} ({{ code }})",
-    "set_title": "Skompletuj swój zestaw i oszczędź {{ pct }}%",
-    "subtotal": "Suma częściowa",
-    "free": "GRATIS",
-    "gift_tag": "Darmowy prezent",
-    "gift_added": "Darmowy prezent dodano do koszyka",
-    "gift_back": "Dodaj ponownie swój darmowy prezent",
-    "gift_unavailable": "Twojego darmowego prezentu nie można teraz dodać do tego zamówienia",
-    "remove": "Usuń",
-    "swap": "Zmień prezent",
-    "sample_set": "Zestaw próbek",
-    "pdp_line": "Dodaj dowolny drugi produkt i oszczędź {{ pct }}% na obu",
-    "pdp_line_next": "Dodaj ten produkt do koszyka i oszczędź {{ pct }}% na swoim zestawie",
-    "fbt_caption": "Kup wszystkie {{ count }} razem i oszczędź co najmniej {{ pct }}%",
-    "fbt_add_save": "Dodaj wszystkie {{ count }} i oszczędź {{ pct }}%",
-    "similar_caption": "Dodaj dowolny z tych produktów i oszczędź {{ pct }}% na obu",
-    "meter_gift_away_plain": "Brakuje Ci {{ amount }} do darmowego prezentu: {{ gift }}",
-    "set_title_more": "Skompletuj swój zestaw — {{ pct }}% rabatu na wszystko, co dodasz",
-    "fbt_add_save_both": "Dodaj oba i oszczędź {{ pct }}%"
   }
 }

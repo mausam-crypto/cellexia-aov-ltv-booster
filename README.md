@@ -12,8 +12,6 @@ languages via **Translate & Adapt**, and integrate with **Joy Subscription** (na
 | Cart drawer | Volume upgrade tiles — swap a 1-unit line to the 2-unit (−15%) or 3-unit (−20%) variant in one tap | Theme app embed |
 | Cart drawer | One-tap switch of a one-time line to the **Continuous Treatment Plan** (Joy selling plan, −5%) | Theme app embed |
 | Cart drawer | Compact trust row (secure checkout · guarantee · Trustpilot) | Theme app embed |
-| Cart drawer + PDP | **Set savings (KIT tiers, v14)** — auto-applies KIT2/KIT3/KIT4/KIT6 (5/10/15/20 %) when the cart holds 2/3/4/6 *different* products (default "compact" ladder; switchable to the "extended" 2/3/5/10 → KIT2/KIT3/KIT5/KIT10 at 5/10/20/30 %, or custom; v14.3: the old KIT codes not in the ladder keep working as *alias* codes that grant the qualifying tier when typed — never auto-attached, never stacked); nudge to the next tier, cross-sell reframed "Complete your set & save", PDP buy-box line + FBT/YMAL captions; enforced by the app's Discount Function | Theme app embed + Discount Function |
-| Cart drawer | **Gift tiers (v14)** — free gift lines auto-added/removed at per-market spend thresholds (100 % off by the Function), rewards meter (gifts + free shipping milestones), gift pools with fallback order and sample sets, per-warehouse stock watch, free-shipping guarantee (≥ 2 full-size units or threshold met) | Theme app embed + Discount Function |
 | Product page | Trust badges under the add-to-cart button | Theme app embed (auto-inject) + app block |
 | Product page | Money-back guarantee badge, Trustpilot strip, subscription nudge | Theme app embed (auto-inject) + app blocks |
 | Anywhere | Clinical study results band (stat numbers + translated labels) | App block |
@@ -181,11 +179,6 @@ Host the Remix backend anywhere Node runs (Fly.io, Render, Heroku…). Set env v
 5. **Analytics** — orders/paid webhook is registered automatically on deploy;
    protected-customer-data access (orders) must be approved in the Partner dashboard for
    production.
-6. **Rewards (v14)** — app nav → Rewards → *Connect KIT codes & discounts* (creates the
-   Function-backed KIT codes + the two automatic discounts), *Load defaults* / *Load
-   sachets* / *Suggest amounts* / warehouse map / *Refresh gift stock*, then switch the
-   two features on per market (Markets page). Publish the gift products to the Online
-   Store first (UPDATE.md §4 item 8).
 
 ## Translate & Adapt workflow
 

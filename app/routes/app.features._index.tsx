@@ -88,9 +88,6 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   az_similar_items: "/app/features/amazon",
   az_cart_free_line: "/app/features/amazon",
   az_cta_count: "/app/features/amazon",
-  // v14 rewards (SPEC v14 §11): both features configure on the Rewards page.
-  set_savings: "/app/features/rewards",
-  gift_tiers: "/app/features/rewards",
 };
 
 const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
@@ -156,12 +153,6 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
       "az_cart_free_line",
       "az_cta_count",
     ],
-  },
-  {
-    title: "Rewards",
-    description:
-      "v14: set savings (KIT tier codes — buy more different products, save a growing percentage) and spend-based free-gift tiers with per-market amounts, stock awareness and a free-shipping guarantee.",
-    keys: ["set_savings", "gift_tiers"],
   },
 ];
 

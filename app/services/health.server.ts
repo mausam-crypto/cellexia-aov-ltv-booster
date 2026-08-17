@@ -1,25 +1,17 @@
 import prisma from "../db.server";
 import {
   getSettings,
-  aliasCodesFor,
   FEATURE_DEFS,
   type BoosterSettings,
 } from "../models/settings.server";
 import { PDP_METAOBJECT_TYPES } from "./metaobjects.server";
 import { getPreviewState } from "./preview.server";
 import { listMarkets } from "./markets.server";
-import {
-  findRewardsFunctionId,
-  getRewardsState,
-  pausedByMarket,
-  readDiscountNodes,
-} from "./rewards.server";
 
 /**
  * Setup & health checks (SPEC v4 §B).
  *
- * runHealthChecks(admin, session) returns the SIXTEEN ordered checks (v14:
- * + rewards-discounts, gift-products), always
+ * runHealthChecks(admin, session) returns the TWELVE ordered checks, always
  * fresh (the Setup page uses it). getCachedHealth(admin, session) is the
  * cheap variant for high-traffic surfaces (dashboard banner): it reuses a
  * per-shop summary for up to five minutes; invalidateHealthCache(shop)
@@ -1504,242 +1496,6 @@ async function checkMarketReach(
   });
 }
 
-// ---------------------------------------------------------------------------
-// 15. rewards-discounts (v14 — SPEC v14 §3)
-// ---------------------------------------------------------------------------
-
-async function checkRewardsDiscounts(
-  admin: AdminGraphqlClient,
-  shop: string,
-  settings: BoosterSettings,
-): Promise<HealthCheck> {
-  return runCheck("rewards-discounts", "Rewards discounts connected", async () => {
-    const rw = settings.rewards;
-    const wantSs = rw.setSavings.enabled;
-    const wantGt = rw.giftTiers.enabled;
-    const wantFs = rw.freeShip.enabled;
-    const state = await getRewardsState(shop);
-    const nodes = state.nodes;
-    const anyNode =
-      Object.keys(nodes.kit).length > 0 || Boolean(nodes.gift) || Boolean(nodes.ship);
-    if (!wantSs && !wantGt && !wantFs && !anyNode) {
-      return {
-        status: "pass" as const,
-        detail: "Set savings, gift tiers and the free-shipping guarantee are off — nothing to verify.",
-        fixHint:
-          "When you enable one, press “Connect KIT codes & discounts” on the Rewards page.",
-      };
-    }
-    let deployedFunctionId = "";
-    try {
-      deployedFunctionId = await findRewardsFunctionId(admin);
-    } catch (error) {
-      return {
-        status: "warn" as const,
-        detail: `Could not list Shopify Functions (${errorMessage(error)}).`,
-        fixHint: "Re-run the checks; if it persists, verify the write_discounts scope was granted.",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    if (!deployedFunctionId) {
-      return {
-        status: "fail" as const,
-        detail:
-          "The Cellexia rewards discount function is not deployed, so no KIT code, free gift or free-shipping discount can apply at checkout.",
-        fixHint: "Deploy the extensions (npm run deploy), then press Connect on the Rewards page.",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    const problems: string[] = [];
-    if (state.functionId && state.functionId !== deployedFunctionId) {
-      problems.push(
-        "the connected discounts point at a different function id than the deployed one — press Connect again",
-      );
-    }
-    const missing: string[] = [];
-    if (wantSs) {
-      for (const tier of rw.setSavings.tiers) {
-        if (!nodes.kit[tier.code]) missing.push(`code ${tier.code}`);
-      }
-      // v14.3: alias codes (legacy KIT codes kept working) are required too
-      // while "Keep legacy codes" is on — aliasCodesFor returns [] otherwise.
-      for (const code of aliasCodesFor(settings)) {
-        if (!nodes.kit[code]) missing.push(`alias code ${code}`);
-      }
-    }
-    if (wantGt && !nodes.gift) missing.push("“Cellexia free gifts”");
-    if (wantFs && !nodes.ship) missing.push("“Cellexia free shipping”");
-    const ids = [...Object.values(nodes.kit), nodes.gift, nodes.ship].filter(Boolean);
-    if (ids.length > 0) {
-      let statuses: Awaited<ReturnType<typeof readDiscountNodes>>;
-      try {
-        statuses = await readDiscountNodes(admin, ids);
-      } catch (error) {
-        // Most often a missing read/write_discounts scope on an older install.
-        return {
-          status: "warn" as const,
-          detail: `Could not read the discount nodes from Shopify: ${errorMessage(error)}`,
-          fixHint:
-            "Grant the write_discounts scope (open the app once so Shopify asks for the new permission, or reinstall) and re-run the health check.",
-          fixUrl: "/app/features/rewards",
-        };
-      }
-      for (const [code, id] of Object.entries(nodes.kit)) {
-        const st = statuses[id];
-        if (!st?.exists) missing.push(`code ${code} (deleted in Shopify)`);
-        else if (st.status !== "ACTIVE") problems.push(`code ${code} is ${st.status}`);
-        else if (st.functionId && st.functionId !== deployedFunctionId) {
-          problems.push(`code ${code} points at another function`);
-        }
-      }
-      for (const [key, label] of [
-        ["gift", "“Cellexia free gifts”"],
-        ["ship", "“Cellexia free shipping”"],
-      ] as const) {
-        const id = nodes[key];
-        if (!id) continue;
-        const st = statuses[id];
-        if (!st?.exists) missing.push(`${label} (deleted in Shopify)`);
-        else if (st.status !== "ACTIVE") problems.push(`${label} is ${st.status}`);
-        else if (st.functionId && st.functionId !== deployedFunctionId) {
-          problems.push(`${label} points at another function`);
-        }
-      }
-    }
-    if (missing.length > 0 || problems.length > 0) {
-      const enabledButMissing = missing.length > 0;
-      return {
-        status: enabledButMissing ? ("fail" as const) : ("warn" as const),
-        detail: [
-          missing.length ? `Missing discounts: ${missing.join(", ")}.` : "",
-          problems.length ? `Problems: ${problems.join("; ")}.` : "",
-        ]
-          .filter(Boolean)
-          .join(" "),
-        fixHint:
-          "Open the Rewards page and press “Connect KIT codes & discounts” (tick “Replace existing KIT codes” if a code already exists).",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    return {
-      status: "pass" as const,
-      detail: `${Object.keys(nodes.kit).length} KIT code discount(s), the free-gift and free-shipping automatic discounts are ACTIVE and bound to the deployed function.`,
-      fixHint: "Nothing to do.",
-    };
-  });
-}
-
-// ---------------------------------------------------------------------------
-// 16. gift-products (v14 — every gift option / sachet must be sellable)
-// ---------------------------------------------------------------------------
-
-const GIFT_PRODUCTS_QUERY = `#graphql
-  query cellexiaHealthGiftProducts($query: String!) {
-    products(first: 50, query: $query) {
-      nodes { id handle status publishedAt }
-    }
-  }
-`;
-
-async function checkGiftProducts(
-  admin: AdminGraphqlClient,
-  shop: string,
-  settings: BoosterSettings,
-): Promise<HealthCheck> {
-  return runCheck("gift-products", "Gift products sellable", async () => {
-    const gt = settings.rewards.giftTiers;
-    if (!gt.enabled) {
-      return {
-        status: "pass" as const,
-        detail: "Gift tiers are off — nothing to verify.",
-        fixHint: "Nothing to do.",
-      };
-    }
-    const handles = new Set<string>();
-    let handleless = 0;
-    for (const tier of gt.tiers) {
-      for (const slot of tier.slots) {
-        for (const option of slot) {
-          if (option.kind !== "variant") continue;
-          if (option.handle) handles.add(option.handle);
-          else handleless += 1;
-        }
-      }
-    }
-    for (const entry of gt.samplePool) handles.add(entry.handle);
-    if (handles.size === 0) {
-      return {
-        status: gt.tiers.length === 0 ? ("fail" as const) : ("warn" as const),
-        detail:
-          gt.tiers.length === 0
-            ? "Gift tiers are enabled but no tier is configured — the meter has nothing to show."
-            : "Gift tiers hold no product option (samples only) and the sample pool is empty — nothing can be given.",
-        fixHint: "Open the Rewards page: add gift products or load the sachet pool.",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    const query = [...handles].map((h) => `handle:${h}`).join(" OR ");
-    const json = await graphqlJson<{
-      data?: {
-        products?: {
-          nodes?: { id: string; handle: string; status: string; publishedAt: string | null }[];
-        };
-      };
-    }>(admin, GIFT_PRODUCTS_QUERY, { query });
-    const found = new Map(
-      (json.data?.products?.nodes ?? []).map((p) => [p.handle, p] as const),
-    );
-    const missing = [...handles].filter((h) => !found.has(h));
-    const inactive = [...found.values()].filter((p) => p.status !== "ACTIVE").map((p) => p.handle);
-    const unpublished = [...found.values()]
-      .filter((p) => p.status === "ACTIVE" && !p.publishedAt)
-      .map((p) => p.handle);
-    const state = await getRewardsState(shop);
-    const paused = pausedByMarket(state.giftStock);
-    const pausedMarkets = Object.keys(paused);
-    if (missing.length || inactive.length || unpublished.length) {
-      return {
-        status: "fail" as const,
-        detail: [
-          missing.length ? `Not found: ${missing.join(", ")}.` : "",
-          inactive.length ? `Not active: ${inactive.join(", ")}.` : "",
-          unpublished.length
-            ? `Not published to the Online Store (the storefront cannot add them): ${unpublished.join(", ")}.`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" "),
-        fixHint:
-          "Make every gift product Active and published to the Online Store (hidden from search/collections is fine), or replace the option on the Rewards page.",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    if (handleless > 0 || pausedMarkets.length > 0) {
-      return {
-        status: "warn" as const,
-        detail: [
-          handleless > 0
-            ? `${handleless} gift option(s) have no product handle and cannot render.`
-            : "",
-          pausedMarkets.length > 0
-            ? `Gift options are paused for low stock in: ${pausedMarkets.join(", ")}.`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" "),
-        fixHint:
-          "Review the gift options and the stock table on the Rewards page (paused options un-pause by themselves when stock returns).",
-        fixUrl: "/app/features/rewards",
-      };
-    }
-    return {
-      status: "pass" as const,
-      detail: `All ${handles.size} gift/sample products exist, are Active and published; no option is paused for stock.`,
-      fixHint: "Nothing to do.",
-    };
-  });
-}
-
 export async function runHealthChecks(
   admin: AdminGraphqlClient,
   session: SessionLike,
@@ -1795,20 +1551,6 @@ export async function runHealthChecks(
       await checkOrdersData(shop),
       await checkPreviewHygiene(shop),
       await checkProofDatabase(),
-      {
-        id: "rewards-discounts",
-        label: "Rewards discounts connected",
-        status: "fail",
-        detail: "Skipped — settings could not be loaded.",
-        fixHint: "Fix the settings load error above first.",
-      },
-      {
-        id: "gift-products",
-        label: "Gift products sellable",
-        status: "fail",
-        detail: "Skipped — settings could not be loaded.",
-        fixHint: "Fix the settings load error above first.",
-      },
     ];
   }
 
@@ -1828,8 +1570,6 @@ export async function runHealthChecks(
     ordersData,
     previewHygiene,
     proofDatabase,
-    rewardsDiscounts,
-    giftProducts,
   ] = await Promise.all([
     checkConfigMetafields(admin, shop, settings),
     checkAppProxy(shop),
@@ -1845,8 +1585,6 @@ export async function runHealthChecks(
     checkOrdersData(shop),
     checkPreviewHygiene(shop),
     checkProofDatabase(),
-    checkRewardsDiscounts(admin, shop, settings),
-    checkGiftProducts(admin, shop, settings),
   ]);
 
   return [
@@ -1864,8 +1602,6 @@ export async function runHealthChecks(
     ordersData,
     previewHygiene,
     proofDatabase,
-    rewardsDiscounts,
-    giftProducts,
   ];
 }
 

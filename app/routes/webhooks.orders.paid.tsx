@@ -3,7 +3,6 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { marketCountryMap } from "../services/markets.server";
 import { tokenHashFor } from "../services/preview.server";
-import { getSettings } from "../models/settings.server";
 
 interface OrderLineItem {
   quantity: number;
@@ -28,8 +27,6 @@ interface OrderPayload {
   processed_at?: string;
   created_at?: string;
   line_items?: OrderLineItem[];
-  /** v14: codes redeemed on the order (REST shape: [{code, amount, type}]). */
-  discount_codes?: { code?: string | null }[] | null;
   note_attributes?: { name: string; value: string }[] | null;
   shipping_address?: OrderAddress | null;
   billing_address?: OrderAddress | null;
@@ -59,11 +56,6 @@ const COUNTRY_CODE_PATTERN = /^[A-Za-z]{2}$/;
  * Cart attributes are settable by any buyer via the public cart API, so a
  * mere non-empty `_cx_preview` must never be enough to hide an order from
  * analytics.
- *
- * v14 rewards: `kitCode` = the set-savings code redeemed on the order (a
- * discount_codes entry matching a configured KIT tier code, else "") and
- * `giftLines` = number of lines carrying the `_cellexia_gift` property, so
- * the dashboard can report KIT redemption share and gift attach rate.
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, topic, payload, admin } = await authenticate.webhook(request);
@@ -137,27 +129,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     ) ||
     (order.note_attributes ?? []).some((a) => a.name === "_cellexia_upsell");
 
-  // v14 rewards attribution (best-effort — a settings-load failure just
-  // leaves kitCode ""; the webhook must never fail on it).
-  const giftLines = lineItems.filter((li) =>
-    (li.properties ?? []).some((p) => p.name === "_cellexia_gift"),
-  ).length;
-  let kitCode = "";
-  try {
-    const orderCodes = (order.discount_codes ?? [])
-      .map((d) => (typeof d?.code === "string" ? d.code.trim().toUpperCase() : ""))
-      .filter(Boolean);
-    if (orderCodes.length > 0) {
-      const settings = await getSettings(shop);
-      const kitCodes = new Set(
-        settings.rewards.setSavings.tiers.map((t) => t.code.toUpperCase()),
-      );
-      kitCode = orderCodes.find((c) => kitCodes.has(c)) ?? "";
-    }
-  } catch (error) {
-    console.error(`KIT code attribution failed for ${shop}:`, error);
-  }
-
   const processedAt = order.processed_at ?? order.created_at;
 
   // Prefer shop_money so every OrderStat row is in the one shop currency —
@@ -197,8 +168,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       hasSubscription,
       hasProtection,
       upsellAttributed,
-      kitCode,
-      giftLines,
       market,
       countryCode,
       processedAt: processedAt ? new Date(processedAt) : new Date(),

@@ -25,10 +25,7 @@ include_config_on_deploy = true
 # metaobjects + files      -> per-product PDP booster content (clinical studies, verified B/A, CoAs)
 # read_locales             -> list shop languages on the Localization page
 # read_translations        -> show Translate & Adapt coverage per language
-# write_discounts          -> v14 rewards: KIT set-savings codes + the free-gift /
-#                             free-shipping automatic discounts (Discount Function nodes)
-# read_inventory/locations -> v14 gift stock watcher (inventoryLevels per warehouse)
-scopes = "read_products,write_products,read_publications,write_publications,read_orders,read_locales,read_translations,read_markets,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_files,write_files,read_themes,read_shipping,read_price_lists,write_price_lists,write_translations,write_discounts,read_inventory,read_locations"
+scopes = "read_products,write_products,read_publications,write_publications,read_orders,read_locales,read_translations,read_markets,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_files,write_files,read_themes,read_shipping,read_price_lists,write_price_lists,write_translations"
 
 [auth]
 redirect_urls = [
@@ -51,12 +48,6 @@ api_version = "2025-10"
   [[webhooks.subscriptions]]
   topics = [ "orders/paid" ]
   uri = "/webhooks/orders/paid"
-
-  # v14 rewards: gift-stock watcher (debounced per shop; acts only when the
-  # inventory item belongs to a gift/sample variant).
-  [[webhooks.subscriptions]]
-  topics = [ "inventory_levels/update" ]
-  uri = "/webhooks/inventory/update"
 
 # ⚠️ CRITICAL — the App Proxy powers preview links, analytics beacons and the
 # cart-data endpoint (everything under https://<store>/apps/cellexia/*).

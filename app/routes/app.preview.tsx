@@ -37,11 +37,7 @@ import {
   getSettings,
   isFeatureOnForMarket,
   resolveFeatureFlag,
-  sanitizeGiftThresholdsByMarket,
-  sanitizeGiftTiers,
-  sanitizeSetSavingsTiers,
   type FeatureKey,
-  type GiftTier,
 } from "../models/settings.server";
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import { listMarkets, type MarketSummary } from "../services/markets.server";
@@ -65,9 +61,7 @@ import {
   getPreviewState,
   rotateToken,
   sanitizeMarketHandle,
-  simCartChips,
   type FeatureReadinessExtras,
-  type SimCartChip,
 } from "../services/preview.server";
 
 /**
@@ -98,8 +92,6 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
       "cart_trust_row",
       "cart_cross_sell",
       "dispatch_countdown",
-      "set_savings",
-      "gift_tiers",
     ],
   },
   {
@@ -267,56 +259,7 @@ const NOT_READY_FIX_LINKS: Partial<
     url: "/app/proof",
     label: "Add entries under Proof library",
   },
-  set_savings: {
-    url: "/app/features/rewards",
-    label: "Configure on the Rewards page",
-  },
-  gift_tiers: {
-    url: "/app/features/rewards",
-    label: "Configure on the Rewards page",
-  },
 };
-
-/**
- * v14 cart simulator (SPEC §10) — client-safe copies of the server bounds
- * (SIM_CART_MAX_* in preview.server.ts; the arm action re-clamps).
- */
-const SIM_COUNT_MAX = 20;
-const SIM_SPEND_MAX = 1_000_000;
-
-/** v14: one row of the draft set-savings tier table (strings while editing). */
-interface SsDraftRow {
-  count: string;
-  pct: string;
-  code: string;
-}
-
-/** Parses the editable set-savings rows; invalid rows are dropped (the server sanitizer is authoritative). */
-function parseSsRows(rows: SsDraftRow[]): { count: number; pct: number; code: string }[] {
-  return rows
-    .map((row) => ({
-      count: Math.floor(Number(row.count)),
-      pct: Number(row.pct),
-      code: row.code.trim().toUpperCase(),
-    }))
-    .filter(
-      (row) =>
-        Number.isInteger(row.count) && row.count >= 1 && Number.isFinite(row.pct) && row.pct > 0 && row.code !== "",
-    );
-}
-
-function parseAmounts(values: string[]): number[] {
-  return values.map((value) => {
-    const amount = Number(value);
-    return Number.isFinite(amount) && amount >= 0 ? amount : 0;
-  });
-}
-
-function formatMoney(cents: number, currency: string): string {
-  const major = cents / 100;
-  const text = Number.isInteger(major) ? String(major) : major.toFixed(2);
-  return currency ? `${text} ${currency}` : text;
-}
 
 const UTC_MONTHS = [
   "Jan",
@@ -481,32 +424,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
-  // v14: cart-simulator presets per market (live + ARMED draft config; the
-  // client re-arms to refresh them) and the live rewards tiers the draft
-  // editors start from. Pure computations — no extra API calls.
-  const armedDraftConfig = state.armed ? state.draftConfig : {};
-  const chipsByMarket: Record<string, { currency: string; chips: SimCartChip[] }> = {
-    "": simCartChips(settings, armedDraftConfig, ""),
-  };
-  for (const market of markets) {
-    chipsByMarket[market.handle] = simCartChips(settings, armedDraftConfig, market.handle);
-  }
-  const rewardsPreview = {
-    liveSsTiers: settings.rewards.setSavings.tiers.map((tier) => ({
-      count: tier.count,
-      pct: tier.pct,
-      code: tier.code,
-    })),
-    liveGtEur: settings.rewards.giftTiers.tiers.map((tier) => tier.amount),
-    gtLabels: settings.rewards.giftTiers.tiers.map((tier) => {
-      const first = tier.slots[0]?.[0];
-      if (!first) return "(empty tier)";
-      return first.kind === "samples" ? `${first.count} samples` : first.handle || "gift";
-    }),
-    liveGtByMarket: settings.rewards.giftTiers.giftThresholdsByMarket,
-    chipsByMarket,
-  };
-
   const defaultProductHandle =
     state.productHandle ??
     products.find((product) => product.hasContent)?.handle ??
@@ -524,10 +441,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       name: market.name,
       enabled: market.enabled,
       primary: market.primary,
-      currencyCode: market.currencyCode,
     })),
     marketErrors,
-    rewardsPreview,
     products,
     productErrors: productList.ok ? [] : productList.errors,
     countsPartial: countsPartial && !searching,
@@ -626,73 +541,6 @@ function findApplyConflicts(
   return [...new Set(conflicts)];
 }
 
-/**
- * v14: writes the armed draft rewards tiers/amounts into the settings object
- * (mutating, inside handleApply's transaction). Returns human labels of what
- * changed ("Set savings tiers", "Gift tier amounts (EUR)", "Gift amounts —
- * <market>"); empty when nothing differs. The draft was sanitized at arm
- * time; saveSettingsWith re-sanitizes the whole blob anyway.
- */
-function applyDraftRewards(
-  settings: Awaited<ReturnType<typeof getSettingsWith>>,
-  draft: Record<string, unknown> | undefined,
-  allow: { setSavings: boolean; giftTiers: boolean },
-  simulatedMarket: string | null,
-): string[] {
-  if (!draft) return [];
-  const labels: string[] = [];
-  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-  if (allow.setSavings && Array.isArray(draft.setSavingsTiers)) {
-    // Set-savings: the draft array replaces the live ladder, but only when
-    // it is a full valid ladder (sanitizer keeps only complete rows).
-    const tiers = sanitizeSetSavingsTiers(draft.setSavingsTiers);
-    if (tiers.length > 0 && !same(tiers, settings.rewards.setSavings.tiers)) {
-      settings.rewards.setSavings.tiers = tiers;
-      labels.push("Set savings tiers");
-    }
-  }
-  if (allow.giftTiers) {
-    if (Array.isArray(draft.giftTiers)) {
-      // Gift tiers: only the EUR amount is applied, BY INDEX onto the LIVE
-      // tiers — the live slots (product picks) are never replaced by the
-      // draft's copy of them.
-      const drafted = sanitizeGiftTiers(draft.giftTiers);
-      const live = settings.rewards.giftTiers.tiers;
-      if (drafted.length === live.length) {
-        const merged = live.map((tier, index) => ({
-          ...tier,
-          amount: drafted[index].amount,
-        }));
-        if (!same(merged.map((tier) => tier.amount), live.map((tier) => tier.amount))) {
-          settings.rewards.giftTiers.tiers = merged;
-          labels.push("Gift tier amounts (EUR)");
-        }
-      }
-    }
-    if (
-      simulatedMarket &&
-      typeof draft.giftAmountsByMarket === "object" &&
-      draft.giftAmountsByMarket !== null &&
-      !Array.isArray(draft.giftAmountsByMarket)
-    ) {
-      // Per-market: only the drafted (simulated) market's entry may go live;
-      // the other markets in the draft record are a snapshot of the saved
-      // values at arm time and must not clobber later edits.
-      const record = sanitizeGiftThresholdsByMarket(draft.giftAmountsByMarket);
-      const live = settings.rewards.giftTiers.giftThresholdsByMarket;
-      const entry = record[simulatedMarket];
-      if (entry && !same(entry, live[simulatedMarket])) {
-        settings.rewards.giftTiers.giftThresholdsByMarket = {
-          ...live,
-          [simulatedMarket]: entry,
-        };
-        labels.push(`Gift amounts — ${simulatedMarket}`);
-      }
-    }
-  }
-  return labels;
-}
-
 async function handleApply(
   shop: string,
   admin: AdminGraphqlClient,
@@ -774,13 +622,6 @@ async function handleApply(
     }
     const settings = await getSettingsWith(tx, shop);
     const changes: { key: FeatureKey; market: string }[] = [];
-    // v14: draft rewards tiers/amounts go live in the SAME transaction as
-    // the flag flips (SPEC §10) — only for the feature whose draft flag is
-    // armed, so a set-savings-only preview never rewrites gift amounts.
-    const tierChanges = applyDraftRewards(settings, state.draftConfig.rewards, {
-      setSavings: draftKeys.includes("set_savings"),
-      giftTiers: draftKeys.includes("gift_tiers"),
-    }, state.simulatedMarket);
     for (const key of draftKeys) {
       for (const target of targets) {
         const scope = settings.marketScopes[key] ?? {
@@ -796,12 +637,12 @@ async function handleApply(
         changes.push({ key, market: target });
       }
     }
-    if (changes.length === 0 && tierChanges.length === 0) {
+    if (changes.length === 0) {
       // Nothing to write — commit an empty result rather than rolling back.
-      return { changes, tierChanges, saved: null };
+      return { changes, saved: null };
     }
     const saved = await saveSettingsWith(tx, shop, settings);
-    return { changes, tierChanges, saved };
+    return { changes, saved };
   });
   if (!committed) {
     return failure(
@@ -812,7 +653,6 @@ async function handleApply(
     );
   }
   const changes = committed.changes;
-  const tierChanges = committed.tierChanges;
 
   const syncErrors: string[] = [];
   if (committed.saved) {
@@ -829,10 +669,7 @@ async function handleApply(
   }
 
   let disarmed = false;
-  if (
-    formData.get("disarmAfter") === "1" &&
-    (changes.length > 0 || tierChanges.length > 0)
-  ) {
+  if (formData.get("disarmAfter") === "1" && changes.length > 0) {
     try {
       const result = await disarmPreview(shop, admin);
       syncErrors.push(...result.sync.errors);
@@ -856,91 +693,13 @@ async function handleApply(
     ok: true,
     errors: [],
     syncErrors: [...new Set(syncErrors)],
-    applied: [
-      ...changes.map((change) => ({
-        label: FEATURE_DEFS[change.key].label,
-        market: marketName(change.market),
-      })),
-      ...tierChanges.map((label) => ({ label, market: "all markets" })),
-    ],
+    applied: changes.map((change) => ({
+      label: FEATURE_DEFS[change.key].label,
+      market: marketName(change.market),
+    })),
     skipped: draftKeys.length * targets.length - changes.length,
     disarmed,
   };
-}
-
-/**
- * v14: turns the Preview Center's compact rewards draft payload into the
- * PreviewDraftConfig.rewards shape (SPEC §10). Payload (JSON):
- *   { setSavingsTiers?: {count,pct,code}[], giftEurAmounts?: number[],
- *     giftMarketAmounts?: {market, amounts:number[], currencyCode} }
- * Gift tiers keep the SAVED slots — only the EUR amount changes; a market
- * record replaces/creates that market's entry on top of the saved record
- * (other markets untouched). Returns null when nothing is drafted.
- */
-async function buildRewardsDraft(
-  shop: string,
-  raw: string,
-): Promise<Record<string, unknown> | null> {
-  if (!raw) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return null;
-  }
-  const payload = parsed as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  if (Array.isArray(payload.setSavingsTiers)) {
-    out.setSavingsTiers = sanitizeSetSavingsTiers(payload.setSavingsTiers);
-  }
-  const needsSettings =
-    Array.isArray(payload.giftEurAmounts) ||
-    (typeof payload.giftMarketAmounts === "object" && payload.giftMarketAmounts !== null);
-  if (needsSettings) {
-    const settings = await getSettings(shop);
-    const liveTiers = settings.rewards.giftTiers.tiers;
-    if (Array.isArray(payload.giftEurAmounts)) {
-      const amounts = payload.giftEurAmounts.map((value) => Number(value));
-      const drafted: GiftTier[] = liveTiers.map((tier, index) => ({
-        amount:
-          Number.isFinite(amounts[index]) && amounts[index] > 0 ? amounts[index] : tier.amount,
-        slots: tier.slots.map((slot) => slot.map((option) => ({ ...option }))),
-      }));
-      out.giftTiers = sanitizeGiftTiers(drafted);
-    }
-    const marketAmounts = payload.giftMarketAmounts;
-    if (
-      typeof marketAmounts === "object" &&
-      marketAmounts !== null &&
-      !Array.isArray(marketAmounts)
-    ) {
-      const entry = marketAmounts as Record<string, unknown>;
-      const market = sanitizeMarketHandle(entry.market);
-      // All-or-nothing: the market column is accepted only when it has one
-      // finite amount > 0 per live tier; anything partial is dropped.
-      const marketAmounts_ = Array.isArray(entry.amounts)
-        ? entry.amounts.map((value) => Number(value))
-        : null;
-      const marketComplete =
-        marketAmounts_ !== null &&
-        marketAmounts_.length === liveTiers.length &&
-        marketAmounts_.every((amount) => Number.isFinite(amount) && amount > 0);
-      if (market && marketAmounts_ && marketComplete) {
-        const record = {
-          ...settings.rewards.giftTiers.giftThresholdsByMarket,
-          [market]: {
-            amounts: marketAmounts_,
-            currencyCode: String(entry.currencyCode ?? ""),
-          },
-        };
-        out.giftAmountsByMarket = sanitizeGiftThresholdsByMarket(record);
-      }
-    }
-  }
-  return Object.keys(out).length > 0 ? out : null;
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -978,22 +737,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         draftConfig = JSON.parse(String(formData.get("draftConfig") ?? "{}"));
       } catch {
         draftConfig = {};
-      }
-      // v14 draft rewards tiers: the client sends only what it edited
-      // (set-savings rows, gift EUR amounts, one market's amounts); the
-      // full GiftTier objects (slots included) are rebuilt here from the
-      // saved settings so the draft never carries hand-crafted slots.
-      // armPreview's sanitizeDraftConfig re-sanitizes everything.
-      const rewardsDraft = await buildRewardsDraft(
-        session.shop,
-        String(formData.get("rewardsDraft") ?? ""),
-      );
-      if (rewardsDraft) {
-        const base =
-          typeof draftConfig === "object" && draftConfig !== null && !Array.isArray(draftConfig)
-            ? (draftConfig as Record<string, unknown>)
-            : {};
-        draftConfig = { ...base, rewards: rewardsDraft };
       }
       const { sync } = await armPreview(session.shop, admin, {
         draftFlags,
@@ -1090,7 +833,6 @@ export default function PreviewCenter() {
     liveDeliveryFormatCart,
     liveDeliveryFormatCheckout,
     liveShipsFromFormat,
-    rewardsPreview,
   } = data;
 
   // v5.4 safety net: a FeatureKey missing from the FEATURE_GROUPS literal
@@ -1164,58 +906,6 @@ export default function PreviewCenter() {
   const [shipsFromFormat, setShipsFromFormat] = useState<string>(
     preview.draftConfig?.shipsFromFormat ?? liveShipsFromFormat,
   );
-  // --- v14 cart simulator + rehearsal + draft tiers (SPEC §10) -----------
-  // Each starts from the armed draft (when re-arming) or the live settings.
-  const armedSim = preview.draftConfig?.simCart ?? null;
-  const [simEnabled, setSimEnabled] = useState<boolean>(armedSim !== null);
-  const [simSpend, setSimSpend] = useState<string>(
-    armedSim ? String(armedSim.spendCents / 100) : "",
-  );
-  const [simCount, setSimCount] = useState<number>(armedSim ? armedSim.count : 1);
-  const [rehearsal, setRehearsal] = useState<boolean>(
-    preview.draftConfig?.rehearsal === true,
-  );
-  const armedRewards = preview.draftConfig?.rewards;
-  const [ssRows, setSsRows] = useState<SsDraftRow[]>(() =>
-    (armedRewards?.setSavingsTiers ?? rewardsPreview.liveSsTiers).map((tier) => ({
-      count: String(tier.count),
-      pct: String(tier.pct),
-      code: tier.code,
-    })),
-  );
-  const [gtEur, setGtEur] = useState<string[]>(() =>
-    (armedRewards?.giftTiers
-      ? armedRewards.giftTiers.map((tier) => tier.amount)
-      : rewardsPreview.liveGtEur
-    ).map((amount) => String(amount)),
-  );
-  // Per-market gift amounts for the SIMULATED market only (one row set;
-  // switching the market reloads the row from the armed draft / live record).
-  const marketGiftRecord = (market: string) =>
-    (armedRewards?.giftAmountsByMarket?.[market] ??
-      rewardsPreview.liveGtByMarket[market]) ?? null;
-  const [gtMarket, setGtMarket] = useState<string[]>(() => {
-    const record = marketGiftRecord(preview.simulatedMarket ?? "");
-    return rewardsPreview.liveGtEur.map((_, index) =>
-      record && Number.isFinite(record.amounts[index]) ? String(record.amounts[index]) : "",
-    );
-  });
-  useEffect(() => {
-    const record = marketGiftRecord(simulatedMarket);
-    setGtMarket(
-      rewardsPreview.liveGtEur.map((_, index) =>
-        record && Number.isFinite(record.amounts[index]) ? String(record.amounts[index]) : "",
-      ),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simulatedMarket]);
-  const simulatedMarketInfo = markets.find((market) => market.handle === simulatedMarket);
-  const marketCurrency =
-    marketGiftRecord(simulatedMarket)?.currencyCode ||
-    simulatedMarketInfo?.currencyCode ||
-    "EUR";
-  const simChips = rewardsPreview.chipsByMarket[simulatedMarket] ??
-    rewardsPreview.chipsByMarket[""] ?? { currency: "EUR", chips: [] };
 
   // Debounced product search — reloads the loader with ?q= (same pattern as
   // the Product boosters page).
@@ -1365,8 +1055,6 @@ export default function PreviewCenter() {
       "draftFlags",
       JSON.stringify(Object.fromEntries(checkedKeys.map((key) => [key, true]))),
     );
-    const rewardsChecked = checked.has("set_savings") || checked.has("gift_tiers");
-    const spendNumber = Number(simSpend);
     formData.set(
       "draftConfig",
       JSON.stringify({
@@ -1374,68 +1062,8 @@ export default function PreviewCenter() {
           ? { deliveryFormat, deliveryFormatCart, deliveryFormatCheckout }
           : {}),
         ...(checked.has("az_ships_from") ? { shipsFromFormat } : {}),
-        // v14: simulator + rehearsal ride along only while a rewards feature
-        // is checked (an unchecked feature leaves no stale simulator behind).
-        ...(rewardsChecked && simEnabled && Number.isFinite(spendNumber)
-          ? {
-              simCart: {
-                spendCents: Math.round(Math.max(0, spendNumber) * 100),
-                count: simCount,
-              },
-            }
-          : {}),
-        ...(rewardsChecked && rehearsal ? { rehearsal: true } : {}),
       }),
     );
-    // v14 draft tiers: only what differs from the live values is sent.
-    if (rewardsChecked) {
-      const draft: Record<string, unknown> = {};
-      if (checked.has("set_savings")) {
-        const rows = parseSsRows(ssRows);
-        if (JSON.stringify(rows) !== JSON.stringify(rewardsPreview.liveSsTiers)) {
-          draft.setSavingsTiers = rows;
-        }
-      }
-      if (checked.has("gift_tiers")) {
-        const eur = parseAmounts(gtEur);
-        if (JSON.stringify(eur) !== JSON.stringify(rewardsPreview.liveGtEur)) {
-          draft.giftEurAmounts = eur;
-        }
-        // The per-market column is all-or-nothing: every tier cell must hold
-        // a finite amount > 0, or the whole column stays blank (untouched).
-        const marketFilled = gtMarket.filter((value) => value.trim() !== "").length;
-        if (simulatedMarket && marketFilled > 0) {
-          const complete =
-            marketFilled === gtMarket.length &&
-            gtMarket.every((value) => {
-              const amount = Number(value);
-              return Number.isFinite(amount) && amount > 0;
-            });
-          if (!complete) {
-            shopify.toast.show("Fill every market amount or leave the column blank", {
-              isError: true,
-            });
-            return;
-          }
-          const amounts = parseAmounts(gtMarket);
-          const live = rewardsPreview.liveGtByMarket[simulatedMarket];
-          if (
-            !live ||
-            live.currencyCode !== marketCurrency ||
-            JSON.stringify(live.amounts) !== JSON.stringify(amounts)
-          ) {
-            draft.giftMarketAmounts = {
-              market: simulatedMarket,
-              amounts,
-              currencyCode: marketCurrency,
-            };
-          }
-        }
-      }
-      if (Object.keys(draft).length > 0) {
-        formData.set("rewardsDraft", JSON.stringify(draft));
-      }
-    }
     formData.set("simulatedMarket", simulatedMarket);
     formData.set("productHandle", productHandle);
     submit(formData, { method: "post" });
@@ -1844,303 +1472,6 @@ export default function PreviewCenter() {
             </BlockStack>
           </Card>
         </Layout.Section>
-
-
-        {/* 2b — v14 cart simulator, rehearsal and draft tiers (SPEC §10) */}
-        {checked.has("set_savings") || checked.has("gift_tiers") ? (
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="400">
-                <BlockStack gap="100">
-                  <Text as="h2" variant="headingMd">
-                    Simulate cart
-                  </Text>
-                  <Text as="p" tone="subdued">
-                    Walk the reward tiers without touching a real cart: while
-                    the simulator is on, the storefront preview draws the
-                    meter, nudges, captions and set maths from these values
-                    and never adds a gift line or a KIT code. The storefront
-                    preview bar has the same controls (they override these for
-                    that browser tab).
-                  </Text>
-                </BlockStack>
-                <Checkbox
-                  label="Simulate a cart total and product count"
-                  checked={simEnabled}
-                  onChange={setSimEnabled}
-                  helpText={
-                    simulatedMarket
-                      ? `Enter the spend in ${marketCurrency} — the currency the ${simulatedMarketInfo?.name ?? simulatedMarket} market shows. Open the preview link on that market's storefront URL so the cart is priced in that currency.`
-                      : "No market simulated — enter the spend in your shop currency (EUR) and preview on the default storefront."
-                  }
-                />
-                {simEnabled ? (
-                  <BlockStack gap="300">
-                    <InlineStack gap="300" wrap blockAlign="end">
-                      <Box minWidth="220px">
-                        <TextField
-                          label={`Cart spend (${marketCurrency})`}
-                          type="number"
-                          min={0}
-                          max={SIM_SPEND_MAX}
-                          step={1}
-                          value={simSpend}
-                          onChange={setSimSpend}
-                          autoComplete="off"
-                          helpText="Sum of the products' prices before discounts (gift lines and order protection never count)."
-                        />
-                      </Box>
-                      <Box minWidth="180px">
-                        <TextField
-                          label="Different products in cart"
-                          type="number"
-                          min={0}
-                          max={SIM_COUNT_MAX}
-                          step={1}
-                          value={String(simCount)}
-                          onChange={(value) => {
-                            const next = Math.floor(Number(value));
-                            setSimCount(
-                              Number.isFinite(next)
-                                ? Math.min(SIM_COUNT_MAX, Math.max(0, next))
-                                : 0,
-                            );
-                          }}
-                          autoComplete="off"
-                          helpText="Distinct eligible products (drives the KIT tier)."
-                        />
-                      </Box>
-                    </InlineStack>
-                    {simChips.chips.length > 0 ? (
-                      <BlockStack gap="100">
-                        <Text as="p" variant="bodySm" tone="subdued">
-                          Quick presets (from the live tiers
-                          {preview.armed ? " + armed draft" : ""}; amounts in{" "}
-                          {simChips.currency}
-                          {simChips.currency !== marketCurrency
-                            ? ` — the storefront converts these EUR defaults into ${marketCurrency} at the shop rate; enter the ${marketCurrency} spend accordingly`
-                            : ""}
-                          ):
-                        </Text>
-                        <InlineStack gap="200" wrap>
-                          {simChips.chips.map((chip) => (
-                            <Button
-                              key={chip.label}
-                              size="slim"
-                              onClick={() => {
-                                if (chip.spendCents !== undefined) {
-                                  setSimSpend(String(chip.spendCents / 100));
-                                }
-                                if (chip.count !== undefined) {
-                                  setSimCount(
-                                    Math.min(SIM_COUNT_MAX, Math.max(0, chip.count)),
-                                  );
-                                }
-                              }}
-                            >
-                              {chip.spendCents !== undefined
-                                ? `${chip.label} · ${formatMoney(chip.spendCents, simChips.currency)}`
-                                : chip.label}
-                            </Button>
-                          ))}
-                        </InlineStack>
-                      </BlockStack>
-                    ) : null}
-                  </BlockStack>
-                ) : null}
-                <Divider />
-                <Checkbox
-                  label="Live rehearsal — really add gifts and KIT codes to my preview cart"
-                  checked={rehearsal}
-                  onChange={setRehearsal}
-                />
-                <Text as="p" tone="caution" variant="bodySm">
-                  Warning: with live rehearsal on, your own preview cart is
-                  really mutated (gift lines added and removed, KIT codes
-                  applied) — in the drawer and in checkout. A completed
-                  rehearsal checkout is a REAL order that deducts real gift
-                  stock unless you cancel it or use a test payment. The
-                  simulator above wins while it is on: turn it off to
-                  rehearse with your real cart. Real visitors are never
-                  affected.
-                </Text>
-                <Divider />
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingSm">
-                    Draft tier amounts (preview only until “Go live”)
-                  </Text>
-                  <Text as="p" tone="subdued" variant="bodySm">
-                    Change amounts here to see them in the preview — the
-                    storefront AND the checkout discount honour the draft on
-                    your preview cart. Nothing changes for real visitors until
-                    you press “Apply — go live” below (which writes these
-                    values into the Rewards settings together with the flag
-                    flips). Blank or invalid rows are ignored.
-                  </Text>
-                  {checked.has("set_savings") ? (
-                    <BlockStack gap="200">
-                      <Text as="p" fontWeight="semibold" variant="bodySm">
-                        Set savings tiers (different products → % off → code)
-                      </Text>
-                      {ssRows.map((row, index) => (
-                        <InlineStack key={index} gap="200" wrap blockAlign="end">
-                          <Box minWidth="120px">
-                            <TextField
-                              label="Products"
-                              labelHidden={index > 0}
-                              type="number"
-                              min={1}
-                              step={1}
-                              value={row.count}
-                              onChange={(value) =>
-                                setSsRows((rows) =>
-                                  rows.map((r, i) => (i === index ? { ...r, count: value } : r)),
-                                )
-                              }
-                              autoComplete="off"
-                            />
-                          </Box>
-                          <Box minWidth="120px">
-                            <TextField
-                              label="% off"
-                              labelHidden={index > 0}
-                              type="number"
-                              min={1}
-                              max={90}
-                              step={1}
-                              value={row.pct}
-                              onChange={(value) =>
-                                setSsRows((rows) =>
-                                  rows.map((r, i) => (i === index ? { ...r, pct: value } : r)),
-                                )
-                              }
-                              autoComplete="off"
-                            />
-                          </Box>
-                          <Box minWidth="160px">
-                            <TextField
-                              label="Code"
-                              labelHidden={index > 0}
-                              value={row.code}
-                              onChange={(value) =>
-                                setSsRows((rows) =>
-                                  rows.map((r, i) =>
-                                    i === index ? { ...r, code: value.toUpperCase() } : r,
-                                  ),
-                                )
-                              }
-                              autoComplete="off"
-                            />
-                          </Box>
-                          <Button
-                            variant="plain"
-                            tone="critical"
-                            onClick={() =>
-                              setSsRows((rows) => rows.filter((_, i) => i !== index))
-                            }
-                          >
-                            Remove
-                          </Button>
-                        </InlineStack>
-                      ))}
-                      <InlineStack gap="200">
-                        <Button
-                          size="slim"
-                          disabled={ssRows.length >= 6}
-                          onClick={() =>
-                            setSsRows((rows) => [...rows, { count: "", pct: "", code: "" }])
-                          }
-                        >
-                          Add tier
-                        </Button>
-                        <Button
-                          size="slim"
-                          variant="plain"
-                          onClick={() =>
-                            setSsRows(
-                              rewardsPreview.liveSsTiers.map((tier) => ({
-                                count: String(tier.count),
-                                pct: String(tier.pct),
-                                code: tier.code,
-                              })),
-                            )
-                          }
-                        >
-                          Reset to live
-                        </Button>
-                      </InlineStack>
-                      <Text as="p" tone="subdued" variant="bodySm">
-                        A KIT code drafted here must also exist as a discount
-                        in Shopify for the checkout discount to apply — “Connect
-                        KIT codes &amp; discounts” on the Rewards page after
-                        going live.
-                      </Text>
-                    </BlockStack>
-                  ) : null}
-                  {checked.has("gift_tiers") ? (
-                    <BlockStack gap="200">
-                      <Text as="p" fontWeight="semibold" variant="bodySm">
-                        Gift tier thresholds
-                        {rewardsPreview.liveGtEur.length === 0
-                          ? " — no gift tiers configured yet (add them on the Rewards page)"
-                          : ""}
-                      </Text>
-                      {rewardsPreview.liveGtEur.map((_, index) => (
-                        <InlineStack key={index} gap="200" wrap blockAlign="end">
-                          <Box minWidth="180px">
-                            <Text as="p" variant="bodySm">
-                              Tier {index + 1} · {rewardsPreview.gtLabels[index]}
-                            </Text>
-                          </Box>
-                          <Box minWidth="140px">
-                            <TextField
-                              label="EUR (default)"
-                              labelHidden={index > 0}
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={gtEur[index] ?? ""}
-                              onChange={(value) =>
-                                setGtEur((values) =>
-                                  values.map((v, i) => (i === index ? value : v)),
-                                )
-                              }
-                              autoComplete="off"
-                            />
-                          </Box>
-                          {simulatedMarket ? (
-                            <Box minWidth="140px">
-                              <TextField
-                                label={`${simulatedMarketInfo?.name ?? simulatedMarket} (${marketCurrency})`}
-                                labelHidden={index > 0}
-                                type="number"
-                                min={0}
-                                step={1}
-                                value={gtMarket[index] ?? ""}
-                                onChange={(value) =>
-                                  setGtMarket((values) =>
-                                    values.map((v, i) => (i === index ? value : v)),
-                                  )
-                                }
-                                autoComplete="off"
-                                placeholder="EUR × rate"
-                              />
-                            </Box>
-                          ) : null}
-                        </InlineStack>
-                      ))}
-                      <Text as="p" tone="subdued" variant="bodySm">
-                        {simulatedMarket
-                          ? `Leave the ${marketCurrency} column blank to keep converting the EUR default at the shop rate; fill every row to draft explicit ${marketCurrency} amounts for this market.`
-                          : "Simulate a market above to draft that market's own amounts in its currency."}
-                      </Text>
-                    </BlockStack>
-                  ) : null}
-                </BlockStack>
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-        ) : null}
 
         {/* 3 — Arm & launch */}
         <Layout.Section>

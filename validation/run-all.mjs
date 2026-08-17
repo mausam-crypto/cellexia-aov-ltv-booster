@@ -59,8 +59,6 @@ const SUITES = [
   { name: "sims/proof-translation", dir: "sims", base: "proof-translation" },
   { name: "sims/threshold-snap", dir: "sims", base: "threshold-snap" },
   { name: "sims/flip-test", dir: "sims", base: "flip-test" },
-  { name: "sims/rewards-tiers", dir: "sims", base: "rewards-tiers" },
-  { name: "sims/rewards-function", dir: "sims", base: "rewards-function" },
   { name: "sims/deploy-safety", dir: "sims", base: "deploy-safety" },
 ];
 

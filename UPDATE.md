@@ -31,11 +31,10 @@ template now ships as **`shopify.app.toml.example`** for reference only. In your
 REAL toml, make exactly three changes:
 
 - **`scopes`** — replace the line with (additions since your build:
-  `read_shipping`, `read_price_lists`, `write_price_lists`, `write_translations`,
-  and NEW in v14: `write_discounts`, `read_inventory`, `read_locations`):
+  `read_shipping`, `read_price_lists`, `write_price_lists`, `write_translations`):
 
 ```
-scopes = "read_products,write_products,read_publications,write_publications,read_orders,read_locales,read_translations,read_markets,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_files,write_files,read_themes,read_shipping,read_price_lists,write_price_lists,write_translations,write_discounts,read_inventory,read_locations"
+scopes = "read_products,write_products,read_publications,write_publications,read_orders,read_locales,read_translations,read_markets,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_files,write_files,read_themes,read_shipping,read_price_lists,write_price_lists,write_translations"
 ```
 
 - **`automatically_update_urls_on_dev = false`** under `[build]` (the example
@@ -48,17 +47,6 @@ scopes = "read_products,write_products,read_publications,write_publications,read
 - **`api_version = "2025-10"`** under `[webhooks]` (was `2025-07`, which left
   Shopify's 12-month support window on 2026-07-01 — the server code in this
   version is pinned to `2025-10` to match).
-
-- **NEW in v14 — inventory webhook**: add this block next to the other
-  `[[webhooks.subscriptions]]` entries (it drives the gift-tier stock watch;
-  the route already exists in the app server):
-
-```
-  [[webhooks.subscriptions]]
-  topics = [ "inventory_levels/update" ]
-  uri = "/webhooks/inventory/update"
-```
-
 
 Everything else in your toml stays as-is: `client_id`, `application_url`,
 `redirect_urls`, and the whole `[app_proxy]` block (url = your host + `/proxy`).
@@ -162,32 +150,6 @@ what engine it is, failing loudly on a wrong-database deploy.
 > rely on `npm run setup` at container start, which re-selects with the runtime
 > env; the shipped Dockerfile already does this.)
 
-> **v14 (Rewards) — three things that are NEW in this deploy, read before running:**
-> 1. **`npm install` (not `npm ci`) once** — v14 adds a workspace package
->    `extensions/cellexia-rewards` (the Discount Function) with one dependency
->    (`@shopify/shopify_function`). The shipped `package-lock.json` already contains
->    it, so `npm ci` works too; if `npm ci` ever complains the lockfile is out of
->    sync, run `npm install` and continue.
-> 2. **`npm run deploy` now also builds and deploys a Shopify Function** ("Cellexia
->    rewards"). The build downloads the Javy toolchain once (network) and compiles
->    `extensions/cellexia-rewards/src` to `dist/function.wasm` inside the normal deploy;
->    nothing extra to type. GraphQL type generation is deliberately skipped
->    (`typegen_command = "node -e 0"` in the extension's toml — the code uses no
->    generated types, and the CLI's default typegen would need a `schema.graphql` that
->    only a Partner-authenticated `shopify app function schema` writes; a plain deploy
->    never fetches it). We compiled the wasm locally with this exact tree (CLI 3.94.3)
->    to prove the build passes. Optional pre-flight on your machine:
->    `npx shopify app function build --path extensions/cellexia-rewards` → must print
->    "Function built successfully". Shopify validates the two input queries against
->    the 2025-10 Discount Function schema when the version is uploaded; if that ever
->    fails, send us the message verbatim.
-> 3. **Database gains one table + two columns** (`RewardsState`; `OrderStat.kitCode`,
->    `OrderStat.giftLines`) — Postgres deploys apply them with `npx prisma db push
->    --schema prisma/schema.postgres.prisma` (same as previous versions, §2).
-> Then, in the store admin, approve the THREE new scopes when the app asks
-> (`write_discounts`, `read_inventory`, `read_locations`) — nothing rewards-related
-> works until they are granted (the Rewards page and Setup & health say so).
-
 ```bash
 # 0) DATABASE first (or simultaneously): npx prisma db push per §2
 npm ci                    # clean install (lockfile is authoritative; postinstall regenerates the client)
@@ -266,55 +228,6 @@ auto-detection, and booster auto-translation need them).
 7. **Storefront spot-check** (2 min, real visitor view, preview disarmed): pages
    render exactly as before for buyers; `https://<store>/apps/cellexia/track`
    returns `{"ok":true,"service":"cellexia-booster"}`.
-8. **v14 Rewards — connect the discounts (one-time, ~10 minutes)**, in this order,
-   on the new **Rewards** page (app nav):
-   1. Confirm the three new scopes were approved (a banner on the page says if not).
-   2. Set savings card → pick the ladder preset (default **Compact** 2/3/4/6 →
-      KIT2/KIT3/KIT4/KIT6 at 5/10/15/20 %; **Extended** 2/3/5/10 → KIT2/KIT3/KIT5/KIT10
-      at 5/10/20/30 % is one click away; editing the table marks it Custom) → tick
-      **"Replace existing KIT codes"** → **Connect KIT codes & discounts**. This
-      deletes the store's old basic codes that share a name with the chosen ladder
-      (KIT2/KIT3 today — they counted units, not different products) and creates the
-      ladder's codes as Function-backed codes plus two automatic discounts ("Cellexia
-      free gifts", "Cellexia free shipping"). **v14.3 — every old KIT code keeps
-      working**: with **"Keep legacy codes"** on (the default) the legacy codes that
-      are NOT in the chosen ladder (KIT5/KIT10 under compact; KIT4/KIT6 under
-      extended; the family is KIT2/KIT3/KIT4/KIT5/KIT6/KIT10) are connected too, as
-      **alias codes** ("Set savings alias KIT5"): a shopper who types one gets the
-      tier the cart qualifies for (any tier); aliases are never auto-attached and
-      never stack with a ladder code. The "Replace existing" tick replaces same-name
-      basic codes for ladder AND alias codes; it no longer deactivates anything
-      unless "Keep legacy codes" is switched OFF (then the v14.2 sweep runs:
-      leftover legacy basic KIT codes not in the ladder are DEACTIVATED, never
-      deleted — "deactivated legacy code KIT5" in the banner). The result banner
-      lists every node created ("created alias code KIT5." for aliases); Setup &
-      health gains a **Rewards discounts** check (alias nodes count as required
-      while "Keep legacy codes" is on) that must be green.
-   3. Gift tiers card → **Load defaults** — two presets: **Value first** (default:
-      Bamboo towels + 2 samples at €119, Jawline cream 1 unit + 2 samples at €200,
-      Cosmetic bag + 3 samples at €350) or **Cream first** (the v14.0 order: cream at
-      €119, towels at €200, bag at €350); either fills the variant GIDs from the
-      store → **Load sachets** (the nine
-      `sample-sachet` products) → **Suggest amounts** (per-market thresholds derived
-      from each market's own pricing; review, round, save) → tick the warehouse(s)
-      that ship each market in the warehouse map → **Refresh gift stock** (the table
-      shows what is available/paused per market). Save.
-   4. **Store prep the app cannot do for you** (Products in Shopify admin): publish
-      **Bamboo Beauty Towels** to the Online Store (currently POS/social only — the
-      cart cannot add it until published) and give it a real price; set **Premium
-      Leather Cosmetic Bag** to ACTIVE and published; keep both hidden from search
-      (product metafield `seo.hidden = 1`) and out of the "Shop All" automated
-      collection (give them a product type such as `Gift` and add the rule
-      "product type is not equal to Gift"); sachets stay at €1 (the Function makes
-      them free only when earned). Then re-run **Refresh gift stock** and Setup &
-      health (**Gift products** check).
-   5. Nothing shows to shoppers yet: both features ship OFF. Turn them on per market
-      on **Markets** (new "Rewards" group) or the Rewards page's Market targeting card;
-      preview first with **Preview → Simulate cart** (see §5 v14 notes).
-   6. Checkout: the gift honesty net and the KIT re-attach ride inside the existing
-      **Cellexia Order Protection** checkout block — no new block to place; it just
-      needs that block to be present in the checkout editor (it is, from earlier
-      versions).
 
 ## 4b. v6.2 — the 100KB Liquid blocker you reported: FIXED in-tree
 
@@ -359,150 +272,6 @@ Run it after `npm ci` and before deploying; a red scoreboard means stop.
 strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
-
-v14 — REWARDS: SET SAVINGS (KIT TIERS) + GIFT TIERS + FREE-SHIPPING GUARANTEE
-(2026-08-16). Two new features, both OFF by default, both per-market:
-
-- **Set savings (`set_savings`)**: when the cart holds 2/3/4/6 DIFFERENT
-  full-size products the cart automatically attaches KIT2/KIT3/KIT4/KIT6
-  (5/10/15/20 % — the v14.2 "compact" default ladder; a **preset switch** on
-  the Rewards page flips to the "extended" 2/3/5/10 → KIT2/KIT3/KIT5/KIT10
-  at 5/10/20/30 % ladder, and hand-edits become "custom") via Shopify's `cart/update.js {discount}`
-  (no reload); the code shows at checkout. A new **Discount Function**
-  (`extensions/cellexia-rewards`, JS) is the referee: it re-counts different
-  products at checkout, ignores sachets / gift lines / the protection line /
-  per-market excluded products, honours market targeting, applies the % to
-  eligible lines only when the typed code equals the qualifying tier (so
-  KIT codes can never stack), and covers subscription lines on the first
-  order only. Merchandised on the product page (buy-box line, "Frequently
-  bought together" caption + discounted total + "Add all N & save X%",
-  "You might also like" caption), in the drawer (nudge to the next tier,
-  subtotal/set-savings reconciliation, cross-sell reframed "Complete your set
-  & save X%" with after-discount prices). Sachets, gifts and excluded products
-  never appear in the suggestions.
-- **Gift tiers (`gift_tiers`)**: at per-market spend thresholds (default EUR
-  119/200/350, cumulative; v14.2 default gift order "value first" = towels /
-  cream / bag, with the earlier "cream first" order still one click away in
-  **Load defaults**) the drawer auto-adds real gift lines (quantity 1,
-  hidden line property `_cellexia_gift`) which the Function makes 100 % free
-  for exactly one unit; the row is restyled (~~€57~~ FREE, "Free gift" tag,
-  quantity controls hidden, quiet Remove remembered for the session); a
-  **rewards meter** replaces the free-shipping bar (milestones: gifts + free
-  shipping, "You're €23 away from a free gift worth €57"); gifts drop out
-  again below the threshold; a gift that is not actually free (discount not
-  connected, etc.) is removed and the shopper told why (drawer AND checkout).
-  Gift pools per tier (product options with fallback order, or "N sachets"
-  chosen by rule — prefer sachets of products NOT in the cart), sample pool,
-  per-market thresholds in the market currency with pricing-aware "Suggest
-  amounts", warehouse map + stock watch (inventory webhook, hourly-ish lazy
-  refresh, per-market pause when stock is under the floor), Preview cart
-  simulator + live rehearsal, draft tier amounts previewable before go-live.
-- **Free-shipping guarantee** (`rewards.freeShip`, opt-in per market): an
-  automatic SHIPPING discount makes the cheapest delivery option free when the
-  cart holds ≥ 2 full-size units (ladder variants count 2/3) OR the
-  pre-discount spend meets the market's free-shipping threshold (explicit
-  entries only) — so adding a product can never lose free shipping.
-- Storefront: `cart-booster.liquid` (+2.2 KB, gated `"rw"` island),
-  `amazon-booster.liquid` (+0.9 KB), `cellexia-cart.js` (+54 KB unminified),
-  `cellexia-pdp.js` (+12 KB), CSS `cx-rw-*` blocks; total Liquid 99,183 B
-  (Shopify cap 102,400; harness budget moved 96,500 → 99,500, documented).
-  17 locale files gain the `rewards.*` group; **el.json (Greek) has no room
-  left** (15,123 B of 15,360) so Greek shoppers see the English rewards
-  wording (JS carries English defaults); ar.json carries 17/21 keys.
-  Spend everywhere = Σ original line prices excluding gift/protection lines
-  (product-class codes lower `items_subtotal_price`, which would have made
-  the old bar move backwards); the drawer footer now mirrors the theme's
-  `total_price`.
-- Server: settings section `rewards` (FeatureKeys 35 → 37), third metafield
-  `$app:cellexia/rewards` (the Function's ONLY config, < 12 KB, live + draft),
-  app-data `cellexia/gift_stock`, `rewards.server.ts` (connect discounts,
-  suggest thresholds from per-market pricing, unit map, gift stock),
-  inventory webhook, `OrderStat.kitCode/giftLines`, dashboard cards, health
-  checks **Rewards discounts** + **Gift products**, analytics features/types.
-- Admin: new **Rewards** page (nav), Markets matrix "Rewards" group, Preview
-  Center "Simulate cart" card + draft tier tables + live rehearsal.
-- Deep-check polish (same day, after browser fixtures over the real assets, a
-  173-assertion journey simulation of the real cart script and a CRO review):
-  cart-page gift rows dressed (theme header row excluded), meter with equal
-  segments + amount captions (mobile-legible) and a value-less headline when a
-  gift has no price, gift plan orders product gifts before sample sets before
-  the cap (default cap 6), sample rule matches sachets to owned products by
-  title, sachets no longer count toward gift spend (storefront + Function),
-  gift-pool PRODUCTS count as normal products everywhere (only gift LINES and
-  sachets are excluded), cross-sell title says "10% off everything you add"
-  when a tier is active and the next one is 2+ products away, the set nudge
-  yields to the volume-ladder card in one-product carts and hides "add N more"
-  when N > 2, one notice per gift unlock, gift rows show the struck price +
-  FREE, B2B carts get no gifts/meter, az free-line and meter never repeat the
-  same free-shipping sentence, FBT reads "Add both & save 5%" for two rows.
-  Three new wording keys (meter_gift_away_plain, set_title_more,
-  fbt_add_save_both) in 15 languages; ar/el fall back to English for them.
-- Validation: 27 suites / 8,258 checks (was 25 / 7,316): new sims
-  `rewards-tiers` (twin helper byte-identity across both assets + tier
-  fixtures) and `rewards-function` (87 checks over the Function's pure logic),
-  ~120 v14 pins in the harness. `npm run validate` must print GREEN before
-  deploying, as always.
-- **v14.2 presets (2026-08-16)**: the ladder and the gift defaults are now
-  presets. `LADDER_PRESETS` compact (NEW DEFAULT: 2/3/4/6 → KIT2/KIT3/KIT4/KIT6
-  at 5/10/15/20 %) / extended (the v14.0 ladder 2/3/5/10 → KIT2/KIT3/KIT5/KIT10
-  at 5/10/20/30 %) with a **preset switch** on the Rewards page (`ladderPreset`,
-  hand-edits → custom); `GIFT_PRESETS` value_first (NEW DEFAULT: €119 towels /
-  €200 cream / €350 bag) / cream_first (v14.0 order) offered by **Load
-  defaults** (`giftPreset`). The tier tables stay the truth; the preset fields
-  are informational and sanitized to their enums. "Replace existing KIT codes"
-  now also DEACTIVATES (never deletes) legacy basic KIT2/KIT3/KIT4/KIT5/KIT6/
-  KIT10 codes that are not ours and not in the chosen ladder ("deactivated
-  legacy code KIT5" in the result banner). Existing stores that already saved
-  their tiers keep them (the defaults only apply to a fresh section).
-- **v14.3 legacy alias codes (2026-08-16)**: the merchant wants every OLD KIT
-  code to keep working. `rewards.setSavings.keepLegacyCodes` (default true)
-  turns every `LEGACY_KIT_CODES` entry that is not in the active ladder into
-  an **alias code** (`aliasCodes`, derived and recomputed on every save:
-  KIT5/KIT10 under compact, KIT4/KIT6 under extended). Ladder codes behave as
-  before (a ladder code grants only when it equals the qualifying tier's
-  code); an alias typed by a shopper grants the tier the cart qualifies for,
-  any tier (Function: `cfg.ss.alias`); aliases are never auto-attached and the
-  storefront / checkout safety net keep at most ONE code of the KIT family on
-  the cart (a shopper's applicable alias wins over our ladder code). Connect
-  creates/updates the alias nodes exactly like the ladder codes ("Set savings
-  alias KIT5"; "created alias code KIT5." in the banner); "Replace existing"
-  replaces same-name basic codes for ladder AND alias codes and only runs the
-  v14.2 deactivation sweep when "Keep legacy codes" is off. The rewards
-  metafield `ss` carries `alias: [codes]`; the health check requires the
-  alias nodes while the switch is on.
-
-v13.2 — BUY-BOX MARKET TARGETING MADE FINDABLE (2026-08-15): the merchant
-asked to show the buy-box widget only in selected markets (all markets by
-default, markets read from the store). That control already existed — per
-pattern, on TWO pages: Amazon
-patterns → "Market targeting" card (bottom of the page) and Markets → "Buy-box
-decision card" row. It sat ~600 lines below the buy-box toggle with no hint,
-so it was never found. **APP ADMIN ONLY — no extension, storefront, database
-or scope changes; `npm run deploy` is NOT needed for v13.2.**
-
-- Every Amazon-pattern card now shows "Market reach: All markets" /
-  "N markets: France, USA" (tracks unsaved picks live) with an "Edit markets"
-  link that scrolls to that pattern's block in the Market targeting card;
-  `/app/features/amazon#market-targeting` and `#market-<key>` deep-link too.
-- The buy-box block in that card explains that the card's rows (delivery,
-  In-Stock, Ships-from, microcopy, badges…) are scoped separately, and offers
-  "Apply this selection to all Amazon patterns" — one click to make the whole
-  buy box (and the two cart-drawer patterns) follow the same markets; nothing
-  is written until Save.
-- Nothing about the storefront gate changed: `cfg.marketScopes.<key>` in the
-  Amazon embed's Liquid decides per request from `localization.market.handle`
-  (verified live on the store: `usa` / `france` / `germany` / `uk` /
-  `ireland` resolve; the store's 27 markets incl. the B2B market and the
-  draft "International" are all under the 50-market query cap).
-- Review-driven robustness on the same page (adversarial review, 20 agents):
-  a scope made only of markets the store no longer has now reads "hidden
-  everywhere" (and each stale handle is labelled "(market not found)")
-  instead of "1 market"; a per-product row save or translate run no longer
-  wipes unsaved page-level edits (the saved-state reset now keys on
-  content, not loader identity — pre-existing); un-ticking a market back to
-  the saved selection clears "Unsaved changes" (order-insensitive compare).
-- Validation: 21 new harness pins (suite now 7,316 checks; two pins
-  negative-tested).
 
 v13.1 — TRACKING PIPELINE FIXES (2026-08-14): the merchant reports analytics
 stuck at zero while `_cellexia_upsell: cart` order properties prove the

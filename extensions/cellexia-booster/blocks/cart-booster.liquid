@@ -9,7 +9,6 @@
 {%- assign cx_del_hidden = true -%}
 {%- endif -%}
 {%- assign cx_prev = cfg.preview -%}
-{%- assign cx_rw = cfg.rewards -%}
 {%- assign cx_prev_armed = false -%}
 {%- if cx_prev.armed == true -%}
 {%- assign cx_prev_armed = true -%}
@@ -89,13 +88,10 @@ endif
 if cfg.amazon.ctaCount == true
 assign cx_draft_azcta = true
 endif
-if cx_prev_flags.set_savings or cx_prev_flags.gift_tiers or cx_rw.setSavings.enabled or cx_rw.giftTiers.enabled
-assign cx_draft_rw = true
-endif
 -%}
 {%- endif -%}
 {%- assign cx_cart_draft_any = false -%}
-{%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow or cx_draft_crosssell or cx_draft_dispatch or cx_draft_delivery or cx_draft_azfree or cx_draft_azcta or cx_draft_azbadge or cx_draft_azbought or cx_draft_rw -%}
+{%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow or cx_draft_crosssell or cx_draft_dispatch or cx_draft_delivery or cx_draft_azfree or cx_draft_azcta or cx_draft_azbadge or cx_draft_azbought -%}
 {%- assign cx_cart_draft_any = true -%}
 {%- endif -%}
 <script>
@@ -119,7 +115,7 @@ window.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content
 } catch (e) {}
 })();
 </script>
-{%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_de.enabled == true or cfg.amazon.cartFreeLine == true or cfg.amazon.ctaCount == true or cfg.amazon.bestsellerBadge == true or cfg.amazon.boughtCount == true or cx_rw.setSavings.enabled or cx_rw.giftTiers.enabled or cx_cart_draft_any -%}
+{%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_de.enabled == true or cfg.amazon.cartFreeLine == true or cfg.amazon.ctaCount == true or cfg.amazon.bestsellerBadge == true or cfg.amazon.boughtCount == true or cx_cart_draft_any -%}
 {%- liquid
 assign threshold = cfg.global.freeShippingThreshold | default: 150
 assign cx_fs = cfg.freeShipping.byMarket[cx_market]
@@ -252,20 +248,6 @@ assign cx_eff_azbought = true
 endif
 endif
 endif
-assign cx_eff_ss = false
-if cx_rw.setSavings.enabled
-assign cx_scope = cfg.marketScopes.set_savings
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-assign cx_eff_ss = true
-endif
-endif
-assign cx_eff_gt = false
-if cx_rw.giftTiers.enabled
-assign cx_scope = cfg.marketScopes.gift_tiers
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
-assign cx_eff_gt = true
-endif
-endif
 -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
 <script type="application/json" id="cx-cart-config">
@@ -298,9 +280,7 @@ endif
 "crossSell": {{ cx_eff_crosssell }},
 "trustRow": {{ cx_eff_trustrow }},
 "azCartFreeLine": {{ cx_eff_azfree }},
-"azCtaCount": {{ cx_eff_azcta }},
-"setSavings": {{ cx_eff_ss }},
-"giftTiers": {{ cx_eff_gt }}
+"azCtaCount": {{ cx_eff_azcta }}
 },
 {%- if cx_prev_armed %}
 "preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}, "deliveryFormat": {{ cx_prev.draftConfig.deliveryFormatCart | json }}},
@@ -369,41 +349,6 @@ assign tp_stars_label = tp_stars | round: 1
 "delivery": {"live": {{ cx_eff_delivery }}, "format": {{ cx_de.formatCart | json }}, "pageLocale": {{ request.locale.iso_code | json }}, "minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}{% if cx_us %}, "us": {{ cx_us | json }}, "usAttr": {{ cart.attributes['_cx_us_state'] | json }}{% endif %}},
 "deliveryStrings": {"delivery.line": {{ 'delivery.line' | t: date: '@@DATE@@' | json }}, "delivery.range": {{ 'delivery.range' | t: from: '@@FROM@@', to: '@@TO@@' | json }}, "delivery.range_same": {{ 'delivery.range_same' | t: date: '@@DATE@@' | json }}, "delivery.timeline_ship": {{ 'delivery.timeline_ship' | t: date: '@@DATE@@' | json }}, "delivery.timeline_delivered": {{ 'delivery.timeline_delivered' | t: date: '@@DATE@@' | json }}, "delivery.box_title": {{ 'delivery.box_title' | t: date: '@@DATE@@' | json }}, "delivery.tooltip": {{ 'delivery.tooltip' | t: date: '@@DATE@@' | json }}, "delivery.badge": {{ 'delivery.badge' | t | json }}, "delivery.timeline_order": {{ 'delivery.timeline_order' | t | json }}, "delivery.box_sub": {{ 'delivery.box_sub' | t | json }}, "delivery.deliver_to": {{ 'delivery.deliver_to' | t | json }}, "delivery.select_state": {{ 'delivery.select_state' | t | json }}},
 {%- endif %}
-{%- if cx_eff_ss or cx_eff_gt or cx_draft_rw %}
-{%- liquid
-assign cx_gt = cx_rw.giftTiers
-capture cx_gl
-for tr in cx_gt.tiers
-for sl in tr.slots
-for op in sl
-echo op.handle
-echo '|'
-echo op.variantId
-echo ','
-endfor
-endfor
-endfor
-for sp in cx_gt.samplePool
-echo sp.handle
-echo '|'
-echo sp.variantId
-echo ','
-endfor
-endcapture
-assign cx_gl = cx_gl | split: ','
--%}
-"rw": {"ss": {{ cx_rw.setSavings | json }}, "gt": {{ cx_gt | json }}, "paused": {{ app.metafields.cellexia.gift_stock.value.paused[cx_market] | json }}, "gifts": {"_": 0
-{%- for g in cx_gl -%}
-{%- assign ghh = g | split: '|' | first -%}
-{%- assign gp = all_products[ghh] -%}
-{%- if gp.id -%}
-{%- assign gvid = g | split: '|' | last | split: '/' | last | plus: 0 -%}
-{%- assign gv = gp.variants | where: 'id', gvid | first | default: gp.variants.first -%}
-, "{{ gv.id }}": {"h": {{ gp.handle | json }}, "t": {{ gp.title | json }}, "c": {{ gv.price }}, "a": {{ gv.available }}}
-{%- endif -%}
-{%- endfor -%}
-}},
-{%- endif %}
 "overrides": {
 "volumeTitle": {{ block.settings.volume_title_override | default: '' | json }},
 "subscriptionTitle": {{ block.settings.subscription_title_override | default: '' | json }},
@@ -452,12 +397,6 @@ assign cx_gl = cx_gl | split: ','
 {%- for cx_bc in cx_btc %}
 "amazon.bought_count.{{ cx_bc }}": {{ 'amazon.bought_count.' | append: cx_bc | t: n: '@@N@@' | json }},
 {%- endfor %}
-{%- if cx_eff_ss or cx_eff_gt or cx_draft_rw %}
-{%- assign cx_rwk = 'meter_gift_away,meter_gift_unlocked,meter_all,set_add_one,set_add_more,set_saving,set_title,subtotal,free,gift_tag,gift_added,gift_back,gift_unavailable,remove,swap,sample_set,meter_gift_away_plain,set_title_more,fbt_add_save_both' | split: ',' -%}
-{%- for k in cx_rwk %}
-"rw.{{ k }}": {{ 'rewards.' | append: k | t: amount: '@@A@@', pct: '@@P@@', count: '@@N@@', code: '@@C@@', gift: '@@G@@', value: '@@V@@' | json }},
-{%- endfor %}
-{%- endif %}
 "a11y.loading": {{ 'a11y.loading' | t | json }},
 "a11y.close": {{ 'a11y.close' | t | json }}
 },
@@ -489,7 +428,7 @@ assign cx_gl = cx_gl | split: ','
 {%- endfor -%}
 ]}{%- unless forloop.last -%},{%- endunless -%}
 {%- endfor -%}
-]{%- if item.product.tags contains 'sample-sachet' -%}, "s": 1{%- endif -%}
+]
 }
 {%- endunless -%}
 {%- endfor -%}

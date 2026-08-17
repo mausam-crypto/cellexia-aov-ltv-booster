@@ -237,31 +237,5 @@
       "one": "Doorgaan naar afrekenen ({{ count }} artikel)",
       "other": "Doorgaan naar afrekenen ({{ count }} artikelen)"
     }
-  },
-  "rewards": {
-    "meter_gift_away": "Nog {{ amount }} tot een gratis {{ gift }} (ter waarde van {{ value }})",
-    "meter_gift_unlocked": "Gratis cadeau ontgrendeld: {{ gift }}",
-    "meter_all": "Alle voordelen ontgrendeld – veel plezier!",
-    "set_add_one": "Voeg nog 1 product toe en bespaar {{ pct }}% op alles",
-    "set_add_more": "Voeg nog {{ count }} producten toe en bespaar {{ pct }}% op alles",
-    "set_saving": "Setkorting −{{ amount }} ({{ code }})",
-    "set_title": "Maak je set compleet en bespaar {{ pct }}%",
-    "subtotal": "Subtotaal",
-    "free": "GRATIS",
-    "gift_tag": "Gratis cadeau",
-    "gift_added": "Gratis cadeau toegevoegd aan je winkelwagen",
-    "gift_back": "Voeg je gratis cadeau weer toe",
-    "gift_unavailable": "Je gratis cadeau kan op dit moment niet aan deze bestelling worden toegevoegd",
-    "remove": "Verwijderen",
-    "swap": "Cadeau wisselen",
-    "sample_set": "Proefset",
-    "pdp_line": "Voeg een willekeurig tweede product toe en bespaar {{ pct }}% op beide",
-    "pdp_line_next": "Voeg dit toe aan je winkelwagen en bespaar {{ pct }}% op je set",
-    "fbt_caption": "Koop alle {{ count }} samen en bespaar minstens {{ pct }}%",
-    "fbt_add_save": "Alle {{ count }} toevoegen en {{ pct }}% besparen",
-    "similar_caption": "Voeg een van deze toe en bespaar {{ pct }}% op beide",
-    "meter_gift_away_plain": "Nog {{ amount }} tot een gratis {{ gift }}",
-    "set_title_more": "Maak je set compleet — {{ pct }}% korting op alles wat je toevoegt",
-    "fbt_add_save_both": "Beide toevoegen en {{ pct }}% besparen"
   }
 }

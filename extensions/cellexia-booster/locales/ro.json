@@ -244,31 +244,5 @@
       "few": "Finalizează comanda ({{ count }} produse)",
       "other": "Finalizează comanda ({{ count }} de produse)"
     }
-  },
-  "rewards": {
-    "meter_gift_away": "Mai ai {{ amount }} până la un cadou gratuit: {{ gift }} (în valoare de {{ value }})",
-    "meter_gift_unlocked": "Cadou gratuit deblocat: {{ gift }}",
-    "meter_all": "Toate recompensele deblocate — bucură-te de ele!",
-    "set_add_one": "Adaugă încă 1 produs și economisește {{ pct }}% la tot",
-    "set_add_more": "Adaugă încă {{ count }} produse și economisește {{ pct }}% la tot",
-    "set_saving": "Reducere de set −{{ amount }} ({{ code }})",
-    "set_title": "Completează-ți setul și economisește {{ pct }}%",
-    "subtotal": "Subtotal",
-    "free": "GRATUIT",
-    "gift_tag": "Cadou gratuit",
-    "gift_added": "Cadoul gratuit a fost adăugat în coșul tău",
-    "gift_back": "Adaugă cadoul gratuit înapoi",
-    "gift_unavailable": "Cadoul tău gratuit nu poate fi aplicat acestei comenzi momentan",
-    "remove": "Elimină",
-    "swap": "Schimbă cadoul",
-    "sample_set": "Set de mostre",
-    "pdp_line": "Adaugă orice al doilea produs și economisește {{ pct }}% la ambele",
-    "pdp_line_next": "Adaugă-l în coș și economisește {{ pct }}% la setul tău",
-    "fbt_caption": "Cumpără toate cele {{ count }} împreună și economisește cel puțin {{ pct }}%",
-    "fbt_add_save": "Adaugă toate cele {{ count }} și economisește {{ pct }}%",
-    "similar_caption": "Adaugă oricare dintre acestea și economisește {{ pct }}% la ambele",
-    "meter_gift_away_plain": "Mai ai {{ amount }} până la un cadou gratuit: {{ gift }}",
-    "set_title_more": "Completează-ți setul — {{ pct }}% reducere la tot ce adaugi",
-    "fbt_add_save_both": "Adaugă ambele și economisește {{ pct }}%"
   }
 }
