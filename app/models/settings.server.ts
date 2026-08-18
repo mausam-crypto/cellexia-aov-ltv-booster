@@ -3367,7 +3367,10 @@ export function sanitizeSettings(
     }
 
     const fs = next.rewards.freeShip;
-    if (typeof fs.enabled !== "boolean") fs.enabled = D.freeShip.enabled;
+    // v15.3: the free-shipping guarantee is RETIRED — never on, whatever
+    // the payload says (Shopify rejects the SHIPPING-class app discount with
+    // combinable settings, and the merchant asked to drop the feature).
+    fs.enabled = false;
     fs.minUnits = Math.round(clampNumber(fs.minUnits, 0, 50, D.freeShip.minUnits));
     if (typeof fs.byThreshold !== "boolean") fs.byThreshold = D.freeShip.byThreshold;
     fs.scope = sanitizeMarketScope(fs.scope);

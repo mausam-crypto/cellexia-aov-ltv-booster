@@ -1,9 +1,9 @@
 api_version = "2025-07"
-uid = "f32f3701-7844-e198-28d1-f78b34c358c3bf1f83fb"
 
 [[extensions]]
 name = "Cellexia delivery"
 handle = "cellexia-checkout-delivery"
+uid = "f32f3701-7844-e198-28d1-f78b34c358c3bf1f83fb"
 type = "ui_extension"
 description = "Delivery estimate + delivery guarantee (v6.0) rendered under the shipping options or as a freely placeable checkout block."
 

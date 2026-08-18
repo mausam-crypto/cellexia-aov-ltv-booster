@@ -62,7 +62,6 @@ import { FeaturePageHeader } from "../components/FeaturePageHeader";
 import { ReadinessCard, type ReadinessRow } from "../components/rewards/ReadinessCard";
 import { SetSavingsTab } from "../components/rewards/SetSavingsTab";
 import { GiftsTab } from "../components/rewards/GiftsTab";
-import { FreeShippingTab } from "../components/rewards/FreeShippingTab";
 import { MarketsTab } from "../components/rewards/MarketsTab";
 import {
   CAPS,
@@ -767,19 +766,17 @@ function serializeForCompare(state: RewardsFormState): string {
 // Page
 // ---------------------------------------------------------------------------
 
-const TAB_IDS = ["set-savings", "gifts", "free-shipping", "markets"] as const;
+const TAB_IDS = ["set-savings", "gifts", "markets"] as const;
 type TabId = (typeof TAB_IDS)[number];
 const TABS: { id: TabId; content: string; panelID: string }[] = [
   { id: "set-savings", content: "Set savings", panelID: "rw-panel-ss" },
   { id: "gifts", content: "Free gifts", panelID: "rw-panel-gt" },
-  { id: "free-shipping", content: "Free shipping", panelID: "rw-panel-fs" },
   { id: "markets", content: "Markets & go live", panelID: "rw-panel-mk" },
 ];
 
 function tabFromHash(hash: string): number {
-  if (hash === "#market-targeting" || hash.startsWith("#market-")) return 3;
+  if (hash === "#market-targeting" || hash.startsWith("#market-")) return 2;
   if (hash === "#gifts") return 1;
-  if (hash === "#free-shipping") return 2;
   return 0;
 }
 
@@ -1120,7 +1117,6 @@ export default function RewardsFeaturesPage() {
   const maxGiftLinesError = intError(state.gt.maxGiftLines, 1, CAPS.maxGiftLines);
   const stockDaysError = intError(state.gt.stockFloorDays, 0, 60);
   const stockMinError = intError(state.gt.stockFloorMinUnits, 0, 100000);
-  const fsMinUnitsError = intError(state.fs.minUnits, 0, 50);
   const poolError = samplePoolError(state.gt.samplePool, poolCap);
 
   /** Every problem that disables Save, with the tab (and Advanced section)
@@ -1146,9 +1142,6 @@ export default function RewardsFeaturesPage() {
   }
   if (poolError !== undefined) {
     saveProblems.push({ tab: 1, advanced: true, label: "Free gifts → Advanced → Sample pool" });
-  }
-  if (fsMinUnitsError !== undefined) {
-    saveProblems.push({ tab: 2, advanced: false, label: "Free shipping → Minimum units" });
   }
   const hasErrors = saveProblems.length > 0;
   const openProblem = (problem: { tab: number; advanced: boolean }) => {
@@ -1235,7 +1228,7 @@ export default function RewardsFeaturesPage() {
   };
 
   const goToMarkets = () => {
-    setTab(3);
+    setTab(2);
     if (typeof document !== "undefined") {
       setTimeout(() => document.getElementById("market-targeting")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     }
@@ -1245,7 +1238,7 @@ export default function RewardsFeaturesPage() {
   // ---- Readiness checklist ------------------------------------------------
   const ladderCodes = state.ss.tiers.map((row) => row.code.trim().toUpperCase()).filter((c) => CODE_PATTERN.test(c));
   const missingCodes = ladderCodes.filter((code) => !nodesView.kit[code]);
-  const codesReady = missingCodes.length === 0 && nodesView.gift !== "" && (!state.fs.enabled || nodesView.ship !== "");
+  const codesReady = missingCodes.length === 0 && nodesView.gift !== "";
   // Collisions: the fresh Connect result when there is one, else the
   // persisted server-written list (rewards.setSavings.blockedCodes).
   const collisionErrors =
@@ -1298,12 +1291,12 @@ export default function RewardsFeaturesPage() {
       tone: codesReady ? "success" : connectResult && !connectResult.ok ? "critical" : "attention",
       badge: codesReady ? "Done" : "To do",
       sentence: codesReady
-        ? `Shopify knows ${ladderCodes.join(", ")} plus the free-gift and free-shipping discounts. Press the button again after changing a tier.`
+        ? `Shopify knows ${ladderCodes.join(", ")} plus the free-gift discount. Press the button again after changing a tier.`
         : !functionId && !nodesView.gift
           ? "The app's discounts do not exist in Shopify yet — press the button once. Nothing works at checkout until then."
-          : `Missing: ${[...missingCodes, ...(nodesView.gift ? [] : ["free gifts"]), ...(!nodesView.ship && state.fs.enabled ? ["free shipping"] : [])].join(", ") || "nothing"} — press the button to create them.`,
+          : `Missing: ${[...missingCodes, ...(nodesView.gift ? [] : ["free gifts"])].join(", ") || "nothing"} — press the button to create them.`,
       details: [
-        `Codes the app will create or update: ${ladderCodes.length > 0 ? ladderCodes.join(", ") : "none (add a tier first)"}; plus one automatic free-gift discount and one automatic free-shipping discount.`,
+        `Codes the app will create or update: ${ladderCodes.length > 0 ? ladderCodes.join(", ") : "none (add a tier first)"}; plus one automatic free-gift discount.`,
         "Discounts you created yourself (for example KIT2 or KIT5) are never changed or deleted. If one of them uses the same code as a tier, you will see it here — change the code in the tier table, or delete that discount yourself.",
         ...(connectResult && connectResult.ok ? [connectResult.summary] : []),
       ],
@@ -1375,7 +1368,7 @@ export default function RewardsFeaturesPage() {
   return (
     <Page
       title="Rewards"
-      subtitle="Set savings, free gifts and free shipping"
+      subtitle="Set savings and free gifts"
       backAction={{ content: "Features", url: "/app/features" }}
       primaryAction={{ content: "Save", onAction: handleSave, disabled: !dirty || hasErrors, loading: isSaving }}
       secondaryActions={[{ content: "Discard", onAction: handleDiscard, disabled: !dirty || isSaving }]}
@@ -1521,17 +1514,6 @@ export default function RewardsFeaturesPage() {
                   />
                 ) : null}
                 {tab === 2 ? (
-                  <FreeShippingTab
-                    fs={state.fs}
-                    setFs={setFs}
-                    minUnitsError={fsMinUnitsError}
-                    explicitThresholds={explicitFreeShip}
-                    explicitThresholdCount={Object.keys(settings.freeShipping.byMarket).length}
-                    markets={markets}
-                    nodeCreated={nodesView.ship !== ""}
-                  />
-                ) : null}
-                {tab === 3 ? (
                   <MarketsTab
                     markets={markets}
                     scopes={state.scopes}

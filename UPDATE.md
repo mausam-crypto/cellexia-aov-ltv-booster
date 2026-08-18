@@ -475,6 +475,52 @@ Discount Function and the checkout block all changed.
     "Combinations → Product discounts" on KIT2 … KIT10 so Shopify itself
     refuses stacking with SET codes on every checkout surface, Apple/Google
     Pay included.
+- **v15.2 (2026-08-17, resilience)** — `RewardsState` reads never throw (a
+  missing table / stale client logs one hint and degrades to "no rewards
+  state"), `saveRewardsState` reports a readable error to the Rewards page,
+  and the paid-order webhook falls back to the pre-v14 columns when
+  `kitCode`/`giftLines` are missing. Adds §5b (triage). Deploy: both halves,
+  same as v15 (no new steps).
+- **v15.3 (2026-08-17)** — the **free-shipping guarantee is retired** (your
+  call: it added complexity, and Shopify rejected the shipping-class app
+  discount: "automaticAppDiscount: is not supported with these combines_with
+  settings"). "Create discount codes" now creates only the SET codes and the
+  one automatic free-gift discount; the Free shipping tab is gone; the setting
+  is forced off. If an earlier Connect already created a "Cellexia free
+  shipping" discount in your store, it stays exactly as it is (the app never
+  touches or removes it) and it never applies anything (its rule is off) — you
+  may delete it by hand in Discounts if you like. The root cause of the
+  "application error" you saw was confirmed as the Postgres instance running
+  out of disk (crash-recovery loop), not the code; §5b stays as a general
+  triage guide.
+- **v15.4 (2026-08-17, boot resilience)** — the container no longer dies when
+  the database is briefly unreachable. Three changes: (1) `npm run
+  docker-start` is now `node scripts/boot.mjs`: it generates the Prisma
+  Client (offline), **starts the server immediately**, then applies schema
+  changes in the background with retries and back-off (15 s → 60 s, up to 60
+  min, `CELLEXIA_DB_APPLY_MAX_MINUTES`; `CELLEXIA_SKIP_DB_APPLY=1` to skip;
+  `CELLEXIA_DB_APPLY_BLOCKING=1` for the old order). Before, `npm run setup &&
+  npm run start` exited the container whenever `prisma db push` could not
+  reach the database, and the platform restarted it into the same window.
+  (2) The session storage is outage-tolerant: the stock Shopify Prisma
+  session storage probed the `Session` table while the server module loaded
+  and, if the database was down for ~10 s, stored a permanently rejected
+  promise (an unhandled rejection — Node exits the process) and stayed broken
+  until a restart; ours never lets that probe become an unhandled rejection
+  and re-checks readiness on the next request, so it heals by itself when the
+  database is back. (3) A process guard logs unhandled rejections /
+  uncaught exceptions instead of exiting (requests that hit a real error
+  still get their 5xx). Also new: `GET /healthz` answers `{ok:true}` without
+  touching the database — point Render/Heroku health checks at it so a
+  database outage never triggers restart loops. During a database outage the
+  admin and the widgets that need settings still fail per request (as they
+  must), but the process stays up and everything recovers the moment the
+  database does, with no restart. Verified locally with an unreachable
+  Postgres URL (server serves `/` while the schema apply retries) and with a
+  mocked outage (session storage fails cleanly, heals, fails again, heals).
+  Deploy: server half only for this item; if your start command is
+  `npm run start` (Render native) nothing changes except that `/healthz`
+  exists; if it is `npm run docker-start` you get the new boot automatically.
 
 v14 — REWARDS: SET SAVINGS (KIT TIERS) + GIFT TIERS + FREE-SHIPPING GUARANTEE
 (2026-08-16). Two new features, both OFF by default, both per-market:
@@ -553,7 +599,7 @@ v14 — REWARDS: SET SAVINGS (KIT TIERS) + GIFT TIERS + FREE-SHIPPING GUARANTEE
   same free-shipping sentence, FBT reads "Add both & save 5%" for two rows.
   Three new wording keys (meter_gift_away_plain, set_title_more,
   fbt_add_save_both) in 15 languages; ar/el fall back to English for them.
-- Validation: 27 suites / 8,312 checks (was 25 / 7,316): new sims
+- Validation: 27 suites / 8,313 checks (was 25 / 7,316): new sims
   `rewards-tiers` (twin helper byte-identity across both assets + tier
   fixtures) and `rewards-function` (87 checks over the Function's pure logic),
   ~120 v14 pins in the harness. `npm run validate` must print GREEN before
@@ -1372,6 +1418,72 @@ change (a blank quote stores as an empty string).
 
 No new locale keys and no Liquid change — the band reuses the existing
 eyebrow/aria strings, so nothing to re-translate.
+
+## 5b. v15.2 — "Application error / can't reach the app" after deploying: triage in 5 minutes
+
+> Update (v15.4): the root cause of the real incident was the Postgres
+> instance running out of disk and crash-looping. Since v15.4 the app server
+> survives such outages (see §5 v15.4) — the admin and settings-backed
+> widgets fail per request while the database is down and recover by
+> themselves; the process never exits. Health-check the platform on
+> `/healthz`.
+
+Symptoms reported after the first v15 deploy: the admin showed an application
+error, and on the storefront the "As seen in press" widget and the in-cart
+cross-sell disappeared while the in-cart 2/3-unit upgrade kept working. All
+three come from ONE cause: the **app server** was not answering. The upgrade
+tiles are rendered from the storefront config alone; press and cross-sell
+fetch their data from the app server through the app proxy; the admin IS the
+app server. Nothing in the theme extension can cause this. Facts to know:
+
+- A fresh unzip of this ZIP boots and serves locally (`npm ci && npm run build
+  && npm run start` → `GET /` 200, auth redirect 410, proxy signature checks 400
+  as expected). So the failure is in the hosting environment, not the code.
+- **v15.2 hardening in this ZIP**: the server no longer needs the new database
+  objects to work. If `RewardsState` / the two `OrderStat` columns are missing
+  (the `prisma db push` step was skipped), every rewards read degrades to
+  "no rewards state" and logs ONE line telling you to run `db push`; the
+  paid-order webhook falls back to the pre-v14 columns; the Rewards page shows
+  the error in a banner instead of failing. Nothing else in the app touches
+  those objects on boot.
+
+Do this, in order, and send us the first error you find:
+
+1. **Host logs** (Render → Logs / Heroku → `heroku logs --tail`): copy the FIRST
+   stack trace after the last boot ("npm run start" / "remix-serve"). Typical
+   lines and what they mean:
+   - `Cannot read properties of undefined (reading 'findUnique')` /
+     `The table ... RewardsState does not exist` → the DB step was skipped:
+     `npx prisma db push --schema prisma/schema.postgres.prisma` with the
+     production `DATABASE_URL` (see §2). With v15.2 this can no longer take the
+     app down; without v15.2 it only broke the Rewards page and health checks.
+   - `structuredClone is not defined` / `AbortSignal.timeout is not a function`
+     → Node too old: the app needs Node ≥ 18.20 (`engines` in package.json).
+     Set the host's Node version (Render: `NODE_VERSION` env / `.node-version`).
+   - `Error: listen EADDRINUSE` / port binding → the start command changed;
+     it must remain `npm run start` (or `npm run docker-start` in Docker).
+   - Prisma `P1001` / `P1000` → the database is unreachable or the credentials
+     changed; nothing to do with this update.
+   - Build log: `npm ci` fails on `EUSAGE` (lockfile out of sync) → run
+     `npm install` locally, commit the lockfile (this ZIP's lockfile is in sync;
+     a fresh `npm ci` passes here) — or the host built an old tree.
+2. **Confirm the server answers**: `curl -I https://<your-app-host>/` → 200.
+   Then `https://<store>.myshopify.com/apps/cellexia/track` in a browser →
+   `{"ok":true,"service":"cellexia-booster"}`. As soon as this is green,
+   press and the in-cart cross-sell come back on their own (no extension
+   redeploy needed).
+3. **Environment**: `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`,
+   `DATABASE_URL` unchanged; if you set `SCOPES`, it must equal the toml
+   scopes line (§1) including the three new scopes; no other new variables.
+4. **Database**: `npx prisma db push --schema prisma/schema.postgres.prisma`
+   must print "Your database is now in sync with your Prisma schema" (it is
+   additive: one table, two columns).
+5. **Approve the new scopes** when the app asks on first open (write_discounts,
+   read_inventory, read_locations).
+6. If you cannot get the server up: roll the app SERVER back to the previous
+   deploy on the host (Render: Rollback) — the theme extension can stay on v15
+   safely (with both rewards features off it emits nothing new and calls no
+   new endpoints; press/cross-sell only need the server to be up).
 
 ## 6. If something looks wrong
 

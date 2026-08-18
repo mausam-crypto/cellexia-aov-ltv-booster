@@ -2852,8 +2852,8 @@ const EVIDENCE = {
     "/^postgres(ql)?:\\/\\//.test(url)",
     "process.env.PRISMA_SCHEMA",
     ".generated-client.json",
-    'runWithRetry(["db", "push", "--schema", schema])',
-    'runWithRetry(["migrate", "deploy", "--schema", schema])',
+    'run(["db", "push", "--schema", schema])',
+    'run(["migrate", "deploy", "--schema", schema])',
   ]) {
     ok(selector.includes(anchor), `v8.5: selector anchor present: ${anchor}`);
   }

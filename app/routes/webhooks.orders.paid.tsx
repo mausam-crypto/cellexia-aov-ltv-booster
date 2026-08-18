@@ -65,6 +65,8 @@ const COUNTRY_CODE_PATTERN = /^[A-Za-z]{2}$/;
  * `giftLines` = number of lines carrying the `_cellexia_gift` property, so
  * the dashboard can report KIT redemption share and gift attach rate.
  */
+let orderStatColumnsWarned = false;
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, topic, payload, admin } = await authenticate.webhook(request);
   console.log(`Received ${topic} webhook for ${shop}`);
@@ -185,26 +187,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     console.error(`Market attribution failed for ${shop}:`, error);
   }
 
-  await db.orderStat.upsert({
-    where: { orderId: String(order.id) },
-    create: {
-      shop,
-      orderId: String(order.id),
-      totalPrice: parseFloat(shopMoney?.amount ?? order.total_price ?? "0") || 0,
-      currency: shopMoney?.currency_code ?? order.currency ?? "",
-      lineCount: lineItems.length,
-      unitCount,
-      hasSubscription,
-      hasProtection,
-      upsellAttributed,
-      kitCode,
-      giftLines,
-      market,
-      countryCode,
-      processedAt: processedAt ? new Date(processedAt) : new Date(),
-    },
-    update: {},
-  });
+  const baseRow = {
+    shop,
+    orderId: String(order.id),
+    totalPrice: parseFloat(shopMoney?.amount ?? order.total_price ?? "0") || 0,
+    currency: shopMoney?.currency_code ?? order.currency ?? "",
+    lineCount: lineItems.length,
+    unitCount,
+    hasSubscription,
+    hasProtection,
+    upsellAttributed,
+    market,
+    countryCode,
+    processedAt: processedAt ? new Date(processedAt) : new Date(),
+  };
+  try {
+    await db.orderStat.upsert({
+      where: { orderId: String(order.id) },
+      create: { ...baseRow, kitCode, giftLines },
+      update: {},
+    });
+  } catch (error) {
+    // v15.2: a production database that has not received the v14 columns
+    // (kitCode / giftLines) yet must not lose order analytics — record the
+    // pre-v14 shape and say so once per boot.
+    if (!orderStatColumnsWarned) {
+      orderStatColumnsWarned = true;
+      console.error(
+        "[orders/paid] OrderStat write with kitCode/giftLines failed — falling back to the pre-v14 columns; run `npx prisma db push` (UPDATE.md §2):",
+        error instanceof Error ? error.message : error,
+      );
+    }
+    await db.orderStat.upsert({
+      where: { orderId: String(order.id) },
+      create: baseRow,
+      update: {},
+    });
+  }
 
   return new Response();
 };

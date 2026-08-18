@@ -7,11 +7,11 @@
 # export values map to the camelCase named exports of src/index.js
 # (cart-lines-discounts-generate-run -> cartLinesDiscountsGenerateRun).
 api_version = "2025-10"
-uid = "f7ee5967-6a19-15ab-06e2-81dc9b6faa9fb7cca9c6"
 
 [[extensions]]
 name = "Cellexia rewards"
 handle = "cellexia-rewards"
+uid = "f7ee5967-6a19-15ab-06e2-81dc9b6faa9fb7cca9c6"
 type = "function"
 description = "Set savings (KIT tiers), free gift lines and the free-shipping guarantee for Cellexia AOV & LTV Booster."
 

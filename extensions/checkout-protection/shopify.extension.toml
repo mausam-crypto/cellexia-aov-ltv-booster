@@ -1,9 +1,9 @@
 api_version = "2025-07"
-uid = "d5f76391-3ca3-09d6-0009-f3f910f978d21791d3d9"
 
 [[extensions]]
 name = "Cellexia Order Protection"
 handle = "cellexia-checkout-protection"
+uid = "d5f76391-3ca3-09d6-0009-f3f910f978d21791d3d9"
 type = "ui_extension"
 description = "Opt-in Order Protection toggle (loss, theft and transit damage) rendered as a checkout block."
 

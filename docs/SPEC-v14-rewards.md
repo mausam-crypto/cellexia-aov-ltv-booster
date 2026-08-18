@@ -899,3 +899,8 @@ the sync of the updated settings; disarmPreview two `resyncMetafields`
 calls under `!sync.ok`; readiness copy without health ids; health row
 "Discount codes" reads `blockedCodes`; cart JS swaps `PREVIEW.rw` only
 under the featureOn guard.
+
+
+## v15.3 (2026-08-17)
+
+The free-shipping guarantee (`rewards.freeShip`, the SHIPPING-class automatic discount "Cellexia free shipping", the Function's delivery-options target) is RETIRED: `sanitizeSettings` forces `freeShip.enabled = false`, `connectRewardsDiscounts` no longer creates/updates the shipping node, the admin has no Free shipping tab. Shopify rejects a SHIPPING-class app discount created with `combinesWith.shippingDiscounts = true` ("automaticAppDiscount: is not supported with these combines_with settings"). The Function target stays in the extension (inert: `fs.on` is always false); a previously created node is left untouched.

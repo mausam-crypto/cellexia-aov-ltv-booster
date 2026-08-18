@@ -9,8 +9,12 @@ import {
   AppDistribution,
   shopifyApp,
 } from "@shopify/shopify-app-remix/server";
-import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
+import { ResilientPrismaSessionStorage } from "./services/session-storage.server";
+import { installProcessGuards } from "./process-guards.server";
+
+// v15.4: the process must survive a database outage (see process-guards.server.ts).
+installProcessGuards();
 
 const shopify = shopifyApp({
   hooks: {
@@ -46,7 +50,8 @@ const shopify = shopifyApp({
   appUrl:
     process.env.SHOPIFY_APP_URL || process.env.RENDER_EXTERNAL_URL || "",
   authPathPrefix: "/auth",
-  sessionStorage: new PrismaSessionStorage(prisma),
+  // v15.4: DB-outage-tolerant session storage (see services/session-storage.server.ts).
+  sessionStorage: new ResilientPrismaSessionStorage(prisma),
   // Cellexia runs this as a custom app on its own Plus store. Switch to
   // AppDistribution.AppStore if it is ever listed publicly.
   distribution: AppDistribution.SingleMerchant,

@@ -199,8 +199,27 @@ function parseGiftStock(raw: string): GiftStockState {
   return out;
 }
 
+let rewardsStateWarned = false;
+
 export async function getRewardsState(shop: string): Promise<RewardsStateSnapshot> {
-  const row = await prisma.rewardsState.findUnique({ where: { shop } });
+  // v15.2: NEVER throw. A production database that has not received the
+  // v14 `RewardsState` table yet (prisma db push not run) or a stale Prisma
+  // client (no `rewardsState` delegate) must degrade to "no rewards state"
+  // — the app, its proxies and every other feature keep working; only the
+  // rewards features stay dark until the migration lands.
+  let row: { functionId: string; nodes: string; giftStock: string; updatedAt: Date } | null = null;
+  try {
+    row = await prisma.rewardsState.findUnique({ where: { shop } });
+  } catch (error) {
+    if (!rewardsStateWarned) {
+      rewardsStateWarned = true;
+      console.error(
+        "[rewards] RewardsState is not readable — run `npx prisma db push` (see UPDATE.md §2/§3); rewards stay dark until then:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+    row = null;
+  }
   if (!row) {
     return {
       shop,
@@ -231,11 +250,19 @@ export async function saveRewardsState(
   if (typeof patch.functionId === "string") data.functionId = patch.functionId;
   if (patch.nodes) data.nodes = JSON.stringify(patch.nodes);
   if (patch.giftStock) data.giftStock = JSON.stringify(patch.giftStock);
-  await prisma.rewardsState.upsert({
-    where: { shop },
-    create: { shop, ...data },
-    update: data,
-  });
+  try {
+    await prisma.rewardsState.upsert({
+      where: { shop },
+      create: { shop, ...data },
+      update: data,
+    });
+  } catch (error) {
+    // v15.2: surface as a plain Error the callers already report in their
+    // banners (Connect / Refresh stock) instead of a 500.
+    throw new Error(
+      `Rewards storage is not ready (run \`npx prisma db push\` on the production database, see UPDATE.md §2): ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   return getRewardsState(shop);
 }
 
@@ -817,7 +844,13 @@ export async function connectRewardsDiscounts(
     }
   };
   await upsertAutomatic("gift", GIFT_DISCOUNT_TITLE, "PRODUCT");
-  await upsertAutomatic("ship", SHIP_DISCOUNT_TITLE, "SHIPPING");
+  // v15.3: the free-shipping guarantee is RETIRED (merchant decision — it
+  // added complexity, and Shopify rejects a SHIPPING-class app discount that
+  // "combines with shipping discounts": "automaticAppDiscount: is not
+  // supported with these combines_with settings"). No shipping node is
+  // created or updated any more; an existing "Cellexia free shipping" node
+  // from an earlier Connect is left untouched (the Function's delivery
+  // target stays inert because rewards.freeShip.enabled is forced off).
 
   // 4. persist + unit map + rewards metafield --------------------------------
   try {

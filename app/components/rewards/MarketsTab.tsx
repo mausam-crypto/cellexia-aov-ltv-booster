@@ -124,9 +124,6 @@ export function MarketsTab({
             <Text as="p" variant="bodySm">
               {liveLine("Free gifts", gtEnabled, scopes.gift_tiers)}
             </Text>
-            <Text as="p" variant="bodySm">
-              {liveLine("Free shipping", fsEnabled, fsScope)}
-            </Text>
           </BlockStack>
           <Divider />
           <InlineStack gap="200">
