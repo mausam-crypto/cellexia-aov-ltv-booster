@@ -157,23 +157,23 @@
     "eyebrow": "Polecane przez dermatologów",
     "count_headline": {
       "one": "{{ n }} dermatolog poleca Cellexię",
-      "few": "{{ n }} dermatologów poleca Cellexię",
+      "few": "{{ n }} dermatolodzy polecają Cellexię",
       "many": "{{ n }} dermatologów poleca Cellexię",
-      "other": "{{ n }} dermatologów poleca Cellexię"
+      "other": "{{ n }} dermatologa poleca Cellexię"
     },
     "shown_of": "Wyświetlono @@SHOWN@@ z @@TOTAL@@",
     "show_more": "Pokaż więcej",
     "read_full": "Przeczytaj całą rekomendację",
-    "description": "Zweryfikowane rekomendacje od licencjonowanych dermatologów. Przeczytaj, co mówią o produkcie, Cellexii i jej podejściu do pielęgnacji skóry.",
+    "description": "Zweryfikowane rekomendacje lekarzy dermatologów. Przeczytaj, co mówią o produkcie, o marce Cellexia i jej podejściu do pielęgnacji skóry.",
     "badge_headline": {
       "one": "Polecany przez {{ n }} dermatologa",
       "few": "Polecany przez {{ n }} dermatologów",
       "many": "Polecany przez {{ n }} dermatologów",
-      "other": "Polecany przez {{ n }} dermatologów"
+      "other": "Polecany przez {{ n }} dermatologa"
     },
-    "badge_link": "Przeczytaj ich profesjonalne oceny",
-    "badge_alt": "Zweryfikowane profesjonalne oceny",
-    "badge_chip": "Licencjonowani dermatolodzy"
+    "badge_link": "Przeczytaj ich opinie eksperckie",
+    "badge_alt": "Zweryfikowane opinie eksperckie",
+    "badge_chip": "Lekarze dermatolodzy"
   },
   "results": {
     "banner_verified": "Zobacz efekty {{ count }} zweryfikowanych klientów Cellexii.",

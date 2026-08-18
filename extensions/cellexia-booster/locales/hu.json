@@ -158,7 +158,7 @@
     "shown_of": "Megjelenítve: @@SHOWN@@ / @@TOTAL@@",
     "show_more": "Továbbiak megjelenítése",
     "read_full": "Olvasd el a teljes ajánlást",
-    "description": "Engedéllyel rendelkező bőrgyógyászok ellenőrzött ajánlásai. Olvasd el, mit mondanak a termékről, a Cellexiáról és a bőrápolási megközelítéséről.",
+    "description": "Bőrgyógyász szakorvosok ellenőrzött ajánlásai. Olvasd el, mit mondanak a termékről, a Cellexiáról és bőrápolási szemléletéről.",
     "badge_headline": {
       "one": "{{ n }} bőrgyógyász ajánlja",
       "other": "{{ n }} bőrgyógyász ajánlja"

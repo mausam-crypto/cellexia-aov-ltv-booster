@@ -521,6 +521,47 @@ Discount Function and the checkout block all changed.
   Deploy: server half only for this item; if your start command is
   `npm run start` (Render native) nothing changes except that `/healthz`
   exists; if it is `npm run docker-start` you get the new boot automatically.
+- **v15.5 (2026-08-17, dermatologist recommendations: native copy in every
+  language)** — you reported the French badge/overlay copy ("Découvrez nos
+  dermatologues…", "Tous les dermatologues d'49", em dashes everywhere). Root
+  cause: the overlay text and your two badge overrides reached shoppers only
+  through DeepL, which treated the `{n}` count as a name and added "nos"
+  (our) dermatologists. Fix, **both halves must be redeployed** (extension
+  locale files AND the app server):
+  - **Built-in native translations.** The overlay intro, FAQ heading, three
+    FAQ dropdowns, dermatologist-list heading, the panel "Read all N
+    endorsements" pill and your two live badge texts ("Dermatologists'
+    choice", "View dermatologists & learn more below") now ship with
+    hand-written translations reviewed by native speakers for French,
+    Spanish, German, Italian, Dutch, Portuguese, Danish, Swedish, Norwegian,
+    Finnish, Polish, Romanian, Hungarian and Greek (Japanese and Arabic got a
+    light error-only pass). They serve the moment the server is deployed —
+    no "Translate" click needed — and take precedence over the old DeepL
+    text. In the endorsements page → Translations they show as
+    "(built-in)"; if you edit one there, your wording wins (manual), and
+    clearing your edit goes back to the built-in text. If you ever change
+    the English source text of one of these fields, the built-in translation
+    stops applying for that field and DeepL translates your new wording as
+    before.
+  - **No em dashes anywhere in this module**, in every language including
+    English (the intro and one FAQ answer were rewritten; "board
+    certification" is now "specialist certification"). Your stored English
+    copies of the old default texts upgrade automatically on load and on the
+    next save (only fields that still hold the old default verbatim; anything
+    you edited is left exactly as you wrote it).
+  - **Locale-file corrections** (theme extension, `endo.*` only): Romanian
+    plurals were wrong ("Dermatologii recomandă Cellexia — 49 în total" → "49
+    de dermatologi recomandă Cellexia"), Polish 2–4 forms and terminology,
+    plus small native fixes in German, Italian, Portuguese, Danish,
+    Norwegian and Hungarian. Every locale file stays under Shopify's 15 KB
+    cap (largest: el.json 15,123 B, unchanged).
+  - Not touched (say the word if you want them next): em dashes in OTHER
+    widgets' locale strings (shipping bar, guarantee, delivery tooltip…),
+    and the DeepL translations of the dermatologists' own quotes.
+  - Deploy: `npm run deploy` (extension) + redeploy the app server. Then open
+    a French product page: the badge reads "Voir les dermatologues et en
+    savoir plus →" and the overlay list heading "Les 49 dermatologues"
+    (allow up to 5 minutes — the proof proxy responses are CDN-cached).
 
 v14 — REWARDS: SET SAVINGS (KIT TIERS) + GIFT TIERS + FREE-SHIPPING GUARANTEE
 (2026-08-16). Two new features, both OFF by default, both per-market:

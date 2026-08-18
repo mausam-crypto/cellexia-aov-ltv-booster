@@ -1394,19 +1394,22 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     // v8.22 overlay-content defaults: EDITABLE English starting copy (the
     // admin tells the merchant to review it for accuracy before
     // publishing). Proxy-served + DeepL-translated; never in locale files.
+    // v15.5: dash-free wording (the storefront copy rule: no em dashes in
+    // any language). RETIRED_ENDORSEMENT_COPY_DEFAULTS maps the previous
+    // wording to these so stored copies of the old defaults upgrade on load.
     copyWallCta: "Read all {n} endorsements",
     copyOverlayIntro:
-      "Every endorsement in this library comes from a licensed dermatologist who reviewed Cellexia — the formulas, the ingredients and the approach — and shared a written professional assessment in their own words.\n\nRecommendations are published with each dermatologist's name, professional title and country of practice, and are kept on file by Cellexia.",
+      "Every endorsement in this collection comes from a licensed dermatologist who reviewed Cellexia's formulas, ingredients and approach, then shared a written professional assessment in their own words.\n\nEach recommendation is published with the dermatologist's name, professional title and country of practice, and is kept on file by Cellexia.",
     copyOverlayFaqTitle: "Common questions",
     copyOverlayFaq1Q: "Who are the dermatologists behind these recommendations?",
     copyOverlayFaq1A:
-      "All contributors are licensed dermatologists. Each recommendation is published with the doctor's name, board certification or professional title, and country of practice.",
+      "All contributors are licensed dermatologists. Each recommendation is published with the doctor's name, specialist certification or professional title, and country of practice.",
     copyOverlayFaq2Q: "How were these recommendations collected?",
     copyOverlayFaq2A:
       "Cellexia shared the product and its full ingredient information with practising dermatologists and asked for their independent professional assessment. Their statements are published in their own words.",
     copyOverlayFaq3Q: "Does a recommendation mean the product will suit my skin?",
     copyOverlayFaq3A:
-      "No two skins are the same. These assessments describe the formulation approach in general terms — for personal advice about your own skin, please consult your dermatologist or pharmacist.",
+      "No two skins are alike. These assessments describe the formulation approach in general terms. For personal advice about your own skin, please consult your dermatologist or pharmacist.",
     copyOverlayFaq4Q: "",
     copyOverlayFaq4A: "",
     copyOverlayListTitle: "All {n} dermatologists",
@@ -2482,6 +2485,45 @@ export function coerceLegacyProofDensities(
   return settings;
 }
 
+/**
+ * v15.5: RETIRED wording of the v8.22 overlay-content English defaults →
+ * the current default. The admin form posts every copy field, so a
+ * merchant who saved the page after v8.22 holds a VERBATIM copy of the old
+ * default in the settings blob; the v15.5 native-copy pass changed that
+ * wording (no em dashes in any language; British "specialist
+ * certification"), and a stored verbatim copy of OUR old default is ours
+ * to upgrade (the merchant never customised it — an edited field never
+ * matches and is left exactly as saved). Applied on
+ * the load path (getSettings) and in sanitize (save path), so the digest
+ * the translation system computes always sees the current wording.
+ */
+export const RETIRED_ENDORSEMENT_COPY_DEFAULTS: Record<string, string> = {
+  copyOverlayIntro:
+    "Every endorsement in this library comes from a licensed dermatologist who reviewed Cellexia — the formulas, the ingredients and the approach — and shared a written professional assessment in their own words.\n\nRecommendations are published with each dermatologist's name, professional title and country of practice, and are kept on file by Cellexia.",
+  copyOverlayFaq1A:
+    "All contributors are licensed dermatologists. Each recommendation is published with the doctor's name, board certification or professional title, and country of practice.",
+  copyOverlayFaq3A:
+    "No two skins are the same. These assessments describe the formulation approach in general terms — for personal advice about your own skin, please consult your dermatologist or pharmacist.",
+};
+
+export function upgradeRetiredEndorsementCopy(
+  settings: BoosterSettings,
+): BoosterSettings {
+  const endo = settings.dermEndorsements as unknown as Record<string, unknown>;
+  const defaults = DEFAULT_SETTINGS.dermEndorsements as unknown as Record<
+    string,
+    string
+  >;
+  for (const [field, retired] of Object.entries(
+    RETIRED_ENDORSEMENT_COPY_DEFAULTS,
+  )) {
+    if (typeof endo[field] === "string" && endo[field] === retired) {
+      endo[field] = defaults[field];
+    }
+  }
+  return settings;
+}
+
 /** Badge keys the theme extension can render (see trustBadges.items docs). */
 const VALID_BADGE_KEYS = new Set([
   "secure_checkout",
@@ -3155,6 +3197,9 @@ export function sanitizeSettings(
         endo[field] = Array.from(value.trim()).slice(0, cap).join("");
       }
     }
+    // v15.5: a save that still carries the retired default wording (an
+    // admin tab opened before the update) upgrades like the load path.
+    upgradeRetiredEndorsementCopy(next);
   }
   next.dermSurvey.outOf = Math.round(
     clampNumber(next.dermSurvey.outOf, 1, 100, DEFAULT_SETTINGS.dermSurvey.outOf),
@@ -4151,9 +4196,11 @@ export async function getSettings(shop: string): Promise<BoosterSettings> {
   if (!row) return structuredClone(DEFAULT_SETTINGS);
   try {
     const raw: unknown = JSON.parse(row.data);
-    return coerceLegacyProofDensities(
-      mergeSettings(structuredClone(DEFAULT_SETTINGS), raw),
-      raw,
+    return upgradeRetiredEndorsementCopy(
+      coerceLegacyProofDensities(
+        mergeSettings(structuredClone(DEFAULT_SETTINGS), raw),
+        raw,
+      ),
     );
   } catch {
     return structuredClone(DEFAULT_SETTINGS);

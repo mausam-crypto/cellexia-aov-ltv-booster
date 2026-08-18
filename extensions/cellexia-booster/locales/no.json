@@ -158,7 +158,7 @@
     "shown_of": "Viser @@SHOWN@@ av @@TOTAL@@",
     "show_more": "Vis flere",
     "read_full": "Les hele anbefalingen",
-    "description": "Verifiserte anbefalinger fra autoriserte hudleger. Les hva de sier om produktet, Cellexia og dens tilnærming til hudpleie.",
+    "description": "Verifiserte anbefalinger fra autoriserte hudleger. Les hva de sier om produktet, om Cellexia og om tilnærmingen vår til hudpleie.",
     "badge_headline": {
       "one": "Anbefalt av {{ n }} hudlege",
       "other": "Anbefalt av {{ n }} hudleger"

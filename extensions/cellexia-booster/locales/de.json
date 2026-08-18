@@ -158,7 +158,7 @@
     "shown_of": "@@SHOWN@@ von @@TOTAL@@ angezeigt",
     "show_more": "Mehr anzeigen",
     "read_full": "Vollständige Empfehlung lesen",
-    "description": "Verifizierte Empfehlungen approbierter Dermatologen. Lesen Sie, was sie über das Produkt, die Marke Cellexia und ihren Ansatz in der Hautpflege sagen.",
+    "description": "Verifizierte Empfehlungen approbierter Dermatologen. Lesen Sie, was sie über das Produkt, die Marke Cellexia und deren Ansatz in der Hautpflege sagen.",
     "badge_headline": {
       "one": "Empfohlen von {{ n }} Dermatologen",
       "other": "Empfohlen von {{ n }} Dermatologen"

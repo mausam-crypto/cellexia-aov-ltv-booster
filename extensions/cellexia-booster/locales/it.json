@@ -155,7 +155,7 @@
       "one": "{{ n }} dermatologo raccomanda Cellexia",
       "other": "{{ n }} dermatologi raccomandano Cellexia"
     },
-    "shown_of": "Stai vedendo @@SHOWN@@ su @@TOTAL@@",
+    "shown_of": "Stai visualizzando @@SHOWN@@ su @@TOTAL@@",
     "show_more": "Mostra altri",
     "read_full": "Leggi la raccomandazione completa",
     "description": "Raccomandazioni verificate di dermatologi abilitati. Leggi cosa dicono del prodotto, di Cellexia e del suo approccio alla cura della pelle.",

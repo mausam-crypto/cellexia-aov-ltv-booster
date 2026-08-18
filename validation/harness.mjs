@@ -2224,9 +2224,9 @@ const EVIDENCE = {
     );
     ok(
       settingsFlat.includes(
-        "return coerceLegacyProofDensities( mergeSettings(structuredClone(DEFAULT_SETTINGS), raw), raw, );",
+        "return upgradeRetiredEndorsementCopy( coerceLegacyProofDensities( mergeSettings(structuredClone(DEFAULT_SETTINGS), raw), raw, ), );",
       ),
-      "v8.3: getSettings wraps mergeSettings with the coercion, fed the RAW stored JSON",
+      "v8.3: getSettings wraps mergeSettings with the coercion, fed the RAW stored JSON (v15.5: + the retired-copy upgrade outermost)",
     );
     ok(
       settingsSrc8.includes("if (PROOF_DENSITIES.includes(stored as ProofDensity)) continue;") &&
@@ -3846,6 +3846,135 @@ const EVIDENCE = {
   ok(
     read("scripts/gen-ships-from-grammar.mjs").includes("const LOCALE_BYTE_BUDGET = 15200;"),
     "v14: scripts/gen-ships-from-grammar.mjs LOCALE_BYTE_BUDGET = 15200 (matches the harness locale pin)",
+  );
+}
+
+// ============ v15.5 ENDORSEMENTS COPY: NATIVE TRANSLATIONS, NO EM DASHES
+// (2026-08-17). The dermatologist-recommendations module (endo.* catalog
+// + the proxy-served overlay/badge copy) was reviewed language by language
+// (translator + adversarial native reviewer per language, ja/ar light
+// pass). Behavior is pinned by sims/proof-translation CU1/CU2 + mutants
+// m5/m6; these tripwires keep the wiring and the copy rules visible.
+{
+  const curSrc = read("app/services/copy-curated.server.ts");
+  const ptSrc155 = read("app/services/proof-translation.server.ts");
+  const settingsSrc155 = read("app/models/settings.server.ts");
+  ok(
+    curSrc.includes("export const CURATED_COPY_SOURCES = {") &&
+      curSrc.includes("export const CURATED_COPY_TRANSLATIONS: Record<") &&
+      curSrc.includes("export function curatedCopyTranslation(") &&
+      curSrc.includes("export function curatedTranslationsFor("),
+    "v15.5: copy-curated.server.ts exports the sources, the dictionary and both lookups",
+  );
+  // The dictionary is a PURE module: no prisma / network / settings import.
+  ok(
+    !/from "\.\.\/db\.server"|from "\.\/translation\.server"|from "\.\.\/models\/settings\.server"|fetch\(/.test(curSrc),
+    "v15.5: copy-curated.server.ts is pure (no prisma, no DeepL, no settings, no fetch)",
+  );
+  // The English sources equal the shipped defaults + the live overrides.
+  const curatedSourceOf = (name) => {
+    const m = curSrc.match(new RegExp(`  ${name}:\\n    ("(?:[^"\\\\]|\\\\.)*"),`));
+    return m ? JSON.parse(m[1]) : null;
+  };
+  const defaultOf = (field) => {
+    const m = settingsSrc155.match(new RegExp(`    ${field}:\\s*\\n?\\s*("(?:[^"\\\\]|\\\\.)*"),`));
+    return m ? JSON.parse(m[1]) : null;
+  };
+  for (const [name, field] of [
+    ["wallCta", "copyWallCta"],
+    ["overlayIntro", "copyOverlayIntro"],
+    ["faqTitle", "copyOverlayFaqTitle"],
+    ["faq1Q", "copyOverlayFaq1Q"],
+    ["faq1A", "copyOverlayFaq1A"],
+    ["faq2Q", "copyOverlayFaq2Q"],
+    ["faq2A", "copyOverlayFaq2A"],
+    ["faq3Q", "copyOverlayFaq3Q"],
+    ["faq3A", "copyOverlayFaq3A"],
+    ["listTitle", "copyOverlayListTitle"],
+  ]) {
+    const a = curatedSourceOf(name);
+    const b = defaultOf(field);
+    ok(
+      typeof a === "string" && a.length > 0 && a === b,
+      `v15.5: CURATED_COPY_SOURCES.${name} equals DEFAULT_SETTINGS.dermEndorsements.${field} verbatim`,
+    );
+  }
+  ok(
+    curatedSourceOf("eyebrowChoice") === "Dermatologists' choice" &&
+      curatedSourceOf("badgeLinkView") === "View dermatologists & learn more below",
+    "v15.5: the two live badge overrides are curated sources (exact live wording)",
+  );
+  // No em dash in ANY storefront default of the module, nor in the
+  // curated data (comments excepted — the sim checks the data itself).
+  for (const field of ["copyOverlayIntro", "copyOverlayFaq1A", "copyOverlayFaq2A", "copyOverlayFaq3A"]) {
+    const v = defaultOf(field) ?? "";
+    ok(v.length > 0 && !v.includes("—"), `v15.5: DEFAULT_SETTINGS.dermEndorsements.${field} carries no em dash`);
+  }
+  ok(
+    settingsSrc155.includes("export const RETIRED_ENDORSEMENT_COPY_DEFAULTS: Record<string, string> = {") &&
+      settingsSrc155.includes("export function upgradeRetiredEndorsementCopy(") &&
+      settingsSrc155.includes("    upgradeRetiredEndorsementCopy(next);"),
+    "v15.5: retired-default upgrade exists and runs on the load path (getSettings) AND the save path (sanitize)",
+  );
+  ok(
+    /copyOverlayIntro:\s*\n\s*"Every endorsement in this library comes from a licensed dermatologist who reviewed Cellexia — /.test(settingsSrc155) &&
+      settingsSrc155.includes('"No two skins are the same. These assessments describe the formulation approach in general terms — for personal advice'),
+    "v15.5: RETIRED_ENDORSEMENT_COPY_DEFAULTS carries the exact pre-v15.5 (em-dash) wording so stored copies upgrade",
+  );
+  // proof-translation wiring: serve-time ranking, translate-time write,
+  // reviewer + status honesty.
+  ok(
+    ptSrc155.includes('} from "./copy-curated.server";') &&
+      ptSrc155.includes("? curatedCopyTranslation(locale, source.text)") &&
+      ptSrc155.includes("const written = await writeAutoTranslation(shop, source, locale, curated);"),
+    "v15.5: translateProofEntries writes curated copy rows directly (never billed to DeepL)",
+  );
+  ok(
+    ptSrc155.includes('if (type === "copy" && sources) {') &&
+      ptSrc155.includes("const curated = curatedCopyTranslation(wanted, sourceText);") &&
+      ptSrc155.includes("if (row.manual) manualWon.add(fieldKey);"),
+    "v15.5: getProofTranslationOverlay ranks fresh manual > curated > auto > source for the copy scope",
+  );
+  ok(
+    ptSrc155.includes("for (const [locale, curated] of curatedTranslationsFor(source.text)) {") &&
+      ptSrc155.includes("curated: true,") &&
+      ptSrc155.includes('type === "copy" ? curatedCopyTranslation(locale, source.text) : null;'),
+    "v15.5: the admin reviewer shows curated rows as built-in and the status counts them as fresh",
+  );
+  ok(
+    read("app/components/ProofForms.tsx").includes('row?.curated ? " (built-in)"'),
+    "v15.5: ProofTranslationsSection labels built-in translations",
+  );
+  // The endo.* catalog carries no em dash in ANY of the 18 locales (the
+  // module's copy rule; ro used to ship "— {{ n }} în total").
+  for (const lf of listFiles(`${EXT}/locales`, ".json")) {
+    const loc = JSON.parse(read(`${EXT}/locales/${lf}`));
+    ok(
+      !JSON.stringify(loc.endo ?? {}).includes("—") && !String(loc.a11y?.close ?? "").includes("—"),
+      `v15.5: ${lf} endo.* carries no em dash`,
+    );
+  }
+  const ro155 = JSON.parse(read(`${EXT}/locales/ro.json`)).endo;
+  ok(
+    ro155.count_headline.few === "{{ n }} dermatologi recomandă Cellexia" &&
+      ro155.count_headline.other === "{{ n }} de dermatologi recomandă Cellexia" &&
+      ro155.badge_headline.other === "Recomandat de {{ n }} de dermatologi",
+    "v15.5: ro endo plurals are real CLDR forms (few / other with the 20+ 'de')",
+  );
+  const pl155 = JSON.parse(read(`${EXT}/locales/pl.json`)).endo;
+  ok(
+    pl155.count_headline.few === "{{ n }} dermatolodzy polecają Cellexię" &&
+      pl155.count_headline.many === "{{ n }} dermatologów poleca Cellexię",
+    "v15.5: pl endo few/many forms agree with the numeral (2-4 plural verb, 5+ genitive)",
+  );
+  // The sim covers the curated behavior.
+  const ptSim155 = read("validation/sims/proof-translation.ts");
+  ok(
+    ptSim155.includes("CU1: curated beats a fresh auto (DeepL) row at serve time") &&
+      ptSim155.includes("CU2: a curated source is never sent to DeepL") &&
+      ptSim155.includes('name: "m5-curated-serve-dropped"') &&
+      ptSim155.includes('name: "m6-curated-beats-manual"'),
+    "v15.5: sims/proof-translation carries CU1/CU2 + mutants m5/m6",
   );
 }
 

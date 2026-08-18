@@ -1464,10 +1464,12 @@ export default function ProofEndorsementsTab() {
               your intro text, up to four FAQ dropdowns, then the full
               dermatologist list. This starting copy is a template — review
               it and adjust it so it accurately describes how your
-              endorsements were collected before publishing. Like the rest
-              of the copy it auto-translates through DeepL on save; blank
-              fields are simply hidden ({"{n}"} inserts the endorsement
-              count in the intro, list title and View-all button).
+              endorsements were collected before publishing. The starting
+              copy ships with built-in native translations for every store
+              language; text you rewrite auto-translates through DeepL on
+              save; blank fields are simply hidden ({"{n}"} inserts the
+              endorsement count in the intro, list title and View-all
+              button).
             </Text>
           </BlockStack>
           {overlayContentEnglishDefaults ? (

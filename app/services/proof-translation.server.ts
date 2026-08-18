@@ -31,6 +31,10 @@ import {
   getTranslationConfig,
 } from "./translation.server";
 import { getSettings } from "../models/settings.server";
+import {
+  curatedCopyTranslation,
+  curatedTranslationsFor,
+} from "./copy-curated.server";
 import type { ProofType } from "./proof.server";
 
 interface AdminGraphqlClient {
@@ -250,7 +254,40 @@ export async function translateProofEntries(
       const row = byKey.get(
         `${source.resourceType}\u0000${source.resourceId}\u0000${locale}\u0000${source.field}`,
       );
-      if (row && (row.manual || row.sourceDigest === proofSourceDigest(source.text))) {
+      if (row && row.manual) {
+        skipped += 1;
+        continue;
+      }
+      // v15.5: CURATED copy — a hand-written native translation exists for
+      // this exact source text: it is written as the auto row directly
+      // (never billed to DeepL) and REFRESHES a stale-or-different auto
+      // row, so the admin reviewer and the storefront agree. Manual rows
+      // (above) still win.
+      const curated =
+        source.resourceType === "copy"
+          ? curatedCopyTranslation(locale, source.text)
+          : null;
+      if (curated !== null) {
+        if (
+          row &&
+          row.value === curated &&
+          proofSourceDigest(source.text) === row.sourceDigest
+        ) {
+          skipped += 1;
+          continue;
+        }
+        const written = await writeAutoTranslation(shop, source, locale, curated);
+        if (written === "written") translated += 1;
+        else if (written === "manual") skipped += 1;
+        else {
+          failures.push({
+            locale,
+            error: `could not store ${source.field} for ${source.resourceId}`,
+          });
+        }
+        continue;
+      }
+      if (row && row.sourceDigest === proofSourceDigest(source.text)) {
         skipped += 1;
         continue;
       }
@@ -405,9 +442,21 @@ export async function proofTranslationStatusFor(
   for (const source of sources) {
     for (const locale of targets) {
       const row = byKey.get(`${source.resourceId}\u0000${locale}\u0000${source.field}`);
-      if (!row) continue;
-      if (row.manual || row.sourceDigest === proofSourceDigest(source.text)) fresh += 1;
-      else outdated += 1;
+      // v15.5: a curated (built-in) translation counts as fresh coverage —
+      // it is what the storefront serves whenever no manual row exists.
+      const curated =
+        type === "copy" ? curatedCopyTranslation(locale, source.text) : null;
+      if (!row) {
+        if (curated !== null) fresh += 1;
+        continue;
+      }
+      if (
+        row.manual ||
+        curated !== null ||
+        row.sourceDigest === proofSourceDigest(source.text)
+      ) {
+        fresh += 1;
+      } else outdated += 1;
     }
   }
   return {
@@ -455,6 +504,7 @@ export async function getProofTranslationOverlay(
   const ranked = rows.sort(
     (a, b) => Number(a.locale === wanted) - Number(b.locale === wanted),
   );
+  const manualWon = new Set<string>();
   for (const row of ranked) {
     if (sources) {
       const current = sources.get(row.resourceId)?.[row.field];
@@ -468,6 +518,27 @@ export async function getProofTranslationOverlay(
     const fields = overlay.get(row.resourceId) ?? {};
     fields[row.field] = row.value;
     overlay.set(row.resourceId, fields);
+    const fieldKey = `${row.resourceId}\u0000${row.field}`;
+    if (row.manual) manualWon.add(fieldKey);
+    else manualWon.delete(fieldKey);
+  }
+  // v15.5: CURATED copy translations — hand-written native text for the
+  // built-in endorsement copy (and the shop's live overrides), keyed by the
+  // EXACT current source text, so an edited source stops matching by
+  // itself. Ranking per field: fresh MANUAL row (the merchant's own
+  // wording) > curated > fresh auto (DeepL) row > source. Serve-time, so
+  // a deploy fixes what shoppers see at once — no translate run needed.
+  if (type === "copy" && sources) {
+    for (const [resourceId, fieldsBySource] of sources) {
+      for (const [field, sourceText] of Object.entries(fieldsBySource)) {
+        if (manualWon.has(`${resourceId}\u0000${field}`)) continue;
+        const curated = curatedCopyTranslation(wanted, sourceText);
+        if (curated === null) continue;
+        const fields = overlay.get(resourceId) ?? {};
+        fields[field] = curated;
+        overlay.set(resourceId, fields);
+      }
+    }
   }
   return overlay;
 }
@@ -590,6 +661,10 @@ export interface ProofTranslationListRow {
   /** The SOURCE changed since this row was written (review catch ADM-7 —
    *  the per-entry editor labels these; the storefront already skips them). */
   outdated: boolean;
+  /** v15.5: a BUILT-IN (curated) native translation is what serves for
+   *  this field — shown in place of any auto row; a manual save still
+   *  overrides it. */
+  curated?: boolean;
 }
 
 export async function listProofTranslationsForMany(
@@ -620,6 +695,31 @@ export async function listProofTranslationsForMany(
       outdated: currentDigest !== undefined && currentDigest !== row.sourceDigest,
     });
     out.set(row.resourceId, list);
+  }
+  // v15.5: the copy scope shows the CURATED (built-in) translation wherever
+  // one serves — every locale that has one, in place of any non-manual
+  // row — so the reviewer displays exactly what shoppers read.
+  if (type === "copy") {
+    for (const source of sources) {
+      for (const [locale, curated] of curatedTranslationsFor(source.text)) {
+        const list = out.get(source.resourceId) ?? [];
+        const at = list.findIndex(
+          (row) => row.locale === locale && row.field === source.field,
+        );
+        if (at >= 0 && list[at].manual) continue;
+        const entry: ProofTranslationListRow = {
+          locale,
+          field: source.field,
+          value: curated,
+          manual: false,
+          outdated: false,
+          curated: true,
+        };
+        if (at >= 0) list[at] = entry;
+        else list.push(entry);
+        out.set(source.resourceId, list);
+      }
+    }
   }
   return out;
 }

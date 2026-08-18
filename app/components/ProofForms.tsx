@@ -1134,6 +1134,8 @@ export interface ProofTranslationRow {
   value: string;
   manual: boolean;
   outdated?: boolean;
+  /** v15.5: a built-in native translation serves (copy scope). */
+  curated?: boolean;
 }
 
 export interface ProofTranslationsSectionProps {
@@ -1178,8 +1180,11 @@ export function ProofTranslationsSection({
         <BlockStack gap="300">
           <Text as="p" tone="subdued" variant="bodySm">
             Auto-translated by DeepL when a key is set (Languages page).
-            Editing a value here marks it manual — auto-translation never
-            overwrites it. Clearing a value falls back to the original text.
+            Fields marked “built-in” carry a native translation written for
+            this app and are what shoppers see. Editing a value here marks
+            it manual — auto-translation never overwrites it. Clearing a
+            value falls back to the built-in translation where one exists,
+            otherwise to the original text.
           </Text>
           {targetLocales.map((locale) => (
             <BlockStack key={locale} gap="150">
@@ -1194,7 +1199,7 @@ export function ProofTranslationsSection({
                 return (
                   <TextField
                     key={f.field}
-                    label={`${f.label}${row?.manual ? " (manual)" : row?.outdated ? " (auto — outdated, re-translates on the next run)" : row ? " (auto)" : " (untranslated)"}`}
+                    label={`${f.label}${row?.manual ? " (manual)" : row?.curated ? " (built-in)" : row?.outdated ? " (auto — outdated, re-translates on the next run)" : row ? " (auto)" : " (untranslated)"}`}
                     value={value}
                     multiline={2}
                     autoComplete="off"

@@ -23,11 +23,23 @@
  *   T9  manual save: blank value DELETES (fallback to source), invalid
  *       field/locale rejected;
  *   T10 same-base targets are skipped (primary en → en-gb sends nothing).
+ *   CU1 v15.5 CURATED copy (the real copy-curated.server.ts): dictionary
+ *       completeness (every locale × every English source, {n} + the
+ *       two-paragraph intro preserved, no em dash), serve-time ranking
+ *       fresh manual > curated > fresh auto > source, exact-source
+ *       matching (an edited source never gets curated text), copy scope
+ *       only, base-locale + nb/no + pt-PT resolution;
+ *   CU2 the translate run WRITES curated rows (never billed to DeepL),
+ *       refreshes a differing auto row, is a no-op when fresh, counts as
+ *       fresh coverage, shows as "built-in" in the reviewer, and never
+ *       touches a manual row.
  *
  * MUTATION TESTS (all must be CAUGHT):
  *   m1-digest-check-dropped   outdated rows never re-translate (T3)
  *   m2-manual-flag-ignored    auto overwrites manual rows (T4)
  *   m3-overlay-rank-flipped   base-language rows beat exact rows (T8)
+ *   m5-curated-serve-dropped  shoppers keep the DeepL rows (CU1)
+ *   m6-curated-beats-manual   curated overrides the merchant's manual (CU1)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -245,6 +257,21 @@ const TRANSLATION_STUB = [
 const PROOF_TYPE_IMPORT = 'import type { ProofType } from "./proof.server";';
 const PROOF_TYPE_REPOINT = 'import type { ProofType } from "../../../app/services/proof.server";';
 
+// v15.5: the curated copy dictionary is a PURE module (no prisma, no
+// network) — the sim runs the REAL one, repointed like ProofType.
+const CURATED_IMPORT = [
+  "import {",
+  "  curatedCopyTranslation,",
+  "  curatedTranslationsFor,",
+  '} from "./copy-curated.server";',
+].join("\n");
+const CURATED_REPOINT = [
+  "import {",
+  "  curatedCopyTranslation,",
+  "  curatedTranslationsFor,",
+  '} from "../../../app/services/copy-curated.server";',
+].join("\n");
+
 // v8.19: the copy scope reads settings — inject an in-memory blob so the
 // sim controls the merchant copy sources.
 const SETTINGS_IMPORT = 'import { getSettings } from "../models/settings.server";';
@@ -256,7 +283,7 @@ const SETTINGS_STUB = [
 
 async function loadModel(): Promise<any> {
   const src = fs.readFileSync(SRC_PATH, "utf8");
-  for (const anchor of [PRISMA_IMPORT, TRANSLATION_IMPORT, PROOF_TYPE_IMPORT, SETTINGS_IMPORT]) {
+  for (const anchor of [PRISMA_IMPORT, TRANSLATION_IMPORT, PROOF_TYPE_IMPORT, SETTINGS_IMPORT, CURATED_IMPORT]) {
     if (!src.includes(anchor)) {
       throw new Error(
         "proof-translation loader: import anchor not found — update the loader: " + anchor,
@@ -267,7 +294,8 @@ async function loadModel(): Promise<any> {
     .replace(PRISMA_IMPORT, PRISMA_STUB)
     .replace(TRANSLATION_IMPORT, TRANSLATION_STUB)
     .replace(PROOF_TYPE_IMPORT, PROOF_TYPE_REPOINT)
-    .replace(SETTINGS_IMPORT, SETTINGS_STUB);
+    .replace(SETTINGS_IMPORT, SETTINGS_STUB)
+    .replace(CURATED_IMPORT, CURATED_REPOINT);
   const genDir = path.join(ROOT, "validation", "lib", ".gen");
   fs.mkdirSync(genDir, { recursive: true });
   // Mutant child runs write a SEPARATE basename so the repo-resident
@@ -718,6 +746,141 @@ const result1 = db._seed("customerResult", {
     "C8: blank-save cleanup deletes the field's copy rows (unknown fields ignored)");
 }
 
+// --- CU1: v15.5 CURATED copy — serve-time ranking manual > curated > auto > source --
+const CUR = await import(
+  pathToFileURL(path.join(ROOT, "app", "services", "copy-curated.server.ts")).href
+);
+{
+  const SRC = "Common questions"; // a real curated source (overlay FAQ heading)
+  const frCurated = CUR.curatedCopyTranslation("fr", SRC);
+  ok(typeof frCurated === "string" && frCurated.length > 0 && frCurated !== SRC,
+    "CU1: the real dictionary carries a French translation of the FAQ heading");
+  ok(CUR.curatedCopyTranslation("fr", "Some text nobody curated") === null,
+    "CU1: an unknown source text has no curated translation (DeepL path)");
+  ok(CUR.curatedCopyTranslation("FR", SRC) === frCurated &&
+     CUR.curatedCopyTranslation("fr-ca", SRC) === frCurated,
+    "CU1: locale lookup is case-insensitive and falls back to the base language");
+  ok(CUR.curatedCopyTranslation("pt-PT", SRC) !== null && CUR.curatedCopyTranslation("nb", SRC) !== null &&
+     CUR.curatedCopyTranslation("no", SRC) === CUR.curatedCopyTranslation("nb", SRC),
+    "CU1: regional (pt-PT) and Norwegian twins (nb/no) resolve");
+  ok(!/—/.test(JSON.stringify(CUR.CURATED_COPY_TRANSLATIONS)) &&
+     !/—/.test(JSON.stringify(CUR.CURATED_COPY_SOURCES)),
+    "CU1: no em dash anywhere in the curated dictionary or its English sources");
+  // every locale table covers every English source, {n} preserved
+  const srcTexts: string[] = Object.values(CUR.CURATED_COPY_SOURCES);
+  let complete = true;
+  let tokensOk = true;
+  for (const [loc, table] of Object.entries(CUR.CURATED_COPY_TRANSLATIONS) as [string, Record<string, string>][]) {
+    for (const s of srcTexts) {
+      const v = table[s];
+      if (typeof v !== "string" || !/\S/.test(v)) { complete = false; console.error("CU1 missing", loc, s.slice(0, 30)); }
+      else if ((s.includes("{n}") ? 1 : 0) !== (v.split("{n}").length - 1 > 0 ? 1 : 0)) { tokensOk = false; console.error("CU1 token", loc, s.slice(0, 30)); }
+      if (s.includes("\n\n") && typeof v === "string" && v.split("\n\n").length !== 2) { tokensOk = false; console.error("CU1 paragraphs", loc); }
+    }
+  }
+  ok(complete, "CU1: every curated locale table translates every English source");
+  ok(tokensOk, "CU1: {n} tokens and the two-paragraph intro survive in every curated string");
+
+  // seed an OLD auto (DeepL) row for fr with a different value — the
+  // storefront must serve the curated text instead
+  db._seed("proofTranslation", {
+    shop: SHOP, resourceType: "copy", resourceId: T.COPY_RESOURCE_ID, locale: "fr",
+    field: "copyOverlayFaqTitle", value: "[FR] Common questions",
+    sourceDigest: T.proofSourceDigest(SRC), manual: false,
+  });
+  const served = await T.getProofTranslationOverlay(
+    SHOP, "copy", [T.COPY_RESOURCE_ID], "fr",
+    new Map([[T.COPY_RESOURCE_ID, { copyOverlayFaqTitle: SRC }]]),
+  );
+  ok(served.get(T.COPY_RESOURCE_ID)?.copyOverlayFaqTitle === frCurated,
+    "CU1: curated beats a fresh auto (DeepL) row at serve time");
+  const noRow = await T.getProofTranslationOverlay(
+    SHOP, "copy", [T.COPY_RESOURCE_ID], "de",
+    new Map([[T.COPY_RESOURCE_ID, { copyOverlayFaqTitle: SRC }]]),
+  );
+  ok(noRow.get(T.COPY_RESOURCE_ID)?.copyOverlayFaqTitle === CUR.curatedCopyTranslation("de", SRC),
+    "CU1: curated serves even when NO row exists (a deploy fixes shoppers at once)");
+  const edited = await T.getProofTranslationOverlay(
+    SHOP, "copy", [T.COPY_RESOURCE_ID], "de",
+    new Map([[T.COPY_RESOURCE_ID, { copyOverlayFaqTitle: "Common questions (edited)" }]]),
+  );
+  ok(edited.get(T.COPY_RESOURCE_ID)?.copyOverlayFaqTitle === undefined,
+    "CU1: an EDITED source stops matching — curated never serves for merchant wording");
+  const prose = await T.getProofTranslationOverlay(
+    SHOP, "endorsements", [endo1.id], "fr",
+    new Map([[endo1.id, { quote: SRC }]]),
+  );
+  ok(prose.get(endo1.id)?.quote === undefined,
+    "CU1: curated applies to the copy scope only (a quote equal to a source text is untouched)");
+  // manual wins over curated; blank-delete falls back to curated
+  await T.saveManualProofTranslation(
+    SHOP, "copy", T.COPY_RESOURCE_ID, "fr", "copyOverlayFaqTitle", "Vos questions", SRC);
+  const manual = await T.getProofTranslationOverlay(
+    SHOP, "copy", [T.COPY_RESOURCE_ID], "fr",
+    new Map([[T.COPY_RESOURCE_ID, { copyOverlayFaqTitle: SRC }]]),
+  );
+  ok(manual.get(T.COPY_RESOURCE_ID)?.copyOverlayFaqTitle === "Vos questions",
+    "CU1: a fresh MANUAL row beats curated");
+  await T.saveManualProofTranslation(
+    SHOP, "copy", T.COPY_RESOURCE_ID, "fr", "copyOverlayFaqTitle", "", SRC);
+  const back = await T.getProofTranslationOverlay(
+    SHOP, "copy", [T.COPY_RESOURCE_ID], "fr",
+    new Map([[T.COPY_RESOURCE_ID, { copyOverlayFaqTitle: SRC }]]),
+  );
+  ok(back.get(T.COPY_RESOURCE_ID)?.copyOverlayFaqTitle === frCurated,
+    "CU1: clearing the manual row falls back to curated");
+}
+
+// --- CU2: v15.5 CURATED copy — translate run writes curated, never bills DeepL ------
+{
+  const SRC = "Common questions";
+  copyState.copyOverlayFaqTitle = SRC;
+  const before = captures.length;
+  const run = await T.translateProofEntries(SHOP, ADMIN, ["copy"], [T.COPY_RESOURCE_ID]);
+  ok(run.ok === true, "CU2: copy run ok");
+  const sent = captures.slice(before).flatMap((c) => c.texts);
+  ok(!sent.includes(SRC), "CU2: a curated source is never sent to DeepL");
+  const rows = db._tables.proofTranslation.filter(
+    (r: StubRow) => r.resourceType === "copy" && r.field === "copyOverlayFaqTitle");
+  const locales = rows.map((r: StubRow) => r.locale).sort().join(",");
+  ok(locales === "de,fr,pt-pt", "CU2: curated auto rows written for every target locale (" + locales + ")");
+  ok(rows.every((r: StubRow) => r.manual === false &&
+       r.value === CUR.curatedCopyTranslation(r.locale, SRC) &&
+       r.sourceDigest === T.proofSourceDigest(SRC)),
+    "CU2: rows carry the curated value + current digest (the reviewer and the storefront agree)");
+  const before2 = captures.length;
+  const run2 = await T.translateProofEntries(SHOP, ADMIN, ["copy"], [T.COPY_RESOURCE_ID]);
+  ok(run2.translated === 0 && captures.length === before2,
+    "CU2: an unchanged second run is a no-op (curated rows are fresh)");
+  // status + reviewer views
+  const status = await T.proofTranslationStatusFor(SHOP, "copy", ["fr", "de", "pt-PT"]);
+  ok(status.outdated === 0 && status.fresh >= 3,
+    "CU2: curated coverage counts as fresh");
+  const listed = await T.listProofTranslationsForMany(SHOP, "copy", [T.COPY_RESOURCE_ID]);
+  const frRow = (listed.get(T.COPY_RESOURCE_ID) ?? []).find(
+    (r: any) => r.locale === "fr" && r.field === "copyOverlayFaqTitle");
+  ok(!!frRow && frRow.curated === true && frRow.value === CUR.curatedCopyTranslation("fr", SRC),
+    "CU2: the reviewer shows the built-in translation");
+  await T.saveManualProofTranslation(
+    SHOP, "copy", T.COPY_RESOURCE_ID, "fr", "copyOverlayFaqTitle", "Vos questions", SRC);
+  const listed2 = await T.listProofTranslationsForMany(SHOP, "copy", [T.COPY_RESOURCE_ID]);
+  const frRow2 = (listed2.get(T.COPY_RESOURCE_ID) ?? []).find(
+    (r: any) => r.locale === "fr" && r.field === "copyOverlayFaqTitle");
+  ok(!!frRow2 && frRow2.manual === true && !frRow2.curated && frRow2.value === "Vos questions",
+    "CU2: a manual row is shown as manual (never overlaid by curated)");
+  const before3 = captures.length;
+  await T.translateProofEntries(SHOP, ADMIN, ["copy"], [T.COPY_RESOURCE_ID]);
+  const frAfter = db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceType === "copy" && r.locale === "fr" && r.field === "copyOverlayFaqTitle");
+  ok(!!frAfter && frAfter.manual === true && frAfter.value === "Vos questions" && captures.length === before3,
+    "CU2: a translate run never overwrites the manual row with curated");
+  // cleanup for the later cases
+  await T.saveManualProofTranslation(
+    SHOP, "copy", T.COPY_RESOURCE_ID, "fr", "copyOverlayFaqTitle", "", SRC);
+  await T.deleteCopyTranslationsForFields(SHOP, ["copyOverlayFaqTitle"]);
+  delete copyState.copyOverlayFaqTitle;
+}
+
 // --- C6: id narrowing keeps the fast paths disjoint ---------------------------------
 {
   copyState.copyEyebrow = "Trusted by experts";
@@ -764,8 +927,8 @@ if (!process.env.CX_SIM_SRC) {
       },
       {
         name: "m2-manual-flag-ignored",
-        find: "if (row && (row.manual || row.sourceDigest === proofSourceDigest(source.text))) {",
-        replace: "if (row && row.sourceDigest === proofSourceDigest(source.text)) {",
+        find: "      if (row && row.manual) {\n        skipped += 1;\n        continue;\n      }",
+        replace: "      if (row && row.manual && false) {\n        skipped += 1;\n        continue;\n      }",
       },
       {
         name: "m4-race-write-unconditional",
@@ -776,6 +939,19 @@ if (!process.env.CX_SIM_SRC) {
         name: "m3-overlay-rank-flipped",
         find: "(a, b) => Number(a.locale === wanted) - Number(b.locale === wanted),",
         replace: "(a, b) => Number(b.locale === wanted) - Number(a.locale === wanted),",
+      },
+      {
+        // v15.5: serve-time curated overlay dropped — shoppers would keep
+        // reading the old DeepL rows (CU1 catches).
+        name: "m5-curated-serve-dropped",
+        find: "        const curated = curatedCopyTranslation(wanted, sourceText);\n        if (curated === null) continue;",
+        replace: "        const curated: string | null = null;\n        if (curated === null) continue;",
+      },
+      {
+        // v15.5: curated must never lose to a manual row (CU1 catches).
+        name: "m6-curated-beats-manual",
+        find: "        if (manualWon.has(`${resourceId}\\u0000${field}`)) continue;",
+        replace: "        if (false) continue;",
       },
     ],
   });

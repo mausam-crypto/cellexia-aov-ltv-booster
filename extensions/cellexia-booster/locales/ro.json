@@ -155,8 +155,8 @@
     "eyebrow": "Recomandat de dermatologi",
     "count_headline": {
       "one": "{{ n }} dermatolog recomandă Cellexia",
-      "few": "Dermatologii recomandă Cellexia — {{ n }} în total",
-      "other": "Dermatologii recomandă Cellexia — {{ n }} în total"
+      "few": "{{ n }} dermatologi recomandă Cellexia",
+      "other": "{{ n }} de dermatologi recomandă Cellexia"
     },
     "shown_of": "Se afișează @@SHOWN@@ din @@TOTAL@@",
     "show_more": "Vezi mai multe",
@@ -164,8 +164,8 @@
     "description": "Recomandări verificate de la dermatologi autorizați. Citește ce spun despre produs, despre Cellexia și despre abordarea sa în îngrijirea pielii.",
     "badge_headline": {
       "one": "Recomandat de {{ n }} dermatolog",
-      "few": "Recomandat de dermatologi — {{ n }} în total",
-      "other": "Recomandat de dermatologi — {{ n }} în total"
+      "few": "Recomandat de {{ n }} dermatologi",
+      "other": "Recomandat de {{ n }} de dermatologi"
     },
     "badge_link": "Citește evaluările lor profesionale",
     "badge_alt": "Evaluări profesionale verificate",

@@ -402,6 +402,46 @@ v8.22 DESIGNS + OFFICIAL OVERLAY + MONOGRAM REMOVAL:
   is one-line-ellipsized like the creds (long names must never grow the
   fixed rail); stale "initials show otherwise" admin copy removed.
 
+v15.5 NATIVE COPY PASS + CURATED TRANSLATIONS (2026-08-17): the module's
+copy was reviewed language by language (one native translator + one
+adversarial native reviewer per language for da/de/el/es/fi/fr/hu/it/nl/
+no/pl/pt-PT/ro/sv, a light error-only pass for ja/ar, a BrE editor for the
+English source). Rules now binding for this module: NO em dash in any
+language (rephrase; ro's `count_headline`/`badge_headline` "— {{ n }} în
+total" became real CLDR few/other forms), the dermatologists are
+independent (never "nos/unsere/our dermatologists"), placeholders read
+correctly with a real number ({n} is a count — DeepL had produced
+"d'{n}" / "de «{n}»" / "in „{n}“"; pl/hu/ro/el parenthesise "({n})").
+- English defaults (settings.server.ts): `copyOverlayIntro` ("collection",
+  no dashes, singular second paragraph), `copyOverlayFaq1A` ("specialist
+  certification"), `copyOverlayFaq3A` ("alike", full stop instead of the
+  dash). `RETIRED_ENDORSEMENT_COPY_DEFAULTS` + `upgradeRetiredEndorsementCopy`
+  upgrade a STORED verbatim copy of the old default on the load path
+  (getSettings) and the save path (sanitize) — the admin form posts every
+  copy field, so a merchant who saved the page after v8.22 held the old
+  wording; an edited field never matches and is left alone.
+- `app/services/copy-curated.server.ts` (PURE): `CURATED_COPY_SOURCES`
+  (the ten overlay-content defaults + the two LIVE badge overrides
+  "Dermatologists' choice" / "View dermatologists & learn more below") ×
+  17 locale tables (`pt-pt`, `nb`+`no` twins). Keyed by the EXACT source
+  text so a merchant edit stops matching by itself and DeepL takes over.
+- proof-translation.server.ts ranking for the copy scope: fresh MANUAL row
+  > curated > fresh auto (DeepL) row > source — at SERVE time
+  (getProofTranslationOverlay; a deploy fixes shoppers without a translate
+  run) AND at TRANSLATE time (translateProofEntries writes the curated
+  value as the auto row, refreshes a differing auto row, never bills
+  DeepL). `listProofTranslationsForMany` shows curated rows as
+  `curated: true` (label "(built-in)"); `proofTranslationStatusFor` counts
+  them as fresh. Blank-clearing a manual row falls back to curated.
+- Catalog edits (endo.* only; every file ≤ 15,200 B, el/ar untouched):
+  de description ("deren"), it shown_of ("Stai visualizzando"), pt-PT
+  description/badge_link, da + no/nb description, pl plurals/terminology
+  ("Lekarze dermatolodzy", "opinie eksperckie"), ro plurals, hu description.
+- Sim: sims/proof-translation CU1/CU2 + mutants m5/m6; harness v15.5 block
+  (sources == defaults verbatim, no em dash in any endo.*, wiring pins).
+- Out of scope, unchanged: em dashes in OTHER modules' locale strings and
+  the DeepL translations of the dermatologists' own quotes/credentials.
+
 ## 7. Validation
 
 - New sims: `proof-gallery.cjs` (vm-extract cellexia-proof.js renderers: press rotate,
