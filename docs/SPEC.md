@@ -271,8 +271,25 @@ classes in markup too (`d-flex`, `btn btn--primary`, `eyebrow`). RTL-safe (logic
        stars if enabled) above `.mini-cart__actions`.
      * **Data freshness**: on cart mutations (MutationObserver on `.mini-cart__list` childList +
        `.mini-cart` class attr), re-fetch `/cart.js`; if cart contains products not in the Liquid
-       config map, fetch `{Shopify.routes.root}apps/cellexia/cart-data` (JSON; see proxy) to
-       refresh the variant/plan map. Re-render widgets idempotently.
+       config map, fill the variant/plan map from Shopify's own
+       `{Shopify.routes.root}products/{handle}.js` (v16: page product prefetched at idle on product
+       pages, otherwise one request per missing cart line, handle taken from the line's own url;
+       adapted to the exact map shape) and only as the last resort from
+       `{Shopify.routes.root}apps/cellexia/cart-data` (JSON; see proxy). Re-render widgets
+       idempotently.
+     * **Theme hand-off (v16)**: the theme's global `refreshMiniCart(cart)` (what opens the drawer
+       after every add/change) is wrapped once: the cart payload the theme already fetched seeds
+       `state.cart` and the widgets render SYNCHRONOUSLY before the original runs, so the volume
+       tiles / cross-sell are in the drawer in the same frame it opens; observers still reconcile
+       with a fresh `/cart.js` afterwards.
+     * **Auto cross-sell cache (v16)**: rows are built straight from the recommendations payload
+       (first available variant's presentment price; no proxy enrichment), cached per ORDERED
+       anchor product ids + market + currency + storefront language (never the whole cart
+       signature) in memory AND sessionStorage (`cx_xs:2:…`, 10-minute TTL; B2B: memory only;
+       only real answers are cached, a failed request is retried on a later page; a two-anchor
+       set resolves from the single-anchor entries when known); the fetch starts as soon as
+       anchors are known (drawer closed; immediately on the theme hand-off) and product pages
+       pre-warm the entry for the page product.
      * **Tracking**: `navigator.sendBeacon`/fetch POST to
        `{Shopify.routes.root}apps/cellexia/track` — impressions (once per drawer-open per feature),
        `upgrade` (volume swap, include revenue delta), `subscribe` (plan switch). Feature keys:

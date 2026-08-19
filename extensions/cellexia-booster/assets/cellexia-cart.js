@@ -38,6 +38,16 @@
  * See the "v14 rewards" region before renderInto(). Spend everywhere
  * (shipbar, az free line, meter) is now rwSpendCents(): original line
  * prices excluding gift + protection lines.
+ *
+ * v16 drawer latency: the offers and the auto cross-sell render in the same
+ * frame the theme opens the drawer — installThemeCartHook() seeds the runtime
+ * from the theme's own refreshMiniCart(cart) payload synchronously; product
+ * data for lines added after page load comes from Shopify's own
+ * products/{handle}.js (page-product prefetch at idle + per-line fetch; the
+ * app proxy is the last resort); the auto cross-sell prices from the
+ * recommendations payload, cached per anchor products (+ market + currency +
+ * language) in memory and sessionStorage, fetched as soon as anchors are
+ * known and pre-warmed on product pages. See the "v16" comments at each site.
  */
 (function () {
   'use strict';
@@ -348,27 +358,182 @@
     return found ? valid : null;
   }
 
-  function ensureProductData(cart) {
-    var missing = false;
+  // ---- v16 product data fast path (Shopify Ajax product JSON) -----------
+  //
+  // The volume / subscription offers need the products map (variants with
+  // positions, presentment prices, plan allocations) for every cart line.
+  // The Liquid island only carries the products in the cart AT PAGE RENDER,
+  // so a product added afterwards (the PDP add-to-cart that opens the
+  // drawer) used to wait for an app-proxy round trip (Shopify -> app
+  // server -> Liquid render -> back, 0.5-2 s) before the offers appeared.
+  // Now: (1) on product pages the page's own product is prefetched at
+  // idle from {root}products/{handle}.js (Shopify CDN, ~100 ms, prices in
+  // the presentment currency per the Ajax API contract) and adapted to the
+  // exact products-map shape; (2) any product still missing is fetched the
+  // same way from its cart line's own localized url; (3) the app proxy
+  // stays as the last resort (identical to the pre-v16 path). Whatever
+  // arrives merges into state.products and never overwrites island data.
+
+  function planAdjustmentsFromAjax(plan) {
+    var adj = plan && Array.isArray(plan.price_adjustments) && plan.price_adjustments[0] ? plan.price_adjustments[0] : null;
+    return {
+      valueType: adj && typeof adj.value_type === 'string' ? adj.value_type : null,
+      value: adj && isFinite(Number(adj.value)) ? Number(adj.value) : 0
+    };
+  }
+
+  function productFromAjaxJson(p) {
+    // {root}products/{handle}.js -> the products-map entry shape emitted by
+    // cart-booster.liquid / proxy cart-data (variants[].position is the
+    // 1-based variant order = the volume tier). Null on any unusable shape.
+    if (!p || typeof p !== 'object' || !Array.isArray(p.variants) || !p.variants.length) return null;
+    var variants = [];
+    for (var i = 0; i < p.variants.length; i++) {
+      var v = p.variants[i];
+      if (!v || v.id == null) return null;
+      var allocs = [];
+      var raw = Array.isArray(v.selling_plan_allocations) ? v.selling_plan_allocations : [];
+      for (var a = 0; a < raw.length; a++) {
+        var al = raw[a];
+        if (al && al.selling_plan_id != null) allocs.push({ planId: al.selling_plan_id, price: al.price });
+      }
+      variants.push({
+        id: v.id,
+        option1: v.option1 == null ? null : v.option1,
+        price: Number(v.price) || 0,
+        compare_at_price: v.compare_at_price == null ? null : v.compare_at_price,
+        available: v.available !== false,
+        position: i + 1,
+        planAllocations: allocs
+      });
+    }
+    var groups = [];
+    var rawGroups = Array.isArray(p.selling_plan_groups) ? p.selling_plan_groups : [];
+    for (var g = 0; g < rawGroups.length; g++) {
+      var grp = rawGroups[g];
+      if (!grp) continue;
+      var plans = [];
+      var rawPlans = Array.isArray(grp.selling_plans) ? grp.selling_plans : [];
+      for (var q = 0; q < rawPlans.length; q++) {
+        var sp = rawPlans[q];
+        if (!sp || sp.id == null) continue;
+        var adj = planAdjustmentsFromAjax(sp);
+        plans.push({ id: sp.id, name: sp.name == null ? '' : String(sp.name), valueType: adj.valueType, value: adj.value });
+      }
+      groups.push({ id: grp.id == null ? null : grp.id, name: grp.name == null ? '' : String(grp.name), plans: plans });
+    }
+    var entry = { variants: variants, sellingPlanGroups: groups };
+    if (Array.isArray(p.tags) && p.tags.indexOf('sample-sachet') !== -1) entry.s = 1;
+    return entry;
+  }
+
+  function productHandleFromPath(path) {
+    // '/fr/collections/x/products/y?variant=1#a' -> 'y' (the handle valid
+    // on THIS locale — translated storefronts localize handles). Empty when
+    // the path is not a product url.
+    if (typeof path !== 'string') return '';
+    var clean = path.split('?')[0].split('#')[0];
+    var m = /\/products\/([^\/]+)\/?$/.exec(clean);
+    return m && m[1] ? m[1] : '';
+  }
+
+  function productJsonUrl(handle) {
+    return routeRoot() + 'products/' + handle + '.js';
+  }
+
+  function mergeAjaxProduct(p) {
+    var entry = productFromAjaxJson(p);
+    if (!entry || p.id == null) return false;
+    var key = String(p.id);
+    if (!state.products[key]) state.products[key] = entry; // island / proxy data wins
+    return true;
+  }
+
+  function missingProductIds(cart) {
+    var out = [];
+    var seen = {};
     if (cart && Array.isArray(cart.items)) {
       for (var i = 0; i < cart.items.length; i++) {
-        if (!state.products[String(cart.items[i].product_id)]) {
-          missing = true;
-          break;
-        }
+        var item = cart.items[i];
+        if (!item || item.product_id == null) continue;
+        var pid = String(item.product_id);
+        if (seen[pid] || state.products[pid]) continue;
+        seen[pid] = true;
+        out.push(pid);
       }
     }
-    if (!missing) return Promise.resolve();
-    return fetchJSON(routeRoot() + 'apps/cellexia/cart-data', { headers: { Accept: 'application/json' } })
-      .then(function (data) {
-        var normalized = normalizeProductsPayload(data);
-        if (normalized) {
-          Object.keys(normalized).forEach(function (key) {
-            state.products[key] = normalized[key];
-          });
-        }
+    return out;
+  }
+
+  function fetchCartItemProducts(cart, missing) {
+    // One Ajax product request per missing product, in parallel, from the
+    // handle of the line's own url (routeRoot() keeps the market prefix so
+    // prices stay presentment-correct). Every failure is silent.
+    var jobs = [];
+    var wanted = {};
+    for (var m = 0; m < missing.length; m++) wanted[missing[m]] = true;
+    var items = cart && Array.isArray(cart.items) ? cart.items : [];
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!item || item.product_id == null || !wanted[String(item.product_id)]) continue;
+      var handle = productHandleFromPath(item.url);
+      if (!handle) continue;
+      delete wanted[String(item.product_id)];
+      jobs.push(fetchJSON(productJsonUrl(handle), { headers: { Accept: 'application/json' } })
+        .then(mergeAjaxProduct)
+        .catch(function () { return false; }));
+    }
+    return jobs.length ? Promise.all(jobs) : Promise.resolve([]);
+  }
+
+  // Page-product prefetch (product pages only): started at idle by init()
+  // and on the first add-to-cart interaction, so the product the buyer is
+  // about to add is already in state.products when the theme opens the
+  // drawer. Also warms the auto cross-sell cache for that product (the
+  // anchor of the cart the add produces). One shared promise per page.
+  var productPrefetch = { promise: null };
+
+  function prefetchPageProduct() {
+    if (productPrefetch.promise) return productPrefetch.promise;
+    var handle = null;
+    try { handle = productHandleFromPath(window.location && window.location.pathname); } catch (e) { handle = null; }
+    if (!handle) return null;
+    productPrefetch.promise = fetchJSON(productJsonUrl(handle), { headers: { Accept: 'application/json' } })
+      .then(function (p) {
+        var merged = mergeAjaxProduct(p);
+        if (merged) crossSellWarm([{ product_id: p.id, handle: p.handle }]);
+        return merged;
       })
-      .catch(function () { /* keep whatever data we have */ });
+      .catch(function () { return false; });
+    return productPrefetch.promise;
+  }
+
+  function ensureProductData(cart) {
+    // Resolves true when at least one product was fetched (callers that
+    // rendered before the data landed re-render on true).
+    if (!missingProductIds(cart).length) return Promise.resolve(false);
+    var head = productPrefetch.promise ? productPrefetch.promise.catch(function () { return false; }) : Promise.resolve(false);
+    return head.then(function (prefetched) {
+      var missing = missingProductIds(cart);
+      if (!missing.length) return prefetched === true;
+      return fetchCartItemProducts(cart, missing).then(function (results) {
+        var got = prefetched === true;
+        for (var i = 0; i < results.length; i++) if (results[i] === true) got = true;
+        if (!missingProductIds(cart).length) return got;
+        return fetchJSON(routeRoot() + 'apps/cellexia/cart-data', { headers: { Accept: 'application/json' } })
+          .then(function (data) {
+            var normalized = normalizeProductsPayload(data);
+            if (normalized) {
+              Object.keys(normalized).forEach(function (key) {
+                state.products[key] = normalized[key];
+              });
+              return true;
+            }
+            return got;
+          })
+          .catch(function () { return got; /* keep whatever data we have */ });
+      });
+    });
   }
 
   function refresh() {
@@ -382,6 +547,7 @@
   }
 
   function scheduleRefresh() {
+    installThemeCartHook(); // v16: idempotent — catches a theme that defines refreshMiniCart after our boot
     if (state.refreshTimer) window.clearTimeout(state.refreshTimer);
     state.refreshTimer = window.setTimeout(function () {
       state.refreshTimer = null;
@@ -1260,10 +1426,12 @@
       var row = items[i];
       var pid = row.getAttribute('data-product-id');
       var vid = row.getAttribute('data-variant-id');
+      var handle = row.getAttribute('data-handle'); // auto rows only (v16)
       var hide = !vid ||
         inCartProducts[String(pid)] === true ||
         inCartVariants[String(vid)] === true ||
         (state.rw && state.rw.skipV[String(vid)] === true) || // v14: gift-pool / sachet variants
+        (state.rw && state.rw.skipH && handle && state.rw.skipH[String(handle)] === true) || // v14/v16: gift-pool / sachet products (was a pick-time filter)
         visible >= cap;
       if (hide) {
         if (row.parentNode) row.parentNode.removeChild(row);
@@ -1403,31 +1571,128 @@
   //      with intent=complementary, then intent=related on zero results —
   //      complementary/related per source, anchor before fallback, first
   //      non-empty answer wins;
-  //   3. recommended handles minus in-cart products minus the protection
-  //      product, deduped, up to 6 kept;
-  //   4. presentment-correct price/availability enrichment via OUR app
-  //      proxy (apps/cellexia/cart-data?handles=… -> productsByHandle,
-  //      the exact products-map variant shape); the first available
-  //      variant wins. Image + title come from the recommendations
-  //      payload — the proxy emits neither;
+  //   3. recommended products minus the protection product, deduped by
+  //      handle (the whole answer is kept — the endpoint caps it at 8);
+  //   4. v16: price / compare-at / availability come straight from the
+  //      recommendations payload's own variants (the Ajax API returns
+  //      monetary properties in the buyer's presentment currency when
+  //      requested through the locale-aware routeRoot(), which every call
+  //      here uses) — the first available variant wins, a product with no
+  //      available variant drops. The pre-v16 app-proxy enrichment hop
+  //      (Shopify -> app server -> Liquid -> back, the slowest step of the
+  //      chain) is gone; image + title come from the same payload;
   //   5. rows are el()-built with the same cx-crosssell classes and go
   //      through the shared prune/wire path, so cap, in-cart hiding, busy
   //      handling, add flow, notices and beacons are identical to manual.
-  // The result is cached per cart token + line signature: reopening the
-  // drawer never refetches, and any cart mutation changes the signature
-  // (invalidating the cache). Fetches only start when the drawer is open
-  // or on the cart page, debounced 200 ms, at most one scheduled/in
-  // flight per signature. Stale rows keep rendering (re-pruned against
-  // the live cart) while the refetch for a new signature is in flight.
+  // v16 cache: rows are pure f(anchor products, market, currency, storefront
+  // language) — keyed by the ORDERED anchor product ids (+ market + currency
+  // + pageLocale), NOT by the whole cart signature, so quantity changes,
+  // tier upgrades and unrelated line changes never refetch; in-cart hiding
+  // happens at render time. Results persist in sessionStorage
+  // (cx_xs:2:<market>:<currency>:<locale>:<ids>, 10-minute TTL — the
+  // card-flag / gift-data precedent; B2B customers: memory only) so a later
+  // page's drawer renders them synchronously; a multi-anchor set resolves
+  // from the single-anchor entries when they are known (chain semantics),
+  // and a fetch for a set teaches the single-anchor entries it learned.
+  // Only real answers are cached (an all-failed chain is held in memory
+  // for the page and retried later). Fetches start as soon as anchors are
+  // known (page-load refresh, theme cart hand-off = immediate, no
+  // debounce), no longer only once the drawer is open, and product pages
+  // pre-warm the entry for the page product (the anchor the add-to-cart
+  // produces). Debounced 200 ms on the render path, one in flight per key;
+  // a result commits to the live rows only when its key is still the
+  // current one (mid-flight anchor change) but is always cached. Stale rows
+  // keep rendering (re-pruned against the live cart) while the fetch for a
+  // new key is in flight.
 
   var PROTECTION_HANDLE = 'cellexia-order-protection';
 
   var autoCrossSell = {
-    signature: null, // signature the cached rows were fetched for
+    key: null,       // anchor key the live rows were fetched for
     rows: null,      // cached row descriptors ([] = fetched, nothing usable)
-    pending: null,   // signature currently scheduled or in flight
-    timer: null
+    pending: {},     // keys currently in flight
+    timer: null,     // debounce timer of the render path
+    timerKey: null   // key the debounce timer will fetch
   };
+
+  var CROSS_SELL_CACHE_TTL = 600000; // 10 minutes (prices / availability)
+
+  function crossSellAnchorKey(anchors) {
+    // Presentment prices depend on the MARKET (two EUR markets can carry
+    // different price lists), the currency and the storefront language
+    // (localized titles) — all three are part of the key.
+    var ids = [];
+    for (var i = 0; i < anchors.length; i++) {
+      if (anchors[i] && anchors[i].product_id != null) ids.push(String(anchors[i].product_id));
+    }
+    if (!ids.length) return '';
+    var locale = typeof cfg.pageLocale === 'string' ? cfg.pageLocale : '';
+    return 'cx_xs:2:' + MARKET + ':' + activeCurrency() + ':' + locale + ':' + ids.join(',');
+  }
+
+  function crossSellCurrentKey() {
+    return crossSellAnchorKey(autoCrossSellAnchors());
+  }
+
+  function crossSellRowOk(r) {
+    return !!(r && typeof r === 'object' && typeof r.handle === 'string' && r.handle && r.variantId != null);
+  }
+
+  function crossSellStore() {
+    // B2B customers price through company-location catalogs the browser
+    // cannot tell apart (and a login/logout keeps sessionStorage) — their
+    // rows stay in memory only, like pre-v16.
+    if (isB2B()) return null;
+    try { return window.sessionStorage || null; } catch (e) { return null; }
+  }
+
+  function crossSellCacheGet(key) {
+    // null = unknown (never fetched / expired / unusable); [] = a real
+    // "no recommendations" answer; rows otherwise.
+    try {
+      var store = crossSellStore();
+      if (!store || !key) return null;
+      var raw = store.getItem(key);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || typeof parsed.t !== 'number' || !Array.isArray(parsed.rows)) return null;
+      if (Date.now() - parsed.t > CROSS_SELL_CACHE_TTL) return null;
+      var rows = [];
+      for (var i = 0; i < parsed.rows.length; i++) if (crossSellRowOk(parsed.rows[i])) rows.push(parsed.rows[i]);
+      return rows;
+    } catch (e) { return null; }
+  }
+
+  function crossSellCachePut(key, rows) {
+    try {
+      var store = crossSellStore();
+      if (store && key) store.setItem(key, JSON.stringify({ t: Date.now(), rows: rows }));
+    } catch (e) { /* quota / private mode: the cache is best-effort */ }
+  }
+
+  function crossSellCacheResolve(anchors) {
+    // Rows for these anchors from the cache, or null when a fetch is
+    // needed. Mirrors the fetch chain (anchor before fallback, first
+    // non-empty answer wins): a multi-anchor set resolves from the
+    // single-anchor entries when every needed one is known — the
+    // product-page pre-warm fills [page product], the page-load render
+    // fills [existing anchor], so the drawer after an add usually needs no
+    // request at all. A derived answer is NOT re-stored under the set key:
+    // it would get a fresh timestamp (extending its sources' 10-minute
+    // life) and could outlive / contradict a refetched single entry — the
+    // derivation is two cheap reads and runs again on the next page.
+    var key = crossSellAnchorKey(anchors);
+    if (!key) return null;
+    var hit = crossSellCacheGet(key);
+    if (hit) return hit;
+    if (anchors.length < 2) return null;
+    for (var i = 0; i < anchors.length; i++) {
+      var single = crossSellCacheGet(crossSellAnchorKey([anchors[i]]));
+      if (single === null) return null; // unknown: the chain must run
+      if (single.length) return single;
+    }
+    return []; // every anchor answered "nothing"
+  }
 
   function cartSignature() {
     if (!state.cart || !Array.isArray(state.cart.items)) return '';
@@ -1464,23 +1729,36 @@
       .then(function (data) {
         return data && Array.isArray(data.products) ? data.products : [];
       })
-      .catch(function () { return []; }); // 404/failure tolerated silently
+      .catch(function () { return null; }); // 404/5xx/network: tolerated silently, but distinguishable from "no recommendations"
   }
 
   function fetchRecommendedProducts(anchors) {
+    // Sequential chain, complementary then related per source, anchor
+    // before fallback, first non-empty answer wins (no extra fetches).
+    // Resolves { products, answered, outcomes }: answered = at least one
+    // attempt got a real answer (a chain where every attempt failed must
+    // never be cached as "nothing to recommend"); outcomes[i] per anchor =
+    // 'won' (its answer is the result) | 'empty' (both intents answered
+    // empty) | 'failed' (an intent failed) | 'skipped' (chain ended before it).
     var attempts = [];
-    anchors.forEach(function (item) {
-      attempts.push({ id: item.product_id, intent: 'complementary' });
-      attempts.push({ id: item.product_id, intent: 'related' });
+    anchors.forEach(function (item, i) {
+      attempts.push({ id: item.product_id, intent: 'complementary', i: i });
+      attempts.push({ id: item.product_id, intent: 'related', i: i });
     });
-    var chain = Promise.resolve([]);
+    var out = { products: [], answered: false, outcomes: anchors.map(function () { return 'skipped'; }) };
+    var chain = Promise.resolve();
     attempts.forEach(function (attempt) {
-      chain = chain.then(function (products) {
-        if (products.length) return products;
-        return fetchRecommendations(attempt.id, attempt.intent);
+      chain = chain.then(function () {
+        if (out.products.length) return;
+        return fetchRecommendations(attempt.id, attempt.intent).then(function (products) {
+          if (products === null) { out.outcomes[attempt.i] = 'failed'; return; }
+          out.answered = true;
+          if (products.length) { out.products = products; out.outcomes[attempt.i] = 'won'; }
+          else if (out.outcomes[attempt.i] !== 'failed') out.outcomes[attempt.i] = 'empty';
+        });
       });
     });
-    return chain;
+    return chain.then(function () { return out; });
   }
 
   function recommendationImage(product) {
@@ -1528,78 +1806,133 @@
       });
   }
 
-  function buildAutoCrossSellRows() {
-    var anchors = autoCrossSellAnchors();
-    if (!anchors.length) return Promise.resolve([]);
-    var ex = crossSellExclusions();
-    return fetchRecommendedProducts(anchors).then(function (products) {
-      var picks = [];
-      var seen = {};
-      for (var i = 0; i < products.length && picks.length < 6; i++) {
-        var p = products[i];
-        if (!p || typeof p.handle !== 'string' || !p.handle) continue;
-        if (p.handle === PROTECTION_HANDLE) continue;
-        if (state.rw && state.rw.skipH[p.handle] === true) continue; // v14: gift-pool / sachet products never recommended
-        if (p.id != null && ex.products[String(p.id)] === true) continue;
-        if (seen[p.handle]) continue;
-        seen[p.handle] = true;
-        picks.push({
-          handle: p.handle,
-          productId: p.id,
-          title: typeof p.title === 'string' ? p.title : '',
-          image: recommendationImage(p)
-        });
-      }
-      if (!picks.length) return [];
-      return fetchHandleData(picks.map(function (pick) { return pick.handle; })).then(function (byHandle) {
-        var rows = [];
-        picks.forEach(function (pick) {
-          var variant = firstAvailableVariant(byHandle[pick.handle]);
-          if (!variant) return; // unknown handle / every variant sold out
-          rows.push({
-            handle: pick.handle,
-            productId: pick.productId,
-            title: pick.title,
-            image: pick.image,
-            variantId: variant.id,
-            priceCents: Number(variant.price) || 0,
-            compareAtCents: variant.compare_at_price != null ? Number(variant.compare_at_price) || 0 : 0
-          });
-        });
-        return rows;
+  function crossSellRowsFromRecs(products) {
+    // Pure: recommendations payload -> row descriptors. Protection product
+    // out, handle dedupe, first available variant of each product (its
+    // presentment price / compare-at); no available variant = no row.
+    // In-cart hiding and the rewards skip sets are render-time concerns
+    // (pruneCrossSellRows), so the rows stay valid for any cart with the
+    // same anchors.
+    var rows = [];
+    var seen = {};
+    for (var i = 0; i < products.length; i++) {
+      var p = products[i];
+      if (!p || typeof p.handle !== 'string' || !p.handle) continue;
+      if (p.handle === PROTECTION_HANDLE) continue;
+      if (seen[p.handle]) continue;
+      seen[p.handle] = true;
+      var variant = firstAvailableVariant(p);
+      if (!variant) continue; // every variant sold out / no variants
+      rows.push({
+        handle: p.handle,
+        productId: p.id,
+        title: typeof p.title === 'string' ? p.title : '',
+        image: recommendationImage(p),
+        variantId: variant.id,
+        priceCents: Number(variant.price) || 0,
+        compareAtCents: variant.compare_at_price != null ? Number(variant.compare_at_price) || 0 : 0
       });
+    }
+    return rows;
+  }
+
+  function buildAutoCrossSellRows(anchors) {
+    // Resolves { rows, outcomes }; REJECTS when no attempt answered (every
+    // recommendations call failed) so a failure can never be cached.
+    if (!anchors || !anchors.length) return Promise.resolve({ rows: [], outcomes: [] });
+    return fetchRecommendedProducts(anchors).then(function (out) {
+      if (!out.answered) throw new Error('recommendations unavailable');
+      return { rows: crossSellRowsFromRecs(out.products), outcomes: out.outcomes };
     });
   }
 
-  function fetchAutoCrossSell(sig) {
-    buildAutoCrossSellRows()
-      .then(function (rows) {
-        if (autoCrossSell.pending === sig) autoCrossSell.pending = null;
-        if (cartSignature() === sig) { // commit only for the cart we fetched for
-          autoCrossSell.signature = sig;
+  function fetchAutoCrossSell(key, anchors) {
+    if (!key || autoCrossSell.pending[key]) return; // in flight
+    autoCrossSell.pending[key] = true;
+    buildAutoCrossSellRows(anchors)
+      .then(function (out) {
+        delete autoCrossSell.pending[key];
+        var rows = out.rows;
+        // Persist only what the chain really established: the set's answer
+        // is authoritative unless an anchor BEFORE the winner failed (its
+        // own answer might have won) — then the rows serve this page from
+        // memory but are not cached under the set key. Per-anchor knowledge
+        // (see crossSellCacheResolve): the winning anchor's own entry =
+        // these rows; every anchor that answered empty = []; failed /
+        // skipped anchors stay unknown.
+        var authoritative = true;
+        for (var i = 0; i < anchors.length; i++) {
+          if (out.outcomes[i] === 'won') break;
+          if (out.outcomes[i] === 'failed') authoritative = false;
+        }
+        if (authoritative) crossSellCachePut(key, rows);
+        if (anchors.length > 1) {
+          for (var j = 0; j < anchors.length; j++) {
+            if (out.outcomes[j] === 'won') crossSellCachePut(crossSellAnchorKey([anchors[j]]), rows);
+            else if (out.outcomes[j] === 'empty') crossSellCachePut(crossSellAnchorKey([anchors[j]]), []);
+          }
+        }
+        if (crossSellCurrentKey() === key) { // commit only for the anchors we fetched for
+          autoCrossSell.key = key;
           autoCrossSell.rows = rows;
           renderAll();
         }
       })
       .catch(function () {
-        if (autoCrossSell.pending === sig) autoCrossSell.pending = null;
-        if (cartSignature() === sig) {
-          // Silent failure: cache the empty result so nothing renders and
-          // nothing re-hammers the endpoints until the cart changes.
-          autoCrossSell.signature = sig;
+        delete autoCrossSell.pending[key];
+        if (crossSellCurrentKey() === key) {
+          // Failure (every recommendations call failed): hold the empty
+          // result in memory so nothing renders and nothing re-hammers the
+          // endpoint on this page; NEVER persisted, so a later page retries.
+          autoCrossSell.key = key;
           autoCrossSell.rows = [];
         }
       });
   }
 
-  function scheduleAutoCrossSell(sig) {
-    if (autoCrossSell.pending === sig) return; // scheduled or in flight
-    autoCrossSell.pending = sig;
+  function crossSellFetchNow() {
+    // Theme hand-off entry (drawer opening right now, anchors final): no
+    // debounce — adopt the cache or start the fetch immediately, and drop
+    // a pending render-path timer for the same key.
+    try {
+      if (!featureOn('crossSell') || crossSellMode() !== 'auto') return;
+      var anchors = autoCrossSellAnchors();
+      var key = crossSellAnchorKey(anchors);
+      if (!key || autoCrossSell.key === key || autoCrossSell.pending[key]) return;
+      if (crossSellCacheResolve(anchors)) return; // renderAll adopts it on its next pass
+      if (autoCrossSell.timer && autoCrossSell.timerKey === key) {
+        window.clearTimeout(autoCrossSell.timer);
+        autoCrossSell.timer = null;
+        autoCrossSell.timerKey = null;
+      }
+      fetchAutoCrossSell(key, anchors);
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function scheduleAutoCrossSell(key, anchors) {
+    // Render-path entry: debounced 200 ms, one timer (the latest key wins),
+    // one fetch in flight per key.
+    if (!key || autoCrossSell.pending[key] || autoCrossSell.timerKey === key) return;
     if (autoCrossSell.timer) window.clearTimeout(autoCrossSell.timer);
+    autoCrossSell.timerKey = key;
     autoCrossSell.timer = window.setTimeout(function () {
       autoCrossSell.timer = null;
-      fetchAutoCrossSell(sig);
+      autoCrossSell.timerKey = null;
+      fetchAutoCrossSell(key, anchors);
     }, 200);
+  }
+
+  function crossSellWarm(anchors) {
+    // Pre-warm (product pages, from the page-product prefetch): fill the
+    // cache for the anchor set the add-to-cart will produce, so the first
+    // drawer render is synchronous. Never touches the live rows unless the
+    // cart already has exactly these anchors.
+    try {
+      if (!featureOn('crossSell') || crossSellMode() !== 'auto') return;
+      var key = crossSellAnchorKey(anchors || []);
+      if (!key || crossSellCacheGet(key)) return;
+      fetchAutoCrossSell(key, anchors);
+    } catch (e) { /* never break the theme */ }
   }
 
   function buildAutoCrossSellRow(row) {
@@ -1607,6 +1940,7 @@
     li.setAttribute('data-variant-id', String(row.variantId));
     if (row.productId != null) li.setAttribute('data-product-id', String(row.productId));
     li.setAttribute('data-price-cents', String(row.priceCents));
+    if (typeof row.handle === 'string' && row.handle) li.setAttribute('data-handle', row.handle); // v16: render-time rewards skip (skipH)
     if (row.image) {
       var img = el('img', 'cx-crosssell__img');
       img.src = sizedImageUrl(row.image, 112);
@@ -1641,10 +1975,22 @@
   }
 
   function renderCrossSellAuto(container) {
-    var sig = cartSignature();
-    if (!sig) return null;
-    if (autoCrossSell.signature !== sig && (drawerIsOpen() || isCartPageContext(container))) {
-      scheduleAutoCrossSell(sig);
+    var anchors = autoCrossSellAnchors();
+    if (!anchors.length) return null;
+    var key = crossSellAnchorKey(anchors);
+    if (!key) return null;
+    if (autoCrossSell.key !== key) {
+      // v16: session cache first (synchronous — the rows a previous page /
+      // the product-page pre-warm fetched, or derived from the per-anchor
+      // entries), else fetch now, drawer open or not, so the rows are ready
+      // before the buyer opens it.
+      var hit = crossSellCacheResolve(anchors);
+      if (hit) {
+        autoCrossSell.key = key;
+        autoCrossSell.rows = hit;
+      } else {
+        scheduleAutoCrossSell(key, anchors);
+      }
     }
     var cached = Array.isArray(autoCrossSell.rows) ? autoCrossSell.rows : null;
     if (!cached || !cached.length) return null;
@@ -5899,6 +6245,64 @@
       });
   }
 
+  // ------------------------------------------ v16 theme cart hand-off hook
+
+  function installThemeCartHook() {
+    // The theme's refreshMiniCart(cart) is what opens the drawer after
+    // every add / change (it rebuilds .mini-cart__list from the cart.js
+    // payload it just fetched, then showMini()). Wrapping it hands us that
+    // same payload SYNCHRONOUSLY, so our widgets render in the same frame
+    // the drawer opens instead of after our own 120 ms debounce + cart.js
+    // refetch (+ the product-data fetch). The original runs unchanged
+    // afterwards (drawer open, list rebuild, count badge); every observer
+    // path (list childList / is-open class) still fires and reconciles
+    // with a fresh cart.js exactly as before. Our own themeRefresh() calls
+    // go through the wrapper too (idempotent seed + one extra render).
+    try {
+      var orig = window.refreshMiniCart;
+      if (typeof orig !== 'function' || orig.__cxCartHook === true) return;
+      var wrapped = function (cart) {
+        try {
+          if (cart && typeof cart === 'object' && Array.isArray(cart.items)) {
+            state.cart = cart;
+            state.themeStale = null; // the theme is about to render exactly this cart
+            renderAll();
+            crossSellFetchNow(); // anchors are final: skip the render-path debounce
+            ensureProductData(cart).then(function (fetched) {
+              if (fetched) renderAll(); // offers for a product that was still missing
+            }).catch(function () { /* noop */ });
+          }
+        } catch (e) { /* never break the theme */ }
+        return orig.apply(this, arguments);
+      };
+      wrapped.__cxCartHook = true;
+      window.refreshMiniCart = wrapped;
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function schedulePageProductPrefetch() {
+    // Product pages: prefetch the page product (+ warm its cross-sell) at
+    // idle, and immediately on the first add-to-cart interaction if idle
+    // has not fired yet (dedupes on the shared promise). Non-product pages:
+    // prefetchPageProduct() finds no handle and does nothing.
+    try {
+      var run = function () { try { prefetchPageProduct(); } catch (e) { /* noop */ } };
+      if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 2500 });
+      } else {
+        window.setTimeout(run, 1200);
+      }
+      if (document.addEventListener) {
+        document.addEventListener('pointerdown', function (e) {
+          try {
+            var target = e && e.target && e.target.nodeType === 1 ? e.target : null;
+            if (target && typeof target.closest === 'function' && target.closest('.btn--atc, form[action*="/cart/add"] [type="submit"], [name="add"]')) run();
+          } catch (e2) { /* noop */ }
+        }, true);
+      }
+    } catch (e) { /* never break the theme */ }
+  }
+
   // ------------------------------------------------------------------ init
 
   function anyEffectiveLive() {
@@ -5933,6 +6337,8 @@
     // guard. Verified preview sessions (PREVIEW set) still boot fully.
     if (!PREVIEW && !anyEffectiveLive()) return;
     setupObservers();
+    installThemeCartHook(); // v16: synchronous seed from the theme's own cart payload
+    schedulePageProductPrefetch(); // v16: product pages — product data + cross-sell warm before the add
     refresh();
     window.CellexiaBooster.refreshCart = scheduleRefresh;
   }

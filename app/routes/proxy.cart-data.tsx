@@ -10,7 +10,13 @@ import { authenticate } from "../shopify.server";
  * (with access to the buyer's cart, customer and presentment currency) before
  * returning it to the browser. The theme extension's cellexia-cart.js calls
  * this whenever the cart contains products missing from its server-rendered
- * config map (e.g. added after page load).
+ * config map (e.g. added after page load) — since v16 only as the LAST
+ * resort: the cart runtime first fills missing products from Shopify's own
+ * {root}products/{handle}.js (page-product prefetch + per-cart-line fetch,
+ * adapted to the same map shape), and the auto cross-sell no longer calls
+ * `?handles=` at all (prices come from the recommendations payload). The
+ * `?handles=` mode still serves the gift-tier product data (rwGiftLoad) and
+ * the site-wide bestseller card decorator.
  *
  * CONTRACT (must stay in sync with extensions/cellexia-booster/blocks/
  * cart-booster.liquid "products" map and assets/cellexia-cart.js

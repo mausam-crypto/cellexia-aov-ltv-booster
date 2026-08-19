@@ -562,6 +562,45 @@ Discount Function and the checkout block all changed.
     a French product page: the badge reads "Voir les dermatologues et en
     savoir plus →" and the overlay list heading "Les 49 dermatologues"
     (allow up to 5 minutes — the proof proxy responses are CDN-cached).
+- **v16 (2026-08-19, cart drawer: offers and cross-sell appear with the
+  drawer)** — you reported that in the cart overlay the "Upgrade to 2 / 3
+  units" tiles and "Pairs perfectly with your routine" showed up noticeably
+  after the drawer itself. Root cause (theme extension JS only, no server or
+  Liquid change): after the theme opened the drawer, our runtime waited 120 ms,
+  fetched the cart again, and, for a product added since the page loaded (the
+  normal add-to-cart case), asked the app server through the Shopify app proxy
+  for that product's variant data before it could draw the tiles (0.5 to 2 s,
+  longer when the Render instance was idle). The cross-sell then started only
+  once the drawer was open: 200 ms, one to four recommendation calls, and a
+  second app-proxy round trip for prices, and it threw everything away and
+  refetched on any cart change (quantity, tier upgrade). Fix, **extension half
+  only** (`npm run deploy`; nothing to configure):
+  - **Same-frame render.** The theme's own `refreshMiniCart(cart)` (what opens
+    the drawer after every add or change) now hands its cart to our runtime
+    first, so the offers render in the same frame the drawer opens; the
+    background refresh still reconciles afterwards.
+  - **Product data without the app server.** On product pages the page's
+    product is fetched at idle from Shopify's own `products/{handle}.js`
+    (Shopify CDN, ~100 ms) so it is already in memory when the buyer adds it;
+    any product still missing is fetched the same way from its cart line's
+    url; the app proxy is only the last resort. Prices stay in the buyer's
+    currency (locale-aware URLs).
+  - **Cross-sell.** Prices now come straight from the recommendations payload
+    (no second app-proxy hop). Results are cached per anchor products (+
+    market + currency + language) instead of per whole cart, so quantity
+    changes and tier upgrades no longer refetch; the cache persists in
+    sessionStorage for 10 minutes (only real answers; a failed request is
+    retried on the next page; B2B customers keep it in memory only); the
+    lookup starts as soon as the cart is known (drawer closed, and
+    immediately when the theme hands over the cart) and product pages
+    pre-warm it for the page product, so the block is usually already there
+    when the drawer opens.
+  - Nothing changes in what is shown, which products are recommended, the
+    add flow, beacons, market scoping, or the drawer's own opening speed.
+    Validation: `npm run validate` green (8,506 checks; cross-sell sim
+    rewritten to 186 checks with 21 mutants all caught). Reviewed with two
+    rounds of a multi-lens + refuter agent workflow (45 findings, 21
+    confirmed, all fixed).
 
 v14 — REWARDS: SET SAVINGS (KIT TIERS) + GIFT TIERS + FREE-SHIPPING GUARANTEE
 (2026-08-16). Two new features, both OFF by default, both per-market:
