@@ -152,8 +152,8 @@
   "endo": {
     "eyebrow": "Bőrgyógyászok által ajánlott",
     "count_headline": {
-      "one": "{{ n }} bőrgyógyász ajánlja a Cellexiát",
-      "other": "{{ n }} bőrgyógyász ajánlja a Cellexiát"
+      "one": "{{ n }} bőrgyógyász ajánlja ezt a terméket",
+      "other": "{{ n }} bőrgyógyász ajánlja ezt a terméket"
     },
     "shown_of": "Megjelenítve: @@SHOWN@@ / @@TOTAL@@",
     "show_more": "Továbbiak megjelenítése",

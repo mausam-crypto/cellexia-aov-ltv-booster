@@ -150,7 +150,7 @@
   "endo": {
     "eyebrow": "皮膚科医が推薦",
     "count_headline": {
-      "other": "{{ n }}名の皮膚科医がCellexiaを推薦"
+      "other": "{{ n }}名の皮膚科医がこの製品を推薦"
     },
     "shown_of": "@@TOTAL@@名中@@SHOWN@@名を表示",
     "show_more": "もっと見る",

@@ -152,8 +152,8 @@
   "endo": {
     "eyebrow": "Ihotautilääkärien suosittelema",
     "count_headline": {
-      "one": "{{ n }} ihotautilääkäri suosittelee Cellexiaa",
-      "other": "{{ n }} ihotautilääkäriä suosittelee Cellexiaa"
+      "one": "{{ n }} ihotautilääkäri suosittelee tätä tuotetta",
+      "other": "{{ n }} ihotautilääkäriä suosittelee tätä tuotetta"
     },
     "shown_of": "Näytetään @@SHOWN@@ / @@TOTAL@@",
     "show_more": "Näytä lisää",

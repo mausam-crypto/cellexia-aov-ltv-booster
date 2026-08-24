@@ -156,10 +156,10 @@
   "endo": {
     "eyebrow": "Polecane przez dermatologów",
     "count_headline": {
-      "one": "{{ n }} dermatolog poleca Cellexię",
-      "few": "{{ n }} dermatolodzy polecają Cellexię",
-      "many": "{{ n }} dermatologów poleca Cellexię",
-      "other": "{{ n }} dermatologa poleca Cellexię"
+      "one": "{{ n }} dermatolog poleca ten produkt",
+      "few": "{{ n }} dermatolodzy polecają ten produkt",
+      "many": "{{ n }} dermatologów poleca ten produkt",
+      "other": "{{ n }} dermatologa poleca ten produkt"
     },
     "shown_of": "Wyświetlono @@SHOWN@@ z @@TOTAL@@",
     "show_more": "Pokaż więcej",

@@ -1394,7 +1394,7 @@ export default function ProofEndorsementsTab() {
             label="Section headline"
             value={displayState.copyHeadline}
             onChange={(value) => setDisplayField("copyHeadline", value)}
-            placeholder="{n} dermatologists recommend Cellexia"
+            placeholder="{n} dermatologists recommend this product"
             helpText="Use {n} to insert the endorsement count."
             autoComplete="off"
           />

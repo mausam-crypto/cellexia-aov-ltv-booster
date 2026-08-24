@@ -156,12 +156,12 @@
   "endo": {
     "eyebrow": "Dermatologist recommended",
     "count_headline": {
-      "zero": "{{ n }} dermatologists recommend Cellexia",
-      "one": "{{ n }} dermatologist recommends Cellexia",
-      "two": "{{ n }} dermatologists recommend Cellexia",
-      "few": "{{ n }} dermatologists recommend Cellexia",
-      "many": "{{ n }} dermatologists recommend Cellexia",
-      "other": "{{ n }} dermatologists recommend Cellexia"
+      "zero": "{{ n }} dermatologists recommend this product",
+      "one": "{{ n }} dermatologist recommends this product",
+      "two": "{{ n }} dermatologists recommend this product",
+      "few": "{{ n }} dermatologists recommend this product",
+      "many": "{{ n }} dermatologists recommend this product",
+      "other": "{{ n }} dermatologists recommend this product"
     },
     "shown_of": "Showing @@SHOWN@@ of @@TOTAL@@",
     "show_more": "Show more",

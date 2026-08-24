@@ -152,8 +152,8 @@
   "endo": {
     "eyebrow": "Aanbevolen door dermatologen",
     "count_headline": {
-      "one": "{{ n }} dermatoloog beveelt Cellexia aan",
-      "other": "{{ n }} dermatologen bevelen Cellexia aan"
+      "one": "{{ n }} dermatoloog beveelt dit product aan",
+      "other": "{{ n }} dermatologen bevelen dit product aan"
     },
     "shown_of": "@@SHOWN@@ van @@TOTAL@@ weergegeven",
     "show_more": "Toon meer",

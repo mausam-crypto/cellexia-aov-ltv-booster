@@ -152,8 +152,8 @@
   "endo": {
     "eyebrow": "Anbefalet af dermatologer",
     "count_headline": {
-      "one": "{{ n }} dermatolog anbefaler Cellexia",
-      "other": "{{ n }} dermatologer anbefaler Cellexia"
+      "one": "{{ n }} dermatolog anbefaler dette produkt",
+      "other": "{{ n }} dermatologer anbefaler dette produkt"
     },
     "shown_of": "Viser @@SHOWN@@ af @@TOTAL@@",
     "show_more": "Vis flere",

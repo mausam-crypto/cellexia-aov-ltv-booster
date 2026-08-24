@@ -3956,15 +3956,15 @@ const EVIDENCE = {
   }
   const ro155 = JSON.parse(read(`${EXT}/locales/ro.json`)).endo;
   ok(
-    ro155.count_headline.few === "{{ n }} dermatologi recomandă Cellexia" &&
-      ro155.count_headline.other === "{{ n }} de dermatologi recomandă Cellexia" &&
+    ro155.count_headline.few === "{{ n }} dermatologi recomandă acest produs" &&
+      ro155.count_headline.other === "{{ n }} de dermatologi recomandă acest produs" &&
       ro155.badge_headline.other === "Recomandat de {{ n }} de dermatologi",
     "v15.5: ro endo plurals are real CLDR forms (few / other with the 20+ 'de')",
   );
   const pl155 = JSON.parse(read(`${EXT}/locales/pl.json`)).endo;
   ok(
-    pl155.count_headline.few === "{{ n }} dermatolodzy polecają Cellexię" &&
-      pl155.count_headline.many === "{{ n }} dermatologów poleca Cellexię",
+    pl155.count_headline.few === "{{ n }} dermatolodzy polecają ten produkt" &&
+      pl155.count_headline.many === "{{ n }} dermatologów poleca ten produkt",
     "v15.5: pl endo few/many forms agree with the numeral (2-4 plural verb, 5+ genitive)",
   );
   // The sim covers the curated behavior.

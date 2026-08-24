@@ -154,9 +154,9 @@
   "endo": {
     "eyebrow": "Recomandat de dermatologi",
     "count_headline": {
-      "one": "{{ n }} dermatolog recomandă Cellexia",
-      "few": "{{ n }} dermatologi recomandă Cellexia",
-      "other": "{{ n }} de dermatologi recomandă Cellexia"
+      "one": "{{ n }} dermatolog recomandă acest produs",
+      "few": "{{ n }} dermatologi recomandă acest produs",
+      "other": "{{ n }} de dermatologi recomandă acest produs"
     },
     "shown_of": "Se afișează @@SHOWN@@ din @@TOTAL@@",
     "show_more": "Vezi mai multe",

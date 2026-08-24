@@ -259,7 +259,10 @@ Compact additions: `survey.more_outcomes` ("+ @@N@@ more outcomes").
 
 v8.17 endo rewrite + additions (last keys of the group): eyebrow is now
 "Dermatologist recommended", count_headline is now "{{ n }} dermatologists recommend
-Cellexia" (+ CLDR one; pl/ro/ar/ja keep their form sets); NEW `endo.description`
+Cellexia" (+ CLDR one; pl/ro/ar/ja keep their form sets) — v16.1 (2026-08-22)
+reworded count_headline ONLY to "{{ n }} dermatologists recommend this product" in
+all 18 locales (brand name dropped from the wall headline; eyebrow, badge_headline,
+description and every other endo key unchanged); NEW `endo.description`
 ("Verified recommendations from licensed dermatologists. Read what they have to say
 about the product, Cellexia and its approach to skincare." — rendered under the wall
 headline, full density only), `endo.badge_headline` (CLDR, "Recommended by {{ n }}

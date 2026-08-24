@@ -601,6 +601,15 @@ Discount Function and the checkout block all changed.
     rewritten to 186 checks with 21 mutants all caught). Reviewed with two
     rounds of a multi-lens + refuter agent workflow (45 findings, 21
     confirmed, all fixed).
+- **v16.1 (2026-08-22, dermatologist endorsements headline reworded)** — the
+  product-page endorsements widget headline now reads "{n} dermatologists
+  recommend this product" instead of "{n} dermatologists recommend Cellexia",
+  in all 18 languages (native rewordings, e.g. fr "… recommandent ce
+  produit", de "… empfehlen dieses Produkt", ja "…がこの製品を推薦"). Only the
+  wall headline changed: the eyebrow, badge, description, overlay and every
+  other endorsement string are untouched, and your admin overrides (if you
+  ever set a custom headline there) still win over these defaults.
+  Extension half only: `npm run deploy`, nothing to configure.
 
 v14 — REWARDS: SET SAVINGS (KIT TIERS) + GIFT TIERS + FREE-SHIPPING GUARANTEE
 (2026-08-16). Two new features, both OFF by default, both per-market:

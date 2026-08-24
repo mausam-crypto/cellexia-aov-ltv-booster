@@ -152,8 +152,8 @@
   "endo": {
     "eyebrow": "Anbefalt av hudleger",
     "count_headline": {
-      "one": "{{ n }} hudlege anbefaler Cellexia",
-      "other": "{{ n }} hudleger anbefaler Cellexia"
+      "one": "{{ n }} hudlege anbefaler dette produktet",
+      "other": "{{ n }} hudleger anbefaler dette produktet"
     },
     "shown_of": "Viser @@SHOWN@@ av @@TOTAL@@",
     "show_more": "Vis flere",
