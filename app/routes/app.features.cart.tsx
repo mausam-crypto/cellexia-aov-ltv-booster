@@ -724,7 +724,7 @@ export default function CartFeaturesPage() {
                 />
                 <Checkbox
                   label="Subscription prices in cart offers"
-                  helpText="When the Cellexia Subscriptions app is live in the shopper's market and their cart already holds one of its subscriptions, pack upgrades and cross-sells use real subscription prices and keep the subscription. Turning this off returns the cart to one-time behavior instantly. It never offers subscriptions to one-time carts."
+                  helpText="When the shopper's cart already holds a Cellexia Subscriptions line, pack upgrades and cross-sells use real subscription prices and keep the subscription. On product pages, Frequently bought together and You might also like follow the buy box's selected option the same way. Turning this off returns everything to one-time behavior instantly. It never offers subscriptions to one-time carts."
                   checked={state.subscriptionAware}
                   onChange={(subscriptionAware) =>
                     setState((previous) => ({ ...previous, subscriptionAware }))

@@ -3444,8 +3444,8 @@ const EVIDENCE = {
   // v15: the amazon "rw" member is emitted ONLY when az_eff_ss (LIVE for the
   // market) and carries just live/tiers/sf/excl — no giftPids, no
   // all_products; the rw.* PDP strings keep riding az_any_ss (inert text).
-  const AZ_RW = '{%- if az_eff_ss %}\n"rw": {"live": true, "tiers": {{ cx_rw.tiers | json }}, "sf": {"pdp": {{ cx_rw.surfaces.pdpLine | json }}, "sim": {{ cx_rw.surfaces.similarCaption | json }}, "fbt": {{ cx_rw.surfaces.fbtCaption | json }}}, "excl": {{ cx_rw.setSavingsExcludedByMarket[cx_market] | json }}},\n{%- endif %}';
-  ok(azLiquid14.includes(AZ_RW), "v15: amazon island \"rw\" member (live/tiers/sf/excl only) gated on az_eff_ss (live), closed on the next line");
+  const AZ_RW = '{%- if az_eff_ss %}\n"rw": {"live": true, "tiers": {{ cx_rw.tiers | json }}, "sf": {"pdp": {{ cx_rw.surfaces.pdpLine | json }}, "sim": {{ cx_rw.surfaces.similarCaption | json }}, "fbt": {{ cx_rw.surfaces.fbtCaption | json }}}, "excl": {{ cx_rw.setSavingsExcludedByMarket[cx_market] | json }}{% if cx_rw.includeSubscriptions == false %}, "sub": false{% endif %}},\n{%- endif %}';
+  ok(azLiquid14.includes(AZ_RW), "v15/v17.1: amazon island \"rw\" member (live/tiers/sf/excl + gated sub flag) gated on az_eff_ss (live), closed on the next line");
   ok(!azLiquid14.includes("giftPids") && !/"rw": \{[^\n]*all_products/.test(azLiquid14), "v15: amazon rw member has no giftPids and no all_products look-ups");
   ok(
     azLiquid14.includes("{%- if az_any_ss %}\n{%- assign az_rwk = "),
@@ -3992,7 +3992,10 @@ const EVIDENCE = {
     cartLq17.includes("assign cx_sl = shop.metafields.cellexia.launch_status.value | default: shop.metafields.cellexia.launch_status"),
     "v17: launch_status read uses the buy-box's exact .value | default pattern",
   );
-  ok(cartLq17.includes("if cx_sl == 'live'"), "v17: byte-exact 'live' compare (setup/absent fails closed)");
+  ok(
+    cartLq17.includes("if cx_sl != blank"),
+    "v17.1: launch gate = INSTALLED (setup or live; absent fails closed) — the per-shopper proof of liveness is the owned plan line in the cart, which a real shopper cannot hold while the widget is dark; 'setup' must open the data gate so the subscription app's own preview works end-to-end",
+  );
   ok(
     cartLq17.includes("assign cx_wm = shop.metafields.cellexia.widget_markets.value") &&
       cartLq17.includes("if cx_wm and cx_wm.mode == 'selected'") &&
@@ -4060,6 +4063,49 @@ const EVIDENCE = {
       "allocation without a usable price: no tile (fail closed, no one-time fallback)",
     ),
     "v17: subscribed-upgrade sim pins the transition-hazard invariant",
+  );
+
+  // v17.1: buy-box-driven PDP widgets (FBT + similar). The buy box IS the
+  // signal on the PDP — its own gates decided to render — so there is no
+  // metafield read here; the pins protect the fail-closed reader, the
+  // click-time add resolution, and the prepaid detector twin.
+  const pdpJs171 = read(`${EXT}/assets/cellexia-pdp.js`);
+  ok(
+    pdpJs171.includes("window.CellexiaSubs") &&
+      pdpJs171.includes("st.mode !== 'subscription'"),
+    "v17.1: the PDP reads CellexiaSubs.getState() and only an explicit subscription selection activates anything",
+  );
+  ok(pdpJs171.includes("cx:buybox:change"), "v17.1: re-prices on the buy box's change event");
+  ok(
+    pdpJs171.includes("return p > 0 && p <= rec.oneTime ? p : null;"),
+    "v17.1: PDP prepaid detector — an allocation priced above one-time is never offered",
+  );
+  ok(
+    pdpJs171.includes("if (azAddPlan && azSubPrice(id, azAddPlan) != null) {") &&
+      pdpJs171.includes("item.selling_plan = /^\\d+$/.test(azAddPlan) ? Number(azAddPlan) : azAddPlan;"),
+    "v17.1: the FBT add resolves the plan at CLICK time against the live buy-box state",
+  );
+  ok(
+    pdpJs171.includes("if (window.isB2BCustomer === true || AZ_CFG.b2b === true) return null;"),
+    "v17.1: B2B never enters subscription context on the PDP",
+  );
+  const azLq171 = read(`${EXT}/blocks/amazon-booster.liquid`);
+  ok(
+    azLq171.includes('{%- if customer.b2b? %}\n"b2b": true,\n{%- endif %}'),
+    "v17.1: az island carries the gated B2B flag",
+  );
+  ok(
+    azLq171.includes('{%- if cfg.cartUpsell.subscriptionAware == false %}\n"subOff": 1,\n{%- endif %}'),
+    "v17.1: the ONE admin kill switch also darkens the PDP surfaces",
+  );
+  ok(
+    azLq171.includes('"h": {{ az_p.handle | json }}'),
+    "v17.1: manual FBT rows carry their handle for the one-shot subscription plan fetch",
+  );
+  ok(
+    read("validation/sims/fbt.cjs").includes("v17.1 manual: exactly ONE proxy fetch") &&
+      read("validation/sims/fbt.cjs").includes("v17.1 rw sub=false: plain subscription total"),
+    "v17.1: fbt sim pins the subscription scenarios incl. the rw gate",
   );
 }
 

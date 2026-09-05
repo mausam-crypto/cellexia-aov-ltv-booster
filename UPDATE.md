@@ -371,6 +371,42 @@ strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
 
+v17.1 — MERCHANT TEST ROUND FIXES + PRODUCT-PAGE SUBSCRIPTION PRICES
+(2026-09-05, same release as v17 below; both halves deploy together):
+
+- **Root cause of "cross-sells stayed one-time while the tiles worked":**
+  the v17 cart gate required the subscription app's launch flag to read
+  byte-exact 'live', but the merchant tests through that app's own preview
+  while the flag still reads 'setup' (the preview can put real subscription
+  lines in the cart while the widget stays dark for shoppers). Fixed by
+  gating on INSTALLED (flag present, 'setup' or 'live'): safe, because the
+  per-shopper proof of liveness is the owned subscription line in the cart,
+  which a real shopper cannot obtain while the widget is dark. Verified
+  against the live store: both cross-sell products carry the new app's
+  plans on every variant, so the merchant's exact test now resolves.
+- **Product page follows the buy box (new feature, merchant request):**
+  when the Cellexia Subscriptions buy box has the subscription option
+  selected (it usually is, by default), "Frequently bought together" prices
+  every row — the page product's "This item" row included — from that
+  plan's own per-variant prices, the total follows, and "Add all N" adds
+  every resolvable item AS a subscription on the selected schedule; "You
+  might also like" cards show the subscription prices (display only, the
+  cards are links). Flip the buy box to one-time and everything restores to
+  the classic prices byte-for-byte, and adds are plain again — resolved at
+  CLICK time against the live buy-box state, so a flip between render and
+  click can neither add an unwanted subscription nor drop a wanted one.
+  No metafield reads on the product page: the buy box's public state
+  (window.CellexiaSubs + its cx:buybox:change event) IS the signal, since
+  its own gates (launch, market, ownership) already decided to render it.
+  Nothing visually new (merchant rule), zero new translated strings.
+  Companion prices ride the app-proxy response the widgets already fetch;
+  the page product's own arrive by appending its handle to the same single
+  call (manual FBT lists: one extra call, only while a subscription is
+  selected). Prepaid lump allocations are never offered implicitly; B2B
+  never enters subscription context; the same admin kill switch covers the
+  product page; the v14 set-savings reframe on the FBT total honors the
+  "count subscriptions" toggle exactly like the cart.
+
 v17 — SUBSCRIPTION PRICES IN CART OFFERS (2026-09-05): the cart follows the
 NEW Cellexia Subscriptions app (the custom app replacing Joy). **Both halves
 must be redeployed** (extensions AND app server), and this must be live
@@ -410,13 +446,17 @@ also be deployed first.
   today's live behavior), in every launch state, kill-switch state, and for
   every foreign (Joy) plan.
 - **Signals, not settings.** cart-booster.liquid reads the subscription
-  app's own shop metafields directly (`cellexia.launch_status` byte-exact
-  'live'; `cellexia.widget_markets` exact handle membership, blank market
-  fails closed; `cellexia.plan_groups.planIds` non-empty) with the same
-  byte-for-byte read patterns as that app's own buy-box gate, and emits a
-  gated `sx` island member; absent member = everything inert, island always
-  valid JSON (the v15 rule). Turning a market on/off in the subscription
-  app is all the configuration there is.
+  app's own shop metafields directly (`cellexia.launch_status` PRESENT,
+  i.e. the app is installed — 'setup' or 'live'; v17.1 change so the
+  subscription app's own preview works end-to-end: real shoppers cannot
+  hold one of its subscription lines while the widget is dark, so the
+  cart line itself is the per-shopper liveness proof; plus
+  `cellexia.widget_markets` exact handle membership, blank market fails
+  closed, and `cellexia.plan_groups.planIds` non-empty) with the same read
+  patterns as that app's own buy-box gate, and emits a gated `sx` island
+  member; absent member = everything inert, island always valid JSON (the
+  v15 rule). Turning a market on/off in the subscription app is all the
+  configuration there is.
 - **Emergency switch.** Cart features page: "Subscription prices in cart
   offers" (default on). Off = safe-inert instantly, no deploy: subscribed
   lines show no tiles at all (never a one-time-priced tile on a

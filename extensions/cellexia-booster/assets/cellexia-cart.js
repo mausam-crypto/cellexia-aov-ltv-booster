@@ -819,12 +819,16 @@
   //
   // The cart follows the NEW subscription app's own storefront signals,
   // mirrored into the gated cfg.sx island member by cart-booster.liquid ONLY
-  // when that app is live (shop.metafields.cellexia.launch_status == 'live'),
-  // the current market is enabled (cellexia.widget_markets) and its ownership
-  // allow-list (cellexia.plan_groups.planIds) is non-empty. sx absent = every
-  // cross-sell subscription path inert, fail closed. planIds never contains
-  // another app's plan ids (a Joy line can never activate this) but may carry
-  // dead ones — safe for membership tests, never a list to render plans from.
+  // when that app is INSTALLED (cellexia.launch_status present — 'setup' or
+  // 'live'; v17.1: 'setup' must open the data gate so the app's own preview
+  // works end-to-end, and the per-shopper proof of liveness is the owned
+  // plan line in the cart, which a real shopper cannot hold while the
+  // widget is dark), the current market is enabled (cellexia.widget_markets)
+  // and its ownership allow-list (cellexia.plan_groups.planIds) is
+  // non-empty. sx absent = every cross-sell subscription path inert, fail
+  // closed. planIds never contains another app's plan ids (a Joy line can
+  // never activate this) but may carry dead ones — safe for membership
+  // tests, never a list to render plans from.
 
   function subsAware() {
     return subscriptionAware() && !isB2B() &&

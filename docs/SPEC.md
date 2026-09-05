@@ -301,8 +301,11 @@ classes in markup too (`d-flex`, `btn btn--primary`, `eyebrow`). RTL-safe (logic
        anchors are known (drawer closed; immediately on the theme hand-off) and product pages
        pre-warm the entry for the page product.
      * **Subscription-aware cross-sell (v17)**: ACTIVE only when the gated `sx` island member is
-       present (cart-booster.liquid emits it only when the Cellexia Subscriptions app's shop
-       metafields say live + market enabled + non-empty `plan_groups.planIds`, and the
+       present (cart-booster.liquid emits it only when the Cellexia Subscriptions app is
+       INSTALLED — `cellexia.launch_status` present, 'setup' OR 'live' (v17.1: setup opens the
+       data gate so that app's own preview works; the per-shopper liveness proof is the owned
+       plan line in the cart, unobtainable by real shoppers while the widget is dark) — plus
+       market enabled + non-empty `plan_groups.planIds`, and the
        `cartUpsell.subscriptionAware` kill switch is on), the visitor is not B2B, AND the cart
        holds a line whose plan id is IN `sx.p` (ownership — Joy lines never qualify). Then each
        row resolves a plan via `crossSellPlanFor`: the anchor line's exact plan id on the row
@@ -318,6 +321,22 @@ classes in markup too (`d-flex`, `btn btn--primary`, `eyebrow`). RTL-safe (logic
        `products/{handle}.js` once per handle per page (failures marked, no re-hammering).
        CACHED ROW DESCRIPTORS STAY PLAN-FREE and the cache key is unchanged — the subscription
        context is render-time only.
+     * **Subscription-aware PDP widgets (v17.1, cellexia-pdp.js)**: on product pages the buy box
+       IS the signal — `window.CellexiaSubs.getState()` with mode 'subscription' + a plan id
+       (its own gates already passed launch/market/ownership), re-synced on the bubbling
+       `cx:buybox:change` event; fail closed on B2B (az island's gated `b2b` flag or
+       `window.isB2BCustomer`), on the shared kill switch (az island's gated `subOff:1` from
+       `cartUpsell.subscriptionAware == false`), and on any missing/one-time state. FBT rows,
+       the "This item" row and similar cards re-price from `azSubPlans` (per-variant
+       `planAllocations` captured from the app-proxy response the widgets already fetch; the
+       page product's handle rides the same call; manual FBT rows carry `"h"` and trigger ONE
+       lazy proxy fetch only while a subscription is selected). The prepaid rule (allocation
+       price above one-time = never offered) twins the cart. `azFbtAdd` resolves each item's
+       plan at CLICK time against the live state and posts `selling_plan` alongside the
+       `_cellexia_upsell: 'fbt'` marker; the FBT set-savings reframe is suppressed for bundles
+       containing subscription rows when `rw.sub === false` (the includeSubscriptions twin).
+       Flipping to one-time restores classic prices byte-for-byte (`data-base-cents` /
+       `data-base-fmt`). Similar cards are display-only (they link, never add).
      * **Tracking**: `navigator.sendBeacon`/fetch POST to
        `{Shopify.routes.root}apps/cellexia/track` — impressions (once per drawer-open per feature),
        `upgrade` (volume swap, include revenue delta), `subscribe` (plan switch). Feature keys:

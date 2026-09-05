@@ -269,7 +269,7 @@ endif
 assign cx_sx = false
 unless cfg.cartUpsell.subscriptionAware == false
 assign cx_sl = shop.metafields.cellexia.launch_status.value | default: shop.metafields.cellexia.launch_status
-if cx_sl == 'live'
+if cx_sl != blank
 assign cx_wm = shop.metafields.cellexia.widget_markets.value
 assign cx_sx = true
 if cx_wm and cx_wm.mode == 'selected'

@@ -4173,6 +4173,155 @@
     return null;
   }
 
+  // ------------- v17.1 subscription-aware FBT / similar (buy-box-driven)
+  //
+  // On the PDP the Cellexia Subscriptions buy box IS the signal: its own
+  // gates (launch flag, market list, ownership allow-list) already decided
+  // to render, and window.CellexiaSubs.getState() carries the shopper's
+  // CURRENT choice. mode 'subscription' + a plan id => the widgets price
+  // from that plan's own per-variant allocations and the FBT add carries
+  // the plan; anything else (widget absent/hidden, one-time selected, B2B,
+  // kill switch off) => byte-identical classic behavior. Merchant rule:
+  // nothing visually new, only the numbers change. Companion allocations
+  // already ride the app-proxy response (productsByHandle
+  // variants[].planAllocations); the page product's own arrive by
+  // appending its handle to the same call.
+
+  var azSubPlans = {}; // variantId -> {plans:[{planId,price}], oneTime}
+
+  function azSubRegister(entry) {
+    if (!entry || !Array.isArray(entry.variants)) return;
+    for (var i = 0; i < entry.variants.length; i++) {
+      var v = entry.variants[i];
+      if (!v || v.id == null) continue;
+      azSubPlans[String(v.id)] = {
+        plans: Array.isArray(v.planAllocations) ? v.planAllocations : [],
+        oneTime: Number(v.price) || 0
+      };
+    }
+  }
+
+  function azSubPlanId() {
+    // The buy box's live verdict. Fail closed on everything: the admin
+    // kill switch, B2B (standing rule: B2B never sees subscription
+    // offers), widget absent/hidden/gated (getState() answers null),
+    // one-time selected, no plan id.
+    try {
+      if (AZ_CFG.subOff === 1) return null;
+      if (window.isB2BCustomer === true || AZ_CFG.b2b === true) return null;
+      var subs = window.CellexiaSubs;
+      if (!subs || typeof subs.getState !== 'function') return null;
+      var st = subs.getState();
+      if (!st || st.mode !== 'subscription' || !st.sellingPlanId) return null;
+      return String(st.sellingPlanId);
+    } catch (e) { return null; }
+  }
+
+  function azSubPrice(variantId, planId) {
+    // The allocation price for planId on this variant — usable (> 0) and
+    // never above the one-time price (a higher figure is a prepaid
+    // multi-delivery lump; cart twins: variantPlanAlloc + the v17 prepaid
+    // detector). null = the row keeps its one-time price and a plan-free
+    // add — degrade, never guess.
+    if (!planId) return null;
+    var rec = azSubPlans[String(variantId)];
+    if (!rec) return null;
+    for (var i = 0; i < rec.plans.length; i++) {
+      var a = rec.plans[i];
+      if (a && a.planId != null && String(a.planId) === String(planId)) {
+        var p = Number(a.price);
+        return p > 0 && p <= rec.oneTime ? p : null;
+      }
+    }
+    return null;
+  }
+
+  function azSubPriceRow(row, planId) {
+    // data-price-cents drives the total AND the add payload, so pricing a
+    // row prices everything downstream. data-base-cents / data-base-fmt
+    // preserve the classic price (the manual rows' Liquid money string
+    // verbatim) so flipping back to one-time restores it exactly.
+    try {
+      var base = row.getAttribute('data-base-cents');
+      var priceEl = row.querySelector('[data-cx-az-fbt-price]') || row.querySelector('.cx-az-fbt__price');
+      if (base == null) {
+        base = row.getAttribute('data-price-cents');
+        row.setAttribute('data-base-cents', base == null ? '0' : base);
+        if (priceEl) row.setAttribute('data-base-fmt', priceEl.textContent);
+      }
+      var subP = planId ? azSubPrice(row.getAttribute('data-variant-id'), planId) : null;
+      if (subP != null) {
+        row.setAttribute('data-price-cents', String(subP));
+        row.setAttribute('data-plan-id', String(planId));
+        if (priceEl) priceEl.textContent = azMoney(subP);
+      } else {
+        row.setAttribute('data-price-cents', String(Number(base) || 0));
+        row.removeAttribute('data-plan-id');
+        if (priceEl) priceEl.textContent = row.getAttribute('data-base-fmt') || azMoney(Number(base) || 0);
+      }
+    } catch (e) { /* never break the theme */ }
+  }
+
+  var azSubManualDone = false;
+
+  function azSubManualFetch(node) {
+    // Manual FBT rows are server-rendered (zero fetches classically); the
+    // subscription context needs their allocations ONCE — the rows carry
+    // their handle and the page product's handle rides the same single
+    // proxy call. Fired only while the buy box actually has a
+    // subscription selected.
+    if (azSubManualDone || !window.fetch) return;
+    azSubManualDone = true;
+    var handles = [];
+    var rows = azFbtRows(node);
+    for (var i = 0; i < rows.length; i++) {
+      var h = rows[i].getAttribute('data-handle');
+      if (h && handles.indexOf(h) === -1) handles.push(h);
+    }
+    var p = azProductData();
+    if (p && p.handle && handles.indexOf(p.handle) === -1) handles.push(p.handle);
+    if (!handles.length) return;
+    azFetchHandleData(handles).then(function (byHandle) {
+      var got = false;
+      for (var k in byHandle) {
+        if (Object.prototype.hasOwnProperty.call(byHandle, k) && byHandle[k]) {
+          azSubRegister(byHandle[k]);
+          got = true;
+        }
+      }
+      if (got) azSubSync();
+    });
+  }
+
+  function azSubSync() {
+    // Re-price the FBT rows and similar cards to the buy box's current
+    // choice; classic numbers restore verbatim when the shopper flips
+    // back to one-time. Wired to the buy box's cx:buybox:change event and
+    // run once after each widget mounts (either side may load first).
+    try {
+      var planId = azSubPlanId();
+      var fbt = document.querySelector('.cx-az-fbt');
+      if (fbt) {
+        if (planId && fbt.getAttribute('data-cx-az-mode') === 'manual') azSubManualFetch(fbt);
+        var rows = azFbtRows(fbt);
+        for (var i = 0; i < rows.length; i++) azSubPriceRow(rows[i], planId);
+        azFbtUpdate(fbt);
+      }
+      // Plain class selector on purpose — compound attr selectors are
+      // outside the sim mini-DOM's engine (the v6.3 lesson).
+      var cards = document.querySelectorAll('.cx-az-similar__card');
+      for (var c = 0; c < cards.length; c++) {
+        var card = cards[c];
+        var cvid = card.getAttribute('data-variant-id');
+        if (!cvid) continue;
+        var one = Number(card.getAttribute('data-price-cents')) || 0;
+        var subP = planId ? azSubPrice(cvid, planId) : null;
+        var priceEl = card.querySelector('.cx-az-similar__price');
+        if (priceEl) priceEl.textContent = azMoney(subP != null ? subP : one);
+      }
+    } catch (e) { /* never break the theme */ }
+  }
+
   var azFbtBusy = false;
 
   function azFbtRows(node) {
@@ -4187,17 +4336,30 @@
       var rows = azFbtRows(node);
       var total = 0;
       var count = 0;
+      var hasSub = false;
       for (var i = 0; i < rows.length; i++) {
         var check = rows[i].querySelector('.cx-az-fbt__check');
         if (!check || !check.checked) continue;
         count++;
         total += Number(rows[i].getAttribute('data-price-cents')) || 0;
+        if (rows[i].getAttribute('data-plan-id')) hasSub = true;
       }
       // v14 set savings: discounted total + struck original + "Add all N
       // & save" label once the checked count reaches a KIT tier. Isolated
       // so the add-on can never take the classic total / labels down.
+      // v17.1: when the SET codes skip subscription lines (the merchant's
+      // "count subscriptions" toggle off, rw.sub === false), a bundle that
+      // contains subscription rows must never show the reframed total —
+      // the code could not deliver it (cart twin: state.rw.subOk).
       var rw = null;
-      try { rw = azRwFbtApply(node, total, count); } catch (e0) { rw = null; }
+      try {
+        var rwc17 = azRwCfg();
+        if (!(hasSub && rwc17 && rwc17.sub === false)) rw = azRwFbtApply(node, total, count);
+        else {
+          var was17 = node.querySelector('.cx-az-fbt__was');
+          if (was17 && was17.parentNode) was17.parentNode.removeChild(was17);
+        }
+      } catch (e0) { rw = null; }
       var totalEl = node.querySelector('[data-cx-az-fbt-total]');
       if (totalEl) totalEl.textContent = azMoney(rw ? rw.total : total);
       var btn = node.querySelector('[data-cx-az-fbt-add]');
@@ -4222,8 +4384,13 @@
       if (!info || typeof info.price !== 'number') return;
       row.setAttribute('data-variant-id', vid);
       row.setAttribute('data-price-cents', String(info.price));
+      // v17.1: a variant switch resets the row's classic base, then the
+      // subscription overlay re-applies for the buy box's current choice.
+      row.setAttribute('data-base-cents', String(info.price));
+      row.setAttribute('data-base-fmt', azMoney(info.price));
       var priceEl = row.querySelector('[data-cx-az-fbt-price]');
       if (priceEl) priceEl.textContent = azMoney(info.price);
+      azSubPriceRow(row, azSubPlanId());
       azFbtUpdate(node);
     } catch (e) { /* never break the theme */ }
   }
@@ -4237,7 +4404,17 @@
       if (!check || !check.checked) continue;
       var id = Number(rows[i].getAttribute('data-variant-id'));
       if (!isFinite(id) || id <= 0) continue;
-      items.push({ id: id, quantity: 1, properties: { _cellexia_upsell: 'fbt' } });
+      var item = { id: id, quantity: 1, properties: { _cellexia_upsell: 'fbt' } };
+      // v17.1: click-time truth — re-resolve against the buy box's CURRENT
+      // selection, never the render-time attribute, so a flip between
+      // render and click can neither add an unwanted subscription nor
+      // silently drop a wanted one. The marker property doubles as the
+      // buy-box embed's pass-through signal, so nothing is ever injected.
+      var azAddPlan = azSubPlanId();
+      if (azAddPlan && azSubPrice(id, azAddPlan) != null) {
+        item.selling_plan = /^\d+$/.test(azAddPlan) ? Number(azAddPlan) : azAddPlan;
+      }
+      items.push(item);
     }
     if (!items.length || !window.fetch) return;
     azFbtBusy = true;
@@ -4331,6 +4508,7 @@
       var similar = host.querySelector('.cx-az-similar');
       if (similar) host.insertBefore(node, similar);
       else host.appendChild(node);
+      azSubSync(); // v17.1: after attach — the buy box may have selected a plan before we mounted
       track('az_fbt');
     } catch (e) { /* never break the theme */ }
   }
@@ -4341,6 +4519,7 @@
     li.setAttribute('data-cx-az-fbt-row', '');
     li.setAttribute('data-variant-id', String(row.variantId));
     li.setAttribute('data-price-cents', String(row.priceCents));
+    if (row.handle) li.setAttribute('data-handle', String(row.handle)); // v17.1: subscription enrichment key
     if (row.image) li.setAttribute('data-cx-img', azSizedImage(row.image, 250));
     var label = document.createElement('label');
     label.className = 'cx-az-fbt__label';
@@ -4412,11 +4591,19 @@
   function azFbtEnrich(picks) {
     // Availability gate: presentment-correct price + first available
     // variant via the app proxy; unavailable/unknown picks drop silently.
+    // v17.1: the PAGE product's handle rides the same call so its own
+    // per-variant allocations reach azSubPlans (the "This item" row and
+    // the page product's line in the add both price from them).
     if (!picks.length) return Promise.resolve([]);
-    return azFetchHandleData(picks.map(function (pick) { return pick.handle; })).then(function (byHandle) {
+    var handles = picks.map(function (pick) { return pick.handle; });
+    var page = azProductData();
+    if (page && page.handle && handles.indexOf(page.handle) === -1) handles.push(page.handle);
+    return azFetchHandleData(handles).then(function (byHandle) {
+      if (page && page.handle && byHandle[page.handle]) azSubRegister(byHandle[page.handle]);
       var rows = [];
       picks.forEach(function (pick) {
         var entry = byHandle[pick.handle];
+        if (entry) azSubRegister(entry); // v17.1: before any gate — plan data is display truth, not row eligibility
         if (azRwSkip(null, entry)) return; // v14: proxy-flagged sachet
         var variant = azFirstAvailableVariant(entry);
         if (!variant) return;
@@ -4561,10 +4748,11 @@
               var overlap = [];
               picks.forEach(function (pick) {
                 var entry = byHandle[pick.handle];
+                if (entry) azSubRegister(entry); // v17.1
                 if (azRwSkip(null, entry)) return; // v14: proxy-flagged sachet
                 var variant = azFirstAvailableVariant(entry);
                 if (!variant) return;
-                var card = { pick: pick, priceCents: variant.price, badge: azCardBadge(entry) };
+                var card = { pick: pick, priceCents: variant.price, variantId: variant.id, badge: azCardBadge(entry) };
                 if (azSimilarOverlaps(pick, entry, used)) overlap.push(card);
                 else cards.push(card);
               });
@@ -4582,6 +4770,13 @@
             var card = cards[i];
             var li = document.createElement('li');
             li.className = 'cx-az-similar__card';
+            // v17.1: identity + classic cents on the card so azSubSync can
+            // re-price it for the buy box's current choice (display only —
+            // similar cards link to the PDP, they never add).
+            if (card.variantId != null) {
+              li.setAttribute('data-variant-id', String(card.variantId));
+              li.setAttribute('data-price-cents', String(card.priceCents));
+            }
             var a = document.createElement('a');
             a.className = 'cx-az-similar__link no-dec';
             a.href = card.pick.url;
@@ -4615,6 +4810,7 @@
           var host = azSectionsContainer(azPlacement('sim'));
           if (!host) return;
           host.appendChild(node);
+          azSubSync(); // v17.1: after attach — price the cards for the current buy-box choice
           track('az_similar_items');
         })
         .catch(function () { /* fail closed: no section */ });
@@ -4707,6 +4903,12 @@
         if (el && el.matches && el.matches('select[sm-rc-variant-selector], [sm-rc-variant-selector]')) {
           window.setTimeout(azVariantSync, 0);
         }
+      });
+      // v17.1: the Cellexia Subscriptions buy box announces every
+      // subscription/one-time/plan change with a bubbling CustomEvent —
+      // re-price the FBT rows and similar cards to the new choice.
+      document.addEventListener('cx:buybox:change', function () {
+        window.setTimeout(azSubSync, 0);
       });
     } catch (e) { /* noop */ }
   }
@@ -5011,6 +5213,7 @@
     if (isThis) li.setAttribute('data-cx-this', '1');
     li.setAttribute('data-variant-id', String(row.id));
     li.setAttribute('data-price-cents', String(row.price));
+    if (row.h) li.setAttribute('data-handle', String(row.h)); // v17.1: subscription enrichment key (manual rows)
     if (row.img) li.setAttribute('data-cx-img', String(row.img));
     cxSp(li);
     var label = cxEl('label', 'cx-az-fbt__label');
@@ -5232,7 +5435,8 @@
             live: false,
             tiers: ss.tiers,
             sf: { pdp: sf.pdpLine !== false, sim: sf.similarCaption !== false, fbt: sf.fbtCaption !== false },
-            excl: Array.isArray(exclRec[market]) ? exclRec[market] : []
+            excl: Array.isArray(exclRec[market]) ? exclRec[market] : [],
+            sub: ss.includeSubscriptions !== false // v17.1: the FBT reframe's subscription gate
           };
         } else {
           azRwPreviewCfg = { tiers: null };

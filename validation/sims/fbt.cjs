@@ -42,7 +42,7 @@ const EXTRACTED = extractAll(SRC, {
   // v14 rewards: the FBT/similar pick loops call azRwSkip (gift/sachet/excluded
   // filter) and azFbtUpdate/azFbtFinish/azMountSimilar call the set-savings
   // caption helpers; the extraction carries them so the REAL pipeline runs.
-  vars: ["AZ_PROTECTION", "azFbtBusy", "azFbtPicksPromise", "RW_DEFAULTS"],
+  vars: ["AZ_PROTECTION", "azFbtBusy", "azFbtPicksPromise", "RW_DEFAULTS", "azSubPlans", "azSubManualDone"],
   functions: [
     "cxRwTier",
     "azRwT",
@@ -100,6 +100,13 @@ const EXTRACTED = extractAll(SRC, {
     "azBuildCardFlag",
     "azTplPayload",
     "azTpl",
+    // v17.1 subscription-aware FBT / similar
+    "azSubRegister",
+    "azSubPlanId",
+    "azSubPrice",
+    "azSubPriceRow",
+    "azSubManualFetch",
+    "azSubSync",
   ],
 });
 
@@ -265,8 +272,8 @@ async function main() {
     ok(sim.calls.recs.length === 1 && sim.calls.recs[0].indexOf("intent=complementary") !== -1 &&
        sim.calls.recs[0].indexOf("product_id=1") !== -1,
       "complementary fetched once for THIS product, no related call");
-    ok(sim.calls.proxy.join("|") === "x,y",
-      "enrichment batch = the capped, filtered picks (x,y — self/protection/dup/no-title dropped, z beyond cap)");
+    ok(sim.calls.proxy.join("|") === "x,y,main",
+      "enrichment batch = the capped, filtered picks + the PAGE handle (v17.1: its allocations ride the same call; x,y kept — self/protection/dup/no-title dropped, z beyond cap)");
     const node = sim.doc.querySelector(".cx-az-fbt");
     ok(!!node, "FBT section attached");
     const host = sim.doc.querySelector(".cx-az-sections");
@@ -566,6 +573,198 @@ async function main() {
     ok(fbtHost.getAttribute("data-cx-az-place") === "buybox" &&
        simHost.getAttribute("data-cx-az-place") === "tabs_below",
       "FBT in buybox, similar under the tabs — per-widget codes respected");
+  }
+
+  // --- v17.1 subscription-aware FBT / similar (buy-box-driven) -----------------
+  const SUB_RECS = (intent) => intent === "complementary"
+    ? [
+        { id: 2, handle: "x", title: "X", featured_image: "https://cdn/x.jpg" },
+        { id: 4, handle: "y", title: "Y" },
+      ]
+    : [];
+  const SUB_PROXY = () => ({
+    x: { variants: [{ id: 210, price: 1900, available: true, planAllocations: [{ planId: "700", price: 1710 }] }] },
+    y: { variants: [{ id: 220, price: 2900, planAllocations: [{ planId: "700", price: 2610 }, { planId: "701", price: 2500 }] }] },
+    main: { variants: [{ id: 11, price: 4900, available: true, planAllocations: [{ planId: "700", price: 4410 }] }] },
+  });
+  const subStub = (state) => ({ getState: () => state });
+
+  {
+    // Subscription selected on the buy box: every row prices from that
+    // plan's own allocation (this-item included), the total follows, and
+    // the add carries selling_plan per resolvable item + the marker.
+    const sim = makeSim({ responders: { recs: SUB_RECS, proxy: SUB_PROXY } });
+    sim.sandbox.window.CellexiaSubs = subStub({ mode: "subscription", sellingPlanId: "700", variantId: "11" });
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    const node = sim.doc.querySelector(".cx-az-fbt");
+    const rows = node.querySelectorAll("[data-cx-az-fbt-row]");
+    const eur = (c) => vm.runInContext(`azMoney(${c})`, sim.sandbox);
+    ok(rows[0].getAttribute("data-price-cents") === "4410" && rows[0].getAttribute("data-plan-id") === "700",
+      "v17.1: this-item row priced from the PAGE product's allocation (proxy piggyback)");
+    ok(rows[1].getAttribute("data-price-cents") === "1710" && rows[2].getAttribute("data-price-cents") === "2610",
+      "v17.1: rec rows priced from THEIR allocations for the selected plan");
+    ok(rows[1].querySelector(".cx-az-fbt__price").textContent === eur(1710),
+      "v17.1: row price text re-rendered from the allocation");
+    ok(node.querySelector("[data-cx-az-fbt-total]").textContent === eur(4410 + 1710 + 2610),
+      "v17.1: total = sum of the charged subscription prices");
+    sim.sandbox.__node = node;
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    const addBody = JSON.parse(sim.calls.posts[0].options.body);
+    ok(addBody.items.length === 3 && addBody.items.every((i) => i.quantity === 1 && i.properties._cellexia_upsell === "fbt"),
+      "v17.1: add keeps the classic shape + the marker on every item");
+    ok(addBody.items.every((i) => i.selling_plan === 700),
+      "v17.1: every resolvable item adds WITH the selected plan (numeric)");
+
+    // Flip to one-time: classic prices restore verbatim and the NEXT add
+    // is plan-free (click-time truth, never the render-time attribute).
+    sim.sandbox.window.CellexiaSubs = subStub({ mode: "one_time", sellingPlanId: null, variantId: "11" });
+    vm.runInContext("azSubSync()", sim.sandbox);
+    ok(rows[1].getAttribute("data-price-cents") === "1900" && !rows[1].getAttribute("data-plan-id"),
+      "v17.1 flip back: classic cents restored, plan attribute dropped");
+    ok(node.querySelector("[data-cx-az-fbt-total]").textContent === eur(4900 + 1900 + 2900),
+      "v17.1 flip back: total restored to one-time");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    const addBody2 = JSON.parse(sim.calls.posts[1].options.body);
+    ok(addBody2.items.every((i) => !("selling_plan" in i)),
+      "v17.1 flip back: the add carries NO selling_plan keys");
+  }
+
+  {
+    // Fail-closed trio: prepaid lump, B2B, kill switch.
+    const prepaidProxy = () => ({
+      x: { variants: [{ id: 210, price: 1900, available: true, planAllocations: [{ planId: "700", price: 5700 }] }] },
+      y: { variants: [{ id: 220, price: 2900, planAllocations: [{ planId: "700", price: 2610 }] }] },
+      main: { variants: [{ id: 11, price: 4900, available: true, planAllocations: [{ planId: "700", price: 4410 }] }] },
+    });
+    const pp = makeSim({ responders: { recs: SUB_RECS, proxy: prepaidProxy } });
+    pp.sandbox.window.CellexiaSubs = subStub({ mode: "subscription", sellingPlanId: "700" });
+    vm.runInContext("azMountFbt()", pp.sandbox);
+    await flush();
+    const ppRows = pp.doc.querySelector(".cx-az-fbt").querySelectorAll("[data-cx-az-fbt-row]");
+    ok(ppRows[1].getAttribute("data-price-cents") === "1900" && !ppRows[1].getAttribute("data-plan-id") &&
+       ppRows[2].getAttribute("data-price-cents") === "2610",
+      "v17.1 prepaid: an allocation priced above one-time is never offered (row stays classic)");
+
+    const b2b = makeSim({ responders: { recs: SUB_RECS, proxy: SUB_PROXY } });
+    b2b.sandbox.window.CellexiaSubs = subStub({ mode: "subscription", sellingPlanId: "700" });
+    b2b.sandbox.window.isB2BCustomer = true;
+    vm.runInContext("azMountFbt()", b2b.sandbox);
+    await flush();
+    const b2bRows = b2b.doc.querySelector(".cx-az-fbt").querySelectorAll("[data-cx-az-fbt-row]");
+    ok(b2bRows[1].getAttribute("data-price-cents") === "1900" && !b2bRows[1].getAttribute("data-plan-id"),
+      "v17.1 B2B: never enters subscription context");
+
+    const off = makeSim({ responders: { recs: SUB_RECS, proxy: SUB_PROXY }, config: { subOff: 1 } });
+    off.sandbox.window.CellexiaSubs = subStub({ mode: "subscription", sellingPlanId: "700" });
+    vm.runInContext("azMountFbt()", off.sandbox);
+    await flush();
+    const offRows = off.doc.querySelector(".cx-az-fbt").querySelectorAll("[data-cx-az-fbt-row]");
+    ok(offRows[1].getAttribute("data-price-cents") === "1900" && !offRows[1].getAttribute("data-plan-id"),
+      "v17.1 kill switch: subOff:1 keeps everything classic");
+  }
+
+  {
+    // Manual mode: classically zero fetches (pinned above); the
+    // subscription context triggers ONE proxy fetch (row handles + the
+    // page handle), prices the rows, and never fetches again.
+    const sim = makeSim({
+      responders: { proxy: () => ({
+        r1: { variants: [{ id: 21, price: 2500, planAllocations: [{ planId: "700", price: 2250 }] }] },
+        r2: { variants: [{ id: 22, price: 3000, planAllocations: [{ planId: "700", price: 2700 }] }] },
+        main: { variants: [{ id: 11, price: 4900, available: true, planAllocations: [{ planId: "700", price: 4410 }] }] },
+      }) },
+      config: {
+        fbt: {
+          mode: "manual", title: "Main product", priceFmt: "€49.00", img: "",
+          rows: [
+            { id: 21, price: 2500, priceFmt: "€25.00", h: "r1", title: "R1", img: "" },
+            { id: 22, price: 3000, priceFmt: "€30.00", h: "r2", title: "R2", img: "" },
+          ],
+        },
+      },
+    });
+    sim.sandbox.window.CellexiaSubs = subStub({ mode: "subscription", sellingPlanId: "700", variantId: "11" });
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    ok(sim.calls.recs.length === 0, "v17.1 manual: still no recommendations fetch");
+    ok(sim.calls.proxy.length === 1 && sim.calls.proxy[0] === "r1,r2,main",
+      "v17.1 manual: exactly ONE proxy fetch (row handles + page handle)");
+    const rows = sim.doc.querySelector(".cx-az-fbt").querySelectorAll("[data-cx-az-fbt-row]");
+    ok(rows[1].getAttribute("data-price-cents") === "2250" && rows[1].getAttribute("data-plan-id") === "700" &&
+       rows[2].getAttribute("data-price-cents") === "2700",
+      "v17.1 manual: rows re-priced from the fetched allocations");
+    vm.runInContext("azSubSync()", sim.sandbox);
+    await flush();
+    ok(sim.calls.proxy.length === 1, "v17.1 manual: never fetched twice (azSubManualDone)");
+    // flip back restores the Liquid money string VERBATIM
+    sim.sandbox.window.CellexiaSubs = subStub({ mode: "one_time", sellingPlanId: null });
+    vm.runInContext("azSubSync()", sim.sandbox);
+    ok(rows[1].querySelector(".cx-az-fbt__price").textContent === "€25.00",
+      "v17.1 manual flip back: the Liquid-formatted price restores byte-identically");
+  }
+
+  {
+    // v14 interplay: the FBT reframe must never dress a bundle containing
+    // subscription rows when the SET codes skip subscription lines
+    // (rw.sub === false); with the toggle on (absent) it stacks as at
+    // checkout.
+    const rwConfig = (sub) => ({
+      effective: { az_fbt: true, az_similar_items: true, set_savings: true },
+      rw: Object.assign({ live: true, tiers: [{ count: 3, pct: 10 }], sf: { fbt: true }, excl: [] },
+        sub === false ? { sub: false } : {}),
+    });
+    const gated = makeSim({ responders: { recs: SUB_RECS, proxy: SUB_PROXY }, config: rwConfig(false) });
+    gated.sandbox.window.CellexiaSubs = subStub({ mode: "subscription", sellingPlanId: "700" });
+    vm.runInContext("azMountFbt()", gated.sandbox);
+    await flush();
+    const gNode = gated.doc.querySelector(".cx-az-fbt");
+    const gEur = (c) => vm.runInContext(`azMoney(${c})`, gated.sandbox);
+    ok(gNode.querySelector("[data-cx-az-fbt-total]").textContent === gEur(4410 + 1710 + 2610) &&
+       gNode.querySelector(".cx-az-fbt__was") === null,
+      "v17.1 rw sub=false: plain subscription total, no reframe, no strike");
+    const stacked = makeSim({ responders: { recs: SUB_RECS, proxy: SUB_PROXY }, config: rwConfig(true) });
+    stacked.sandbox.window.CellexiaSubs = subStub({ mode: "subscription", sellingPlanId: "700" });
+    vm.runInContext("azMountFbt()", stacked.sandbox);
+    await flush();
+    const sNode = stacked.doc.querySelector(".cx-az-fbt");
+    const sEur = (c) => vm.runInContext(`azMoney(${c})`, stacked.sandbox);
+    ok(sNode.querySelector("[data-cx-az-fbt-total]").textContent === sEur(Math.round((4410 + 1710 + 2610) * 0.9)),
+      "v17.1 rw sub on: the reframe stacks on the subscription total (checkout truth)");
+  }
+
+  {
+    // Similar cards: display-only re-pricing for the selected plan.
+    const sim = makeSim({
+      responders: {
+        recs: (intent) => intent === "related"
+          ? [
+              { id: 6, handle: "c", title: "C", url: "/products/c" },
+              { id: 7, handle: "d", title: "D" },
+            ]
+          : [],
+        proxy: () => ({
+          c: { variants: [{ id: 610, price: 2100, planAllocations: [{ planId: "700", price: 1890 }] }] },
+          d: { variants: [{ id: 710, price: 2200 }] },
+        }),
+      },
+    });
+    sim.sandbox.window.CellexiaSubs = subStub({ mode: "subscription", sellingPlanId: "700" });
+    vm.runInContext("azMountSimilar()", sim.sandbox);
+    await flush();
+    const cards = sim.doc.querySelectorAll(".cx-az-similar__card");
+    const eur = (c) => vm.runInContext(`azMoney(${c})`, sim.sandbox);
+    ok(cards[0].getAttribute("data-variant-id") === "610" &&
+       cards[0].querySelector(".cx-az-similar__price").textContent === eur(1890),
+      "v17.1 similar: card priced from its allocation for the selected plan");
+    ok(cards[1].querySelector(".cx-az-similar__price").textContent === eur(2200),
+      "v17.1 similar: no allocation for the plan = one-time price (degrade, never guess)");
+    sim.sandbox.window.CellexiaSubs = subStub({ mode: "one_time", sellingPlanId: null });
+    vm.runInContext("azSubSync()", sim.sandbox);
+    ok(cards[0].querySelector(".cx-az-similar__price").textContent === eur(2100),
+      "v17.1 similar flip back: classic price restored");
   }
 
   if (failures > 0) {

@@ -273,6 +273,12 @@ endif
 "pageLocale": {{ request.locale.iso_code | json }},
 "currency": {{ cart.currency.iso_code | json }},
 "country": {{ cx_country | json }},
+{%- if customer.b2b? %}
+"b2b": true,
+{%- endif %}
+{%- if cfg.cartUpsell.subscriptionAware == false %}
+"subOff": 1,
+{%- endif %}
 "place":{"fbt":{{ cfg.amazon.fbtPlacement | slice: 0 | json }},"sim":{{ cfg.amazon.similarPlacement | slice: 0 | json }}},
 {%- if az_need_product %}
 "product": {"id": {{ product.id | json }}, "handle": {{ product.handle | json }}, "url": {{ product.url | json }}, "selectedVariant": {{ product.selected_or_first_available_variant.id | append: '' | json }}, "variants": {
@@ -330,14 +336,14 @@ endif
 {%- assign az_fbt_first = false -%}
 {%- assign az_bs_rank = az_p.metafields.cellexia.pdp_flags.value.bestsellerLabel.rank | default: 0 -%}
 {%- assign az_bs_cat = az_p.metafields.cellexia.bestseller_category.value | default: az_p.metafields.cellexia.pdp_flags.value.bestsellerLabel.category | default: '' -%}
-{"id": {{ az_variant.id | append: '' | json }}, "price": {{ az_variant.price | json }}, "priceFmt": {{ az_variant.price | money | json }}, "title": {{ az_row_title | json }}, "bRank": {{ az_bs_rank }}, "bCat": {{ az_bs_cat | json }}{% if az_img %}, "img": {{ az_img | image_url: width: 250 | json }}{% endif %}}
+{"id": {{ az_variant.id | append: '' | json }}, "price": {{ az_variant.price | json }}, "priceFmt": {{ az_variant.price | money | json }}, "h": {{ az_p.handle | json }}, "title": {{ az_row_title | json }}, "bRank": {{ az_bs_rank }}, "bCat": {{ az_bs_cat | json }}{% if az_img %}, "img": {{ az_img | image_url: width: 250 | json }}{% endif %}}
 {%- endif -%}
 {%- endif -%}
 {%- endfor -%}
 ]},
 {%- endif %}
 {%- if az_eff_ss %}
-"rw": {"live": true, "tiers": {{ cx_rw.tiers | json }}, "sf": {"pdp": {{ cx_rw.surfaces.pdpLine | json }}, "sim": {{ cx_rw.surfaces.similarCaption | json }}, "fbt": {{ cx_rw.surfaces.fbtCaption | json }}}, "excl": {{ cx_rw.setSavingsExcludedByMarket[cx_market] | json }}},
+"rw": {"live": true, "tiers": {{ cx_rw.tiers | json }}, "sf": {"pdp": {{ cx_rw.surfaces.pdpLine | json }}, "sim": {{ cx_rw.surfaces.similarCaption | json }}, "fbt": {{ cx_rw.surfaces.fbtCaption | json }}}, "excl": {{ cx_rw.setSavingsExcludedByMarket[cx_market] | json }}{% if cx_rw.includeSubscriptions == false %}, "sub": false{% endif %}},
 {%- endif %}
 "strings": {
 "_": 1
