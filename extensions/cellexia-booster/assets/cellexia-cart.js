@@ -620,13 +620,45 @@
     return Number(offer.discountPct) || 0;
   }
 
-  function variantAllocatesPlan(variant, planId) {
+  function variantPlanAlloc(variant, planId) {
     var allocations = variant && Array.isArray(variant.planAllocations) ? variant.planAllocations : [];
     for (var i = 0; i < allocations.length; i++) {
       var alloc = allocations[i];
-      if (alloc && alloc.planId != null && String(alloc.planId) === String(planId)) return true;
+      if (alloc && alloc.planId != null && String(alloc.planId) === String(planId)) return alloc;
     }
-    return false;
+    return null;
+  }
+
+  function variantAllocatesPlan(variant, planId) {
+    return !!variantPlanAlloc(variant, planId);
+  }
+
+  function subscriptionAware() {
+    // v17 emergency kill switch (admin "Subscription prices in cart offers",
+    // default on). Off = safe-inert: subscribed lines get NO upgrade tiles
+    // (pre-v17 could show a ONE-TIME-priced tile when a tier variant shared
+    // the line's plan — e.g. Joy's "Every 3 months" spans the 2/3-Jar
+    // variants on the live store; hiding beats mispricing) and cross-sell
+    // prices and adds stay one-time.
+    return SETTINGS.subscriptionAware !== false;
+  }
+
+  function subSavingsPercent(product, offer, allocCents) {
+    // v17 subscription tile badge — merchant decision: compare the tier's
+    // subscription price against qty x the FULL one-time 1-unit price (pack
+    // saving and subscription discount combined). No usable baseline = 0,
+    // which hides the badge; savingsPercent's compare-at/discountPct
+    // fallbacks are one-time figures and must never dress a subscription
+    // tile, so they are deliberately not reused here.
+    var tier1 = variantByPosition(product, 1);
+    var qty = Number(offer.quantity);
+    if (tier1 && Number(tier1.price) > 0 && Number(allocCents) > 0) {
+      var full = qty * Number(tier1.price);
+      if (full > Number(allocCents)) {
+        return Math.round(((full - Number(allocCents)) / full) * 100);
+      }
+    }
+    return 0;
   }
 
   function upgradeCandidates(item) {
@@ -651,13 +683,33 @@
       if (qty <= currentPos) return;
       var tierVariant = variantByPosition(product, qty);
       if (!tierVariant || tierVariant.available === false) return;
-      if (linePlanId != null && !variantAllocatesPlan(tierVariant, linePlanId)) return;
+      var tierAlloc = null;
+      if (linePlanId != null) {
+        // v17: a subscribed line's tile must BE a subscription tile — the
+        // tier's own allocation for the line's exact plan supplies both the
+        // displayed price and the add payload's price. No allocation (the
+        // v5.1 422 guard above still holds through variantPlanAlloc), no
+        // usable allocation price, or the kill switch off => no tile. A
+        // one-time price must never render on a subscribed line, in any
+        // launch state of the subscription app.
+        if (!subscriptionAware()) return;
+        tierAlloc = variantPlanAlloc(tierVariant, linePlanId);
+        if (!tierAlloc || !(Number(tierAlloc.price) > 0)) return;
+        // Prepaid detector: a prepaid allocation's price is the multi-
+        // delivery charge (per_delivery_price is not captured), so it
+        // EXCEEDS the one-time price; dividing it by pack size would
+        // overstate the per-unit figure by the deliveries factor. No
+        // legitimate percentage-off plan can price above one-time.
+        if (Number(tierAlloc.price) > (Number(tierVariant.price) || 0)) return;
+      }
+      var addPriceCents = tierAlloc ? Number(tierAlloc.price) : Number(tierVariant.price) || 0;
       out.push({
         offer: offer,
         variant: tierVariant,
         quantity: qty,
-        percent: savingsPercent(product, offer, tierVariant),
-        perUnitCents: Math.round(Number(tierVariant.price) / qty)
+        percent: tierAlloc ? subSavingsPercent(product, offer, addPriceCents) : savingsPercent(product, offer, tierVariant),
+        perUnitCents: Math.round(addPriceCents / qty),
+        addPriceCents: addPriceCents
       });
     });
     return out;
@@ -715,7 +767,16 @@
         // display when present); null when the allocation carries none.
         allocPrice: alloc.price != null && isFinite(Number(alloc.price)) ? Number(alloc.price) : null
       };
-      if (!fallback) fallback = candidate;
+      // v17 TRANSITION GUARD: the blind first-allocation fallback was
+      // Joy-safe when every allocation belonged to the one live app. During
+      // and after the transition an allocation can belong to the NEW
+      // subscription app while it is still dark (its product-level group
+      // syncs during setup, so every variant allocates its plans), and the
+      // switch card must never enroll a shopper into an unlaunched app or a
+      // market it is off in. A plan the merchant's keyword did not name is
+      // therefore only fallback-eligible when the v17 context vouches for it
+      // (live + market + kill switch + ownership).
+      if (!fallback && subsAware() && ownedPlan(alloc.planId)) fallback = candidate;
       if (!keyword || !m) continue;
       var groupName = m.groupName.toLowerCase();
       var planName = String(m.plan.name || '').toLowerCase();
@@ -752,6 +813,109 @@
   function itemHasPlan(item) {
     return !!(item && item.selling_plan_allocation && item.selling_plan_allocation.selling_plan &&
       item.selling_plan_allocation.selling_plan.id);
+  }
+
+  // ------------------- v17 subscription-aware offers (Cellexia Subscriptions)
+  //
+  // The cart follows the NEW subscription app's own storefront signals,
+  // mirrored into the gated cfg.sx island member by cart-booster.liquid ONLY
+  // when that app is live (shop.metafields.cellexia.launch_status == 'live'),
+  // the current market is enabled (cellexia.widget_markets) and its ownership
+  // allow-list (cellexia.plan_groups.planIds) is non-empty. sx absent = every
+  // cross-sell subscription path inert, fail closed. planIds never contains
+  // another app's plan ids (a Joy line can never activate this) but may carry
+  // dead ones — safe for membership tests, never a list to render plans from.
+
+  function subsAware() {
+    return subscriptionAware() && !isB2B() &&
+      !!(cfg.sx && Array.isArray(cfg.sx.p) && cfg.sx.p.length);
+  }
+
+  function ownedPlan(planId) {
+    if (planId == null || !cfg.sx || !Array.isArray(cfg.sx.p)) return false;
+    for (var i = 0; i < cfg.sx.p.length; i++) {
+      if (String(cfg.sx.p[i]) === String(planId)) return true;
+    }
+    return false;
+  }
+
+  function subXsPlanLine() {
+    // The cross-sell trigger AND schedule anchor: the highest-value cart line
+    // whose plan the subscription app owns. Null = no owned subscription in
+    // the cart = cross-sell renders exactly as before v17 (one-time buyers
+    // are never pushed toward subscriptions).
+    if (!subsAware() || !state.cart || !Array.isArray(state.cart.items)) return null;
+    var best = null;
+    for (var i = 0; i < state.cart.items.length; i++) {
+      var item = state.cart.items[i];
+      if (!itemHasPlan(item)) continue;
+      if (!ownedPlan(item.selling_plan_allocation.selling_plan.id)) continue;
+      if (!best || lineValue(item) > lineValue(best)) best = item;
+    }
+    return best ? { planId: best.selling_plan_allocation.selling_plan.id } : null;
+  }
+
+  function variantDefaultCadence(variantId) {
+    // cellexia.variant_defaults ({default:{unit,count}, byVariant:{vid:{..}}})
+    // = the schedule the subscription app itself preselects for a variant,
+    // mirrored into cfg.sx.d. Units arrive as DAY / WEEK / MONTH.
+    var d = cfg.sx && cfg.sx.d && typeof cfg.sx.d === 'object' ? cfg.sx.d : null;
+    if (!d) return null;
+    var by = d.byVariant && typeof d.byVariant === 'object' ? d.byVariant[String(variantId)] : null;
+    var c = by || d['default'] || null;
+    if (!c || !c.unit || !(Number(c.count) > 0)) return null;
+    return { unit: String(c.unit).toLowerCase(), count: Number(c.count) };
+  }
+
+  function planNameMatchesCadence(meta, cadence) {
+    // "Every 8 weeks" style names: first integer (absent = 1) + unit word
+    // ('week' also matches 'weeks'). Localized plan names simply fail the
+    // parse and fall through — the caller's first-owned-allocation fallback
+    // still resolves a plan, never a wrong one.
+    if (!meta || !meta.plan || !cadence) return false;
+    var name = String(meta.plan.name || '').toLowerCase();
+    if (name.indexOf(cadence.unit) === -1) return false;
+    var m = /(\d+)/.exec(name);
+    return (m ? Number(m[1]) : 1) === cadence.count;
+  }
+
+  function crossSellPlanFor(productId, variantId) {
+    // v17 cross-sell plan resolution (merchant decision: same schedule as
+    // the cart, else the product's own default, else its first owned plan):
+    //   1. the anchor line's exact plan id on this variant (the subscription
+    //      app attaches ONE product-level group, so the same plan ids appear
+    //      on every enrolled product — the normal case);
+    //   2. an owned allocation whose plan name parses to the variant's
+    //      default cadence (plain frequency plans sit before prepaid ones
+    //      inside the group, so a prepaid twin never wins the name match);
+    //   3. the first owned allocation with a usable price;
+    //   4. null = the row stays fully one-time, price AND add — degrade,
+    //      never guess, never push.
+    var anchor = subXsPlanLine();
+    if (!anchor) return null;
+    var entry = state.products[String(productId)];
+    var variant = entry ? currentVariant(entry, variantId) : null;
+    if (!variant) return null;
+    // Prepaid detector (see upgradeCandidates): an allocation priced ABOVE
+    // the one-time price is a multi-delivery prepaid charge — never offer it
+    // implicitly; fall through to a plain plan or to one-time.
+    var oneTime = Number(variant.price) || 0;
+    var alloc = variantPlanAlloc(variant, anchor.planId);
+    if (!alloc || !(Number(alloc.price) > 0) || Number(alloc.price) > oneTime) {
+      alloc = null;
+      var allocations = Array.isArray(variant.planAllocations) ? variant.planAllocations : [];
+      var cadence = variantDefaultCadence(variantId);
+      var meta = planMetaById(entry);
+      var first = null;
+      for (var i = 0; i < allocations.length; i++) {
+        var a = allocations[i];
+        if (!a || a.planId == null || !(Number(a.price) > 0) || Number(a.price) > oneTime || !ownedPlan(a.planId)) continue;
+        if (!first) first = a;
+        if (cadence && planNameMatchesCadence(meta[String(a.planId)], cadence)) { alloc = a; break; }
+      }
+      if (!alloc) alloc = first;
+    }
+    return alloc ? { planId: alloc.planId, priceCents: Number(alloc.price) } : null;
   }
 
   // ------------------------------------------------------------ mutations
@@ -861,9 +1025,19 @@
     var sellingPlanId = itemHasPlan(item) ? item.selling_plan_allocation.selling_plan.id : undefined;
     var addPayload = { id: candidate.variant.id, quantity: 1 };
     if (sellingPlanId) addPayload.selling_plan = sellingPlanId;
-    if (item.properties && typeof item.properties === 'object' && Object.keys(item.properties).length) {
-      addPayload.properties = item.properties;
+    // v17: every booster-authored add carries a _cellexia_* marker property.
+    // The subscription app's buy-box embed injects its selected selling_plan
+    // into UNMARKED page-product /cart/add bodies (its own theme contract),
+    // so an unmarked one-time upgrade made on that product's page could
+    // silently become a subscription. _cellexia_upgrade, never
+    // _cellexia_upsell: the orders webhook attributes cross-sell revenue on
+    // the latter's presence.
+    var addProps = {};
+    if (item.properties && typeof item.properties === 'object') {
+      Object.keys(item.properties).forEach(function (k) { addProps[k] = item.properties[k]; });
     }
+    addProps._cellexia_upgrade = '1';
+    addPayload.properties = addProps;
     // v5.1: set when the upgrade add failed AND the restore add failed too
     // — the original line is then REALLY gone from the cart, so the error
     // path must resync the THEME's own display as well, never leave a
@@ -886,7 +1060,12 @@
       .then(function (cart) {
         state.cart = cart;
         state.busy = false;
-        var delta = (Number(candidate.variant.price) - oldLineCents) / 100;
+        // v17: addPriceCents = what the new line actually charges (the plan
+        // allocation price on a subscribed upgrade) — oldLineCents is the
+        // discounted final_line_price, so a one-time figure here would
+        // overstate subscription-upgrade revenue.
+        var newLineCents = candidate.addPriceCents != null ? Number(candidate.addPriceCents) : Number(candidate.variant.price);
+        var delta = (newLineCents - oldLineCents) / 100;
         track('cart_upsell', 'upgrade', {
           quantity: candidate.quantity,
           revenue: Math.round(delta * 100) / 100,
@@ -986,7 +1165,31 @@
     var wasDrawerOpen = drawerIsOpen();
     state.busy = true;
     renderAll();
-    cartRequest('cart/change.js', { id: lineKey, selling_plan: null })
+    var unsubPayload = { id: lineKey, selling_plan: null };
+    // v17: a buy-box-authored line carries _cellexia_design; left on the now
+    // one-time line it would mis-attribute a widget-design conversion in the
+    // subscription app's order measurement. cart/change.js replaces
+    // properties wholesale when provided, so send the line's own properties
+    // minus that key — only when the key is actually present (the request
+    // stays byte-identical otherwise). _cellexia_seen is kept: exposure
+    // stays true either way.
+    try {
+      var unsubItems = state.cart && Array.isArray(state.cart.items) ? state.cart.items : [];
+      for (var ui = 0; ui < unsubItems.length; ui++) {
+        var uit = unsubItems[ui];
+        if (!uit || String(uit.key) !== String(lineKey)) continue;
+        if (uit.properties && typeof uit.properties === 'object' &&
+            Object.prototype.hasOwnProperty.call(uit.properties, '_cellexia_design')) {
+          var uprops = {};
+          Object.keys(uit.properties).forEach(function (k) {
+            if (k !== '_cellexia_design') uprops[k] = uit.properties[k];
+          });
+          unsubPayload.properties = uprops;
+        }
+        break;
+      }
+    } catch (e) { /* keep the plain payload */ }
+    cartRequest('cart/change.js', unsubPayload)
       .then(function (cart) {
         state.busy = false;
         if (cart && cart.items) state.cart = cart;
@@ -1006,19 +1209,32 @@
       });
   }
 
-  function performCrossSellAdd(variantId, priceCents, sourceNode) {
+  function performCrossSellAdd(variantId, priceCents, sourceNode, planId) {
     // Cart cross-sell add (v4.8): one-click /cart/add.js with the
     // "_cellexia_upsell": "cart" attribution property — the orders webhook
     // already counts it. Follows the performUpgrade flow: busy-guard,
     // context captured BEFORE renderAll detaches sourceNode, theme refresh
     // through safeThemeRefresh, cart-page reload.
+    // v17: planId only ever arrives from crossSellPlanFor — an owned plan
+    // verified against this exact variant's own allocation, so the add holds
+    // the v4.7 contract (allocated plan on allocated variant = 200). A
+    // failure lands in the generic error path below and is NEVER retried as
+    // a silent one-time add — the shopper decides, not a fallback.
     if (state.busy) return;
+    // v17: the context can die between render and click (the shopper removed
+    // the owned subscription line through the theme's own controls and hit
+    // Add before the reconcile re-render). Never convert silently in EITHER
+    // direction: abort the subscription add and refresh — the re-rendered
+    // one-time row takes the next click.
+    if (planId && !subXsPlanLine()) { refresh(); return; }
     var onCartPage = isCartPageContext(sourceNode);
     var wasDrawerOpen = drawerIsOpen();
     state.busy = true;
     state.crossSellAdding = String(variantId);
     renderAll();
-    cartRequest('cart/add.js', { id: Number(variantId), quantity: 1, properties: { _cellexia_upsell: 'cart' } })
+    var addPayload = { id: Number(variantId), quantity: 1, properties: { _cellexia_upsell: 'cart' } };
+    if (planId) addPayload.selling_plan = /^\d+$/.test(String(planId)) ? Number(planId) : planId;
+    cartRequest('cart/add.js', addPayload)
       .then(function () { return fetchCart(); })
       .then(function (cart) {
         state.cart = cart;
@@ -1392,12 +1608,13 @@
     if (!btn) return;
     var vid = row.getAttribute('data-variant-id');
     var priceCents = Number(row.getAttribute('data-price-cents')) || 0;
+    var planId = row.getAttribute('data-plan-id') || null; // v17: set by the builders in subscription context only
     btn.disabled = state.busy;
     if (state.busy && state.crossSellAdding === String(vid)) {
       btn.textContent = t('crosssell.adding');
     }
     btn.addEventListener('click', function () {
-      performCrossSellAdd(vid, priceCents, btn);
+      performCrossSellAdd(vid, priceCents, btn, planId);
     });
   }
 
@@ -1471,7 +1688,13 @@
 
   function crosssellBuildRow(row) {
     // 1:1 rebuild of the old cx-tpl-crosssell <li> body.
-    var li = cxEl('li', 'cx-crosssell__item', ['data-variant-id', String(row.v), 'data-product-id', String(row.p), 'data-price-cents', String(row.c)]);
+    // v17: in subscription context (crossSellPlanFor non-null) the row keeps
+    // its exact markup — merchant rule, nothing visually new — but the price
+    // becomes the plan allocation price with the one-time price struck, the
+    // add carries the plan, and the beacon cents match the charged price.
+    var sub = crossSellPlanFor(row.p, row.v);
+    var li = cxEl('li', 'cx-crosssell__item', ['data-variant-id', String(row.v), 'data-product-id', String(row.p), 'data-price-cents', String(sub ? sub.priceCents : row.c)]);
+    if (sub) li.setAttribute('data-plan-id', String(sub.planId));
     if (typeof row.i === 'string' && row.i && typeof row.i2 === 'string' && row.i2) {
       li.appendChild(cxEl('img', 'cx-crosssell__img', ['src', row.i, 'srcset', row.i2 + ' 2x', 'width', '56', 'height', '56', 'alt', cxRawStr(row, 't'), 'loading', 'lazy']));
     }
@@ -1488,11 +1711,18 @@
     // for the market (the KIT code would not discount it; the title reframe
     // still applies). Inline: the extracted-function sims stub state.rw.
     var rwPct = state.rw && state.rw.pct > 0 && !(state.rw.exc && state.rw.exc[String(row.p)] === true) ? state.rw.pct : 0;
-    if (rwPct > 0) {
+    if (sub && rwPct > 0 && state.rw.subOk === false) rwPct = 0; // v17: SET codes skip subscription lines when includeSubscriptions is off — never display a price the code cannot deliver
+    if (sub || rwPct > 0) {
       // v14 set-savings reframe: the price once added (KIT tier one more
       // product reaches), the current price struck — not for products the
-      // KIT code would not discount (market exclusions)
-      price.textContent = money(Math.round((Number(row.c) || 0) * (1 - rwPct / 100)));
+      // KIT code would not discount (market exclusions).
+      // v17: the subscription price is the base when present — while
+      // includeSubscriptions is on (subOk), the SET discount stacks on top
+      // of selling-plan prices at checkout, so alloc-then-pct is what the
+      // shopper actually pays; the struck price stays the plain one-time
+      // price the row showed before.
+      var baseCents = sub ? Number(sub.priceCents) : (Number(row.c) || 0);
+      price.textContent = money(rwPct > 0 ? Math.round(baseCents * (1 - rwPct / 100)) : baseCents);
       prices.appendChild(price);
       var was = cxEl('s', 'cx-crosssell__compare');
       was.textContent = crosssellMoneyText(row, 'pf', 'c');
@@ -1547,6 +1777,7 @@
     var rows = Array.isArray(cfg.csx) ? cfg.csx : null;
     if (!rows || !rows.length) return null;
     try {
+      ensureCrossSellPlanData(rows); // v17: async, re-renders when plan data lands
       var items = [];
       var box = crosssellBuildBox(rows, items);
       if (!items.length) return null;
@@ -1825,6 +2056,10 @@
       if (!variant) continue; // every variant sold out / no variants
       rows.push({
         handle: p.handle,
+        // v17 fetch handle: derived from the product's own localized url
+        // (the v16 doctrine — translated storefronts localize handles, so a
+        // canonical handle can 404 under a locale root); p.handle fallback.
+        fh: productHandleFromPath(p.url) || p.handle,
         productId: p.id,
         title: typeof p.title === 'string' ? p.title : '',
         image: recommendationImage(p),
@@ -1842,6 +2077,24 @@
     if (!anchors || !anchors.length) return Promise.resolve({ rows: [], outcomes: [] });
     return fetchRecommendedProducts(anchors).then(function (out) {
       if (!out.answered) throw new Error('recommendations unavailable');
+      // v17: the recommendations payload mirrors products/{handle}.js — when
+      // its products carry selling_plan_allocations, seed state.products so
+      // the cross-sell plan resolution needs no extra fetch. Products WHOSE
+      // PAYLOAD LACKS ALLOCATIONS ARE DELIBERATELY NOT SEEDED: mergeAjaxProduct
+      // never overwrites an existing entry and ensureCrossSellPlanData skips
+      // products already in state.products, so a plan-free seed would
+      // permanently block the products/{handle}.js gap-fill.
+      for (var i = 0; i < out.products.length; i++) {
+        try {
+          var rp = out.products[i];
+          var seeded = false;
+          var rpv = rp && Array.isArray(rp.variants) ? rp.variants : [];
+          for (var vi = 0; vi < rpv.length && !seeded; vi++) {
+            if (rpv[vi] && Array.isArray(rpv[vi].selling_plan_allocations) && rpv[vi].selling_plan_allocations.length) seeded = true;
+          }
+          if (seeded) mergeAjaxProduct(rp);
+        } catch (e) { /* tolerated */ }
+      }
       return { rows: crossSellRowsFromRecs(out.products), outcomes: out.outcomes };
     });
   }
@@ -1935,11 +2188,52 @@
     } catch (e) { /* never break the theme */ }
   }
 
+  var crossSellPlanFetch = { fetched: {} };
+
+  function ensureCrossSellPlanData(rows) {
+    // v17: cross-sell candidates are not cart products, so state.products
+    // may lack their allocations (session-cached rows, or a recommendations
+    // payload without selling_plan_allocations). While an owned subscription
+    // line anchors the cart, fetch {root}products/{handle}.js once per
+    // handle per page (the v16 CDN fast path, presentment-correct through
+    // routeRoot()) and re-render when anything landed. Failures stay marked
+    // so nothing re-hammers the endpoint; until data arrives the rows keep
+    // rendering one-time — the honest fallback, never a guessed price.
+    if (!subXsPlanLine()) return;
+    var jobs = [];
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i] || {};
+      // Fetch-handle preference: fh (locale-valid, from the product's own
+      // url) over handle/h — translated storefronts localize URL handles.
+      // Rows cached before fh existed fall back to handle (same TTL window).
+      var handle = typeof row.fh === 'string' && row.fh ? row.fh :
+        (typeof row.handle === 'string' && row.handle ? row.handle : (typeof row.h === 'string' ? row.h : ''));
+      var pid = row.productId != null ? row.productId : row.p;
+      if (!handle || pid == null || state.products[String(pid)]) continue;
+      if (crossSellPlanFetch.fetched[handle]) continue;
+      crossSellPlanFetch.fetched[handle] = true;
+      jobs.push(fetchJSON(productJsonUrl(handle), { headers: { Accept: 'application/json' } })
+        .then(mergeAjaxProduct)
+        .catch(function () { return false; }));
+      if (jobs.length >= 4) break;
+    }
+    if (!jobs.length) return;
+    Promise.all(jobs).then(function (results) {
+      for (var j = 0; j < results.length; j++) {
+        if (results[j] === true) { renderAll(); return; }
+      }
+    });
+  }
+
   function buildAutoCrossSellRow(row) {
+    // v17: subscription context handled exactly like crosssellBuildRow —
+    // same markup, only the price/add/beacon change (merchant rule).
+    var sub = crossSellPlanFor(row.productId, row.variantId);
     var li = el('li', 'cx-crosssell__item');
     li.setAttribute('data-variant-id', String(row.variantId));
     if (row.productId != null) li.setAttribute('data-product-id', String(row.productId));
-    li.setAttribute('data-price-cents', String(row.priceCents));
+    li.setAttribute('data-price-cents', String(sub ? sub.priceCents : row.priceCents));
+    if (sub) li.setAttribute('data-plan-id', String(sub.planId));
     if (typeof row.handle === 'string' && row.handle) li.setAttribute('data-handle', row.handle); // v16: render-time rewards skip (skipH)
     if (row.image) {
       var img = el('img', 'cx-crosssell__img');
@@ -1956,9 +2250,11 @@
     var rwPct = state.rw && state.rw.pct > 0
       && !(state.rw.exc && state.rw.exc[String(row.productId)] === true)
       && !(state.rw.skipH && state.rw.skipH[String(row.handle)] === true) ? state.rw.pct : 0; // v14: see crosssellBuildRow
-    if (rwPct > 0) {
-      // v14 set-savings reframe (see crosssellBuildRow)
-      prices.appendChild(el('span', 'cx-crosssell__price', money(Math.round((Number(row.priceCents) || 0) * (1 - rwPct / 100)))));
+    if (sub && rwPct > 0 && state.rw.subOk === false) rwPct = 0; // v17: see crosssellBuildRow
+    if (sub || rwPct > 0) {
+      // v14 set-savings reframe + v17 subscription base (see crosssellBuildRow)
+      var baseCents = sub ? Number(sub.priceCents) : (Number(row.priceCents) || 0);
+      prices.appendChild(el('span', 'cx-crosssell__price', money(rwPct > 0 ? Math.round(baseCents * (1 - rwPct / 100)) : baseCents)));
       prices.appendChild(el('s', 'cx-crosssell__compare', money(row.priceCents)));
     } else {
       prices.appendChild(el('span', 'cx-crosssell__price', money(row.priceCents)));
@@ -1995,6 +2291,7 @@
     var cached = Array.isArray(autoCrossSell.rows) ? autoCrossSell.rows : null;
     if (!cached || !cached.length) return null;
     try {
+      ensureCrossSellPlanData(cached); // v17: async, re-renders when plan data lands
       var box = el('div', 'cx-crosssell');
       box.setAttribute('data-cx-feature', 'cart_cross_sell');
       box.appendChild(el('p', 'cx-crosssell__title heading--five', crosssellTitleText())); // v14: reframe-aware (same override gate as manual)
@@ -5156,7 +5453,14 @@
       else if (next && cur && Number(cur.pct) > 0) { pct = Number(cur.pct); mode = 'more'; }
       // top tier reached: the standard title, plain prices
     }
-    state.rw = { pct: pct, mode: mode, skipV: skipV, skipH: skipH, skipK: skipK, exc: rwExcludedIds() };
+    // v17: subOk mirrors setSavings.includeSubscriptions (default true, the
+    // rwEligibleLines twin). The SET codes are created with
+    // appliesOnSubscription = that toggle, so when it is OFF the reframe
+    // percent must never dress a subscription-priced cross-sell row — the
+    // code could not discount that line at checkout and the displayed price
+    // would undercut the charge.
+    state.rw = { pct: pct, mode: mode, skipV: skipV, skipH: skipH, skipK: skipK, exc: rwExcludedIds(),
+      subOk: !ss || ss.includeSubscriptions !== false };
   }
 
   function rwSimRead(server) {

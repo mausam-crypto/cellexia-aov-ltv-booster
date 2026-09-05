@@ -78,7 +78,7 @@ const SRC_PATH = process.env.CX_SIM_SRC || REAL_SRC;
 const SRC = fs.readFileSync(SRC_PATH, "utf8");
 
 const EXTRACTED = extractAll(SRC, {
-  vars: ["PROTECTION_HANDLE", "autoCrossSell", "CROSS_SELL_CACHE_TTL", "productPrefetch", "MARKET"],
+  vars: ["PROTECTION_HANDLE", "autoCrossSell", "CROSS_SELL_CACHE_TTL", "productPrefetch", "MARKET", "crossSellPlanFetch"],
   functions: [
     "routeRoot",
     "featureOn",
@@ -153,6 +153,18 @@ const EXTRACTED = extractAll(SRC, {
     "planPercent",
     "linePlanPercent",
     "itemHasPlan",
+    // v17 subscription-aware offers
+    "variantPlanAlloc",
+    "subscriptionAware",
+    "subSavingsPercent",
+    "subsAware",
+    "ownedPlan",
+    "subXsPlanLine",
+    "variantDefaultCadence",
+    "planNameMatchesCadence",
+    "crossSellPlanFor",
+    "ensureCrossSellPlanData",
+    "performUnsubscribe",
   ],
 });
 
@@ -525,6 +537,423 @@ async function main() {
     ok(sim.sandbox.state.busy === false && sim.sandbox.state.crossSellAdding === null,
       "busy cleared after the add settles");
     ok(sim.calls.notices.some((n) => n.type === "success"), "success notice shown");
+  }
+
+  // --- v17 subscription-aware cross-sell -----------------------------------------
+  // Fixtures mirror the live store: owned plan ids from cellexia.plan_groups,
+  // a Joy id that must never activate anything.
+  const SX = {
+    p: ["718653555063", "718653587831", "718653620599"],
+    d: { default: { unit: "WEEK", count: 8 }, byVariant: { "902": { unit: "MONTH", count: 3 } } },
+  };
+  const SUB_LINE = {
+    product_id: 5, variant_id: 55, quantity: 1, final_line_price: 4400, handle: "p5",
+    selling_plan_allocation: { selling_plan: { id: "718653555063" } },
+  };
+  const XS_PRODUCT = {
+    variants: [
+      { id: 901, position: 1, price: 5900, available: true, planAllocations: [
+        { planId: "718653555063", price: 4720 },
+        { planId: "718653587831", price: 4800 },
+      ] },
+    ],
+    sellingPlanGroups: [
+      { id: "g1", name: "Cellexia Subscriptions", plans: [
+        { id: "718653555063", name: "Every 8 weeks", valueType: "percentage", value: 20 },
+        { id: "718653587831", name: "Every 3 months", valueType: "percentage", value: 20 },
+      ] },
+    ],
+  };
+
+  // activation matrix: subXsPlanLine
+  {
+    const sim = makeSim({ cfg: { sx: SX } });
+    sim.sandbox.state.cart = cartWith([SUB_LINE, LINE(6, 66, 1, 900)]);
+    const a = vm.runInContext("subXsPlanLine()", sim.sandbox);
+    ok(!!a && String(a.planId) === "718653555063",
+      "v17: owned subscription line activates the context with its plan id");
+
+    const noSx = makeSim({});
+    noSx.sandbox.state.cart = cartWith([SUB_LINE]);
+    ok(vm.runInContext("subXsPlanLine()", noSx.sandbox) === null,
+      "v17: no cfg.sx (app dark / market off): context null, fail closed");
+
+    const joy = makeSim({ cfg: { sx: SX } });
+    joy.sandbox.state.cart = cartWith([Object.assign({}, SUB_LINE,
+      { selling_plan_allocation: { selling_plan: { id: "718347501943" } } })]);
+    ok(vm.runInContext("subXsPlanLine()", joy.sandbox) === null,
+      "v17: a Joy plan line NEVER activates (planIds membership = ownership)");
+
+    const b2b = makeSim({ cfg: { sx: SX, b2b: true } });
+    b2b.sandbox.state.cart = cartWith([SUB_LINE]);
+    ok(vm.runInContext("subXsPlanLine()", b2b.sandbox) === null,
+      "v17: B2B never enters subscription context");
+
+    const off = makeSim({ cfg: { sx: SX }, settings: { subscriptionAware: false } });
+    off.sandbox.state.cart = cartWith([SUB_LINE]);
+    ok(vm.runInContext("subXsPlanLine()", off.sandbox) === null,
+      "v17: kill switch off: context null");
+
+    const two = makeSim({ cfg: { sx: SX } });
+    two.sandbox.state.cart = cartWith([
+      Object.assign({}, SUB_LINE, { final_line_price: 100 }),
+      Object.assign({}, SUB_LINE, { variant_id: 56, final_line_price: 9000,
+        selling_plan_allocation: { selling_plan: { id: "718653587831" } } }),
+    ]);
+    const t = vm.runInContext("subXsPlanLine()", two.sandbox);
+    ok(!!t && String(t.planId) === "718653587831",
+      "v17: the highest-value owned line anchors the schedule");
+  }
+
+  // plan resolution ladder: crossSellPlanFor
+  {
+    const sim = makeSim({ cfg: { sx: SX } });
+    sim.sandbox.state.cart = cartWith([SUB_LINE]);
+    sim.sandbox.state.products = { 9: XS_PRODUCT };
+    const hit = vm.runInContext("crossSellPlanFor(9, 901)", sim.sandbox);
+    ok(!!hit && String(hit.planId) === "718653555063" && hit.priceCents === 4720,
+      "v17 tier 1: the cart's exact plan on the row variant wins");
+
+    // tier 2: no anchor-plan allocation, cadence from variant_defaults
+    const cadenceProduct = JSON.parse(JSON.stringify(XS_PRODUCT));
+    cadenceProduct.variants[0].id = 902;
+    cadenceProduct.variants[0].planAllocations = [{ planId: "718653587831", price: 4800 }];
+    const sim2 = makeSim({ cfg: { sx: SX } });
+    sim2.sandbox.state.cart = cartWith([SUB_LINE]);
+    sim2.sandbox.state.products = { 9: cadenceProduct };
+    const hit2 = vm.runInContext("crossSellPlanFor(9, 902)", sim2.sandbox);
+    ok(!!hit2 && String(hit2.planId) === "718653587831" && hit2.priceCents === 4800,
+      "v17 tier 2: 'Every 3 months' matches the variant's default cadence");
+
+    // tier 3: cadence unmatchable (localized name) -> first owned allocation
+    const localized = JSON.parse(JSON.stringify(cadenceProduct));
+    localized.sellingPlanGroups[0].plans[1].name = "Toutes les 12 semaines";
+    const sim3 = makeSim({ cfg: { sx: SX } });
+    sim3.sandbox.state.cart = cartWith([SUB_LINE]);
+    sim3.sandbox.state.products = { 9: localized };
+    const hit3 = vm.runInContext("crossSellPlanFor(9, 902)", sim3.sandbox);
+    ok(!!hit3 && String(hit3.planId) === "718653587831",
+      "v17 tier 3: unparseable plan name degrades to the first owned allocation");
+
+    // tier 4: foreign-only allocations -> null (one-time row, one-time add)
+    const foreign = JSON.parse(JSON.stringify(XS_PRODUCT));
+    foreign.variants[0].planAllocations = [{ planId: "718347501943", price: 100 }];
+    const sim4 = makeSim({ cfg: { sx: SX } });
+    sim4.sandbox.state.cart = cartWith([SUB_LINE]);
+    sim4.sandbox.state.products = { 9: foreign };
+    ok(vm.runInContext("crossSellPlanFor(9, 901)", sim4.sandbox) === null,
+      "v17 tier 4: foreign-only allocations resolve to NOTHING (never another app's plan)");
+
+    ok(vm.runInContext("crossSellPlanFor(404, 901)", sim.sandbox) === null,
+      "v17: product missing from state.products: null (row stays one-time)");
+  }
+
+  // row building: auto + manual, price swap only, nothing visually new
+  {
+    const sim = makeSim({ cfg: { sx: SX } });
+    sim.sandbox.state.cart = cartWith([SUB_LINE]);
+    sim.sandbox.state.products = { 9: XS_PRODUCT };
+    sim.sandbox.__row = { handle: "xs", productId: 9, title: "Cream", image: null, variantId: 901, priceCents: 5900, compareAtCents: 0 };
+    const attrs = vm.runInContext(`
+      (function () {
+        var n = buildAutoCrossSellRow(__row);
+        var price = n.querySelector('.cx-crosssell__price');
+        var cmp = n.querySelector('.cx-crosssell__compare');
+        return {
+          cents: n.getAttribute('data-price-cents'),
+          plan: n.getAttribute('data-plan-id'),
+          price: price ? price.textContent : null,
+          cmp: cmp ? cmp.textContent : null,
+          btn: n.querySelector('.cx-crosssell__add').textContent
+        };
+      })()`, sim.sandbox);
+    const m4720 = vm.runInContext("money(4720)", sim.sandbox);
+    const m5900 = vm.runInContext("money(5900)", sim.sandbox);
+    ok(attrs.cents === "4720" && attrs.plan === "718653555063",
+      "v17 auto row: charged cents + plan id ride the data attributes");
+    ok(attrs.price === m4720 && attrs.cmp === m5900,
+      "v17 auto row: subscription price shown, one-time price struck");
+    ok(attrs.btn === "Add", "v17 auto row: button label unchanged (merchant rule: nothing visually new)");
+
+    // rw set-savings stacks ON TOP of the subscription price
+    sim.sandbox.state.rw = { pct: 10, exc: null, skipH: null, skipK: {}, skipV: {} };
+    const stacked = vm.runInContext(
+      "buildAutoCrossSellRow(__row).querySelector('.cx-crosssell__price').textContent", sim.sandbox);
+    ok(stacked === vm.runInContext("money(" + Math.round(4720 * 0.9) + ")", sim.sandbox),
+      "v17 + v14: reframe percent applies to the subscription price");
+    sim.sandbox.state.rw = null;
+
+    // manual row (csx island shape, h = handle)
+    sim.sandbox.__mrow = { v: 901, p: 9, c: 5900, pf: "59,00 €", t: "Cream", n: "Cream", h: "xs" };
+    const mattrs = vm.runInContext(`
+      (function () {
+        var n = crosssellBuildRow(__mrow);
+        var cmp = n.querySelector('.cx-crosssell__compare');
+        return { cents: n.getAttribute('data-price-cents'), plan: n.getAttribute('data-plan-id'),
+          price: n.querySelector('.cx-crosssell__price').textContent, cmp: cmp ? cmp.textContent : null };
+      })()`, sim.sandbox);
+    ok(mattrs.cents === "4720" && mattrs.plan === "718653555063" && mattrs.price === m4720 && mattrs.cmp === "59,00 €",
+      "v17 manual row: subscription price shown, Liquid money string struck");
+
+    // no context: byte-identical legacy behavior
+    const plain = makeSim({});
+    plain.sandbox.state.cart = cartWith([SUB_LINE]);
+    plain.sandbox.state.products = { 9: XS_PRODUCT };
+    plain.sandbox.__row = sim.sandbox.__row;
+    const legacy = vm.runInContext(`
+      (function () {
+        var n = buildAutoCrossSellRow(__row);
+        return { cents: n.getAttribute('data-price-cents'), plan: n.getAttribute('data-plan-id') };
+      })()`, plain.sandbox);
+    ok(legacy.cents === "5900" && legacy.plan === null,
+      "v17 inert without cfg.sx: one-time cents, no plan attribute");
+  }
+
+  // add payload: selling_plan only in subscription context
+  {
+    const sim = makeSim({
+      cfg: { sx: SX },
+      responders: {
+        "/cart/add.js": { ok: true },
+        "/cart.js": cartWith([LINE(9, 901, 1, 4720)]),
+        [PROXY_URL]: { products: {} },
+      },
+    });
+    sim.sandbox.state.cart = cartWith([SUB_LINE]);
+    vm.runInContext("performCrossSellAdd(901, 4720, null, '718653555063')", sim.sandbox);
+    await flush();
+    const add = sim.calls.fetches.find((f) => f.url === "/cart/add.js");
+    const body = JSON.parse(add.options.body);
+    ok(body.selling_plan === 718653555063 && body.properties._cellexia_upsell === "cart",
+      "v17 subscription add: numeric selling_plan + the attribution property");
+    const beacon = sim.calls.tracks.find((t) => t.feature === "cart_cross_sell");
+    ok(!!beacon && beacon.extra.revenue === 47.2,
+      "v17 beacon revenue = the charged subscription price");
+
+    const plain = makeSim({
+      responders: {
+        "/cart/add.js": { ok: true },
+        "/cart.js": cartWith([LINE(9, 901, 1, 5900)]),
+        [PROXY_URL]: { products: {} },
+      },
+    });
+    plain.sandbox.state.cart = cartWith([]);
+    vm.runInContext("performCrossSellAdd(901, 5900, null, null)", plain.sandbox);
+    await flush();
+    const body2 = JSON.parse(plain.calls.fetches.find((f) => f.url === "/cart/add.js").options.body);
+    ok(!("selling_plan" in body2),
+      "v17: no plan resolved: the add body carries NO selling_plan key at all");
+  }
+
+  // enrichment: once per handle, fail-marked, inert without context
+  {
+    const sim = makeSim({
+      cfg: { sx: SX },
+      responders: {
+        "/products/xs.js": { id: 9, handle: "xs", variants: [
+          { id: 901, price: 5900, available: true,
+            selling_plan_allocations: [{ selling_plan_id: "718653555063", price: 4720 }] },
+        ], selling_plan_groups: [] },
+        "/products/bad.js": () => new Error("500"),
+      },
+    });
+    sim.sandbox.state.cart = cartWith([SUB_LINE]);
+    sim.sandbox.__rows = [{ handle: "xs", productId: 9, variantId: 901, priceCents: 5900 }];
+    vm.runInContext("ensureCrossSellPlanData(__rows)", sim.sandbox);
+    await flush();
+    ok(sim.calls.fetches.filter((f) => f.url === "/products/xs.js").length === 1,
+      "v17 enrichment: one products/{handle}.js fetch for the missing product");
+    ok(!!sim.sandbox.state.products["9"] &&
+      sim.sandbox.state.products["9"].variants[0].planAllocations[0].price === 4720,
+      "v17 enrichment: allocations merged into state.products");
+    ok(sim.calls.renderAll === 1, "v17 enrichment: one re-render after data lands");
+    vm.runInContext("ensureCrossSellPlanData(__rows)", sim.sandbox);
+    await flush();
+    ok(sim.calls.fetches.filter((f) => f.url === "/products/xs.js").length === 1,
+      "v17 enrichment: never refetched once known");
+
+    sim.sandbox.__rows2 = [{ handle: "bad", productId: 10, variantId: 1000, priceCents: 100 }];
+    vm.runInContext("ensureCrossSellPlanData(__rows2)", sim.sandbox);
+    await flush();
+    vm.runInContext("ensureCrossSellPlanData(__rows2)", sim.sandbox);
+    await flush();
+    ok(sim.calls.fetches.filter((f) => f.url === "/products/bad.js").length === 1,
+      "v17 enrichment: a failed handle is fetched once, never hammered");
+
+    const inert = makeSim({ responders: {} });
+    inert.sandbox.state.cart = cartWith([SUB_LINE]);
+    inert.sandbox.__rows = [{ handle: "xs", productId: 9, variantId: 901, priceCents: 5900 }];
+    vm.runInContext("ensureCrossSellPlanData(__rows)", inert.sandbox);
+    await flush();
+    ok(inert.calls.fetches.length === 0,
+      "v17 enrichment: no context (no cfg.sx): zero fetches");
+  }
+
+  // cache purity: cached row descriptors stay plan-free
+  {
+    const sim = makeSim({});
+    sim.sandbox.__prods = [{
+      id: 9, handle: "xs", title: "Cream", featured_image: null,
+      variants: [{ id: 901, price: 5900, available: true,
+        selling_plan_allocations: [{ selling_plan_id: "718653555063", price: 4720 }] }],
+    }];
+    const rows = vm.runInContext("crossSellRowsFromRecs(__prods)", sim.sandbox);
+    ok(Object.keys(rows[0]).sort().join(",") === "compareAtCents,fh,handle,image,priceCents,productId,title,variantId",
+      "v17 cache purity: row descriptors carry NO plan fields (sub context is render-time only; fh = fetch handle, not plan data)");
+    // and the recs payload seeds state.products for the plan resolution
+    ok(vm.runInContext("mergeAjaxProduct(__prods[0])", sim.sandbox) === true &&
+      sim.sandbox.state.products["9"].variants[0].planAllocations[0].price === 4720,
+      "v17: recommendations products adapt into state.products with allocations");
+  }
+
+  // v17 tiles (the same extracted upgradeCandidates the drawer runs)
+  {
+    const TILE_PRODUCT = {
+      variants: [
+        { id: 11, position: 1, price: 4900, available: true, planAllocations: [{ planId: "718653555063", price: 3920 }] },
+        { id: 12, position: 2, price: 8800, available: true, planAllocations: [{ planId: "718653555063", price: 7040 }] },
+      ],
+      sellingPlanGroups: [],
+    };
+    const subLine = { product_id: 9, variant_id: 11, quantity: 1,
+      selling_plan_allocation: { selling_plan: { id: "718653555063" } } };
+    const sim = makeSim({ effective: { volume: true }, settings: { volumeOffers: [{ quantity: 2, discountPct: 15 }] } });
+    sim.sandbox.state.products = { 9: TILE_PRODUCT };
+    sim.sandbox.__line = subLine;
+    const tiles = vm.runInContext("upgradeCandidates(__line)", sim.sandbox);
+    ok(tiles.length === 1 && tiles[0].perUnitCents === Math.round(7040 / 2) && tiles[0].addPriceCents === 7040,
+      "v17 tile: subscribed line priced from the tier allocation (7040), never one-time");
+    const off = makeSim({ effective: { volume: true },
+      settings: { volumeOffers: [{ quantity: 2, discountPct: 15 }], subscriptionAware: false } });
+    off.sandbox.state.products = { 9: TILE_PRODUCT };
+    off.sandbox.__line = subLine;
+    ok(vm.runInContext("upgradeCandidates(__line)", off.sandbox).length === 0,
+      "v17 tile: kill switch off: subscribed line gets no tiles at all");
+  }
+
+  // v17 review fixes: subOk reframe guard, prepaid detector, seeding gate,
+  // click-time context guard, locale-valid fetch handles, unsubscribe props
+  {
+    // (a) includeSubscriptions off (rw.subOk false): the reframe percent
+    // never dresses a subscription-priced row — the SET code could not
+    // discount that line at checkout.
+    const sim = makeSim({ cfg: { sx: SX } });
+    sim.sandbox.state.cart = cartWith([SUB_LINE]);
+    sim.sandbox.state.products = { 9: XS_PRODUCT };
+    sim.sandbox.state.rw = { pct: 10, exc: null, skipH: null, skipK: {}, skipV: {}, subOk: false };
+    sim.sandbox.__row = { handle: "xs", productId: 9, title: "Cream", image: null, variantId: 901, priceCents: 5900, compareAtCents: 0 };
+    const plainAlloc = vm.runInContext(
+      "buildAutoCrossSellRow(__row).querySelector('.cx-crosssell__price').textContent", sim.sandbox);
+    ok(plainAlloc === vm.runInContext("money(4720)", sim.sandbox),
+      "v17 subOk=false: subscription row shows the PLAIN allocation price (no reframe)");
+    // one-time rows keep the reframe even with subOk false (the code still
+    // discounts one-time lines)
+    const noSub = makeSim({});
+    noSub.sandbox.state.rw = { pct: 10, exc: null, skipH: null, skipK: {}, skipV: {}, subOk: false };
+    noSub.sandbox.__row = sim.sandbox.__row;
+    ok(vm.runInContext("buildAutoCrossSellRow(__row).querySelector('.cx-crosssell__price').textContent", noSub.sandbox) ===
+      vm.runInContext("money(" + Math.round(5900 * 0.9) + ")", noSub.sandbox),
+      "v17 subOk=false: ONE-TIME rows still show the reframe price");
+
+    // (b) prepaid detector in crossSellPlanFor: an allocation priced above
+    // one-time is never offered; falls through to a plain owned plan or null.
+    const prepaidP = JSON.parse(JSON.stringify(XS_PRODUCT));
+    prepaidP.variants[0].planAllocations = [
+      { planId: "718653555063", price: 14160 }, // prepaid lump (> 5900 one-time)
+      { planId: "718653587831", price: 4800 },
+    ];
+    const simB = makeSim({ cfg: { sx: SX } });
+    simB.sandbox.state.cart = cartWith([SUB_LINE]);
+    simB.sandbox.state.products = { 9: prepaidP };
+    const hitB = vm.runInContext("crossSellPlanFor(9, 901)", simB.sandbox);
+    ok(!!hitB && String(hitB.planId) === "718653587831" && hitB.priceCents === 4800,
+      "v17 prepaid: lump-priced anchor allocation skipped, plain owned plan wins");
+    const allPrepaid = JSON.parse(JSON.stringify(XS_PRODUCT));
+    allPrepaid.variants[0].planAllocations = [{ planId: "718653555063", price: 14160 }];
+    const simB2 = makeSim({ cfg: { sx: SX } });
+    simB2.sandbox.state.cart = cartWith([SUB_LINE]);
+    simB2.sandbox.state.products = { 9: allPrepaid };
+    ok(vm.runInContext("crossSellPlanFor(9, 901)", simB2.sandbox) === null,
+      "v17 prepaid: only lump-priced allocations: row stays one-time");
+
+    // (c) seeding gate: a recommendations product WITHOUT allocations is not
+    // seeded (a plan-free seed would block the products/{handle}.js gap-fill);
+    // one WITH allocations is.
+    const simC = makeSim({
+      responders: {
+        [RECS_URL]: { products: [
+          { id: 21, handle: "noalloc", title: "A", url: "/products/noalloc",
+            variants: [{ id: 210, price: 1000, available: true }] },
+          { id: 22, handle: "withalloc", title: "B", url: "/products/withalloc",
+            variants: [{ id: 220, price: 2000, available: true,
+              selling_plan_allocations: [{ selling_plan_id: "718653555063", price: 1600 }] }] },
+        ] },
+      },
+    });
+    simC.sandbox.__anchors = [{ product_id: 1 }];
+    vm.runInContext("buildAutoCrossSellRows(__anchors)", simC.sandbox);
+    await flush();
+    ok(!simC.sandbox.state.products["21"] && !!simC.sandbox.state.products["22"],
+      "v17 seeding gate: allocation-free recs products are NOT seeded; allocated ones are");
+
+    // (d) click-time context guard: a subscription add clicked after the
+    // owned line left the cart aborts (no cart/add.js) and refreshes.
+    const simD = makeSim({ responders: { "/cart/add.js": { ok: true } } });
+    simD.sandbox.state.cart = cartWith([LINE(6, 66, 1, 900)]); // no owned plan line
+    vm.runInContext("performCrossSellAdd(901, 4720, null, '718653555063')", simD.sandbox);
+    await flush();
+    ok(simD.calls.fetches.filter((f) => f.url === "/cart/add.js").length === 0 &&
+      (simD.calls.refresh || 0) === 1 && simD.sandbox.state.busy === false,
+      "v17 click guard: stale subscription click aborts the add and refreshes");
+
+    // (e) locale-valid fetch handles: fh derives from the product url and
+    // wins over the canonical handle in the enrichment fetch.
+    const simE = makeSim({});
+    simE.sandbox.__prods = [{ id: 31, handle: "cream-x", title: "C", url: "/fr/products/creme-x?variant=1",
+      variants: [{ id: 310, price: 900, available: true }] }];
+    const rowsE = vm.runInContext("crossSellRowsFromRecs(__prods)", simE.sandbox);
+    ok(rowsE[0].fh === "creme-x" && rowsE[0].handle === "cream-x",
+      "v17 fh: fetch handle parsed from the localized url, display handle untouched");
+    const simE2 = makeSim({
+      cfg: { sx: SX },
+      responders: { "/products/creme-x.js": { id: 31, handle: "cream-x",
+        variants: [{ id: 310, price: 900, available: true,
+          selling_plan_allocations: [{ selling_plan_id: "718653555063", price: 720 }] }] } },
+    });
+    simE2.sandbox.state.cart = cartWith([SUB_LINE]);
+    simE2.sandbox.__rows = [{ fh: "creme-x", handle: "cream-x", productId: 31, variantId: 310, priceCents: 900 }];
+    vm.runInContext("ensureCrossSellPlanData(__rows)", simE2.sandbox);
+    await flush();
+    ok(simE2.calls.fetches.length === 1 && simE2.calls.fetches[0].url === "/products/creme-x.js",
+      "v17 fh: enrichment fetches the locale-valid handle");
+
+    // (f) performUnsubscribe strips _cellexia_design (design attribution)
+    // but keeps _cellexia_seen and everything else; a line without the key
+    // sends NO properties member at all (byte-identical legacy request).
+    const simF = makeSim({ responders: { "/cart/change.js": cartWith([]) } });
+    simF.sandbox.state.cart = cartWith([
+      { product_id: 5, variant_id: 55, quantity: 1, key: "k1", final_line_price: 100,
+        properties: { _cellexia_design: "aurora", _cellexia_seen: "aurora|s", note: "gift wrap" },
+        selling_plan_allocation: { selling_plan: { id: "718653555063" } } },
+    ]);
+    vm.runInContext("performUnsubscribe('k1', null)", simF.sandbox);
+    await flush();
+    const chg = JSON.parse(simF.calls.fetches.find((f) => f.url === "/cart/change.js").options.body);
+    ok(chg.selling_plan === null && chg.properties &&
+      !("_cellexia_design" in chg.properties) &&
+      chg.properties._cellexia_seen === "aurora|s" && chg.properties.note === "gift wrap",
+      "v17 unsubscribe: _cellexia_design stripped, other properties kept");
+    const simF2 = makeSim({ responders: { "/cart/change.js": cartWith([]) } });
+    simF2.sandbox.state.cart = cartWith([
+      { product_id: 5, variant_id: 55, quantity: 1, key: "k2", final_line_price: 100,
+        properties: { _cellexia_upsell: "cart" },
+        selling_plan_allocation: { selling_plan: { id: "718653555063" } } },
+    ]);
+    vm.runInContext("performUnsubscribe('k2', null)", simF2.sandbox);
+    await flush();
+    const chg2 = JSON.parse(simF2.calls.fetches.find((f) => f.url === "/cart/change.js").options.body);
+    ok(!("properties" in chg2),
+      "v17 unsubscribe: no _cellexia_design on the line: request carries no properties member");
   }
 
   // --- cache/debounce/commit semantics (v16: anchor-keyed, session-persisted) --------
@@ -1276,6 +1705,62 @@ async function main() {
         name: "m15-b2b-persisted",
         find: "if (isB2B()) return null;\n    try { return window.sessionStorage || null; }",
         replace: "if (false) return null;\n    try { return window.sessionStorage || null; }",
+      },
+      // v17 subscription-aware offers
+      {
+        name: "m22-ownership-dropped",
+        find: "if (!ownedPlan(item.selling_plan_allocation.selling_plan.id)) continue;",
+        replace: "if (false) continue;",
+      },
+      {
+        name: "m23-add-drops-plan",
+        find: "if (planId) addPayload.selling_plan = /^\\d+$/.test(String(planId)) ? Number(planId) : planId;",
+        replace: ";",
+      },
+      {
+        name: "m24-b2b-enters-sub-context",
+        find: "return subscriptionAware() && !isB2B() &&",
+        replace: "return subscriptionAware() &&",
+      },
+      {
+        name: "m25-row-price-onetime",
+        find: "li.setAttribute('data-price-cents', String(sub ? sub.priceCents : row.priceCents));",
+        replace: "li.setAttribute('data-price-cents', String(row.priceCents));",
+      },
+      {
+        name: "m26-foreign-plan-fallback",
+        find: "if (!a || a.planId == null || !(Number(a.price) > 0) || Number(a.price) > oneTime || !ownedPlan(a.planId)) continue;",
+        replace: "if (!a || a.planId == null || !(Number(a.price) > 0) || Number(a.price) > oneTime) continue;",
+      },
+      {
+        name: "m27-tile-onetime-price",
+        find: "perUnitCents: Math.round(addPriceCents / qty),",
+        replace: "perUnitCents: Math.round(Number(tierVariant.price) / qty),",
+      },
+      {
+        name: "m28-tile-killswitch-ignored",
+        find: "if (!subscriptionAware()) return;",
+        replace: "if (false) return;",
+      },
+      {
+        name: "m29-enrichment-refetch-loop",
+        find: "if (crossSellPlanFetch.fetched[handle]) continue;",
+        replace: "if (false) continue;",
+      },
+      {
+        name: "m30-subok-ignored",
+        find: "if (sub && rwPct > 0 && state.rw.subOk === false) rwPct = 0; // v17: see crosssellBuildRow",
+        replace: "; // v17: see crosssellBuildRow",
+      },
+      {
+        name: "m31-seed-gate-dropped",
+        find: "if (seeded) mergeAjaxProduct(rp);",
+        replace: "mergeAjaxProduct(rp);",
+      },
+      {
+        name: "m32-click-guard-dropped",
+        find: "if (planId && !subXsPlanLine()) { refresh(); return; }",
+        replace: ";",
       },
     ];
     const bad = runMutants({ selfPath: __filename, srcPath: REAL_SRC, mutants: MUTANTS });

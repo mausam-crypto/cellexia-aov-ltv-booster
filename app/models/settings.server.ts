@@ -560,6 +560,18 @@ export interface BoosterSettings {
     sellingPlanKeyword: string;
     /** Compact trust row (guarantee, secure checkout, Trustpilot) in the drawer footer. */
     showTrustRow: boolean;
+    /**
+     * v17 emergency kill switch for subscription-aware cart offers (the
+     * custom Cellexia Subscriptions app, replacing Joy). Default true. Off =
+     * safe-inert: subscribed lines get NO upgrade tiles (pre-v17 could show
+     * a one-time-priced tile when a tier variant shared the line's plan;
+     * hiding beats mispricing) and cross-sell prices/adds stay one-time.
+     * NOT a FeatureKey and never part of flip snapshots — the
+     * live/market/plan gating itself follows the subscription app's own
+     * shop metafields (cellexia.launch_status / widget_markets /
+     * plan_groups), read directly by cart-booster.liquid.
+     */
+    subscriptionAware: boolean;
   };
   /**
    * Cross-sell other products inside the cart drawer (v4.8). Items are
@@ -1262,6 +1274,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     subscriptionDiscountPct: 5,
     sellingPlanKeyword: "Continuous Treatment",
     showTrustRow: true,
+    subscriptionAware: true,
   },
   cartCrossSell: {
     enabled: false,
@@ -2612,6 +2625,9 @@ export function sanitizeSettings(
     90,
     DEFAULT_SETTINGS.cartUpsell.subscriptionDiscountPct,
   );
+  // v17: anything but an explicit false is on — matches the Liquid gate's
+  // `== false` read and the JS runtime's `!== false` read.
+  next.cartUpsell.subscriptionAware = next.cartUpsell.subscriptionAware !== false;
   next.cartUpsell.volumeOffers = (next.cartUpsell.volumeOffers ?? [])
     .filter(
       (offer) =>

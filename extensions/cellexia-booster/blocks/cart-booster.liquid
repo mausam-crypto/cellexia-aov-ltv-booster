@@ -266,6 +266,26 @@ if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
 assign cx_eff_gt = true
 endif
 endif
+assign cx_sx = false
+unless cfg.cartUpsell.subscriptionAware == false
+assign cx_sl = shop.metafields.cellexia.launch_status.value | default: shop.metafields.cellexia.launch_status
+if cx_sl == 'live'
+assign cx_wm = shop.metafields.cellexia.widget_markets.value
+assign cx_sx = true
+if cx_wm and cx_wm.mode == 'selected'
+assign cx_sx = false
+if cx_market != blank and cx_wm.handles contains cx_market
+assign cx_sx = true
+endif
+endif
+if cx_sx
+assign cx_sxp = shop.metafields.cellexia.plan_groups.value.planIds
+unless cx_sxp.size > 0
+assign cx_sx = false
+endunless
+endif
+endif
+endunless
 -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
 <script type="application/json" id="cx-cart-config">
@@ -283,6 +303,7 @@ endif
 "sellingPlanKeyword": {{ cfg.cartUpsell.sellingPlanKeyword | default: 'Continuous Treatment' | json }},
 "volumeOffers": {% if cfg.cartUpsell.volumeOffers %}{{ cfg.cartUpsell.volumeOffers | json }}{% else %}[{"quantity":2,"discountPct":15},{"quantity":3,"discountPct":20}]{% endif %},
 "trustpilotEnabled": {{ cx_tp_on }},
+{%- if cfg.cartUpsell.subscriptionAware == false %}"subscriptionAware":false,{% endif %}
 "cartPage": {% if block.settings.enable_cart_page %}true{% else %}false{% endif %}
 },
 "market": {{ cx_market | json }},
@@ -336,7 +357,7 @@ endif
 {%- assign cs_img = cs_variant.image | default: csp.featured_image -%}
 {"v": {{ cs_variant.id | json }}, "p": {{ csp.id | json }}, "c": {{ cs_variant.price | json }}, "pf": {{ cs_variant.price | money | json }}
 {%- if cs_variant.compare_at_price > cs_variant.price -%}, "cf": {{ cs_variant.compare_at_price | money | json }}, "cc": {{ cs_variant.compare_at_price | json }}{%- endif -%}
-{%- if cs_img -%}, "i": {{ cs_img | image_url: width: 56 | json }}, "i2": {{ cs_img | image_url: width: 112 | json }}{%- endif -%}, "t": {{ csp.title | json }}, "n": {{ cs_name | json }}}
+{%- if cs_img -%}, "i": {{ cs_img | image_url: width: 56 | json }}, "i2": {{ cs_img | image_url: width: 112 | json }}{%- endif -%},"h":{{ csp.handle | json }}, "t": {{ csp.title | json }}, "n": {{ cs_name | json }}}
 {%- endif -%}
 {%- endif -%}
 {%- endfor -%}
@@ -361,6 +382,9 @@ assign tp_stars_label = tp_stars | round: 1
 {%- endif %}
 {%- if cx_eff_dispatch or cx_draft_dispatch %}
 "dc": 1,
+{%- endif %}
+{%- if cx_sx %}
+"sx":{"p":{{ cx_sxp | json }},"d":{{ shop.metafields.cellexia.variant_defaults.value | json }}},
 {%- endif %}
 {%- if cx_exc_d or cx_exc_e %}
 "exc": {"d": {{ cx_exc_d | json }}, "e": {{ cx_exc_e | json }}},

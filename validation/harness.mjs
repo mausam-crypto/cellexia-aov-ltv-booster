@@ -3978,5 +3978,90 @@ const EVIDENCE = {
   );
 }
 
+// ============ v17 SUBSCRIPTION-AWARE CART OFFERS (2026-09-05)
+// The cart follows the NEW subscription app's own shop metafields
+// (cellexia.launch_status / widget_markets / plan_groups) — the Liquid reads
+// are pinned byte-for-byte against the patterns the subscription app's own
+// cx-buybox-core.liquid uses, so the two apps can never disagree about
+// "live" or the market rule. The tile invariant ("a subscribed line never
+// renders a one-time price") and the fetch-patch neutralization marker are
+// structural safety rails: weakening either reopens the launch-day hazards.
+{
+  const cartLq17 = read(`${EXT}/blocks/cart-booster.liquid`);
+  ok(
+    cartLq17.includes("assign cx_sl = shop.metafields.cellexia.launch_status.value | default: shop.metafields.cellexia.launch_status"),
+    "v17: launch_status read uses the buy-box's exact .value | default pattern",
+  );
+  ok(cartLq17.includes("if cx_sl == 'live'"), "v17: byte-exact 'live' compare (setup/absent fails closed)");
+  ok(
+    cartLq17.includes("assign cx_wm = shop.metafields.cellexia.widget_markets.value") &&
+      cartLq17.includes("if cx_wm and cx_wm.mode == 'selected'") &&
+      cartLq17.includes("if cx_market != blank and cx_wm.handles contains cx_market"),
+    "v17: widget_markets rule mirrored exactly (absent/mode-all = everywhere; blank market fails closed)",
+  );
+  ok(
+    cartLq17.includes("assign cx_sxp = shop.metafields.cellexia.plan_groups.value.planIds") &&
+      cartLq17.includes("unless cx_sxp.size > 0"),
+    "v17: plan_groups.planIds non-empty required (ownership allow-list)",
+  );
+  ok(
+    cartLq17.includes("unless cfg.cartUpsell.subscriptionAware == false"),
+    "v17: the admin kill switch gates the Liquid sx emission",
+  );
+  ok(
+    cartLq17.includes("{%- if cx_sx %}") && cartLq17.includes('"sx":{"p":{{ cx_sxp | json }},"d":'),
+    "v17: sx is a GATED island member (absent = inert, island stays valid JSON for every visitor)",
+  );
+
+  const cartJs17 = read(`${EXT}/assets/cellexia-cart.js`);
+  ok(
+    cartJs17.includes("addProps._cellexia_upgrade = '1';"),
+    "v17: upgrade adds (and restores) carry _cellexia_upgrade — the buy-box fetch-patch skip marker",
+  );
+  ok(
+    cartJs17.includes("_cellexia_upsell: 'cart'"),
+    "v17: cross-sell adds keep _cellexia_upsell (orders-webhook attribution AND skip marker)",
+  );
+  ok(
+    cartJs17.includes("if (planId) addPayload.selling_plan = "),
+    "v17: cross-sell add carries selling_plan ONLY when crossSellPlanFor resolved an owned plan",
+  );
+  ok(
+    cartJs17.includes("if (!subscriptionAware()) return;") &&
+      cartJs17.includes("if (!tierAlloc || !(Number(tierAlloc.price) > 0)) return;"),
+    "v17: tile invariant — kill switch honored and no usable allocation price = no tile",
+  );
+  ok(
+    cartJs17.includes("if (!ownedPlan(item.selling_plan_allocation.selling_plan.id)) continue;"),
+    "v17: cross-sell context requires an OWNED plan line (Joy lines never activate it)",
+  );
+
+  const settings17 = read("app/models/settings.server.ts");
+  ok(
+    settings17.includes("subscriptionAware: true,") &&
+      settings17.includes("next.cartUpsell.subscriptionAware = next.cartUpsell.subscriptionAware !== false;"),
+    "v17: cartUpsell.subscriptionAware defaults true and sanitizes to a boolean",
+  );
+  ok(
+    read("app/routes/app.features.cart.tsx").includes('label="Subscription prices in cart offers"'),
+    "v17: the emergency switch renders on the cart features page",
+  );
+
+  const xsim17 = read("validation/sims/crosssell-pipeline.cjs");
+  ok(
+    xsim17.includes('name: "m22-ownership-dropped"') &&
+      xsim17.includes('name: "m23-add-drops-plan"') &&
+      xsim17.includes('name: "m27-tile-onetime-price"') &&
+      xsim17.includes('name: "m28-tile-killswitch-ignored"'),
+    "v17: crosssell-pipeline sim carries the m22-m29 mutation block",
+  );
+  ok(
+    read("validation/sims/subscribed-upgrade.cjs").includes(
+      "allocation without a usable price: no tile (fail closed, no one-time fallback)",
+    ),
+    "v17: subscribed-upgrade sim pins the transition-hazard invariant",
+  );
+}
+
 
 finish();

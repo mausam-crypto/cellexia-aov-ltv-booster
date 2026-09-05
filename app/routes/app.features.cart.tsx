@@ -284,6 +284,7 @@ interface CartFormState {
   subscriptionDiscountPct: string;
   sellingPlanKeyword: string;
   showTrustRow: boolean;
+  subscriptionAware: boolean;
   crossSellEnabled: boolean;
   crossSellMode: "auto" | "manual";
   crossSellMaxItems: string;
@@ -312,6 +313,7 @@ function initialFormState(settings: BoosterSettings): CartFormState {
     subscriptionDiscountPct: String(cartUpsell.subscriptionDiscountPct),
     sellingPlanKeyword: cartUpsell.sellingPlanKeyword,
     showTrustRow: cartUpsell.showTrustRow,
+    subscriptionAware: cartUpsell.subscriptionAware !== false,
     crossSellEnabled: settings.cartCrossSell.enabled,
     crossSellMode: settings.cartCrossSell.mode === "manual" ? "manual" : "auto",
     crossSellMaxItems: String(settings.cartCrossSell.maxItems),
@@ -570,6 +572,7 @@ export default function CartFeaturesPage() {
         subscriptionDiscountPct: Number(state.subscriptionDiscountPct),
         sellingPlanKeyword: state.sellingPlanKeyword.trim(),
         showTrustRow: state.showTrustRow,
+        subscriptionAware: state.subscriptionAware,
       },
       cartCrossSell: {
         enabled: state.crossSellEnabled,
@@ -717,6 +720,14 @@ export default function CartFeaturesPage() {
                   checked={state.showTrustRow}
                   onChange={(showTrustRow) =>
                     setState((previous) => ({ ...previous, showTrustRow }))
+                  }
+                />
+                <Checkbox
+                  label="Subscription prices in cart offers"
+                  helpText="When the Cellexia Subscriptions app is live in the shopper's market and their cart already holds one of its subscriptions, pack upgrades and cross-sells use real subscription prices and keep the subscription. Turning this off returns the cart to one-time behavior instantly. It never offers subscriptions to one-time carts."
+                  checked={state.subscriptionAware}
+                  onChange={(subscriptionAware) =>
+                    setState((previous) => ({ ...previous, subscriptionAware }))
                   }
                 />
               </BlockStack>

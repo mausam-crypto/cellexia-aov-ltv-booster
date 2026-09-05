@@ -371,6 +371,109 @@ strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
 
+v17 — SUBSCRIPTION PRICES IN CART OFFERS (2026-09-05): the cart follows the
+NEW Cellexia Subscriptions app (the custom app replacing Joy). **Both halves
+must be redeployed** (extensions AND app server), and this must be live
+BEFORE the subscription app's go-live. A matching update in the SUBSCRIPTION
+app's repo (the buy-box embed's "leave the booster's adds alone" rule) must
+also be deployed first.
+
+- **What it does.** When the subscription app is LIVE (its own launch flag),
+  the shopper's market is one of its enabled markets, and the cart already
+  holds a line carrying one of ITS subscription plans: (a) the "Upgrade to
+  2 / 3 units" tiles for that line price from the tier variant's own
+  subscription allocation and keep the plan on upgrade (the plan was always
+  preserved; now the displayed and charged price is right, and the Save %
+  compares against the full one-time price per the merchant's decision);
+  (b) cross-sell rows show the subscription price with the one-time price
+  struck, and Add creates a subscription line on the same schedule as the
+  cart (fallbacks: the product's default schedule from the subscription
+  app's variant_defaults, then its first owned plan; NO owned plan = the row
+  stays fully one-time, price and add). Nothing changes visually beyond the
+  numbers (merchant decision: no badges, labels or notes) and ZERO new
+  translated strings exist. One-time-only carts render byte-identical to
+  v16.1. B2B never enters subscription context. Joy lines never trigger the
+  cross-sell context (plan-id ownership against
+  `cellexia.plan_groups.planIds`). One honest exception on tiles: a Joy
+  subscriber whose plan spans the pack variants (on the live store, Joy's
+  "Every 3 months" is allocated on the 2- and 3-Jar variants) DID see
+  upgrade tiles before v17, priced ONE-TIME; v17 now prices those tiles
+  from the Joy allocation (the correct charged amount) — a deliberate
+  correction, pinned in the sims. Joy subscribers whose plan lives only on
+  the 1-unit variant keep seeing no tiles, exactly as before.
+- **Why it must ship before go-live (the hazard).** The new app attaches
+  plans at PRODUCT level, so the 2/3-unit variants become subscribable the
+  moment it syncs its group; without v17 the old code would then start
+  showing subscribed lines upgrade tiles priced ONE-TIME. v17's invariant:
+  a subscribed line's tile renders ONLY when the tier variant carries a
+  usable allocation price for that exact plan — otherwise no tile (exactly
+  today's live behavior), in every launch state, kill-switch state, and for
+  every foreign (Joy) plan.
+- **Signals, not settings.** cart-booster.liquid reads the subscription
+  app's own shop metafields directly (`cellexia.launch_status` byte-exact
+  'live'; `cellexia.widget_markets` exact handle membership, blank market
+  fails closed; `cellexia.plan_groups.planIds` non-empty) with the same
+  byte-for-byte read patterns as that app's own buy-box gate, and emits a
+  gated `sx` island member; absent member = everything inert, island always
+  valid JSON (the v15 rule). Turning a market on/off in the subscription
+  app is all the configuration there is.
+- **Emergency switch.** Cart features page: "Subscription prices in cart
+  offers" (default on). Off = safe-inert instantly, no deploy: subscribed
+  lines show no tiles at all (never a one-time-priced tile on a
+  subscription line) and cross-sell is one-time.
+- **Marker on our adds (the silent-conversion fix).** Upgrade adds and
+  their failure-restores now carry the hidden line property
+  `_cellexia_upgrade` (cross-sell adds already carry `_cellexia_upsell`,
+  gift lines `_cellexia_gift`). The subscription app's page script injects
+  its selected plan into unmarked page-product add-to-cart calls, which
+  could have silently converted a deliberate one-time booster add into a
+  subscription; its embed now passes any marked line through untouched.
+  That skip rule lives in the SUBSCRIPTION repo and must be deployed before
+  go-live. `_cellexia_upgrade` is deliberately NOT `_cellexia_upsell` — the
+  orders webhook attributes cross-sell revenue on the latter's presence.
+- **Honest numbers.** The upgrade and cross-sell beacons report the charged
+  subscription amounts. The v14 set-savings reframe applies its percent on
+  top of the subscription price (matching how the SET discount stacks on
+  selling-plan prices at checkout).
+- **Data path.** Tiles need no new fetches (per-variant `planAllocations`
+  already ride the island / products.js / proxy maps). Cross-sell products:
+  seeded from the recommendations payload when it carries allocations, else
+  ONE `products/{handle}.js` fetch per shown product, once per page, with
+  failures marked and never re-hammered; rows render one-time until data
+  lands. The v16 session cache and its key are UNCHANGED — cached rows stay
+  plan-free and the subscription context is applied at render time, so
+  adding/removing a subscription mid-session can never serve stale prices.
+- **Review round (multi-lens adversarial workflow, 20 agents; 14 confirmed
+  findings, all fixed):** (1) the v14 set-savings reframe percent is no
+  longer applied on a subscription-priced row when "count subscriptions"
+  is unchecked in Rewards (the SET code could not discount that line, so
+  the shown price would have undercut the charge); (2) the old
+  "switch to subscription" card's blind plan fallback is now transition-
+  safe — a plan the keyword did not name is only offered when the
+  subscription app is live in the market and owns it (the card stays OFF on
+  the live store either way); (3) prepaid plans (multi-delivery upfront
+  charges) are never offered implicitly — any allocation priced above the
+  one-time price is skipped everywhere; (4) recommendation payloads without
+  plan data no longer block the products/{handle}.js gap-fill; (5) all plan
+  enrichment fetches use LOCALE-VALID handles (manual rows now emit the
+  Liquid drop's handle; auto rows derive it from the product's own url —
+  the translated-handles trap); (6) a subscription cross-sell click made
+  just after the last subscription left the cart aborts and re-renders
+  instead of adding a plan to a one-time cart; (7) removing a subscription
+  via the drawer's Remove control now also strips the buy box's
+  `_cellexia_design` property from the line so the subscription app's
+  design measurement is not misattributed.
+- Validation: `npm run validate` green (crosssell-pipeline with 32 mutants
+  all caught, eleven of them new v17 ones; subscribed-upgrade incl. the
+  transition-hazard pin). tsc + `npm run build` green. Liquid totals:
+  99,051 B of 99,500 (the NEXT Liquid work must slim first);
+  cart-booster.liquid 23,595 of 23,600.
+- Deploy order: (1) the subscription repo's embed update, (2) BOTH halves
+  here while the subscription app is still dark, (3) verify shoppers see no
+  change (island parses, no "sx" member, tiles/cross-sell as before),
+  (4) the subscription app's go-live then lights this up per market with no
+  further booster action.
+
 v15 — REWARDS MADE SAFE AND SIMPLE (2026-08-17): preview isolation, app-owned
 discount codes, plain-language admin, a storefront self-test. **Both halves
 must be redeployed** (extensions AND app server): the theme extension, the

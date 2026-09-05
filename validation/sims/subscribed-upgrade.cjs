@@ -40,6 +40,13 @@ const EXTRACTED = extractAll(SRC, {
     "planPercent",
     "linePlanPercent",
     "itemHasPlan",
+    // v17 subscription-aware tiles + the transition-guarded fallback
+    "variantPlanAlloc",
+    "subscriptionAware",
+    "subSavingsPercent",
+    "subsAware",
+    "ownedPlan",
+    "isB2B",
   ],
 });
 
@@ -49,13 +56,16 @@ function ok(cond, label) {
   if (!cond) { failures++; console.error("FAIL: " + label); }
 }
 
-function makeSandbox({ settings, products, effective }) {
+function makeSandbox({ settings, products, effective, cfg }) {
   const sandbox = {
     console,
     PREVIEW: null,
     EFFECTIVE: effective || { volume: true },
     CART_FEATURE_KEYS: { volume: "cart_volume_upsell" },
     SETTINGS: settings,
+    // v17: cfg carries the gated sx member; window backs the real isB2B.
+    cfg: cfg || {},
+    window: {},
     state: { products: products || {} },
   };
   vm.createContext(sandbox);
@@ -140,14 +150,76 @@ function candidates(sandbox, item) {
   const open = candidates(sb, LINE_SUBSCRIBED_888);
   ok(open.length === 2,
     "subscribed(888) line: tiers allocating the line's plan still qualify");
+  // v17: subscribed tiles are priced from the tier's OWN allocation for the
+  // line's plan — never from the one-time variant price.
+  ok(open[0].addPriceCents === 8360 && open[0].perUnitCents === Math.round(8360 / 2),
+    "subscribed(888) tier-2: per-unit and add price from the 8360 allocation");
+  ok(open[1].addPriceCents === 11115 && open[1].perUnitCents === Math.round(11115 / 3),
+    "subscribed(888) tier-3: per-unit and add price from the 11115 allocation");
+  // v17 save badge (merchant decision): vs qty x the FULL one-time 1-unit price.
+  ok(open[0].percent === Math.round(((2 * 4900 - 8360) / (2 * 4900)) * 100),
+    "subscribed(888) tier-2 percent vs full one-time baseline (15%)");
+  ok(open[1].percent === Math.round(((3 * 4900 - 11115) / (3 * 4900)) * 100),
+    "subscribed(888) tier-3 percent vs full one-time baseline (24%)");
+}
+
+// --- v17 kill switch + unpriceable allocations fail closed --------------------
+{
+  // Kill switch off: subscribed lines get ZERO tiles (pre-v17 live behavior);
+  // plain lines are untouched and keep one-time pricing.
+  const off = makeSandbox({
+    settings: Object.assign({}, SETTINGS, { subscriptionAware: false }),
+    products: { 900: PRODUCT },
+  });
+  ok(candidates(off, LINE_SUBSCRIBED_888).length === 0,
+    "kill switch off: subscribed line gets no tiles (never a one-time price)");
+  const plainOff = candidates(off, LINE_PLAIN);
+  ok(plainOff.length === 2 && plainOff[0].perUnitCents === Math.round(8800 / 2),
+    "kill switch off: plain line unchanged, one-time pricing");
+
+  // THE transition-hazard pin: allocations exist (the new app attaches plans
+  // at product level) but carry no usable price -> zero tiles, because a
+  // subscribed line's tile must never fall back to the one-time price.
+  const products = { 900: JSON.parse(JSON.stringify(PRODUCT)) };
+  products[900].variants[1].planAllocations = [{ planId: 888 }];
+  products[900].variants[2].planAllocations = [{ planId: 888, price: 0 }];
+  const sb = makeSandbox({ settings: SETTINGS, products });
+  ok(candidates(sb, LINE_SUBSCRIBED_888).length === 0,
+    "allocation without a usable price: no tile (fail closed, no one-time fallback)");
+
+  // Prepaid detector: an allocation priced ABOVE the one-time price is a
+  // multi-delivery prepaid charge (per_delivery_price is not captured) —
+  // never a tile, its per-unit math would overstate by the deliveries factor.
+  const prepaid = { 900: JSON.parse(JSON.stringify(PRODUCT)) };
+  prepaid[900].variants[1].planAllocations = [{ planId: 888, price: 25080 }];
+  prepaid[900].variants[2].planAllocations = [{ planId: 888, price: 33345 }];
+  const sbP = makeSandbox({ settings: SETTINGS, products: prepaid });
+  ok(candidates(sbP, LINE_SUBSCRIBED_888).length === 0,
+    "prepaid allocation (price above one-time): no tile");
+
+  // Plain lines carry addPriceCents too (the beacon's truthful revenue base).
+  const sb2 = makeSandbox({ settings: SETTINGS, products: { 900: PRODUCT } });
+  const plain = candidates(sb2, LINE_PLAIN);
+  ok(plain[0].addPriceCents === 8800 && plain[1].addPriceCents === 11700,
+    "plain line candidates carry one-time addPriceCents");
+
+  // No usable baseline: the badge hides (0) rather than borrowing the
+  // one-time compare_at / discountPct fallbacks.
+  const zeroBase = { 900: JSON.parse(JSON.stringify(PRODUCT)) };
+  zeroBase[900].variants[0].price = 0;
+  const sb3 = makeSandbox({ settings: SETTINGS, products: zeroBase });
+  const subZero = candidates(sb3, LINE_SUBSCRIBED_888);
+  ok(subZero.length === 2 && subZero[0].percent === 0 && subZero[1].percent === 0,
+    "subscribed tile with no baseline: percent 0 (badge hidden), never a one-time fallback");
 }
 
 // --- plan id comparison is String-normalized ----------------------------------
 {
   const products = { 900: JSON.parse(JSON.stringify(PRODUCT)) };
-  // allocation carries the id as a string, the line as a number
-  products[900].variants[1].planAllocations = [{ planId: "888" }];
-  products[900].variants[2].planAllocations = [{ planId: "888" }];
+  // allocation carries the id as a string, the line as a number (prices kept
+  // usable — v17 requires them for subscribed tiles)
+  products[900].variants[1].planAllocations = [{ planId: "888", price: 8360 }];
+  products[900].variants[2].planAllocations = [{ planId: "888", price: 11115 }];
   const sb = makeSandbox({ settings: SETTINGS, products });
   const out = candidates(sb, LINE_SUBSCRIBED_888);
   ok(out.length === 2, "string/number planId still matches (String() both sides)");
@@ -217,14 +289,27 @@ function candidates(sandbox, item) {
     "keyword 'subscribe' matches the group name; first allocation wins");
   ok(!!plan && plan.allocPrice === 4400, "per-variant allocation price carried");
 
-  // No keyword: first allocation is the fallback.
+  // v17 TRANSITION GUARD: without the live/market/ownership context, a plan
+  // the keyword did not name is NOT fallback-eligible — the switch card must
+  // never enroll a shopper into an unlaunched app's plans.
   const sb2 = makeSandbox({
     settings: Object.assign({}, SETTINGS, { sellingPlanKeyword: "" }),
     products: { 900: PRODUCT },
   });
   sb2.__item = LINE_PLAIN;
-  const fb = vm.runInContext("findPlanForItem(__item)", sb2);
-  ok(!!fb && String(fb.id) === "777", "no keyword: first allocation fallback");
+  ok(vm.runInContext("findPlanForItem(__item)", sb2) === null,
+    "no keyword + no live owned context: NO fallback plan (transition guard)");
+
+  // With the v17 context vouching for the plan (sx present + owned), the
+  // fallback works again.
+  const sb2b = makeSandbox({
+    settings: Object.assign({}, SETTINGS, { sellingPlanKeyword: "" }),
+    products: { 900: PRODUCT },
+    cfg: { sx: { p: ["777"] } },
+  });
+  sb2b.__item = LINE_PLAIN;
+  const fb = vm.runInContext("findPlanForItem(__item)", sb2b);
+  ok(!!fb && String(fb.id) === "777", "no keyword + owned live plan: fallback returns it");
 
   // Variant without allocations: null.
   const products = { 900: JSON.parse(JSON.stringify(PRODUCT)) };

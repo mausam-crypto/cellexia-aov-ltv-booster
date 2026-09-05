@@ -261,6 +261,16 @@ classes in markup too (`d-flex`, `btn btn--primary`, `eyebrow`). RTL-safe (logic
        `{id: line.key, quantity: 0}` then `/cart/add.js` `{id: newVariantId, quantity: 1,
        selling_plan?}` (preserve the line's selling plan), then refresh via global
        `refreshMiniCart(cart)` if present else custom minimal refresh + keep drawer open.
+       v17 SUBSCRIBED-LINE INVARIANT: a line that carries a selling plan gets a tile ONLY when
+       the tier variant's own `planAllocations` holds that exact plan with a usable price (> 0)
+       AND `cartUpsell.subscriptionAware` is not false — the tile then prices per-unit from the
+       ALLOCATION (`addPriceCents`), its Save % compares against qty × the full one-time tier-1
+       price (merchant decision 2026-09-05), and the upgrade beacon's revenue delta uses
+       `addPriceCents`. No usable allocation price = NO tile, never a one-time price on a
+       subscribed line, in every launch state of the subscription app. Upgrade adds AND their
+       failure-restores always stamp `properties._cellexia_upgrade: '1'` (the Cellexia
+       Subscriptions buy-box embed passes marked lines through untouched; never reuse
+       `_cellexia_upsell` — the orders webhook attributes on its presence).
      * **Subscription switch**: for one-time lines whose product has a selling plan group (prefer
        plan whose group/plan name matches `sellingPlanKeyword`, case-insensitive; else first
        plan), show one-liner: `subscription.switch_title` + benefits + CTA with plan's REAL
@@ -290,6 +300,24 @@ classes in markup too (`d-flex`, `btn btn--primary`, `eyebrow`). RTL-safe (logic
        set resolves from the single-anchor entries when known); the fetch starts as soon as
        anchors are known (drawer closed; immediately on the theme hand-off) and product pages
        pre-warm the entry for the page product.
+     * **Subscription-aware cross-sell (v17)**: ACTIVE only when the gated `sx` island member is
+       present (cart-booster.liquid emits it only when the Cellexia Subscriptions app's shop
+       metafields say live + market enabled + non-empty `plan_groups.planIds`, and the
+       `cartUpsell.subscriptionAware` kill switch is on), the visitor is not B2B, AND the cart
+       holds a line whose plan id is IN `sx.p` (ownership — Joy lines never qualify). Then each
+       row resolves a plan via `crossSellPlanFor`: the anchor line's exact plan id on the row
+       variant, else an owned allocation matching the variant's `sx.d` (variant_defaults)
+       cadence by plan-name parse, else the first owned priced allocation, else NULL = the row
+       stays fully one-time. A resolved row keeps its exact markup (merchant decision: nothing
+       visually new) but shows the allocation price with the one-time price struck (the v14
+       reframe percent applies ON TOP of the allocation price), carries `data-plan-id` +
+       allocation cents in `data-price-cents`, and the add posts `selling_plan` (numeric) with
+       the usual `_cellexia_upsell` property; a 422 shows the error notice and NEVER retries as
+       a silent one-time add. Plan data for non-cart products: seeded from the recommendations
+       payload via `mergeAjaxProduct`, else `ensureCrossSellPlanData` fetches
+       `products/{handle}.js` once per handle per page (failures marked, no re-hammering).
+       CACHED ROW DESCRIPTORS STAY PLAN-FREE and the cache key is unchanged — the subscription
+       context is render-time only.
      * **Tracking**: `navigator.sendBeacon`/fetch POST to
        `{Shopify.routes.root}apps/cellexia/track` — impressions (once per drawer-open per feature),
        `upgrade` (volume swap, include revenue delta), `subscribe` (plan switch). Feature keys:
