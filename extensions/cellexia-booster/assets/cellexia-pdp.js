@@ -6256,6 +6256,27 @@
     return svg;
   }
 
+  function bbpBalanceLogo(li, img) {
+    // EQUAL OPTICAL AREA. With flex-basis 0 and a width:100% image, giving a
+    // cell flex-grow = sqrt(aspect ratio) makes every mark cover the same
+    // area whatever its shape. Measured on the real files: Harvard 3.8:1,
+    // Oxford 3.4:1, The Lancet 9.1:1 — equal-WIDTH cells rendered the Lancet
+    // 13px tall against Harvard's 31px, and equal HEIGHT made it 2.4x wider
+    // than the others. Area is what the eye reads as "the same size".
+    // Runs on load (naturalWidth is 0 before that) and immediately for a
+    // cached image; any failure leaves the equal-cell default in place.
+    var apply = function () {
+      try {
+        var w = img.naturalWidth;
+        var h = img.naturalHeight;
+        if (!w || !h) return;
+        li.style.flexGrow = String(Math.round(Math.sqrt(w / h) * 1000) / 1000);
+      } catch (e) { /* keep the equal-cell default */ }
+    };
+    if (img.complete) apply();
+    if (img.addEventListener) img.addEventListener('load', apply);
+  }
+
   function bbpResearchNode(d, conf) {
     // "Based on published research from" + the institution wordmarks (or
     // their uploaded logos) + the seal. Institution names are merchant
@@ -6284,7 +6305,9 @@
         var li = cxEl('li', 'cx-bbp-research__logo');
         var url = cxRawStr(item, 'imageUrl');
         if (url) {
-          li.appendChild(cxEl('img', 'cx-bbp-research__logo-img', ['src', url, 'alt', name, 'loading', 'lazy', 'decoding', 'async']));
+          var logoImg = cxEl('img', 'cx-bbp-research__logo-img', ['src', url, 'alt', name, 'loading', 'lazy', 'decoding', 'async']);
+          li.appendChild(logoImg);
+          bbpBalanceLogo(li, logoImg);
         } else {
           allImages = false;
           var span = cxEl('span', 'cx-bbp-research__logo-name');
@@ -6300,7 +6323,12 @@
     if (painted) {
       var col = cxEl('div', 'cx-bbp-research__col');
       var eyebrow = cxEl('p', 'cx-bbp-research__eyebrow');
-      eyebrow.textContent = eyebrowText;
+      // The label rides its own span so the flanking rules stay flex items
+      // and a long translation ellipses instead of wrapping into what looks
+      // like two stray dashes.
+      var eyebrowLabel = document.createElement('span');
+      eyebrowLabel.textContent = eyebrowText;
+      eyebrow.appendChild(eyebrowLabel);
       col.appendChild(eyebrow);
       if (allImages) list.className = 'cx-bbp-research__logos cx-bbp-research__logos--row list-reset';
       col.appendChild(list);

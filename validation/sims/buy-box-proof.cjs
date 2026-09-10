@@ -92,6 +92,9 @@ const FNS = [
   "bbpGuaranteeCard",
   "bbpRatingRow",
   "bbpSealNode",
+  // v19.2: the runtime balances each logo cell to equal optical area once
+  // the image's natural size is known.
+  "bbpBalanceLogo",
   "bbpResearchNode",
   "bbpBuildRows",
   "mountBbp",
@@ -215,6 +218,10 @@ function run(cfg, opts) {
 // mini-dom's El.textContent already walks children (and returns _text for
 // a leaf), so the node's own getter is the whole story.
 const textOf = (node) => (node ? String(node.textContent || "") : "");
+// mini-dom images carry no natural size and never fire load, so
+// bbpBalanceLogo's apply() is a documented no-op here: the AREA maths is
+// verified in the browser against the real files, this suite verifies that
+// balancing never breaks the build (a throw would lose the whole band).
 // The piece each child of the block root IS, by its own identifying class
 // (children carry a shared modifier class too — cx-bbp__row, list-reset).
 const PIECE_CLASSES = ["cx-bbp__ships", "cx-bbp__deliver", "cx-bbp__badges", "cx-bbp__guarantee", "cx-bbp__rating"];
@@ -476,6 +483,38 @@ const rowClasses = (root) =>
   ok(textOf(run(baseCfg()).page.doc.querySelector(".cx-bbp-research__eyebrow")) === "Based on published research from", "E8 the eyebrow is the translated string");
 }
 
+// -------------------------------------------- E9. equal-optical-area maths
+{
+  // bbpBalanceLogo is what stops a 9:1 wordmark rendering a third of the
+  // height of a 3:1 lockup beside it. mini-dom images have no natural size,
+  // so drive it with the REAL measured dimensions of the merchant's files.
+  const { sandbox } = run(baseCfg());
+  const grow = (nw, nh) => {
+    const li = { style: {} };
+    const img = { naturalWidth: nw, naturalHeight: nh, complete: true, addEventListener() {} };
+    sandbox.bbpBalanceLogo(li, img);
+    return Number(li.style.flexGrow);
+  };
+  const harvard = grow(1024, 268);   // 3.82:1
+  const oxford = grow(1280, 378);    // 3.39:1
+  const lancet = grow(3840, 421);    // 9.12:1
+  ok(Math.abs(harvard - Math.sqrt(1024 / 268)) < 0.002, `E9 grow is sqrt(ratio) for Harvard (got ${harvard})`);
+  ok(Math.abs(lancet - Math.sqrt(3840 / 421)) < 0.002, `E9 grow is sqrt(ratio) for The Lancet (got ${lancet})`);
+  ok(lancet > harvard && harvard > oxford, "E9 the widest mark gets the widest cell");
+  // The contract: width_i proportional to grow_i, height_i = width_i / r_i,
+  // so area_i = grow_i^2 / r_i is EQUAL for every mark.
+  const area = (g, r) => (g * g) / r;
+  const a1 = area(harvard, 1024 / 268);
+  const a2 = area(oxford, 1280 / 378);
+  const a3 = area(lancet, 3840 / 421);
+  ok(Math.abs(a1 - a2) < 0.002 && Math.abs(a1 - a3) < 0.002,
+    `E9 every mark covers the SAME optical area (${a1.toFixed(3)} / ${a2.toFixed(3)} / ${a3.toFixed(3)})`);
+  // Degenerate inputs must leave the equal-cell default rather than throw.
+  const liBad = { style: {} };
+  sandbox.bbpBalanceLogo(liBad, { naturalWidth: 0, naturalHeight: 0, complete: true, addEventListener() {} });
+  ok(liBad.style.flexGrow === undefined, "E9 an unmeasured image keeps the equal-cell default");
+}
+
 // ---------------------------------------------------------- G. preview
 {
   const draft = baseCfg();
@@ -545,6 +584,13 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         replace: "      if (rows && insertAfter(rows, anchor)) { painted = true; track('buy_box_proof'); }",
       },
       {
+        // Dropping the sqrt would size cells by raw ratio, over-correcting
+        // the wide wordmark instead of balancing area — E9 catches it.
+        name: "m7-balance-drops-sqrt",
+        find: "li.style.flexGrow = String(Math.round(Math.sqrt(w / h) * 1000) / 1000);",
+        replace: "li.style.flexGrow = String(Math.round((w / h) * 1000) / 1000);",
+      },
+      {
         name: "m6-conf-not-required",
         find: "      var conf = bbpConf(d);\n      if (!conf) return;",
         replace: "      var conf = bbpConf(d) || {};\n      if (!conf) return;",
@@ -555,6 +601,6 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
     console.log(`\n${bad} MUTANT(S) NOT CAUGHT (buy-box-proof)`);
     process.exitCode = 1;
   } else {
-    console.log("ALL 6 MUTANTS CAUGHT (buy-box-proof)");
+    console.log("ALL 7 MUTANTS CAUGHT (buy-box-proof)");
   }
 }
