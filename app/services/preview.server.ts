@@ -5,16 +5,19 @@ import {
   FEATURE_KEYS,
   SHIPS_FROM_FORMATS,
   getSettings,
-  sanitizeGiftThresholdsByMarket,
-  sanitizeGiftTiers,
+  sanitizeGiftClusters,
+  sanitizeThresholdsByCountry,
+  toCountryCode,
+  clusterForCountry,
   sanitizeSetSavingsTiers,
   type BoosterSettings,
   type DeliveryEstimateFormat,
   type FeatureKey,
-  type GiftTier,
+  type GiftCluster,
   type SetSavingsTier,
   type ShipsFromFormat,
 } from "../models/settings.server";
+import { buildGiftPlan, giftPlanForCountry, type GiftClusterSlice } from "./gift-plan.server";
 import {
   syncSettingsToMetafields,
   type PreviewSyncPayload,
@@ -88,9 +91,16 @@ export interface PreviewDraftConfig {
    */
   rewards?: {
     setSavingsTiers?: SetSavingsTier[];
-    giftTiers?: GiftTier[];
-    giftAmountsByMarket?: Record<string, { amounts: number[]; currencyCode: string }>;
+    giftClusters?: GiftCluster[];
+    giftAmountsByCountry?: Record<string, { amounts: number[]; currencyCode: string }>;
   };
+  /**
+   * v18: the ISO-3166 alpha-2 country the preview simulates. Clusters are
+   * keyed by country, so previewing one needs a country, not just a market.
+   * It rides in draftConfig rather than its own Prisma column so upgrading
+   * costs the merchant no database migration.
+   */
+  country?: string;
 }
 
 /** v14 simCart bounds (SPEC §10). */
@@ -236,6 +246,9 @@ export function sanitizeDraftConfig(raw: unknown): PreviewDraftConfig {
   if ((raw as Record<string, unknown>).rehearsal === true) {
     out.rehearsal = true;
   }
+  // v18: the simulated country (clusters are country-keyed).
+  const country = toCountryCode((raw as Record<string, unknown>).country);
+  if (country) out.country = country;
   const rewards = (raw as Record<string, unknown>).rewards;
   if (typeof rewards === "object" && rewards !== null && !Array.isArray(rewards)) {
     const rw = rewards as Record<string, unknown>;
@@ -243,15 +256,15 @@ export function sanitizeDraftConfig(raw: unknown): PreviewDraftConfig {
     if (Array.isArray(rw.setSavingsTiers)) {
       draft.setSavingsTiers = sanitizeSetSavingsTiers(rw.setSavingsTiers);
     }
-    if (Array.isArray(rw.giftTiers)) {
-      draft.giftTiers = sanitizeGiftTiers(rw.giftTiers);
+    if (Array.isArray(rw.giftClusters)) {
+      draft.giftClusters = sanitizeGiftClusters(rw.giftClusters);
     }
     if (
-      typeof rw.giftAmountsByMarket === "object" &&
-      rw.giftAmountsByMarket !== null &&
-      !Array.isArray(rw.giftAmountsByMarket)
+      typeof rw.giftAmountsByCountry === "object" &&
+      rw.giftAmountsByCountry !== null &&
+      !Array.isArray(rw.giftAmountsByCountry)
     ) {
-      draft.giftAmountsByMarket = sanitizeGiftThresholdsByMarket(rw.giftAmountsByMarket);
+      draft.giftAmountsByCountry = sanitizeThresholdsByCountry(rw.giftAmountsByCountry);
     }
     if (Object.keys(draft).length > 0) out.rewards = draft;
   }
@@ -490,34 +503,31 @@ export function buildPreviewEntryUrl(
 // (storefront runtime) and the Preview Center (simulator chips)
 // ---------------------------------------------------------------------------
 
-export interface RewardsForMarket {
+export interface RewardsForCountry {
   /** Set-savings tiers the preview session uses (draft wins over live). */
   ssTiers: SetSavingsTier[];
   /**
-   * Gift-tier amounts for the simulated market: the market's own record
-   * (draft giftAmountsByMarket, else settings giftThresholdsByMarket) with
-   * its currency, else the EUR defaults (draft giftTiers, else live). The
-   * storefront applies its thresholdCents() rule: amounts in the presentment
-   * currency are used as-is, EUR defaults are converted by the shop rate.
+   * v18 gift amounts for the simulated COUNTRY: its own explicit record when
+   * it has one (draft giftAmountsByCountry, else settings
+   * thresholdsByCountry), otherwise its cluster's EUR ladder. The storefront
+   * applies the same rule live: amounts already in the presentment currency
+   * are used as-is, EUR defaults are converted by the shop rate.
    */
   gtAmounts: { a: number[]; c: string };
-  /** Every gift option variant + samplePool entry ({vid, handle, title}). */
-  gifts: { vid: string; handle: string; title: string }[];
+  /** The cluster this country resolves to ("" when none is configured). */
+  clusterId: string;
 }
 
 /**
- * Resolves the rewards config the preview session should show for one
- * market: live settings with the armed draftConfig overrides applied. Pure;
- * `draftConfig` should be `{}` whenever the preview is disarmed. Titles are
- * the product handles (no API call here — v15: the storefront fetches real
- * titles/prices from cart-data at runtime). Kept for backward compat; the
- * v15 storefront reads `rw` (rewardsPreviewSections) instead.
+ * v18: the rewards config a preview session shows for one COUNTRY. Live
+ * settings with the armed draft overrides applied. Pure; `draftConfig`
+ * should be `{}` whenever the preview is disarmed.
  */
-export function rewardsForMarket(
+export function rewardsForCountry(
   settings: BoosterSettings,
   draftConfig: PreviewDraftConfig,
-  market: string,
-): RewardsForMarket {
+  country: string,
+): RewardsForCountry {
   const rw = settings.rewards;
   const draft = draftConfig.rewards ?? {};
   const ssTiers = (draft.setSavingsTiers ?? rw.setSavings.tiers).map((tier) => ({
@@ -525,57 +535,45 @@ export function rewardsForMarket(
     pct: tier.pct,
     code: tier.code,
   }));
-  const gtTiers = draft.giftTiers ?? rw.giftTiers.tiers;
+  const clusters = draft.giftClusters ?? rw.giftTiers.clusters;
+  const code = toCountryCode(country);
+  const cluster = clusterForCountry(clusters, code);
+  const eur = cluster ? cluster.tiers.map((tier) => tier.amount) : [];
   const record =
-    (market && draft.giftAmountsByMarket?.[market]) ||
-    (market && rw.giftTiers.giftThresholdsByMarket[market]) ||
+    (code && draft.giftAmountsByCountry?.[code]) ||
+    (code && rw.giftTiers.thresholdsByCountry[code]) ||
     null;
   const gtAmounts =
-    record && Array.isArray(record.amounts) && record.amounts.length >= gtTiers.length
-      ? { a: gtTiers.map((_, i) => Number(record.amounts[i]) || 0), c: record.currencyCode }
-      : { a: gtTiers.map((tier) => tier.amount), c: "EUR" };
-  const gifts: RewardsForMarket["gifts"] = [];
-  const seen = new Set<string>();
-  const push = (variantId: string, handle: string) => {
-    const vid = /(\d+)$/.exec(variantId ?? "")?.[1] ?? "";
-    const key = vid || handle;
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    gifts.push({ vid, handle, title: handle });
-  };
-  for (const tier of gtTiers) {
-    for (const slot of tier.slots) {
-      for (const option of slot) {
-        if (option.kind === "variant") push(option.variantId, option.handle);
-      }
-    }
-  }
-  for (const entry of rw.giftTiers.samplePool) push(entry.variantId, entry.handle);
-  return { ssTiers, gtAmounts, gifts };
+    record && Array.isArray(record.amounts) && eur.length > 0 && record.amounts.length >= eur.length
+      ? { a: eur.map((_, i) => Number(record.amounts[i]) || 0), c: record.currencyCode }
+      : { a: eur, c: "EUR" };
+  return { ssTiers, gtAmounts, clusterId: cluster?.id ?? "" };
 }
 
 /**
- * v15 preview-config "rw" field (SPEC v15 §7): the RAW `rewards.setSavings`
- * / `rewards.giftTiers` settings sections — the same shape the live
- * `#cx-rw-config` island carries (`{"ss": setSavings, "gt": giftTiers,
- * "paused": [...]}`) — with the armed draft tiers / amounts merged in, plus
- * the paused gift variants of the simulated market. This is the ONLY way
- * draft rewards data reaches a storefront: through the token-verified
- * preview-config endpoint, never through Liquid (the v15 incident). Pure.
+ * v18 preview-config "rw" field: the SAME slice the live `#cx-rw-config`
+ * island carries, resolved for the simulated country. Live Liquid does two
+ * lookups into the `cellexia/gift_plan` metafield; here the server does them,
+ * so preview and live cannot drift. This is the ONLY way draft rewards data
+ * reaches a storefront: through the token-verified preview-config endpoint,
+ * never through Liquid (the v15 incident). Pure.
  */
 export interface RewardsPreviewSections {
   ss: BoosterSettings["rewards"]["setSavings"];
-  gt: BoosterSettings["rewards"]["giftTiers"];
-  /** paused gift variant ids (numeric) for `market`, [] when none */
-  paused: string[];
+  /** The country's cluster slice, or null when nothing is configured. */
+  gt: GiftClusterSlice | null;
+  /** The country's own local amounts, or null to convert the EUR ladder. */
+  gb: { a: number[]; c: string } | null;
   market: string;
+  country: string;
 }
 
 export function rewardsPreviewSections(
   settings: BoosterSettings,
   draftConfig: PreviewDraftConfig,
   market: string,
-  pausedByMarket: Record<string, string[]> = {},
+  pausedByCluster: Record<string, string[]> = {},
+  country = "",
 ): RewardsPreviewSections {
   const rw = settings.rewards;
   const draft = draftConfig.rewards ?? {};
@@ -590,19 +588,25 @@ export function rewardsPreviewSections(
     setSavingsExcludedByMarket: { ...rw.setSavings.setSavingsExcludedByMarket },
     yieldToCodes: [...rw.setSavings.yieldToCodes],
   };
-  const gt: RewardsPreviewSections["gt"] = {
-    ...rw.giftTiers,
-    tiers: JSON.parse(JSON.stringify(draft.giftTiers ?? rw.giftTiers.tiers)),
-    giftThresholdsByMarket: {
-      ...rw.giftTiers.giftThresholdsByMarket,
-      ...(draft.giftAmountsByMarket ?? {}),
+  // Build the plan from DRAFT-merged settings, then slice it exactly the way
+  // Liquid slices the live metafield.
+  const drafted: BoosterSettings = {
+    ...settings,
+    rewards: {
+      ...rw,
+      giftTiers: {
+        ...rw.giftTiers,
+        clusters: draft.giftClusters ?? rw.giftTiers.clusters,
+        thresholdsByCountry: {
+          ...rw.giftTiers.thresholdsByCountry,
+          ...(draft.giftAmountsByCountry ?? {}),
+        },
+      },
     },
-    samplePool: rw.giftTiers.samplePool.map((e) => ({ ...e })),
-    warehouseByMarket: { ...rw.giftTiers.warehouseByMarket },
-    stockFloor: { ...rw.giftTiers.stockFloor },
   };
-  const paused = market && Array.isArray(pausedByMarket[market]) ? [...pausedByMarket[market]] : [];
-  return { ss, gt, paused, market };
+  const plan = buildGiftPlan(drafted, pausedByCluster);
+  const { gt, gb } = giftPlanForCountry(plan, country);
+  return { ss, gt, gb, market, country };
 }
 
 export interface SimCartChip {
@@ -624,9 +628,10 @@ export interface SimCartChip {
 export function simCartChips(
   settings: BoosterSettings,
   draftConfig: PreviewDraftConfig,
-  market: string,
+  country: string,
+  market = "",
 ): { currency: string; chips: SimCartChip[] } {
-  const { ssTiers, gtAmounts } = rewardsForMarket(settings, draftConfig, market);
+  const { ssTiers, gtAmounts } = rewardsForCountry(settings, draftConfig, country);
   const currency = gtAmounts.c;
   const chips: SimCartChip[] = [];
   const amounts = gtAmounts.a.filter((amount) => Number.isFinite(amount) && amount > 0);
@@ -1227,27 +1232,40 @@ export function featureReadiness(
       );
     }
     const gt = settings.rewards.giftTiers;
-    if (gt.tiers.length === 0) {
+    const tierCount = gt.clusters.reduce((n, cluster) => n + cluster.tiers.length, 0);
+    if (tierCount === 0) {
       readiness.gift_tiers = {
         ready: false,
         reason:
-          "No gift tiers configured — add at least one tier (spend threshold + gift) on the Rewards page, or the meter has no milestones.",
+          "No cluster has a tier yet. Add at least one spend threshold and gift on the Rewards page, or the reward meter has no milestones to show.",
       };
     } else {
-      const missingVariants = gt.tiers.some((tier) =>
-        tier.slots.some((slot) =>
-          slot.some((option) => option.kind === "variant" && !option.variantId),
+      const missingVariants = gt.clusters.some((cluster) =>
+        cluster.tiers.some((tier) =>
+          tier.slots.some((slot) =>
+            slot.some((option) => option.kind === "variant" && !option.variantId),
+          ),
         ),
       );
-      const marketsWithAmounts = Object.keys(gt.giftThresholdsByMarket).length;
+      const countriesWithAmounts = Object.keys(gt.thresholdsByCountry).length;
+      const ladders = gt.clusters
+        .filter((cluster) => cluster.tiers.length > 0)
+        .map(
+          (cluster) =>
+            `${cluster.name} (EUR ${cluster.tiers.map((tier) => tier.amount).join(" / ")})`,
+        )
+        .join(", ");
       readiness.gift_tiers = {
         ready: !missingVariants,
         reason:
-          `Shows the reward meter in the cart drawer with ${gt.tiers.length} gift tier${gt.tiers.length === 1 ? "" : "s"} (EUR ${gt.tiers.map((tier) => tier.amount).join(" / ")}${marketsWithAmounts > 0 ? `; ${marketsWithAmounts} market${marketsWithAmounts === 1 ? "" : "s"} with own amounts` : "; no per-market amounts yet — other currencies convert the EUR defaults"}). ` +
+          `Shows the reward ladder in the cart with ${gt.clusters.length} cluster${gt.clusters.length === 1 ? "" : "s"}: ${ladders}. ` +
+          (countriesWithAmounts > 0
+            ? `${countriesWithAmounts} countr${countriesWithAmounts === 1 ? "y has" : "ies have"} their own local amounts; the rest scale the EUR ladder by local price. `
+            : "No country has its own amounts yet, so every one scales the EUR ladder by its local price. Press \u201cSuggest amounts\u201d on the Rewards page to review them. ") +
           (missingVariants
-            ? "Some gift options have no product variant selected yet (press “Load defaults” or pick variants on the Rewards page) — those slots render nothing. "
+            ? "Some gifts have no product variant chosen yet (press \u201cLoad defaults\u201d or pick one on the Rewards page), so those slots render nothing. "
             : "") +
-          "In the preview the free gift is shown as a sample row and NOT added to your cart unless “Test with my real cart” is ticked — use the cart simulator below to walk the spend thresholds; the real free-gift discount at checkout needs “Create discount codes” on the Rewards page.",
+          "In the preview the gift is shown as a sample row and NOT added to your cart unless \u201cTest with my real cart\u201d is ticked, and the cart simulator blocks real adds while it is on.",
       };
     }
   }

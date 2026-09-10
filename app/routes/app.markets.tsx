@@ -135,6 +135,10 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
   {
     title: "Product page & blocks",
     features: [
+      // v19: while this one is effective it OWNS the buy-box proof area and
+      // suppresses trust_badges / trustpilot / guarantee / the PDP delivery
+      // widget / az_microcopy / az_ships_from on that page.
+      { key: "buy_box_proof", label: "Buy-box proof block" },
       { key: "trust_badges", label: "Trust badges" },
       { key: "trustpilot", label: "Trustpilot widget" },
       { key: "guarantee", label: "Money-back guarantee" },
@@ -574,6 +578,7 @@ export default function MarketsPage() {
       ["derm_survey", "dermSurvey"],
       ["press", "press"],
       ["derm_endorsements", "dermEndorsements"],
+      ["buy_box_proof", "buyBoxProof"],
     ] as const;
     for (const [key, section] of SIMPLE_SECTIONS) {
       if (state[key].on !== initial[key].on) {

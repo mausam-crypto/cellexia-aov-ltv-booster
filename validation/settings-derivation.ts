@@ -7,8 +7,8 @@
  * Executes the REAL app/models/settings.server.ts (loaded live via
  * validation/lib/settings-loader.ts, prisma stubbed with a throwing proxy
  * — no mocks of the model itself) and proves:
- *   1. FEATURE_KEYS has 37 keys (v9: checkout_customs + checkout_tracked;
- *      v14: set_savings + gift_tiers),
+ *   1. FEATURE_KEYS has 38 keys (v9: checkout_customs + checkout_tracked;
+ *      v14: set_savings + gift_tiers; v19: buy_box_proof),
  *      az_ships_from right after az_stock_line;
  *   2. AMAZON_FLAG_FIELDS carries shipsFrom in the FEATURE_KEYS az_* order;
  *   3. DEFAULT_SETTINGS.amazon.shipsFrom === false (safe-by-default) and
@@ -18,9 +18,9 @@
  *      .mode/.markets, plus the untouched shared warehouse paths);
  *   5. sanitize: non-boolean shipsFrom falls back to false; a boolean
  *      survives; marketScopes.az_ships_from selected-mode round-trips;
- *   6. FEATURE_DEFS get/set round-trip + FEATURE_RAW_FIELD arm for ALL 37
+ *   6. FEATURE_DEFS get/set round-trip + FEATURE_RAW_FIELD arm for ALL 38
  *      keys (the flip-test count tripwire, 31 -> 33 in v8, 33 -> 35 in v9,
- *      35 -> 37 in v14 rewards);
+ *      35 -> 37 in v14 rewards, 37 -> 38 in v19);
  *   7. snapshotFlags/restoreFlags round-trips shipsFrom, and an older
  *      snapshot without amazonFlags leaves shipsFrom untouched;
  *   8. mergeSettings over a stored pre-v6.8 blob yields shipsFrom:false
@@ -55,8 +55,10 @@ const {
   // v14.2 presets
   LADDER_PRESETS,
   LADDER_PRESET_KEYS,
-  GIFT_PRESETS,
-  GIFT_PRESET_KEYS,
+  GIFT_CLUSTER_PRESETS,
+  sanitizeGiftClusters,
+  clusterForCountry,
+  roundThreshold,
   // v15 step-aside codes
   DEFAULT_YIELD_TO_CODES,
   sanitizeYieldToCodes,
@@ -78,13 +80,13 @@ const clone = <T,>(x: T): T => structuredClone(x);
 
 // --- 1. key inventory ------------------------------------------------------
 // v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
-ok(FEATURE_KEYS.length === 37, `FEATURE_KEYS has 37 keys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 38, `FEATURE_KEYS has 38 keys (got ${FEATURE_KEYS.length})`);
 ok(FEATURE_KEYS.includes("az_ships_from"), "az_ships_from is a FeatureKey");
 ok(
   FEATURE_KEYS.indexOf("az_ships_from") === FEATURE_KEYS.indexOf("az_stock_line") + 1,
   "az_ships_from sits right after az_stock_line",
 );
-ok(new Set(FEATURE_KEYS).size === 37, "FEATURE_KEYS has no duplicates");
+ok(new Set(FEATURE_KEYS).size === 38, "FEATURE_KEYS has no duplicates");
 // v9 trust-module V2 rows sit right after the module key, mirroring the
 // checkout block's order in the union.
 ok(
@@ -1122,9 +1124,10 @@ for (const key of FEATURE_KEYS) {
 // default OFF, and the tier sanitizers hold the SPEC caps.
 {
   ok(
-    FEATURE_KEYS[FEATURE_KEYS.length - 2] === "set_savings" &&
-      FEATURE_KEYS[FEATURE_KEYS.length - 1] === "gift_tiers",
-    "v14: set_savings + gift_tiers are the last two FeatureKeys (appended)",
+    FEATURE_KEYS[FEATURE_KEYS.length - 3] === "set_savings" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 2] === "gift_tiers" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 1] === "buy_box_proof",
+    "v14/v19: set_savings + gift_tiers, then buy_box_proof, are the LAST FeatureKeys (appended, never inserted)",
   );
   const rwKeys = FEATURE_KEYS.filter(
     (k: string) => FEATURE_RAW_FIELD[k]?.kind === "rewards",
@@ -1348,27 +1351,71 @@ for (const key of FEATURE_KEYS) {
             .join("+"),
       )
       .join(",");
-  const VALUE_FIRST = "119:bamboo-beauty-towel+samples2,200:jawline-contour-tightening-cream+samples2,350:premium-leather-cosmetic-bag+samples3";
-  const CREAM_FIRST = "119:jawline-contour-tightening-cream+samples2,200:bamboo-beauty-towel+samples2,350:premium-leather-cosmetic-bag+samples3";
+  // v18: the flat ladder became three country clusters. These pin the
+  // shipped configuration the merchant asked for, so a stray edit to the
+  // amounts, the gifts or the country lists fails here rather than on a
+  // storefront.
+  const clusters = DEFAULT_SETTINGS.rewards.giftTiers.clusters;
+  const byId = (id: string) => clusters.find((c: any) => c.id === id);
   ok(
-    DEFAULT_SETTINGS.rewards.giftTiers.tiers.map((t: any) => t.amount).join(",") === "119,200,350",
-    "v14: default gift tiers 119/200/350 EUR",
+    clusters.map((c: any) => c.id).join(",") === "amphora,active-ants,rest",
+    "v18: three shipped clusters, catch-all last (amphora, active-ants, rest)",
   );
   ok(
-    giftShape(GIFT_PRESETS.value_first) === VALUE_FIRST && giftShape(GIFT_PRESETS.cream_first) === CREAM_FIRST,
-    "v14.2: GIFT_PRESETS value_first (towel/cream/bag) + cream_first (cream/towel/bag) pinned",
+    clusters.filter((c: any) => c.rest).length === 1 && byId("rest").rest === true,
+    "v18: exactly one catch-all cluster, and it is `rest`",
   );
   ok(
-    JSON.stringify(GIFT_PRESET_KEYS) === JSON.stringify(["value_first", "cream_first"]) &&
-      DEFAULT_SETTINGS.rewards.giftTiers.giftPreset === "value_first" &&
-      giftShape(DEFAULT_SETTINGS.rewards.giftTiers.tiers) === VALUE_FIRST &&
-      DEFAULT_SETTINGS.rewards.giftTiers.tiers !== GIFT_PRESETS.value_first,
-    "v14.2: GIFT_PRESET_KEYS value_first/cream_first; default giftPreset value_first and tiers are a CLONE of the preset",
+    giftShape(byId("amphora").tiers) === "150:samples2,200:bamboo-beauty-towel,350:samples3",
+    "v18: Amphora ladder 150 (2 sachets) / 200 (towel) / 350 (3 more sachets, 5 in total when cumulative)",
   );
   ok(
-    GIFT_PRESETS.value_first.every((t: any) => t.slots[0][0].variantId === "") &&
-      GIFT_PRESETS.cream_first.every((t: any) => t.slots[0][0].variantId === ""),
-    "v14.2: gift presets ship handle-only variant options (Load defaults fills GIDs)",
+    giftShape(byId("active-ants").tiers) ===
+      "150:samples2,200:bamboo-beauty-towel,350:premium-leather-cosmetic-bag+advanced-cooling-mask",
+    "v18: Active Ants ladder 150 (2 sachets) / 200 (towel) / 350 (cosmetic bag + cooling mask)",
+  );
+  ok(
+    giftShape(byId("rest").tiers) ===
+      "200:bamboo-beauty-towel,350:jawline-contour-tightening-cream",
+    "v18: Rest ladder has NO 150 tier (200 towel / 350 jawline cream) so its meter shows two milestones",
+  );
+  ok(
+    byId("amphora").countries.join(",") === "ES,PT,IT,FR",
+    "v18: Amphora covers ES/PT/IT/FR",
+  );
+  ok(
+    byId("active-ants").countries.length === 31 &&
+      ["DE", "GB", "GG", "JE", "IE", "AU", "JP", "EG"].every((c) =>
+        byId("active-ants").countries.includes(c),
+      ),
+    "v18: Active Ants covers 31 countries including Guernsey, Jersey and the Gulf",
+  );
+  ok(
+    byId("rest").countries.length === 0,
+    "v18: the catch-all stores no countries — it is defined by what nobody else claimed",
+  );
+  ok(
+    clusters.every((c: any) =>
+      c.tiers.every((t: any) => t.slots.every((slot: any[]) => slot.every((o: any) => o.kind !== "variant" || o.variantId === ""))),
+    ),
+    "v18: cluster presets ship handle-only variant options (Load defaults fills the GIDs)",
+  );
+  {
+    // No country may sit in two clusters, or resolution stops being total.
+    const seen = new Set<string>();
+    let dup = false;
+    for (const cluster of clusters) {
+      for (const code of cluster.countries) {
+        if (seen.has(code)) dup = true;
+        seen.add(code);
+      }
+    }
+    ok(!dup, "v18: no country appears in more than one shipped cluster");
+  }
+  ok(
+    DEFAULT_SETTINGS.rewards.giftTiers.pdp.enabled === true &&
+      DEFAULT_SETTINGS.rewards.giftTiers.pdp.style === "card",
+    "v18: the product-page line ships ON with the reward-card style (below Add to cart, so it cannot cost conversions)",
   );
   ok(REWARDS_CAPS.setSavingsTiers === 6 && REWARDS_CAPS.giftTiers === 4, "v14: caps 6 KIT tiers / 4 gift tiers");
   const unsorted = sanitizeSetSavingsTiers([
@@ -1415,8 +1462,32 @@ for (const key of FEATURE_KEYS) {
     "v14: validateSetSavingsPatch rejects a bad KIT code",
   );
   ok(
-    validateGiftTiersPatch({ tiers: [{ amount: -1, slots: [[{ kind: "samples", count: 1 }]] }] }).length > 0,
-    "v14: validateGiftTiersPatch rejects a negative amount",
+    validateGiftTiersPatch({
+      clusters: [
+        { id: "rest", name: "Rest", rest: true, countries: [], locations: [], tiers: [{ amount: -1, slots: [[{ kind: "samples", count: 1 }]] }] },
+      ],
+    }).length > 0,
+    "v18: validateGiftTiersPatch rejects a negative amount inside a cluster",
+  );
+  ok(
+    validateGiftTiersPatch({
+      clusters: [
+        { id: "a", name: "A", rest: false, countries: ["ES"], locations: [], tiers: [] },
+        { id: "b", name: "B", rest: true, countries: ["ES"], locations: [], tiers: [] },
+      ],
+    }).some((e: string) => e.includes("ES")),
+    "v18: validateGiftTiersPatch refuses a country claimed by two clusters",
+  );
+  ok(
+    validateGiftTiersPatch({
+      clusters: [{ id: "a", name: "A", rest: false, countries: [], locations: [], tiers: [] }],
+    }).some((e: string) => e.includes("catch-all")),
+    "v18: validateGiftTiersPatch insists on exactly one catch-all cluster",
+  );
+  ok(
+    validateGiftTiersPatch({ pdp: { enabled: true, style: "sparkle" } }).length > 0 &&
+      validateGiftTiersPatch({ pdp: { enabled: true, style: "ladder" } }).length === 0,
+    "v18: validateGiftTiersPatch checks the product-page style against its closed set",
   );
   // sanitizeSettings covers the rewards section: masters coerce to boolean,
   // enums fall back, and the whole section survives a round-trip.
@@ -1425,42 +1496,83 @@ for (const key of FEATURE_KEYS) {
   dirty.rewards.giftTiers.sampleRule = "whatever";
   dirty.rewards.setSavings.enabled = "yes";
   dirty.rewards.setSavings.ladderPreset = "mega";
-  dirty.rewards.giftTiers.giftPreset = 42;
+  dirty.rewards.giftTiers.pdp = { enabled: "yes", style: "sparkle" };
   const cleaned = sanitizeSettings(dirty, DEFAULT_SETTINGS);
   ok(
-    cleaned.rewards.setSavings.ladderPreset === "compact" && cleaned.rewards.giftTiers.giftPreset === "value_first",
-    "v14.2: sanitizeSettings coerces unknown ladderPreset/giftPreset back to the defaults",
+    cleaned.rewards.setSavings.ladderPreset === "compact",
+    "v14.2: sanitizeSettings coerces an unknown ladderPreset back to the default",
+  );
+  ok(
+    cleaned.rewards.giftTiers.pdp.style === "card" && cleaned.rewards.giftTiers.pdp.enabled === true,
+    "v18: sanitizeSettings coerces a junk product-page setting back to the defaults",
   );
   const kept = clone(DEFAULT_SETTINGS) as any;
   kept.rewards.setSavings.ladderPreset = "custom";
   kept.rewards.giftTiers.giftPreset = "cream_first";
   const keptClean = sanitizeSettings(kept, DEFAULT_SETTINGS);
   ok(
-    keptClean.rewards.setSavings.ladderPreset === "custom" && keptClean.rewards.giftTiers.giftPreset === "cream_first",
-    "v14.2: sanitizeSettings keeps valid ladderPreset (custom) / giftPreset (cream_first) values",
+    keptClean.rewards.setSavings.ladderPreset === "custom",
+    "v14.2: sanitizeSettings keeps a valid ladderPreset (custom)",
   );
-  // A pre-v14.2 row (no preset fields) is labelled from its tier tables.
-  const legacyRow = clone(DEFAULT_SETTINGS) as any;
-  delete legacyRow.rewards.setSavings.ladderPreset;
-  delete legacyRow.rewards.giftTiers.giftPreset;
-  legacyRow.rewards.setSavings.tiers = clone(LADDER_PRESETS.extended);
-  legacyRow.rewards.giftTiers.tiers = clone(GIFT_PRESETS.cream_first);
-  legacyRow.rewards.giftTiers.tiers[0].slots[0][0].variantId = "gid://shopify/ProductVariant/1";
-  const legacyClean = sanitizeSettings(legacyRow, DEFAULT_SETTINGS);
-  ok(
-    legacyClean.rewards.setSavings.ladderPreset === "extended" && legacyClean.rewards.giftTiers.giftPreset === "cream_first",
-    "v14.2: missing preset fields are inferred from the tier tables (extended / cream_first, variantIds ignored)",
-  );
-  const customRow = clone(DEFAULT_SETTINGS) as any;
-  delete customRow.rewards.setSavings.ladderPreset;
-  delete customRow.rewards.giftTiers.giftPreset;
-  customRow.rewards.setSavings.tiers = [{ count: 2, pct: 5, code: "KIT2" }];
-  customRow.rewards.giftTiers.tiers = [{ amount: 99, slots: [[{ kind: "samples", count: 1 }]] }];
-  const customClean = sanitizeSettings(customRow, DEFAULT_SETTINGS);
-  ok(
-    customClean.rewards.setSavings.ladderPreset === "custom" && customClean.rewards.giftTiers.giftPreset === "custom",
-    "v14.2: missing preset fields over hand-made tables infer custom",
-  );
+  // v18: clusters replace the gift presets, so the preset-inference proofs
+  // become cluster-invariant proofs instead.
+  {
+    const messy = sanitizeGiftClusters([
+      { id: "A", name: "  Amphora  ", rest: false, countries: ["es", "ES", "bad", "PT"], locations: [], tiers: [] },
+      { id: "a", name: "Duplicate id", rest: false, countries: ["FR"], locations: [], tiers: [] },
+      { id: "second", name: "Second", rest: false, countries: ["ES", "IT"], locations: [], tiers: [] },
+      { id: "catchall", name: "Everywhere else", rest: true, countries: [], locations: [], tiers: [] },
+    ]);
+    ok(
+      messy.length === 3 &&
+        messy[0].id === "a" &&
+        messy[0].name === "Amphora" &&
+        messy[0].countries.join(",") === "ES,PT",
+      "v18: sanitizeGiftClusters lowercases ids, trims names, uppercases and dedupes country codes and drops junk",
+    );
+    ok(
+      messy[1].countries.join(",") === "IT",
+      "v18: a country already claimed by an earlier cluster is dropped from later ones (first wins)",
+    );
+    ok(
+      messy.filter((c: any) => c.rest).length === 1 && messy[2].rest === true,
+      "v18: exactly one catch-all survives",
+    );
+    ok(
+      sanitizeGiftClusters([
+        { id: "one", name: "One", rest: false, countries: ["ES"], locations: [], tiers: [] },
+        { id: "two", name: "Two", rest: false, countries: ["FR"], locations: [], tiers: [] },
+      ]).filter((c: any) => c.rest).length === 1,
+      "v18: with no cluster claiming it, the LAST one is promoted to catch-all so resolution stays total",
+    );
+    ok(
+      sanitizeGiftClusters("nonsense").length === GIFT_CLUSTER_PRESETS.length,
+      "v18: an unusable clusters value falls back to the shipped presets rather than disabling gifts everywhere",
+    );
+    const restOnly = sanitizeGiftClusters([
+      { id: "rest", name: "Rest", rest: true, countries: ["ES"], locations: [], tiers: [] },
+    ]);
+    ok(
+      restOnly[0].countries.length === 0,
+      "v18: the catch-all never stores countries — it is whatever nobody else claimed",
+    );
+  }
+  {
+    const cl = DEFAULT_SETTINGS.rewards.giftTiers.clusters;
+    ok(clusterForCountry(cl, "ES")?.id === "amphora", "v18: ES resolves to Amphora");
+    ok(clusterForCountry(cl, "gb")?.id === "active-ants", "v18: lowercase gb resolves to Active Ants");
+    ok(clusterForCountry(cl, "US")?.id === "rest", "v18: an unlisted country falls to the catch-all");
+    ok(clusterForCountry(cl, "")?.id === "rest", "v18: an unknown country still resolves, never null");
+  }
+  {
+    // The merchant asked for 147 -> 150; the old three-band niceRound gave 145.
+    ok(roundThreshold(147) === 150, "v18: roundThreshold turns 147 into 150 (nearest 10 at that magnitude)");
+    ok(roundThreshold(155.3) === 160, "v18: roundThreshold rounds a GBP tier to the nearest 10");
+    ok(roundThreshold(1676) === 1700, "v18: roundThreshold rounds a kronor tier to the nearest 50");
+    ok(roundThreshold(32895) === 33000, "v18: roundThreshold rounds a yen tier to the nearest 500");
+    ok(roundThreshold(286842) === 285000, "v18: roundThreshold rounds a won tier to the nearest 5,000");
+    ok(roundThreshold(0) === 0 && roundThreshold(-5) === 0, "v18: roundThreshold refuses non-positive input");
+  }
   ok(
     ["auto", "choose"].includes(cleaned.rewards.giftTiers.choice) &&
       ["not_in_cart", "rotate", "fixed"].includes(cleaned.rewards.giftTiers.sampleRule),
@@ -1507,4 +1619,4 @@ if (failures > 0) {
   console.error(`\n${failures}/${checks} CHECKS FAILED`);
   process.exit(1);
 }
-console.log(`ALL ${checks} CHECKS PASSED (settings derivation + 37-key flip proof)`);
+console.log(`ALL ${checks} CHECKS PASSED (settings derivation + 38-key flip proof)`);

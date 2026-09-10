@@ -45,7 +45,9 @@
     "cruelty_free": "Ikke testet på dyr",
     "clinically_proven": "Klinisk dokumentert",
     "ssl_encrypted": "SSL-kryptert betaling",
-    "easy_returns": "Enkel retur"
+    "easy_returns": "Enkel retur",
+    "research": "Basert på publisert forskning fra",
+    "seal": "Uavhengige tester. Dokumentert hudtoleranse."
   },
   "guarantee": {
     "title": "{{ days }} dagers pengene-tilbake-garanti",

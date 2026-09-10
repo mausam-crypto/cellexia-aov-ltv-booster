@@ -265,17 +265,32 @@ export function computeKit(cfg, input) {
 // ---------------------------------------------------------------------------
 
 /**
- * Per-tier thresholds in the cart currency: bm[market].a[i] when that
- * market entry is denominated in the cart currency AND a[i] > 0 (mirrors the
- * storefront: an empty/0 slot means "not overridden"), else tiers[i].eur × rate.
+ * v18: the cluster serving `country`, or the catch-all. Total by
+ * construction — the server guarantees exactly one `rest` cluster — so the
+ * Function, the storefront and the admin all resolve a country the same way.
  */
-export function giftAmounts(gt, market, currency, rate) {
-  const tiers = arr(gt && gt.tiers);
-  const bm = obj(gt && gt.bm) || {};
-  const entry = obj(bm[market]);
-  const useMarket = !!entry && String(entry.c) === currency && Array.isArray(entry.a);
+export function clusterFor(gt, country) {
+  const cl = obj(gt && gt.cl) || {};
+  const cc = obj(gt && gt.cc) || {};
+  const iso = String(country || "").toUpperCase();
+  const id = (iso && typeof cc[iso] === "string" && cc[iso]) || String((gt && gt.rest) || "");
+  return obj(cl[id]) || null;
+}
+
+/**
+ * v18 per-tier thresholds in the cart currency, for ONE cluster: the
+ * COUNTRY's own amount (bc[country].a[i]) when it is denominated in the cart
+ * currency and is > 0 (an empty or 0 slot means "not overridden"), else the
+ * cluster's EUR amount × rate. Mirrors rwGiftThresholdCents in the theme.
+ */
+export function giftAmounts(gt, country, currency, rate) {
+  const cluster = clusterFor(gt, country);
+  const tiers = arr(cluster && cluster.tiers);
+  const bc = obj(gt && gt.bc) || {};
+  const entry = obj(bc[String(country || "").toUpperCase()]);
+  const useCountry = !!entry && String(entry.c) === currency && Array.isArray(entry.a);
   return tiers.map((t, i) => {
-    if (useMarket && Number(entry.a[i]) > 0) return money(entry.a[i]);
+    if (useCountry && Number(entry.a[i]) > 0) return money(entry.a[i]);
     return money(Number(t && t.eur) * rate);
   });
 }
@@ -302,13 +317,19 @@ export function computeGifts(cfg, input) {
   const giftLines = lines.filter((l) => l.gift && l.qty > 0);
   if (!giftLines.length) return [];
   const spend = spendOf(lines);
-  const amounts = giftAmounts(gt, market, cartCurrency(lines), rateOf(input));
+  // v18: gifts are decided by COUNTRY, not market — a cluster is a group of
+  // countries with its own ladder, and the buyer country is already in the
+  // Function input, so no schema change was needed here.
+  const country = countryOf(input);
+  const cluster = clusterFor(gt, country);
+  if (!cluster) return [];
+  const amounts = giftAmounts(gt, country, cartCurrency(lines), rateOf(input));
   const reached = reachedTier(amounts, spend);
   if (reached < 0) return [];
   const cumulative = gt.cum !== false;
   const granted = new Set();
   let samplesAllowed = 0;
-  const tiers = arr(gt.tiers);
+  const tiers = arr(cluster.tiers);
   for (let i = 0; i <= reached; i++) {
     if (!cumulative && i !== reached) continue;
     for (const slot of arr(tiers[i] && tiers[i].slots)) {

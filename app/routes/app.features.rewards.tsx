@@ -24,8 +24,10 @@ import {
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import {
-  GIFT_PRESETS,
-  GIFT_PRESET_KEYS,
+  GIFT_CLUSTER_PRESETS,
+  GIFT_PDP_STYLES,
+  sanitizeGiftClusters,
+  toCountryCode,
   LADDER_PRESETS,
   LADDER_PRESET_KEYS,
   REWARDS_CAPS,
@@ -36,6 +38,7 @@ import {
   validateGiftTiersPatch,
   validateSetSavingsPatch,
   type BoosterSettings,
+  type GiftCluster,
   type DeepPartial,
   type GiftTier,
 } from "../models/settings.server";
@@ -66,9 +69,8 @@ import { MarketsTab } from "../components/rewards/MarketsTab";
 import {
   CAPS,
   CODE_PATTERN,
-  GIFT_PRESET_BADGES,
+  GIFT_PDP_STYLE_LABELS,
   intError,
-  isLoadableGiftPreset,
   normalizeYieldCodes,
   reachCaption,
   samplePoolError,
@@ -79,10 +81,10 @@ import {
   validateSetSavingsRows,
   validateThresholdRows,
   type DiscountNodesView,
+  type GiftClusterRow,
   type GiftOptionRow,
   type GiftTierRow,
   type LadderPresetKey,
-  type LoadableGiftPreset,
   type LocationOption,
   type PresetTables,
   type RewardsFormState,
@@ -170,8 +172,7 @@ type RewardsIntentResult =
       intent: "load_defaults";
       ok: boolean;
       errors: string[];
-      preset: LoadableGiftPreset;
-      tiers: GiftTier[];
+      clusters: GiftCluster[];
       variants: VariantSummary[];
     }
   | {
@@ -350,51 +351,56 @@ async function productByHandle(admin: AdminGraphqlClient, handle: string): Promi
 }
 
 /** Resolve the handles of a GIFT_PRESETS entry to live variant GIDs. */
-async function loadDefaultGiftTiers(
+async function loadDefaultGiftClusters(
   admin: AdminGraphqlClient,
-  preset: LoadableGiftPreset,
-): Promise<{ tiers: GiftTier[]; variants: VariantSummary[]; errors: string[] }> {
+): Promise<{ clusters: GiftCluster[]; variants: VariantSummary[]; errors: string[] }> {
   const errors: string[] = [];
   const variants: VariantSummary[] = [];
-  const tiers: GiftTier[] = [];
+  const clusters: GiftCluster[] = [];
+  // One lookup per distinct handle across every cluster: the shipped presets
+  // reuse the same towel in two of them.
   const handleCache = new Map<string, string>();
-  for (const shape of GIFT_PRESETS[preset]) {
-    const slots: GiftTier["slots"] = [];
-    for (const slot of shape.slots) {
-      const options: GiftTier["slots"][number] = [];
-      for (const option of slot) {
-        if (option.kind !== "variant" || option.handle === "") {
-          options.push({ ...option });
-          continue;
-        }
-        let variantId = option.variantId;
-        if (handleCache.has(option.handle)) {
-          variantId = handleCache.get(option.handle) ?? variantId;
-        } else {
-          try {
-            const product = await productByHandle(admin, option.handle);
-            const summary = product ? firstVariantSummary(product) : null;
-            if (!product || !summary) {
-              errors.push(`Product "${option.handle}" was not found in your store — pick another gift for that tier.`);
-            } else {
-              variantId = summary.id;
-              variants.push(summary);
-              handleCache.set(option.handle, summary.id);
-              if (product.status && product.status !== "ACTIVE") {
-                errors.push(`Product "${option.handle}" is ${product.status.toLowerCase()} — publish it before going live.`);
-              }
-            }
-          } catch (error) {
-            errors.push(`Lookup of "${option.handle}" failed: ${error instanceof Error ? error.message : String(error)}`);
+  for (const preset of GIFT_CLUSTER_PRESETS) {
+    const tiers: GiftTier[] = [];
+    for (const shape of preset.tiers) {
+      const slots: GiftTier["slots"] = [];
+      for (const slot of shape.slots) {
+        const options: GiftTier["slots"][number] = [];
+        for (const option of slot) {
+          if (option.kind !== "variant" || option.handle === "") {
+            options.push({ ...option });
+            continue;
           }
+          let variantId = option.variantId;
+          if (handleCache.has(option.handle)) {
+            variantId = handleCache.get(option.handle) ?? variantId;
+          } else {
+            try {
+              const product = await productByHandle(admin, option.handle);
+              const summary = product ? firstVariantSummary(product) : null;
+              if (!product || !summary) {
+                errors.push(`Product "${option.handle}" was not found in your store, so pick another gift for that tier.`);
+              } else {
+                variantId = summary.id;
+                variants.push(summary);
+                handleCache.set(option.handle, summary.id);
+                if (product.status && product.status !== "ACTIVE") {
+                  errors.push(`Product "${option.handle}" is ${product.status.toLowerCase()}, so publish it before going live.`);
+                }
+              }
+            } catch (error) {
+              errors.push(`Lookup of "${option.handle}" failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+          options.push({ ...option, variantId });
         }
-        options.push({ ...option, variantId });
+        slots.push(options);
       }
-      slots.push(options);
+      tiers.push({ amount: shape.amount, slots });
     }
-    tiers.push({ amount: shape.amount, slots });
+    clusters.push({ ...preset, countries: [...preset.countries], locations: [], tiers });
   }
-  return { tiers, variants, errors };
+  return { clusters, variants, errors };
 }
 
 async function loadSachetPool(admin: AdminGraphqlClient): Promise<{
@@ -489,7 +495,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     presets: {
       ladderKeys: LADDER_PRESET_KEYS,
       ladders: LADDER_PRESETS,
-      giftKeys: GIFT_PRESET_KEYS,
     } satisfies PresetTables,
     nodes: {
       kit: rewardsState.nodes.kit,
@@ -501,7 +506,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     hv: rewardsState.nodes.hv,
     /** Server caps the client must respect (REWARDS_CAPS is the authority). */
     caps: { samplePool: REWARDS_CAPS.samplePool },
-    giftStock: { t: rewardsState.giftStock.t, byMarket: rewardsState.giftStock.byMarket } satisfies StockView,
+    giftStock: { t: rewardsState.giftStock.t, byCluster: rewardsState.giftStock.byCluster } satisfies StockView,
     stockNote,
     headerEnabled: ssOn || gtOn,
     headerLabel: ssOn && gtOn ? "Both active" : ssOn ? "Set savings active" : gtOn ? "Free gifts active" : "Off",
@@ -577,33 +582,33 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionRes
   }
   if (intent === "suggest_thresholds") {
     const settings = await getSettings(session.shop);
-    const rawEur = formData.get("eurAmounts");
-    if (typeof rawEur === "string" && rawEur.trim() !== "") {
+    // v18: the unsaved cluster ladders ride along, so "Suggest amounts"
+    // prices whatever the merchant is looking at rather than the last save.
+    const rawClusters = formData.get("clusters");
+    if (typeof rawClusters === "string" && rawClusters.trim() !== "") {
       try {
-        const parsed: unknown = JSON.parse(rawEur);
-        if (
-          Array.isArray(parsed) &&
-          parsed.length === settings.rewards.giftTiers.tiers.length &&
-          parsed.every((n) => typeof n === "number" && Number.isFinite(n))
-        ) {
-          settings.rewards.giftTiers.tiers = settings.rewards.giftTiers.tiers.map((tier, index) => ({
-            ...tier,
-            amount: parsed[index] as number,
-          }));
-        } else if (Array.isArray(parsed) && parsed.every((n) => typeof n === "number")) {
-          settings.rewards.giftTiers.tiers = (parsed as number[]).map((amount, index) => ({
-            amount,
-            slots: settings.rewards.giftTiers.tiers[index]?.slots ?? [
-              [{ kind: "samples", variantId: "", handle: "", count: 1 }],
-            ],
-          }));
+        const parsed: unknown = JSON.parse(rawClusters);
+        if (Array.isArray(parsed)) {
+          settings.rewards.giftTiers.clusters = sanitizeGiftClusters(parsed);
         }
       } catch {
-        // ignore — saved amounts are used
+        // ignore — the saved clusters are used
       }
     }
-    const markets = await listMarkets(admin);
-    const result = await suggestGiftThresholds(admin, settings, markets);
+    // Price every country the clusters actually name, plus one representative
+    // country per market so the catch-all cluster gets real numbers too.
+    const countries = new Set<string>();
+    for (const cluster of settings.rewards.giftTiers.clusters) {
+      for (const code of cluster.countries) countries.add(code);
+    }
+    const rawCountries = formData.get("countries");
+    if (typeof rawCountries === "string") {
+      for (const code of rawCountries.split(",")) {
+        const clean = toCountryCode(code);
+        if (clean) countries.add(clean);
+      }
+    }
+    const result = await suggestGiftThresholds(admin, settings, [...countries]);
     return {
       intent: "suggest_thresholds" as const,
       ok: result.ok,
@@ -621,19 +626,18 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<ActionRes
       ok: result.ok,
       errors: result.errors,
       summary: result.summary,
-      giftStock: { t: stock.t, byMarket: stock.byMarket },
+      giftStock: { t: stock.t, byCluster: stock.byCluster },
     };
   }
   if (intent === "load_defaults") {
-    const rawPreset = formData.get("preset");
-    const preset: LoadableGiftPreset = isLoadableGiftPreset(rawPreset, GIFT_PRESET_KEYS) ? rawPreset : "value_first";
-    const result = await loadDefaultGiftTiers(admin, preset);
+    // v18: one button, one answer. There is a single shipped set of clusters
+    // now, so the preset picker is gone.
+    const result = await loadDefaultGiftClusters(admin);
     return {
       intent: "load_defaults" as const,
       ok: result.errors.length === 0,
       errors: result.errors,
-      preset,
-      tiers: result.tiers,
+      clusters: result.clusters,
       variants: result.variants,
     };
   }
@@ -674,33 +678,40 @@ function initialFormState(settings: BoosterSettings): RewardsFormState {
     },
     gt: {
       enabled: gt.enabled,
-      giftPreset: gt.giftPreset,
       cumulative: gt.cumulative,
       choice: gt.choice,
       maxGiftLines: String(gt.maxGiftLines),
       sampleRule: gt.sampleRule,
       showShippingMilestone: gt.showShippingMilestone,
-      tiers: gt.tiers.map((tier) => ({
-        amount: String(tier.amount),
-        slots: tier.slots.map((slot) =>
-          slot.map((option) => ({
-            kind: option.kind,
-            variantId: option.variantId,
-            handle: option.handle,
-            count: String(option.count),
-          })),
-        ),
+      clusters: gt.clusters.map((cluster) => ({
+        id: cluster.id,
+        name: cluster.name,
+        rest: cluster.rest,
+        countries: [...cluster.countries],
+        locations: [...cluster.locations],
+        tiers: cluster.tiers.map((tier) => ({
+          amount: String(tier.amount),
+          slots: tier.slots.map((slot) =>
+            slot.map((option) => ({
+              kind: option.kind,
+              variantId: option.variantId,
+              handle: option.handle,
+              count: String(option.count),
+            })),
+          ),
+        })),
       })),
       thresholds: Object.fromEntries(
-        Object.entries(gt.giftThresholdsByMarket).map(([handle, entry]) => [
-          handle,
+        Object.entries(gt.thresholdsByCountry).map(([code, entry]) => [
+          code,
           { amounts: entry.amounts.map((a) => String(a)), currencyCode: entry.currencyCode },
         ]),
       ),
       samplePool: gt.samplePool.map((entry) => ({ ...entry })),
-      warehouse: Object.fromEntries(Object.entries(gt.warehouseByMarket).map(([handle, ids]) => [handle, [...ids]])),
       stockFloorDays: String(gt.stockFloor.days),
       stockFloorMinUnits: String(gt.stockFloor.minUnits),
+      pdpEnabled: gt.pdp.enabled,
+      pdpStyle: gt.pdp.style,
     },
     fs: {
       enabled: fs.enabled,
@@ -732,22 +743,21 @@ function serializeForCompare(state: RewardsFormState): string {
     },
     gt: {
       ...state.gt,
-      tiers: state.gt.tiers.map((t) => ({
-        amount: t.amount.trim(),
-        slots: t.slots.map((slot) => slot.map((o) => ({ ...o, count: o.count.trim() }))),
+      clusters: state.gt.clusters.map((cluster) => ({
+        ...cluster,
+        name: cluster.name.trim(),
+        countries: [...cluster.countries].sort(),
+        locations: [...cluster.locations].sort(),
+        tiers: cluster.tiers.map((t) => ({
+          amount: t.amount.trim(),
+          slots: t.slots.map((slot) => slot.map((o) => ({ ...o, count: o.count.trim() }))),
+        })),
       })),
       thresholds: sortedRecord(
         Object.fromEntries(
           Object.entries(state.gt.thresholds)
-            .map(([handle, row]) => [handle, { amounts: row.amounts.map((a) => a.trim()), currencyCode: row.currencyCode }])
+            .map(([code, row]) => [code, { amounts: row.amounts.map((a) => a.trim()), currencyCode: row.currencyCode }])
             .filter(([, row]) => (row as { amounts: string[] }).amounts.some((a) => a !== "")),
-        ),
-      ),
-      warehouse: sortedRecord(
-        Object.fromEntries(
-          Object.entries(state.gt.warehouse)
-            .map(([handle, ids]) => [handle, [...ids].sort()])
-            .filter(([, ids]) => (ids as string[]).length > 0),
         ),
       ),
       maxGiftLines: state.gt.maxGiftLines.trim(),
@@ -811,11 +821,6 @@ export default function RewardsFeaturesPage() {
   const [state, setState] = useState<RewardsFormState>(() => initialFormState(settings));
   const [variantIndex, setVariantIndex] = useState<Record<string, VariantSummary>>(() =>
     Object.fromEntries(giftVariants.map((v) => [v.id, v])),
-  );
-  const [giftPresetChoice, setGiftPresetChoice] = useState<LoadableGiftPreset>(() =>
-    isLoadableGiftPreset(settings.rewards.giftTiers.giftPreset, presets.giftKeys)
-      ? settings.rewards.giftTiers.giftPreset
-      : "value_first",
   );
   const [stockView, setStockView] = useState<StockView>(giftStock);
   const [nodesView, setNodesView] = useState<DiscountNodesView>(nodes);
@@ -917,14 +922,21 @@ export default function RewardsFeaturesPage() {
     if (!defaultsResult || appliedRef.current.defaults === defaultsResult) return;
     appliedRef.current.defaults = defaultsResult;
     setVariantIndex((previous) => ({ ...previous, ...Object.fromEntries(defaultsResult.variants.map((v) => [v.id, v])) }));
-    setState((previous) => {
-      const tierCount = defaultsResult.tiers.length;
-      return {
-        ...previous,
-        gt: {
-          ...previous.gt,
-          giftPreset: defaultsResult.preset,
-          tiers: defaultsResult.tiers.map((tier) => ({
+    setState((previous) => ({
+      ...previous,
+      gt: {
+        ...previous.gt,
+        clusters: defaultsResult.clusters.map((cluster) => ({
+          id: cluster.id,
+          name: cluster.name,
+          rest: cluster.rest,
+          countries: [...cluster.countries],
+          // Keep whatever warehouses the merchant already mapped for a
+          // cluster of the same id: the presets ship with none.
+          locations: [
+            ...(previous.gt.clusters.find((row) => row.id === cluster.id)?.locations ?? []),
+          ],
+          tiers: cluster.tiers.map((tier) => ({
             amount: String(tier.amount),
             slots: tier.slots.map((slot) =>
               slot.map((option) => ({
@@ -935,17 +947,14 @@ export default function RewardsFeaturesPage() {
               })),
             ),
           })),
-          thresholds: Object.fromEntries(
-            Object.entries(previous.gt.thresholds).map(([handle, row]) => {
-              const amounts = row.amounts.slice(0, tierCount);
-              while (amounts.length < tierCount) amounts.push("");
-              return [handle, { ...row, amounts }];
-            }),
-          ),
-        },
-      };
-    });
-    shopify.toast.show(`${GIFT_PRESET_BADGES[defaultsResult.preset]} gifts loaded — review, then Save`);
+        })),
+        // Per-country amounts are cleared: they were sized to the old
+        // ladders and would be refused by the validator. "Suggest amounts"
+        // regenerates them from live prices.
+        thresholds: {},
+      },
+    }));
+    shopify.toast.show("Default clusters loaded. Review them, run Suggest amounts, then Save.");
   }, [defaultsResult, shopify]);
   useEffect(() => {
     if (!sachetsResult || appliedRef.current.sachets === sachetsResult) return;
@@ -1013,67 +1022,207 @@ export default function RewardsFeaturesPage() {
     });
   };
 
-  const updateGtTier = (index: number, update: Partial<GiftTierRow>) =>
-    setGt({ giftPreset: "custom", tiers: state.gt.tiers.map((row, i) => (i === index ? { ...row, ...update } : row)) });
-  const removeGtTier = (index: number) =>
+  // ---- v18 cluster mutators ----------------------------------------------
+  // Every gift edit is now scoped to ONE cluster. `mapCluster` keeps that
+  // scoping in one place so no mutator can accidentally edit the wrong ladder.
+  const mapCluster = (clusterId: string, fn: (cluster: GiftClusterRow) => GiftClusterRow) =>
     setState((previous) => ({
       ...previous,
       gt: {
         ...previous.gt,
-        giftPreset: "custom",
-        tiers: previous.gt.tiers.filter((_, i) => i !== index),
-        thresholds: Object.fromEntries(
-          Object.entries(previous.gt.thresholds).map(([handle, row]) => [
-            handle,
-            { ...row, amounts: row.amounts.filter((_, i) => i !== index) },
-          ]),
+        clusters: previous.gt.clusters.map((cluster) =>
+          cluster.id === clusterId ? fn(cluster) : cluster,
         ),
       },
     }));
-  const addGtTier = () => {
-    const last = Number(state.gt.tiers[state.gt.tiers.length - 1]?.amount ?? "0");
-    setState((previous) => ({
-      ...previous,
-      gt: {
-        ...previous.gt,
-        giftPreset: "custom",
-        tiers: [
-          ...previous.gt.tiers,
-          {
-            amount: Number.isFinite(last) && last > 0 ? String(Math.round(last * 1.5)) : "",
-            slots: [[{ kind: "samples", variantId: "", handle: "", count: "2" }]],
-          },
-        ],
-        thresholds: Object.fromEntries(
-          Object.entries(previous.gt.thresholds).map(([handle, row]) => [handle, { ...row, amounts: [...row.amounts, ""] }]),
-        ),
-      },
+
+  const clusterById = (id: string) => state.gt.clusters.find((cluster) => cluster.id === id);
+
+  const updateGtTier = (clusterId: string, index: number, update: Partial<GiftTierRow>) =>
+    mapCluster(clusterId, (cluster) => ({
+      ...cluster,
+      tiers: cluster.tiers.map((row, i) => (i === index ? { ...row, ...update } : row)),
     }));
-  };
-  const updateSlots = (tier: number, slots: GiftOptionRow[][]) => updateGtTier(tier, { slots });
-  const updateOption = (tier: number, slot: number, option: number, update: Partial<GiftOptionRow>) =>
-    setState((previous) => ({
-      ...previous,
-      gt: {
-        ...previous.gt,
-        giftPreset: "custom",
-        tiers: previous.gt.tiers.map((row, ti) =>
-          ti !== tier
-            ? row
-            : {
-                ...row,
-                slots: row.slots.map((s, si) =>
-                  si !== slot ? s : s.map((o, oi) => (oi !== option ? o : { ...o, ...update })),
-                ),
-              },
-        ),
-      },
-    }));
-  const setThresholdAmount = (handle: string, currencyCode: string, index: number, value: string) =>
+
+  const removeGtTier = (clusterId: string, index: number) =>
     setState((previous) => {
-      const row = previous.gt.thresholds[handle] ?? { amounts: previous.gt.tiers.map(() => ""), currencyCode };
+      const target = previous.gt.clusters.find((cluster) => cluster.id === clusterId);
+      const countries = new Set(target?.countries ?? []);
+      const isRest = target?.rest === true;
+      return {
+        ...previous,
+        gt: {
+          ...previous.gt,
+          clusters: previous.gt.clusters.map((cluster) =>
+            cluster.id !== clusterId
+              ? cluster
+              : { ...cluster, tiers: cluster.tiers.filter((_, i) => i !== index) },
+          ),
+          // Only the countries served by THIS cluster lose a column. A rest
+          // cluster owns every country nobody else claimed, so its edits
+          // touch every unclaimed row.
+          thresholds: Object.fromEntries(
+            Object.entries(previous.gt.thresholds).map(([code, row]) => {
+              const mine = isRest
+                ? !previous.gt.clusters.some((c) => !c.rest && c.countries.includes(code))
+                : countries.has(code);
+              return mine ? [code, { ...row, amounts: row.amounts.filter((_, i) => i !== index) }] : [code, row];
+            }),
+          ),
+        },
+      };
+    });
+
+  const addGtTier = (clusterId: string) =>
+    setState((previous) => {
+      const target = previous.gt.clusters.find((cluster) => cluster.id === clusterId);
+      const last = Number(target?.tiers[target.tiers.length - 1]?.amount ?? "0");
+      const countries = new Set(target?.countries ?? []);
+      const isRest = target?.rest === true;
+      return {
+        ...previous,
+        gt: {
+          ...previous.gt,
+          clusters: previous.gt.clusters.map((cluster) =>
+            cluster.id !== clusterId
+              ? cluster
+              : {
+                  ...cluster,
+                  tiers: [
+                    ...cluster.tiers,
+                    {
+                      amount: Number.isFinite(last) && last > 0 ? String(Math.round(last * 1.5)) : "",
+                      slots: [[{ kind: "samples", variantId: "", handle: "", count: "2" }]],
+                    },
+                  ],
+                },
+          ),
+          thresholds: Object.fromEntries(
+            Object.entries(previous.gt.thresholds).map(([code, row]) => {
+              const mine = isRest
+                ? !previous.gt.clusters.some((c) => !c.rest && c.countries.includes(code))
+                : countries.has(code);
+              return mine ? [code, { ...row, amounts: [...row.amounts, ""] }] : [code, row];
+            }),
+          ),
+        },
+      };
+    });
+
+  const updateSlots = (clusterId: string, tier: number, slots: GiftOptionRow[][]) =>
+    updateGtTier(clusterId, tier, { slots });
+
+  const updateOption = (
+    clusterId: string,
+    tier: number,
+    slot: number,
+    option: number,
+    update: Partial<GiftOptionRow>,
+  ) =>
+    mapCluster(clusterId, (cluster) => ({
+      ...cluster,
+      tiers: cluster.tiers.map((row, ti) =>
+        ti !== tier
+          ? row
+          : {
+              ...row,
+              slots: row.slots.map((sl, si) =>
+                si !== slot ? sl : sl.map((o, oi) => (oi !== option ? o : { ...o, ...update })),
+              ),
+            },
+      ),
+    }));
+
+  const addCluster = () =>
+    setState((previous) => {
+      const n = previous.gt.clusters.length + 1;
+      let id = `cluster-${n}`;
+      let bump = n;
+      while (previous.gt.clusters.some((cluster) => cluster.id === id)) {
+        bump += 1;
+        id = `cluster-${bump}`;
+      }
+      // New clusters go BEFORE the catch-all, so the rest cluster stays last
+      // and reads as the fallback it is.
+      const rest = previous.gt.clusters.filter((cluster) => cluster.rest);
+      const named = previous.gt.clusters.filter((cluster) => !cluster.rest);
+      return {
+        ...previous,
+        gt: {
+          ...previous.gt,
+          clusters: [
+            ...named,
+            { id, name: `Cluster ${bump}`, rest: false, countries: [], locations: [], tiers: [] },
+            ...rest,
+          ],
+        },
+      };
+    });
+
+  const removeCluster = (clusterId: string) =>
+    setState((previous) => ({
+      ...previous,
+      gt: {
+        ...previous.gt,
+        // The catch-all can never be deleted: without it a country could
+        // resolve to nothing at all.
+        clusters: previous.gt.clusters.filter(
+          (cluster) => cluster.id !== clusterId || cluster.rest,
+        ),
+      },
+    }));
+
+  const updateCluster = (clusterId: string, update: Partial<GiftClusterRow>) =>
+    mapCluster(clusterId, (cluster) => ({ ...cluster, ...update }));
+
+  const toggleClusterCountry = (clusterId: string, code: string, checked: boolean) =>
+    setState((previous) => ({
+      ...previous,
+      gt: {
+        ...previous.gt,
+        clusters: previous.gt.clusters.map((cluster) => {
+          if (cluster.rest) return cluster;
+          if (cluster.id === clusterId) {
+            const set = new Set(cluster.countries);
+            if (checked) set.add(code);
+            else set.delete(code);
+            return { ...cluster, countries: [...set].sort().slice(0, CAPS.countriesPerCluster) };
+          }
+          // A country belongs to exactly one cluster, so ticking it here
+          // takes it away from wherever it was.
+          return checked && cluster.countries.includes(code)
+            ? { ...cluster, countries: cluster.countries.filter((c) => c !== code) }
+            : cluster;
+        }),
+      },
+    }));
+
+  const toggleClusterLocation = (clusterId: string, locationId: string, checked: boolean) =>
+    mapCluster(clusterId, (cluster) => {
+      const current = new Set(cluster.locations);
+      if (checked) current.add(locationId);
+      else current.delete(locationId);
+      return {
+        ...cluster,
+        locations: locations
+          .map((l) => l.id)
+          .filter((id) => current.has(id))
+          .slice(0, CAPS.locationsPerCluster),
+      };
+    });
+
+  const tierCountForCountry = (code: string) => {
+    const named = state.gt.clusters.find((c) => !c.rest && c.countries.includes(code));
+    const cluster = named ?? state.gt.clusters.find((c) => c.rest);
+    return cluster?.tiers.length ?? 0;
+  };
+
+  const setThresholdAmount = (code: string, currencyCode: string, index: number, value: string) =>
+    setState((previous) => {
+      const size = tierCountForCountry(code);
+      const row = previous.gt.thresholds[code] ?? { amounts: Array(size).fill(""), currencyCode };
       const amounts = [...row.amounts];
-      while (amounts.length < previous.gt.tiers.length) amounts.push("");
+      while (amounts.length < size) amounts.push("");
       amounts[index] = value;
       return {
         ...previous,
@@ -1081,28 +1230,19 @@ export default function RewardsFeaturesPage() {
           ...previous.gt,
           thresholds: {
             ...previous.gt.thresholds,
-            [handle]: { amounts: amounts.slice(0, previous.gt.tiers.length), currencyCode },
+            [code]: { amounts: amounts.slice(0, size), currencyCode },
           },
         },
       };
     });
-  const clearThreshold = (handle: string) =>
+
+  const clearThreshold = (code: string) =>
     setState((previous) => {
       const thresholds = { ...previous.gt.thresholds };
-      delete thresholds[handle];
+      delete thresholds[code];
       return { ...previous, gt: { ...previous.gt, thresholds } };
     });
-  const toggleWarehouse = (handle: string, locationId: string, checked: boolean) =>
-    setState((previous) => {
-      const current = new Set(previous.gt.warehouse[handle] ?? []);
-      if (checked) current.add(locationId);
-      else current.delete(locationId);
-      const ordered = locations.map((l) => l.id).filter((id) => current.has(id)).slice(0, CAPS.warehouseLocations);
-      const warehouse = { ...previous.gt.warehouse };
-      if (ordered.length === 0) delete warehouse[handle];
-      else warehouse[handle] = ordered;
-      return { ...previous, gt: { ...previous.gt, warehouse } };
-    });
+
   const registerVariant = (variant: VariantSummary) =>
     setVariantIndex((previous) => ({ ...previous, [variant.id]: variant }));
 
@@ -1112,8 +1252,18 @@ export default function RewardsFeaturesPage() {
     Array.from(state.ss.checkoutMessage).length > CAPS.checkoutMessage
       ? `At most ${CAPS.checkoutMessage} characters`
       : undefined;
-  const gtValidation = validateGiftTierRows(state.gt.tiers);
-  const thresholdErrors = validateThresholdRows(state.gt.thresholds, state.gt.tiers.length);
+  // v18: validate every cluster's ladder, keyed by cluster id so the tab can
+  // point at the one that is wrong.
+  const gtValidationByCluster = Object.fromEntries(
+    state.gt.clusters.map((cluster) => [cluster.id, validateGiftTierRows(cluster.tiers)]),
+  );
+  const gtValidation = {
+    tierErrors: Object.values(gtValidationByCluster).flatMap((v) => v.tierErrors),
+    formErrors: state.gt.clusters.flatMap((cluster) =>
+      gtValidationByCluster[cluster.id].formErrors.map((e) => `${cluster.name}: ${e}`),
+    ),
+  };
+  const thresholdErrors = validateThresholdRows(state.gt.thresholds, tierCountForCountry);
   const maxGiftLinesError = intError(state.gt.maxGiftLines, 1, CAPS.maxGiftLines);
   const stockDaysError = intError(state.gt.stockFloorDays, 0, 60);
   const stockMinError = intError(state.gt.stockFloorMinUnits, 0, 100000);
@@ -1129,10 +1279,10 @@ export default function RewardsFeaturesPage() {
     saveProblems.push({ tab: 0, advanced: true, label: "Set savings → Advanced → Checkout line text" });
   }
   if (gtValidation.formErrors.length > 0 || gtValidation.tierErrors.some((t) => t.amount || t.tier || t.slots.some((s) => s.some((o) => o !== "")))) {
-    saveProblems.push({ tab: 1, advanced: false, label: "Free gifts → Tiers" });
+    saveProblems.push({ tab: 1, advanced: false, label: "Free gifts → Clusters" });
   }
   if (Object.keys(thresholdErrors).length > 0) {
-    saveProblems.push({ tab: 1, advanced: true, label: "Free gifts → Advanced → Amounts per market" });
+    saveProblems.push({ tab: 1, advanced: true, label: "Free gifts → Advanced → Amounts per country" });
   }
   if (maxGiftLinesError !== undefined) {
     saveProblems.push({ tab: 1, advanced: true, label: "Free gifts → Advanced → Maximum gift lines" });
@@ -1151,7 +1301,6 @@ export default function RewardsFeaturesPage() {
 
   // ---- Save / discard -----------------------------------------------------
   const handleSave = () => {
-    const tierCount = state.gt.tiers.length;
     const patch: DeepPartial<BoosterSettings> = {
       rewards: {
         setSavings: {
@@ -1170,33 +1319,44 @@ export default function RewardsFeaturesPage() {
         },
         giftTiers: {
           enabled: state.gt.enabled,
-          giftPreset: state.gt.giftPreset,
           cumulative: state.gt.cumulative,
           choice: state.gt.choice,
           maxGiftLines: Number(state.gt.maxGiftLines),
           sampleRule: state.gt.sampleRule,
           showShippingMilestone: state.gt.showShippingMilestone,
-          tiers: state.gt.tiers.map((row) => ({
-            amount: Number(row.amount),
-            slots: row.slots.map((slot) =>
-              slot.map((option) =>
-                option.kind === "samples"
-                  ? { kind: "samples" as const, variantId: "", handle: "", count: Number(option.count) }
-                  : { kind: "variant" as const, variantId: option.variantId, handle: option.handle, count: 1 },
+          clusters: state.gt.clusters.map((cluster) => ({
+            id: cluster.id,
+            name: cluster.name.trim() || cluster.id,
+            rest: cluster.rest,
+            countries: cluster.rest ? [] : [...cluster.countries],
+            locations: [...cluster.locations],
+            tiers: cluster.tiers.map((row) => ({
+              amount: Number(row.amount),
+              slots: row.slots.map((slot) =>
+                slot.map((option) =>
+                  option.kind === "samples"
+                    ? { kind: "samples" as const, variantId: "", handle: "", count: Number(option.count) }
+                    : { kind: "variant" as const, variantId: option.variantId, handle: option.handle, count: 1 },
+                ),
               ),
-            ),
+            })),
           })),
-          giftThresholdsByMarket: Object.fromEntries(
+          thresholdsByCountry: Object.fromEntries(
             Object.entries(state.gt.thresholds)
               .filter(([, row]) => row.amounts.some((a) => a.trim() !== ""))
-              .map(([handle, row]) => [
-                handle,
-                { amounts: row.amounts.slice(0, tierCount).map((a) => Number(a)), currencyCode: row.currencyCode },
+              .map(([code, row]) => [
+                code,
+                {
+                  amounts: row.amounts
+                    .slice(0, tierCountForCountry(code))
+                    .map((a) => Number(a)),
+                  currencyCode: row.currencyCode,
+                },
               ]),
           ),
           samplePool: state.gt.samplePool.map((entry) => ({ ...entry })),
-          warehouseByMarket: Object.fromEntries(Object.entries(state.gt.warehouse).filter(([, ids]) => ids.length > 0)),
           stockFloor: { days: Number(state.gt.stockFloorDays), minUnits: Number(state.gt.stockFloorMinUnits) },
+          pdp: { enabled: state.gt.pdpEnabled, style: state.gt.pdpStyle },
         },
         freeShip: {
           enabled: state.fs.enabled,
@@ -1249,7 +1409,9 @@ export default function RewardsFeaturesPage() {
             `Code ${code} is used by another discount in your store — not created; change it in the Set savings tab (the app never touches that discount).`,
         );
 
-  const giftOptions = state.gt.tiers.flatMap((t) => t.slots.flatMap((s) => s));
+  const giftOptions = state.gt.clusters.flatMap((cluster) =>
+    cluster.tiers.flatMap((t) => t.slots.flatMap((sl) => sl)),
+  );
   /** v15.1 (F3): a handle-only option (presets ship handles) is CONFIGURED —
    *  the server resolves it through hv and the storefront through cart-data;
    *  it is "unresolved" only when it names nothing at all or a variant the
@@ -1262,11 +1424,15 @@ export default function RewardsFeaturesPage() {
       (o.variantId !== "" ? !variantIndex[o.variantId] && !handleKnown(o.handle) : o.handle === ""),
   );
   const handleOnlyGifts = giftOptions.filter((o) => o.kind === "variant" && o.variantId === "" && o.handle !== "");
-  const giftsConfigured = state.gt.tiers.length > 0 && unresolvedGifts.length === 0 && !gtValidation.tierErrors.some((t) => t.amount || t.tier);
+  const totalGiftTiers = state.gt.clusters.reduce((n, cluster) => n + cluster.tiers.length, 0);
+  const giftsConfigured =
+    totalGiftTiers > 0 &&
+    unresolvedGifts.length === 0 &&
+    !gtValidation.tierErrors.some((t) => t.amount || t.tier);
   const stockChecked = stockView.t !== "";
   const usePresetNow = () => {
     setTab(1);
-    runIntent(defaultsFetcher, "load_defaults", { preset: giftPresetChoice });
+    runIntent(defaultsFetcher, "load_defaults", {});
   };
 
   const ssLive = state.ss.enabled ? scopeMarketCount(state.scopes.set_savings, markets) : 0;
@@ -1312,22 +1478,22 @@ export default function RewardsFeaturesPage() {
     {
       id: "gifts",
       title: "Gifts configured",
-      tone: state.gt.tiers.length === 0 ? "attention" : giftsConfigured && stockChecked ? "success" : "attention",
+      tone: totalGiftTiers === 0 ? "attention" : giftsConfigured && stockChecked ? "success" : "attention",
       badge: giftsConfigured && stockChecked ? "Done" : "To do",
       sentence:
-        state.gt.tiers.length === 0
-          ? "No gift tier yet — press “Use this preset” to load the recommended gifts, then Save."
+        totalGiftTiers === 0
+          ? "No gift tier yet. Press “Load the default clusters” to start from the recommended ladders, then Save."
           : unresolvedGifts.length > 0
-            ? `${unresolvedGifts.length} gift${unresolvedGifts.length === 1 ? "" : "s"} still point${unresolvedGifts.length === 1 ? "s" : ""} to no product — open the Free gifts tab and pick a product for each.`
+            ? `${unresolvedGifts.length} gift${unresolvedGifts.length === 1 ? "" : "s"} still point${unresolvedGifts.length === 1 ? "s" : ""} to no product. Open the Free gifts tab and pick a product for each.`
             : handleOnlyGifts.length > 0 && !stockChecked
-              ? `${handleOnlyGifts.length} gift${handleOnlyGifts.length === 1 ? " is" : "s are"} named by product and looked up in your store automatically — press “Use this preset” once to pin them to your real products, then Save.`
+              ? `${handleOnlyGifts.length} gift${handleOnlyGifts.length === 1 ? " is" : "s are"} named by product and looked up in your store automatically. Press “Load the default clusters” once to pin them to your real products, then Save.`
               : !stockChecked
-                ? "Every gift is a real product; stock has not been checked yet — save, then use “Check stock now” under Advanced in the Free gifts tab."
-                : `${state.gt.tiers.length} tier${state.gt.tiers.length === 1 ? "" : "s"}, every gift is a real product, stock checked ${stockView.t.replace("T", " ").slice(0, 16)} UTC.`,
+                ? "Every gift is a real product. Stock has not been checked yet, so save, then use “Check stock now” under Advanced in the Free gifts tab."
+                : `${state.gt.clusters.length} cluster${state.gt.clusters.length === 1 ? "" : "s"} and ${totalGiftTiers} tier${totalGiftTiers === 1 ? "" : "s"}, every gift a real product, stock checked ${stockView.t.replace("T", " ").slice(0, 16)} UTC.`,
       action:
-        state.gt.tiers.length === 0 || (handleOnlyGifts.length > 0 && unresolvedGifts.length === 0)
+        totalGiftTiers === 0 || (handleOnlyGifts.length > 0 && unresolvedGifts.length === 0)
           ? {
-              label: "Use this preset",
+              label: "Load the default clusters",
               onClick: usePresetNow,
               loading: defaultsFetcher.state !== "idle",
               disabled: isSaving,
@@ -1466,7 +1632,6 @@ export default function RewardsFeaturesPage() {
                   <GiftsTab
                     gt={state.gt}
                     setGt={setGt}
-                    presets={presets}
                     variantIndex={variantIndex}
                     registerVariant={registerVariant}
                     updateTier={updateGtTier}
@@ -1474,10 +1639,15 @@ export default function RewardsFeaturesPage() {
                     addTier={addGtTier}
                     updateSlots={updateSlots}
                     updateOption={updateOption}
+                    addCluster={addCluster}
+                    removeCluster={removeCluster}
+                    updateCluster={updateCluster}
+                    toggleClusterCountry={toggleClusterCountry}
+                    toggleClusterLocation={toggleClusterLocation}
                     setThresholdAmount={setThresholdAmount}
                     clearThreshold={clearThreshold}
-                    toggleWarehouse={toggleWarehouse}
-                    tierErrors={gtValidation.tierErrors}
+                    tierCountForCountry={tierCountForCountry}
+                    clusterErrors={gtValidationByCluster}
                     formErrors={gtValidation.formErrors}
                     thresholdErrors={thresholdErrors}
                     maxGiftLinesError={maxGiftLinesError}
@@ -1491,9 +1661,7 @@ export default function RewardsFeaturesPage() {
                     locations={locations}
                     reach={reachCaption(state.scopes.gift_tiers, markets)}
                     onEditMarkets={goToMarkets}
-                    giftPresetChoice={giftPresetChoice}
-                    setGiftPresetChoice={setGiftPresetChoice}
-                    onLoadPreset={(preset) => runIntent(defaultsFetcher, "load_defaults", { preset })}
+                    onLoadPreset={() => runIntent(defaultsFetcher, "load_defaults", {})}
                     presetLoading={defaultsFetcher.state !== "idle"}
                     presetNotes={defaultsResult?.errors ?? []}
                     onLoadSachets={() => runIntent(sachetsFetcher, "load_sachets")}
@@ -1501,7 +1669,27 @@ export default function RewardsFeaturesPage() {
                     sachetsErrors={sachetsResult?.errors ?? []}
                     onSuggestAmounts={() =>
                       runIntent(suggestFetcher, "suggest_thresholds", {
-                        eurAmounts: JSON.stringify(state.gt.tiers.map((t) => Number(t.amount) || 0)),
+                        // The UNSAVED ladders ride along so the suggestion
+                        // prices what the merchant is looking at.
+                        clusters: JSON.stringify(
+                          state.gt.clusters.map((cluster) => ({
+                            id: cluster.id,
+                            name: cluster.name,
+                            rest: cluster.rest,
+                            countries: cluster.countries,
+                            locations: cluster.locations,
+                            tiers: cluster.tiers.map((t) => ({
+                              amount: Number(t.amount) || 0,
+                              slots: t.slots.map((slot) =>
+                                slot.map((o) =>
+                                  o.kind === "samples"
+                                    ? { kind: "samples", variantId: "", handle: "", count: Number(o.count) || 1 }
+                                    : { kind: "variant", variantId: o.variantId, handle: o.handle, count: 1 },
+                                ),
+                              ),
+                            })),
+                          })),
+                        ),
                       })
                     }
                     suggestLoading={suggestFetcher.state !== "idle"}

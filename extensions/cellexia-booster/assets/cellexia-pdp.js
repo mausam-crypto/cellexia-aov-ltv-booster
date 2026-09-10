@@ -1756,6 +1756,7 @@
       var texts = deliveryTexts(result, dc);
       if (!texts) return; // missing strings: fail closed
       if (!deliveryAllowed()) return; // live/preview gate (v6.2 JS-built shell)
+      if (bbpEffective()) return; // v19: the proof block renders the date row
       var node = deliveryBuildNode(deliveryBuildFormat());
       if (!node) return;
       var grey = document.querySelector('.pdp__grey');
@@ -3429,6 +3430,14 @@
     // The az twin of the cart's featureOn(): server-computed live
     // effectiveness for real visitors, live-in-simulated-market ∪ draft
     // flags inside a verified preview session. No scope logic in JS.
+    //
+    // v19 replacement rule: the buy-box proof block draws its OWN ships-
+    // from line and trust rows in the merchant's CRO layout, so while it
+    // is effective these two az patterns are off for this page. Gating
+    // here (rather than at each mount) keeps azWillReplace/azTpl honest
+    // too — the classic widgets they suppress must stay visible and keep
+    // their beacons when the az twin is not going to paint.
+    if ((key === 'az_microcopy' || key === 'az_ships_from') && bbpEffective()) return false;
     if (PREVIEW) {
       return PREVIEW.live[key] === true || PREVIEW.flags[key] === true;
     }
@@ -3473,6 +3482,41 @@
       });
     }
     return str;
+  }
+
+  function azShopRate() {
+    // Twin of shopRate() in cellexia-cart.js: Shopify.currency.rate turns a
+    // shop-currency amount into the buyer's presentment currency. Anything
+    // missing or invalid means rate 1, never a guess.
+    var rate = 1;
+    try {
+      var r = Number(window.Shopify && window.Shopify.currency && window.Shopify.currency.rate);
+      if (r > 0) rate = r;
+    } catch (e) { /* noop */ }
+    return rate;
+  }
+
+  function azCurrency() {
+    try {
+      if (window.Shopify && window.Shopify.currency && window.Shopify.currency.active) {
+        return window.Shopify.currency.active;
+      }
+    } catch (e) { /* noop */ }
+    return (AZ_CFG && typeof AZ_CFG.currency === 'string' && AZ_CFG.currency) || 'EUR';
+  }
+
+  function azProductPriceCents() {
+    // The price of the variant the shopper is actually looking at, so the
+    // "add this and unlock it" line only fires when THIS choice really
+    // closes the gap. 0 when unknown, which downgrades the sentence rather
+    // than promising something wrong.
+    try {
+      var p = azProductData();
+      var vid = azCurrentVariantId();
+      var v = p && p.variants && vid ? p.variants[String(vid)] : null;
+      var price = v ? Number(v.price) : 0;
+      return price > 0 ? price : 0;
+    } catch (e) { return 0; }
   }
 
   function azMoney(cents) {
@@ -4835,10 +4879,15 @@
     '.cx-az-stock',
     '.stock-msg',
     '.cx-rw-pdp',
+    '.cx-rw-gift--line',
     '.pdp__options',
     '.pdp__actions--flex',
+    '.cx-rw-gift--card',
     '.cx-az-micro',
-    '.cx-pdp-badges'
+    '.cx-pdp-badges',
+    // v19: the proof block belongs at the BOTTOM of the card, under the
+    // quantity + Add-to-cart row, exactly as the design shows it.
+    '.cx-bbp'
   ];
 
   function azMountBuyBox() {
@@ -4951,7 +5000,11 @@
     leaf: ['1.5', '<path d="M16.8 3.2c.3 6.8-2.6 12.4-8.4 12.4-2.3 0-4.2-1.4-4.9-3.3C5 8 9.6 3.9 16.8 3.2Z"/><path d="M3.5 16.5C6 12.5 9.5 9.5 13 7.7"/>'],
     // v10 US state module: location pin on the "Deliver to" selector —
     // same entry rides the cellexia-cart.js icon subset.
-    pin: ['1.5', '<path d="M10 18.2S4.4 12.9 4.4 8.6a5.6 5.6 0 0 1 11.2 0c0 4.3-5.6 9.6-5.6 9.6Z"/><circle cx="10" cy="8.4" r="2.1"/>']
+    pin: ['1.5', '<path d="M10 18.2S4.4 12.9 4.4 8.6a5.6 5.6 0 0 1 11.2 0c0 4.3-5.6 9.6-5.6 9.6Z"/><circle cx="10" cy="8.4" r="2.1"/>'],
+    // v19 buy-box proof block: the parcel on the "Get it by" row. JS-only
+    // (the Liquid cx-icons snippet is at its byte budget and no Liquid
+    // block renders this one).
+    package: ['1.5', '<path d="M3 6.4 10 3l7 3.4v7.2L10 17l-7-3.4Z"/><path d="M3 6.4 10 9.9l7-3.5"/><path d="M10 9.9V17"/><path d="m6.5 4.7 7 3.4"/>']
   };
 
   function cxIcon(name, size) {
@@ -5400,7 +5453,22 @@
     fbt_caption: 'Buy all {{ count }} together, save at least {{ pct }}%',
     fbt_add_save: 'Add all {{ count }} & save {{ pct }}%',
     similar_caption: 'Add any of these, save {{ pct }}% on both',
-    fbt_add_save_both: 'Add both & save {{ pct }}%'
+    fbt_add_save_both: 'Add both & save {{ pct }}%',
+    // v18 free-gift product-page copy. azGtSentence picks the strongest that
+    // applies: "adding this unlocks it" is the one that moves basket size, so
+    // it wins whenever this product's price closes the gap.
+    //
+    // ENGLISH-ONLY FOR NOW, on purpose. Every locale file must carry the
+    // whole rewards group (the harness pins 24 keys in 18 files), and
+    // machine-translating three sentences into 18 languages would breach the
+    // standing rule that translated copy has to read natively. These three
+    // therefore live here as the documented RW_DEFAULTS fallback until they
+    // go through the curated-copy pass, exactly as ar.json's missing keys do.
+    pdp_gift_unlock: 'Add this and unlock a free {{ gift }}',
+    pdp_gift_away: "You're {{ amount }} away from a free {{ gift }}",
+    pdp_gift_spend: 'Spend {{ amount }} and get a free {{ gift }}',
+    sample_set: 'sample set',
+    gift_tag: 'free gift'
   };
 
   function azRwT(key, params) {
@@ -5551,6 +5619,224 @@
     } catch (e) { return 0; }
   }
 
+  // ---- v18 free-gift product-page surface ---------------------------------
+  // Three placements, one job: turn "there is a gift somewhere" into "you are
+  // €43 away from THIS gift". All three read the live cart, because a static
+  // advertisement is a poster and a cart-aware line is an AOV lever.
+
+  function azGtCfg() {
+    // The gift plan for THIS COUNTRY: {c: cluster slice, b: local amounts,
+    // p: {on, style}}. Inside a verified preview the token-verified
+    // preview-config wins, so a merchant sees their draft ladder here too.
+    if (PREVIEW && PREVIEW.rw && typeof PREVIEW.rw === 'object' && PREVIEW.rw.gt) {
+      return { c: PREVIEW.rw.gt, b: PREVIEW.rw.gb || null, p: { on: true, style: azGtStyle() } };
+    }
+    var gt = azGtIsland();
+    return gt && gt.c ? gt : null;
+  }
+
+  var azGtIslandCache;
+  function azGtIsland() {
+    // v18: the gift plan has its OWN island, exactly like the cart's
+    // #cx-rw-config. Keeping it out of the shared #cx-pdp-config means a
+    // Liquid problem in the gift tag can only break the gift tag, which is
+    // the lesson of the 2026-08-17 incident.
+    if (azGtIslandCache !== undefined) return azGtIslandCache;
+    azGtIslandCache = null;
+    try {
+      var node = document.getElementById('cx-gift-config');
+      if (node && node.textContent) {
+        var parsed = JSON.parse(node.textContent);
+        if (parsed && typeof parsed === 'object') azGtIslandCache = parsed;
+      }
+    } catch (e) { azGtIslandCache = null; }
+    return azGtIslandCache;
+  }
+
+  function azGtStyle() {
+    var gt = azGtIsland();
+    var style = gt && gt.p && typeof gt.p.style === 'string' ? gt.p.style : 'card';
+    return style === 'line' || style === 'ladder' ? style : 'card';
+  }
+
+  function azGtAmounts(cfg) {
+    // Per-tier thresholds in cents, in the currency the shopper is charged
+    // in. Same rule as the cart and the Function: the country's own amounts
+    // when they are already in that currency, else the cluster's EUR ladder
+    // converted at the shop rate.
+    var out = [];
+    if (!cfg || !cfg.c || !Array.isArray(cfg.c.a)) return out;
+    var own = cfg.b && Array.isArray(cfg.b.a) && cfg.b.c === azCurrency() ? cfg.b.a : null;
+    for (var i = 0; i < cfg.c.a.length; i++) {
+      var local = own ? Number(own[i]) : 0;
+      if (local > 0) { out.push(Math.round(local * 100)); continue; }
+      var eur = Number(cfg.c.a[i]) || 0;
+      out.push(eur > 0 ? Math.round(eur * 100 * azShopRate()) : 0);
+    }
+    return out;
+  }
+
+  function azGtSpendCents() {
+    // What the cart has spent towards a gift, from the theme's CartJS
+    // snapshot: pre-discount line prices, minus gift lines, the protection
+    // product and sachets. Mirrors the cart runtime's spend rule; a
+    // missing snapshot is an empty cart, never a guess.
+    try {
+      var items = window.CartJS && window.CartJS.cart && window.CartJS.cart.items;
+      if (!items || !items.length) return 0;
+      var sum = 0;
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (!it) continue;
+        if (it.handle === AZ_PROTECTION) continue;
+        if (it.properties && typeof it.properties === 'object' && it.properties._cellexia_gift) continue;
+        var price = it.original_line_price != null ? Number(it.original_line_price) : Number(it.line_price);
+        if (price > 0) sum += price;
+      }
+      return sum;
+    } catch (e) { return 0; }
+  }
+
+  function azGtPlan() {
+    // {tiers:[{cents, label, image}], nextIndex, gap, reachedIndex} for this
+    // country, or null when nothing is grantable here. A country whose
+    // cluster has no tier renders NOTHING rather than an empty shell.
+    var cfg = azGtCfg();
+    if (!cfg || !cfg.c) return null;
+    var amounts = azGtAmounts(cfg);
+    var slots = Array.isArray(cfg.c.t) ? cfg.c.t : [];
+    var tiers = [];
+    for (var i = 0; i < amounts.length; i++) {
+      if (!(amounts[i] > 0)) continue;
+      var first = slots[i] && slots[i][0] && slots[i][0][0] ? slots[i][0][0] : null;
+      tiers.push({
+        cents: amounts[i],
+        label: first && first.k === 's' ? azRwT('sample_set') : (first && first.h) || '',
+        vid: first && first.k === 'v' ? String(first.vid || '') : '',
+      });
+    }
+    if (!tiers.length) return null;
+    var spend = azGtSpendCents();
+    var reached = -1;
+    for (var t = 0; t < tiers.length; t++) if (tiers[t].cents <= spend) reached = t;
+    var next = reached + 1 < tiers.length ? reached + 1 : -1;
+    return {
+      tiers: tiers,
+      spend: spend,
+      reachedIndex: reached,
+      nextIndex: next,
+      gap: next >= 0 ? Math.max(0, tiers[next].cents - spend) : 0,
+    };
+  }
+
+  function azGtName(tier) {
+    // A readable gift name. The plan carries handles, not titles (titles are
+    // fetched lazily in the cart), so a handle is de-slugged rather than
+    // shown raw: "bamboo-beauty-towel" reads as "Bamboo beauty towel".
+    if (!tier || !tier.label) return azRwT('gift_tag') || 'free gift';
+    if (tier.label.indexOf('-') === -1) return tier.label;
+    var words = tier.label.split('-');
+    var out = words.join(' ');
+    return out.charAt(0).toUpperCase() + out.slice(1);
+  }
+
+  function azGtSentence(plan) {
+    // The three messages, strongest first. "Adding this crosses the tier" is
+    // the one that actually moves basket size, so it wins whenever this
+    // product's price closes the gap.
+    if (!plan || plan.nextIndex < 0) return '';
+    var tier = plan.tiers[plan.nextIndex];
+    var name = azGtName(tier);
+    var price = azProductPriceCents();
+    if (price > 0 && plan.gap > 0 && price >= plan.gap) {
+      return azRwT('pdp_gift_unlock', { gift: name });
+    }
+    if (plan.spend > 0 && plan.gap > 0) {
+      return azRwT('pdp_gift_away', { amount: azMoney(plan.gap), gift: name });
+    }
+    return azRwT('pdp_gift_spend', { amount: azMoney(tier.cents), gift: name });
+  }
+
+  function azBuildGiftSurface() {
+    // One node in the chosen style, or null. Every style hides itself when
+    // the country has no ladder, when nothing is left to unlock, or when the
+    // merchant switched the surface off.
+    var cfg = azGtCfg();
+    if (!cfg || !cfg.p || cfg.p.on === false) return null;
+    var plan = azGtPlan();
+    if (!plan || plan.nextIndex < 0) return null;
+    var style = (cfg.p && cfg.p.style) || 'card';
+    var text = azGtSentence(plan);
+    if (!text) return null;
+    if (style === 'line') {
+      var row = cxEl('p', 'cx-az-row cx-rw-gift cx-rw-gift--line', ['data-cx-feature', 'gift_tiers']);
+      row.textContent = text;
+      return row;
+    }
+    if (style === 'ladder') {
+      var strip = cxEl('div', 'cx-rw-gift cx-rw-gift--ladder', ['data-cx-feature', 'gift_tiers']);
+      for (var i = 0; i < plan.tiers.length; i++) {
+        var step = cxEl('span', 'cx-rw-gift__step');
+        if (i <= plan.reachedIndex) step.setAttribute('data-state', 'done');
+        else if (i === plan.nextIndex) step.setAttribute('data-state', 'next');
+        step.textContent = azMoney(plan.tiers[i].cents);
+        step.title = azGtName(plan.tiers[i]);
+        strip.appendChild(step);
+      }
+      var cap = cxEl('span', 'cx-rw-gift__cap');
+      cap.textContent = text;
+      strip.appendChild(cap);
+      return strip;
+    }
+    // card (default): the gift, a bar and the gap, BELOW the button so it
+    // can never push Add to cart further down the page.
+    var card = cxEl('div', 'cx-rw-gift cx-rw-gift--card', ['data-cx-feature', 'gift_tiers']);
+    var body = cxEl('div', 'cx-rw-gift__body');
+    var label = cxEl('p', 'cx-rw-gift__text');
+    label.textContent = text;
+    body.appendChild(label);
+    var track = cxEl('div', 'cx-rw-gift__track');
+    var fill = cxEl('div', 'cx-rw-gift__fill');
+    var target = plan.tiers[plan.nextIndex].cents;
+    var from = plan.reachedIndex >= 0 ? plan.tiers[plan.reachedIndex].cents : 0;
+    var span = target - from;
+    var pct = span > 0 ? Math.max(2, Math.min(100, Math.round(((plan.spend - from) / span) * 100))) : 2;
+    fill.style.width = pct + '%';
+    track.appendChild(fill);
+    body.appendChild(track);
+    card.appendChild(body);
+    return card;
+  }
+
+  function azMountGift() {
+    // line   -> inside the buy box, above Add to cart (AZ_BUYBOX_ORDER)
+    // card   -> after the Add-to-cart actions, so the button never moves
+    // ladder -> under the product title
+    try {
+      if (document.querySelector('.cx-rw-gift')) return; // idempotent
+      var node = azBuildGiftSurface();
+      if (!node) return;
+      var grey = document.querySelector('.pdp__grey');
+      if (!grey) return;
+      var style = node.className.indexOf('--line') !== -1
+        ? 'line'
+        : node.className.indexOf('--ladder') !== -1
+          ? 'ladder'
+          : 'card';
+      var anchor = null;
+      if (style === 'line') {
+        anchor = grey.querySelector('.stock-msg') || grey.querySelector('.pdp__actions--flex');
+      } else if (style === 'ladder') {
+        anchor = grey.querySelector('.pdp__price') || grey.querySelector('.stock-msg');
+      } else {
+        anchor = grey.querySelector('.pdp__actions--flex') || grey.querySelector('.stock-msg');
+      }
+      if (!anchor) return;
+      if (!insertAfter(node, anchor)) return;
+      track('gift_tiers');
+    } catch (e) { /* never break the theme */ }
+  }
+
   function azBuildRwPdp() {
     // p.cx-az-row.cx-rw-pdp — the quiet buy-box line. Generic copy quotes
     // the entry tier ("Add any second product, save 5% on both"); with
@@ -5672,10 +5958,399 @@
       azMountDeliveryLine();
       azMountMicrocopy();
       azMountRwPdp(); // v14 set-savings buy-box row
+      azMountGift(); // v18 free-gift surface (line / card / ladder)
       azMountFbt();
       azMountSimilar();
       azMountBuyBox();
       azBindVariantSync();
+    } catch (e) { /* never break the theme */ }
+  }
+
+  // ============================================ v19 BUY-BOX PROOF BLOCK
+  //
+  // ONE CRO-designed proof stack under the theme's Add-to-cart panel, in
+  // the merchant's exact layout: ships-from line, delivery date + delivery
+  // guarantee pill, an icon badge row, the money-back card, the star
+  // rating row, and a research/certification band below the panel.
+  //
+  // It owns NO duplicate data. Every fact comes from the feature that
+  // already owns it — the warehouse map (amazon.shipsFromByCountry), the
+  // delivery engine (deliveryConfig/Compute/Texts), the guarantee window
+  // (the "g" member), the rating (the "tp" member), the badge labels (the
+  // "badges" member's index-aligned "l" array) — whatever THOSE features'
+  // own flags say. pdp-booster.liquid widens their island-emission gates
+  // so the data is present with the block alone enabled; each legacy
+  // widget keeps its own live/draft gate, so none of them paints.
+  //
+  // REPLACEMENT RULE (the az_microcopy precedent): while the block is
+  // effective it owns the buy-box proof area — trust_badges, guarantee,
+  // trustpilot, the PDP delivery-estimate widget, az_microcopy and the
+  // az_ships_from line are suppressed, beacons included (a widget never
+  // painted is never counted). The dispatch countdown is a different
+  // message and stays.
+  //
+  // Every row fails closed: no resolvable delivery date, no inflected
+  // ships-from country phrase, no string, no anchor -> that row (or the
+  // whole block) simply does not render. It never shows a half-promise.
+
+  var BBP_DATE_SENTINEL = '@@BBPDATE@@';
+  var BBP_COUNTRY_SENTINEL = '@@C@@';
+
+  function bbpData() {
+    return pdpMember('bbp');
+  }
+
+  function bbpConf(d) {
+    // The whole buyBoxProof settings section, emitted as "c". A metafield
+    // written before this feature existed carries null -> fail closed.
+    return d && d.c && typeof d.c === 'object' ? d.c : null;
+  }
+
+  function bbpAllowed(d) {
+    // The house live/draft gate (pdpMemberAllowed), so the Preview Center
+    // shows the block exactly as it will go live.
+    return !!d && pdpMemberAllowed(d, 'buy_box_proof');
+  }
+
+  function bbpEffective() {
+    // True when the block will actually paint on THIS page — the gate the
+    // legacy widgets ask before deciding to render or beacon.
+    try {
+      var d = bbpData();
+      if (!d || !bbpAllowed(d)) return false;
+      return bbpConf(d) !== null;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function bbpLocale() {
+    // Page language for Intl + the ships-from grammar table. The az island
+    // is authoritative when its embed is on the page; otherwise the PDP
+    // island's delivery member carries request.locale.iso_code, and the
+    // theme's <html lang> is the last resort.
+    try {
+      var az = azPageLocale();
+      if (az) return az;
+    } catch (e) { /* az embed absent */ }
+    if (cfg && cfg.delivery && typeof cfg.delivery.pageLocale === 'string' && cfg.delivery.pageLocale) {
+      return cfg.delivery.pageLocale;
+    }
+    try {
+      var lang = document.documentElement.getAttribute('lang');
+      if (typeof lang === 'string' && lang) return lang;
+    } catch (e2) { /* noop */ }
+    return '';
+  }
+
+  function bbpShipsPhrase(code) {
+    // The country phrase INFLECTED the way this language's ships_from
+    // sentence needs it ("la Suisse", "der Schweiz", "ze Szwajcarii"),
+    // read from the same generated AZ_SHIPS_FORMS table az_ships_from
+    // uses — one source of truth for ships-from grammar. No form (a
+    // warehouse outside the table, or an unsupported page language) means
+    // NO row: a bare nominative would be ungrammatical in the inflecting
+    // languages, and a wrong sentence is worse than no sentence.
+    var wh = typeof code === 'string' ? code.toUpperCase() : '';
+    if (!/^[A-Z]{2}$/.test(wh)) return '';
+    var loc = bbpLocale();
+    if (!loc) return '';
+    var table = AZ_SHIPS_FORMS[loc] || AZ_SHIPS_FORMS[String(loc).split('-')[0]];
+    if (!table) return '';
+    var form = table[wh];
+    return typeof form === 'string' ? form : '';
+  }
+
+  function bbpSplitRow(cls, iconName, iconSize, sentence, sentinel, strongText) {
+    // One "<icon> text <strong>value</strong> text" row. The sentence is
+    // the translated string with a sentinel where the value goes, so each
+    // language keeps its own word order (and RTL keeps its own direction).
+    // Nothing here touches innerHTML.
+    if (!sentence || !strongText) return null;
+    var parts = sentence.split(sentinel);
+    if (parts.length !== 2) return null;
+    var row = cxEl('p', cls);
+    row.appendChild(cxIcon(iconName, iconSize));
+    var text = cxEl('span', 'cx-bbp__text');
+    if (parts[0]) text.appendChild(document.createTextNode(parts[0]));
+    var strong = document.createElement('strong');
+    strong.textContent = strongText;
+    text.appendChild(strong);
+    if (parts[1]) text.appendChild(document.createTextNode(parts[1]));
+    row.appendChild(text);
+    return row;
+  }
+
+  function bbpShipsRow(d, conf) {
+    if (conf.showShipsFrom === false) return null;
+    var phrase = bbpShipsPhrase(typeof d.sf === 'string' ? d.sf : '');
+    if (!phrase) return null;
+    return bbpSplitRow('cx-bbp__row cx-bbp__ships', 'truck', 16, bottleStr(d, 'sfs'), BBP_COUNTRY_SENTINEL, phrase);
+  }
+
+  function bbpDeliveryRow(d, conf) {
+    // "Get it by <date>" + the "Delivery guarantee" pill. The date comes
+    // from the shared engine under its own fail-closed rules; d.dl is the
+    // Liquid-side verdict (country override hidden / product excluded from
+    // delivery in this market -> no row, ever).
+    if (conf.showDelivery === false || d.dl !== true) return null;
+    var dc = deliveryConfig();
+    if (!dc) return null;
+    var result = deliveryCompute(dc);
+    if (!result) return null;
+    var maxLabel = deliveryFormatDate(result.max, dc.pageLocale);
+    if (!maxLabel) return null;
+    var sentence = deliveryT('delivery.line', { date: BBP_DATE_SENTINEL });
+    var row = bbpSplitRow('cx-bbp__row cx-bbp__deliver', 'package', 16, sentence, BBP_DATE_SENTINEL, maxLabel);
+    if (!row) return null;
+    if (conf.showDeliveryBadge !== false) {
+      var badgeText = deliveryT('delivery.badge');
+      if (badgeText) {
+        var pill = cxEl('span', 'cx-bbp__pill');
+        pill.appendChild(cxIcon('shield-check', 13));
+        var label = cxEl('span', 'cx-bbp__pill-label');
+        label.textContent = badgeText;
+        pill.appendChild(label);
+        row.appendChild(pill);
+      }
+    }
+    return row;
+  }
+
+  function bbpBadgeRow(conf) {
+    // The icon strip, built from the merchant's key order over the SAME
+    // catalog + index-aligned label array trust_badges uses.
+    var keys = conf.badges;
+    if (typeof keys === 'string') keys = keys === '' ? [] : [keys];
+    if (!keys || !keys.length) return null;
+    var badges = pdpMember('badges');
+    if (!badges) return null;
+    var catalog = ['secure_checkout', 'free_shipping_over', 'money_back', 'dermatologist_tested', 'cruelty_free', 'clinically_proven', 'ssl_encrypted', 'easy_returns'];
+    var labels = badges.l;
+    var ul = cxEl('ul', 'cx-bbp__badges list-reset');
+    var painted = 0;
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i] == null ? '' : String(keys[i]).replace(/^\s+|\s+$/g, '');
+      if (key === 'free_shipping_over' && badges.fs !== true) continue; // no safe amount: skip
+      var idx = -1;
+      for (var c = 0; c < catalog.length; c++) { if (catalog[c] === key) { idx = c; break; } }
+      if (idx === -1) continue;
+      var text = labels && typeof labels[idx] === 'string' ? decodeEntities(labels[idx]) : '';
+      if (!text) continue;
+      var li = cxEl('li', 'cx-bbp__badge');
+      li.appendChild(badgeIconNode(key));
+      var span = cxEl('span', 'cx-bbp__badge-label');
+      span.textContent = text;
+      li.appendChild(span);
+      ul.appendChild(li);
+      painted++;
+    }
+    return painted > 0 ? ul : null;
+  }
+
+  function bbpGuaranteeCard(conf) {
+    // The money-back card. Its window is guarantee.days, carried by the
+    // shared "g" member — the block never stores a second copy.
+    if (conf.showGuarantee === false) return null;
+    var g = pdpMember('g');
+    var title = g ? bottleStr(g, 't') : '';
+    if (!title) return null;
+    var card = cxEl('div', 'cx-bbp__guarantee');
+    var icon = cxEl('span', 'cx-bbp__guarantee-icon', ['aria-hidden', 'true']);
+    icon.appendChild(cxIcon('shield-check', 22));
+    card.appendChild(icon);
+    var h = cxEl('p', 'cx-bbp__guarantee-title');
+    h.textContent = title;
+    card.appendChild(h);
+    return card;
+  }
+
+  function bbpRatingRow(conf) {
+    // Stars + score + review count + the Trustpilot wordmark, all from the
+    // shared "tp" member (rating, count, profile URL, review-platform
+    // strings) so there is exactly one place to change the numbers.
+    if (conf.showRating === false) return null;
+    var tp = pdpMember('tp');
+    if (!tp) return null;
+    var score = bottleStr(tp, 'label');
+    if (!score) return null;
+    var row = cxEl('div', 'cx-bbp__rating');
+    row.appendChild(cxStarsNode(tp.r, 'bbp', 17, bottleStr(tp, 'aria')));
+    var scoreEl = cxEl('span', 'cx-bbp__score');
+    scoreEl.textContent = score;
+    row.appendChild(scoreEl);
+    var count = bottleStr(tp, 'cnt');
+    if (count) {
+      var countEl = cxEl('span', 'cx-bbp__count');
+      countEl.textContent = count;
+      row.appendChild(countEl);
+    }
+    var brand = cxEl('span', 'cx-bbp__brand');
+    brand.appendChild(cxStarIcon(15));
+    var brandName = document.createElement('span');
+    brandName.textContent = 'Trustpilot';
+    brand.appendChild(brandName);
+    if (tp.link !== false && typeof tp.url === 'string' && /\S/.test(tp.url)) {
+      var a = cxEl('a', 'cx-bbp__brand-link no-dec', ['href', cxRawStr(tp, 'url'), 'target', '_blank', 'rel', 'noopener nofollow', 'aria-label', bottleStr(tp, 'view')]);
+      a.appendChild(brand);
+      row.appendChild(a);
+    } else {
+      row.appendChild(brand);
+    }
+    return row;
+  }
+
+  function bbpSealNode(conf, note) {
+    // The independent-certification seal: the merchant's own file when
+    // seal.imageUrl is set (a sanitized https URL — never innerHTML), else
+    // the built-in DermaCert artwork below. The seal is a MARK, so its own
+    // wording stays as issued in every language (the Trustpilot wordmark
+    // precedent); only the note beside it is translated.
+    var seal = conf.seal && typeof conf.seal === 'object' ? conf.seal : null;
+    if (!seal || seal.enabled === false) return null;
+    var wrap = cxEl('div', 'cx-bbp-research__seal');
+    var url = cxRawStr(seal, 'imageUrl');
+    if (url) {
+      var img = cxEl('img', 'cx-bbp-research__seal-img', ['src', url, 'alt', note || '', 'loading', 'lazy', 'decoding', 'async', 'width', '96', 'height', '96']);
+      wrap.appendChild(img);
+    } else {
+      wrap.appendChild(bbpBuiltInSeal());
+    }
+    if (note) {
+      var p = cxEl('p', 'cx-bbp-research__note');
+      p.textContent = note;
+      wrap.appendChild(p);
+    }
+    return wrap;
+  }
+
+  function bbpBuiltInSeal() {
+    // Static markup only — no config value ever reaches this innerHTML
+    // (the cxIcon / cxStarIcon invariant).
+    var wrap = document.createElement('div');
+    wrap.innerHTML = '<svg viewBox="0 0 200 200" width="96" height="96" role="presentation" focusable="false">' +
+      '<defs><clipPath id="cxSealClip"><circle cx="100" cy="100" r="90"/></clipPath></defs>' +
+      '<circle cx="100" cy="100" r="97" fill="#fff"/>' +
+      '<circle cx="100" cy="100" r="94" fill="none" stroke="#2f6b5e" stroke-width="7"/>' +
+      '<circle cx="100" cy="100" r="86" fill="none" stroke="#c8a44d" stroke-width="2"/>' +
+      '<g clip-path="url(#cxSealClip)"><rect x="0" y="71" width="200" height="29" fill="#2f6b5e"/></g>' +
+      '<text x="100" y="61" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="19" font-weight="700" fill="#1f3243">DERMACERT<tspan font-size="9" dy="-7">\u00ae</tspan></text>' +
+      '<text x="100" y="93" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="23" font-weight="700" fill="#fff">EXCELLENT</text>' +
+      '<g fill="#d9a93f"><path d="M42.0 111.5 L44.6 118.4 L52.0 118.8 L46.2 123.4 L48.2 130.5 L42.0 126.4 L35.8 130.5 L37.8 123.4 L32.0 118.8 L39.4 118.4 Z"/><path d="M71.0 111.5 L73.6 118.4 L81.0 118.8 L75.2 123.4 L77.2 130.5 L71.0 126.4 L64.8 130.5 L66.8 123.4 L61.0 118.8 L68.4 118.4 Z"/><path d="M100.0 111.5 L102.6 118.4 L110.0 118.8 L104.2 123.4 L106.2 130.5 L100.0 126.4 L93.8 130.5 L95.8 123.4 L90.0 118.8 L97.4 118.4 Z"/><path d="M129.0 111.5 L131.6 118.4 L139.0 118.8 L133.2 123.4 L135.2 130.5 L129.0 126.4 L122.8 130.5 L124.8 123.4 L119.0 118.8 L126.4 118.4 Z"/><path d="M158.0 111.5 L160.6 118.4 L168.0 118.8 L162.2 123.4 L164.2 130.5 L158.0 126.4 L151.8 130.5 L153.8 123.4 L148.0 118.8 L155.4 118.4 Z"/></g>' +
+      '<path d="M30 145h13M157 145h13" stroke="#1f3243" stroke-width="1.5" stroke-linecap="round"/>' +
+      '<text x="100" y="149" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" letter-spacing="0.3" fill="#1f3243">CLINICALLY TESTED</text>' +
+      '<text x="100" y="162" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" letter-spacing="0.3" fill="#1f3243">DERMATOLOGICALLY</text>' +
+      '<text x="100" y="173" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" letter-spacing="0.3" fill="#1f3243">VERIFIED</text>' +
+      '<path d="M72 183h14M114 183h14" stroke="#2f6b5e" stroke-width="1.3" stroke-linecap="round"/>' +
+      '<path d="M105 177c.5 5-2 9.2-6.2 9.2-1.7 0-3.1-1-3.7-2.4 1.1-3.2 4.4-6.2 9.9-6.8Z" fill="none" stroke="#2f6b5e" stroke-width="1.5" stroke-linejoin="round"/>' +
+      '</svg>';
+    // The class rides the <svg> ITSELF (the wrapper div is thrown away):
+    // an SVG with only a viewBox has no intrinsic size, so without the
+    // styled class it collapses inside the flex row.
+    var svg = wrap.firstChild;
+    if (svg && svg.setAttribute) {
+      svg.setAttribute('class', 'cx-bbp-research__seal-art');
+      svg.setAttribute('aria-hidden', 'true');
+    }
+    return svg;
+  }
+
+  function bbpResearchNode(d, conf) {
+    // "Based on published research from" + the institution wordmarks (or
+    // their uploaded logos) + the seal. Institution names are merchant
+    // free text and stay untranslated (proper nouns — the US_STATE_NAMES
+    // precedent); only the eyebrow and the seal note are locale strings.
+    var research = conf.research && typeof conf.research === 'object' ? conf.research : null;
+    var items = research && research.enabled !== false && Object.prototype.toString.call(research.institutions) === '[object Array]'
+      ? research.institutions
+      : [];
+    var eyebrowText = bottleStr(d, 'rs');
+    var seal = bbpSealNode(conf, bottleStr(d, 'sl'));
+    var list = null;
+    var painted = 0;
+    // Uploaded logos are compact enough to sit in ONE row with the design's
+    // vertical rules; text wordmarks are not, so they stack instead of
+    // wrapping mid-rule. The layout follows what the merchant actually
+    // supplied rather than a width guess.
+    var allImages = true;
+    if (items.length && eyebrowText) {
+      list = cxEl('ul', 'cx-bbp-research__logos list-reset');
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (!item || typeof item !== 'object') continue;
+        var name = cxRawStr(item, 'name');
+        if (!name) continue;
+        var li = cxEl('li', 'cx-bbp-research__logo');
+        var url = cxRawStr(item, 'imageUrl');
+        if (url) {
+          li.appendChild(cxEl('img', 'cx-bbp-research__logo-img', ['src', url, 'alt', name, 'loading', 'lazy', 'decoding', 'async']));
+        } else {
+          allImages = false;
+          var span = cxEl('span', 'cx-bbp-research__logo-name');
+          span.textContent = name;
+          li.appendChild(span);
+        }
+        list.appendChild(li);
+        painted++;
+      }
+    }
+    if (!painted && !seal) return null;
+    var root = cxEl('div', 'cx-bbp-research', ['data-cx-feature', 'buy_box_proof']);
+    if (painted) {
+      var col = cxEl('div', 'cx-bbp-research__col');
+      var eyebrow = cxEl('p', 'cx-bbp-research__eyebrow');
+      eyebrow.textContent = eyebrowText;
+      col.appendChild(eyebrow);
+      if (allImages) list.className = 'cx-bbp-research__logos cx-bbp-research__logos--row list-reset';
+      col.appendChild(list);
+      root.appendChild(col);
+    }
+    if (seal) root.appendChild(seal);
+    return root;
+  }
+
+  function bbpBuildRows(d, conf) {
+    var root = cxEl('div', 'cx-bbp', ['data-cx-feature', 'buy_box_proof']);
+    var painted = 0;
+    var pieces = [
+      bbpShipsRow(d, conf),
+      bbpDeliveryRow(d, conf),
+      bbpBadgeRow(conf),
+      bbpGuaranteeCard(conf),
+      bbpRatingRow(conf)
+    ];
+    for (var i = 0; i < pieces.length; i++) {
+      if (pieces[i]) { root.appendChild(pieces[i]); painted++; }
+    }
+    return painted > 0 ? root : null;
+  }
+
+  function mountBbp() {
+    // Rows inside the theme's grey buy panel (right after .stock-msg, the
+    // documented trust-badge anchor); the research band directly AFTER
+    // that panel so it reads as its own card, exactly like the design.
+    // One impression beacon for the whole block, however many pieces it
+    // painted. Graceful no-op when an anchor is missing.
+    try {
+      if (document.querySelector('.cx-bbp')) return; // idempotent
+      var d = bbpData();
+      if (!d || !bbpAllowed(d)) return;
+      var conf = bbpConf(d);
+      if (!conf) return;
+      var grey = document.querySelector('.pdp__grey');
+      if (!grey) return;
+      // Chain after the dispatch countdown when that one painted, so the
+      // stock-message rhythm stays: stock line, countdown, proof block.
+      var anchor = grey.querySelector('.cx-dispatch--pdp') ||
+        grey.querySelector('.stock-msg') ||
+        grey.querySelector('.pdp__actions--flex');
+      if (!anchor) return;
+      var painted = false;
+      var rows = bbpBuildRows(d, conf);
+      if (rows && insertAfter(rows, anchor)) painted = true;
+      var research = bbpResearchNode(d, conf);
+      if (research && insertAfter(research, grey)) painted = true;
+      if (painted) track('buy_box_proof');
     } catch (e) { /* never break the theme */ }
   }
 
@@ -5695,7 +6370,10 @@
         grey.setAttribute('data-cx-pdp', '1'); // idempotent
 
         // --- badges + guarantee + trustpilot, chained after .stock-msg ---
-        var anchor = grey.querySelector('.stock-msg') || grey.querySelector('.pdp__actions--flex');
+        // v19: skipped wholesale while the buy-box proof block is
+        // effective — it renders those three pieces itself, in the
+        // merchant's layout. No node, no beacon (impression honesty).
+        var anchor = bbpEffective() ? null : (grey.querySelector('.stock-msg') || grey.querySelector('.pdp__actions--flex'));
         if (anchor) {
           var badges = badgesTplNode();
           if (badges && insertAfter(badges, anchor)) {
@@ -5731,6 +6409,10 @@
 
       // --- delivery estimate (v5.9), stacked right after the countdown ---
       mountDelivery();
+
+      // --- v19 buy-box proof block, after the countdown/delivery pair so
+      // it sits under the whole stock-message rhythm ---
+      mountBbp();
 
       // --- SPEC v3 proof stack (has its own anchors + fallbacks) ---
       buildProofStack();

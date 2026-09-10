@@ -45,7 +45,9 @@
     "cruelty_free": "Não testado em animais",
     "clinically_proven": "Comprovado clinicamente",
     "ssl_encrypted": "Pagamento com encriptação SSL",
-    "easy_returns": "Devoluções fáceis"
+    "easy_returns": "Devoluções fáceis",
+    "research": "Com base em investigação publicada por",
+    "seal": "Testes independentes. Tolerância cutânea comprovada."
   },
   "guarantee": {
     "title": "Garantia de reembolso de {{ days }} dias",

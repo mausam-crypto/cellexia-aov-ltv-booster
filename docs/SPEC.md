@@ -501,6 +501,14 @@ trustpilot, guarantee, clinical_results, checkout_upsell, checkout_protection, c
 type ∈ `impression, click, upgrade, subscribe, add_to_cart, protect_on, protect_off, conversion`
 (`app/services/analytics.server.ts` whitelists these.)
 
+## v19 buy-box proof block
+
+`buy_box_proof` — the merchant's CRO proof stack under the Add-to-cart panel
+(ships-from, delivery date + guarantee pill, icon strip, money-back card,
+rating row, research + certification band). It borrows every fact from the
+feature that already owns it and SUPPRESSES the widgets it would duplicate
+in the buy box. Full contract: `docs/SPEC-v19-buy-box-proof.md`.
+
 ## Conventions
 
 - TypeScript strict; no `any` unless unavoidable. Remix v2 flat routes.

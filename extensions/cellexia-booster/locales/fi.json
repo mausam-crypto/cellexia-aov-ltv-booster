@@ -45,7 +45,9 @@
     "cruelty_free": "Ei testattu eläimillä",
     "clinically_proven": "Kliinisesti todistettu",
     "ssl_encrypted": "SSL-salattu maksu",
-    "easy_returns": "Helppo palautus"
+    "easy_returns": "Helppo palautus",
+    "research": "Perustuu julkaistuihin tutkimuksiin:",
+    "seal": "Riippumattomat testit. Todistettu ihosiedettävyys."
   },
   "guarantee": {
     "title": "{{ days }} päivän rahat takaisin -takuu",

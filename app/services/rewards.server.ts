@@ -1,10 +1,18 @@
 import prisma from "../db.server";
-import { saveSettings, type BoosterSettings } from "../models/settings.server";
+import {
+  saveSettings,
+  roundThreshold,
+  toCountryCode,
+  clusterForCountry,
+  REWARDS_CAPS,
+  type BoosterSettings,
+} from "../models/settings.server";
+import { buildGiftPlan } from "./gift-plan.server";
 import type { MarketSummary } from "./markets.server";
 import { listMarkets } from "./markets.server";
 import {
   syncSettingsToMetafields,
-  writeGiftStockMetafield,
+  writeGiftPlanMetafield,
 } from "./metafields.server";
 
 /**
@@ -87,8 +95,8 @@ export interface GiftStockEntry {
 export interface GiftStockState {
   /** ISO timestamp of the last refresh ("" = never) */
   t: string;
-  /** market handle -> numeric variantId -> {avail, paused} */
-  byMarket: Record<string, Record<string, GiftStockEntry>>;
+  /** v18: cluster id -> numeric variantId -> {avail, paused} */
+  byCluster: Record<string, Record<string, GiftStockEntry>>;
   /** numeric inventoryItemId -> numeric variantId (webhook membership test) */
   items: Record<string, string>;
 }
@@ -113,7 +121,7 @@ function emptyNodes(): RewardsNodes {
 }
 
 function emptyGiftStock(): GiftStockState {
-  return { t: "", byMarket: {}, items: {} };
+  return { t: "", byCluster: {}, items: {} };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -172,8 +180,8 @@ function parseGiftStock(raw: string): GiftStockState {
     const parsed: unknown = JSON.parse(raw || "{}");
     if (!isRecord(parsed)) return out;
     if (typeof parsed.t === "string") out.t = parsed.t;
-    if (isRecord(parsed.byMarket)) {
-      for (const [market, entries] of Object.entries(parsed.byMarket)) {
+    if (isRecord(parsed.byCluster)) {
+      for (const [cluster, entries] of Object.entries(parsed.byCluster)) {
         if (!isRecord(entries)) continue;
         const clean: Record<string, GiftStockEntry> = {};
         for (const [vid, entry] of Object.entries(entries)) {
@@ -185,7 +193,7 @@ function parseGiftStock(raw: string): GiftStockState {
             clean[vid] = { avail: entry.avail, paused: entry.paused };
           }
         }
-        out.byMarket[market] = clean;
+        out.byCluster[cluster] = clean;
       }
     }
     if (isRecord(parsed.items)) {
@@ -266,17 +274,18 @@ export async function saveRewardsState(
   return getRewardsState(shop);
 }
 
-/** The paused-set projection Liquid/the storefront read (SPEC §2.3). */
-export function pausedByMarket(
+/** v18: the paused-set projection, keyed by CLUSTER id, that the gift plan
+ *  metafield carries and the storefront reads for its own country. */
+export function pausedByCluster(
   giftStock: GiftStockState,
 ): Record<string, string[]> {
   const out: Record<string, string[]> = {};
-  for (const [market, entries] of Object.entries(giftStock.byMarket)) {
+  for (const [cluster, entries] of Object.entries(giftStock.byCluster)) {
     const paused = Object.entries(entries)
       .filter(([, e]) => e.paused)
       .map(([vid]) => vid)
       .sort();
-    if (paused.length > 0) out[market] = paused;
+    if (paused.length > 0) out[cluster] = paused;
   }
   return out;
 }
@@ -995,7 +1004,7 @@ export async function detectStoreCodes(
 }
 
 // ---------------------------------------------------------------------------
-// Suggested per-market gift amounts (pricing-aware)
+// v18: suggested per-COUNTRY gift amounts, scaled to local price
 // ---------------------------------------------------------------------------
 
 const REFERENCE_PRODUCTS_QUERY = `#graphql
@@ -1012,23 +1021,15 @@ const REFERENCE_PRODUCTS_QUERY = `#graphql
   }
 `;
 
-const MARKET_FIRST_REGION_QUERY = `#graphql
-  query cellexiaMarketFirstRegion {
-    markets(first: 50) {
-      nodes {
-        handle
-        regions(first: 1) { nodes { ... on MarketRegionCountry { code } } }
-      }
-    }
-  }
-`;
-
-/** Markets priced in several currencies — EUR defaults stay unchanged. */
-const MULTI_CURRENCY_MARKETS = new Set(["eu", "rest-of-world"]);
 const REFERENCE_HANDLE = "jawline-contour-tightening-cream";
 const PROTECTION_HANDLE = "cellexia-order-protection";
+/** How many products the ratio is sampled from (median wins). See below. */
+const REFERENCE_SAMPLE = 3;
+/** Countries aliased into one contextualPricing query. */
+const CONTEXTUAL_BATCH = 40;
 
-/** ≥1000 → nearest 10; ≥100 → nearest 5; else nearest 1 (SPEC §3). */
+/** ≥1000 → nearest 10; ≥100 → nearest 5; else nearest 1. Kept for the
+ *  free-shipping suggester, which has its own expectations. */
 export function niceRound(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
   if (value >= 1000) return Math.round(value / 10) * 10;
@@ -1036,25 +1037,83 @@ export function niceRound(value: number): number {
   return Math.round(value);
 }
 
+/** The median of a non-empty numeric list. */
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+export interface CountryThresholdSuggestion {
+  amounts: number[];
+  currencyCode: string;
+  /** localPrice / basePrice. NOT a price premium: it bundles the exchange
+   *  rate with the market's own price-list adjustment, and is only ever the
+   *  right multiplier because the threshold is denominated in the same
+   *  currency as the price it came from. Surfaced so the admin can show
+   *  where a surprising number came from. */
+  ratio: number;
+  /** The cluster whose ladder this country scales. */
+  clusterId: string;
+}
+
+/**
+ * Per-country gift amounts, scaled by that country's own price level.
+ *
+ * Each country's EUR ladder comes from ITS cluster, then every amount is
+ * multiplied by `localPrice / basePrice` and rounded. Requiring the same
+ * number of jars everywhere is the point: a €150 tier on a €57 product is
+ * about 2.6 units, and a country paying 20 % more should reach its gift on
+ * the same basket, not on 20 % fewer products.
+ *
+ * Three things this fixes versus the v14 per-market version:
+ *
+ *  1. It no longer skips countries whose currency equals the shop currency.
+ *     Finland carries an explicit +15 % price-list adjustment in EUR and was
+ *     silently keeping the flat EUR ladder, handing out gifts materially
+ *     cheaper than intended. Same for the euro-denominated Rest Of World
+ *     countries at +20 %.
+ *  2. It no longer skips the multi-currency markets (`eu`, `rest-of-world`),
+ *     which is where most of the non-European countries actually live.
+ *  3. It resolves per COUNTRY, which is what clusters are keyed by anyway.
+ *
+ * The ratio is the MEDIAN over up to three reference products, because a
+ * market can override individual products with fixed prices (Ireland has 27,
+ * the UK 9) and a single sampled variant would then swing a whole country's
+ * ladder.
+ */
 export async function suggestGiftThresholds(
   admin: AdminGraphqlClient,
   settings: BoosterSettings,
-  markets: MarketSummary[],
-): Promise<RewardsResult<Record<string, { amounts: number[]; currencyCode: string }>>> {
+  countries: string[],
+): Promise<RewardsResult<Record<string, CountryThresholdSuggestion>>> {
   const errors: string[] = [];
-  const eur = settings.rewards.giftTiers.tiers.map((t) => t.amount);
   const gt = settings.rewards.giftTiers;
+  const out: Record<string, CountryThresholdSuggestion> = {};
+
+  const wanted = [...new Set(countries.map((c) => toCountryCode(c)).filter(Boolean))].slice(
+    0,
+    REWARDS_CAPS.thresholdCountries,
+  );
+  if (wanted.length === 0) {
+    return { ok: true, errors, summary: "No countries to price.", data: out };
+  }
+
+  // Reference products: active, not a sachet, not a gift, not the protection
+  // product. The jawline cream is preferred (it is the store's hero SKU and
+  // exists in every market), then any other product with a full ladder.
   const giftHandles = new Set<string>();
-  for (const tier of gt.tiers) {
-    for (const slot of tier.slots) {
-      for (const option of slot) if (option.handle) giftHandles.add(option.handle);
+  for (const cluster of gt.clusters) {
+    for (const tier of cluster.tiers) {
+      for (const slot of tier.slots) {
+        for (const option of slot) if (option.handle) giftHandles.add(option.handle);
+      }
     }
   }
   for (const entry of gt.samplePool) giftHandles.add(entry.handle);
 
   let shopCurrency = "";
-  let referenceVariantId = "";
-  let basePrice = 0;
+  const references: { id: string; price: number }[] = [];
   try {
     const json = await gql<{
       data?: {
@@ -1074,76 +1133,40 @@ export async function suggestGiftThresholds(
       (p) =>
         !(p.tags ?? []).includes(SACHET_TAG) &&
         !giftHandles.has(p.handle) &&
-        p.handle !== PROTECTION_HANDLE,
+        p.handle !== PROTECTION_HANDLE &&
+        (p.variants?.nodes?.length ?? 0) > 0,
     );
-    const preferred = products.find((p) => p.handle === REFERENCE_HANDLE);
-    const reference =
-      (preferred && (preferred.variants?.nodes?.length ?? 0) >= 3 ? preferred : null) ??
-      products.find((p) => (p.variants?.nodes?.length ?? 0) >= 3) ??
-      preferred ??
-      products[0];
-    const variant = reference?.variants?.nodes?.[0];
-    if (variant) {
-      referenceVariantId = variant.id;
-      basePrice = parseFloat(variant.price) || 0;
+    const ordered = [
+      ...products.filter((p) => p.handle === REFERENCE_HANDLE),
+      ...products.filter((p) => p.handle !== REFERENCE_HANDLE),
+    ];
+    for (const product of ordered) {
+      const variant = product.variants?.nodes?.[0];
+      const price = parseFloat(variant?.price ?? "");
+      if (!variant || !(price > 0)) continue;
+      references.push({ id: variant.id, price });
+      if (references.length >= REFERENCE_SAMPLE) break;
     }
   } catch (error) {
-    errors.push(`Could not read a reference product: ${errorMessage(error)}`);
+    errors.push(`Could not read reference products: ${errorMessage(error)}`);
   }
 
-  const out: Record<string, { amounts: number[]; currencyCode: string }> = {};
-  const enabled = markets.filter((m) => m.enabled);
-  const needsPricing = enabled.filter(
-    (m) =>
-      !MULTI_CURRENCY_MARKETS.has(m.handle) &&
-      m.currencyCode &&
-      m.currencyCode !== shopCurrency,
-  );
-  for (const m of enabled) {
-    if (!needsPricing.includes(m)) {
-      out[m.handle] = { amounts: [...eur], currencyCode: shopCurrency || m.currencyCode || "EUR" };
-    }
+  if (references.length === 0) {
+    errors.push("No reference product with a price was found, so no amounts could be suggested.");
+    return { ok: false, errors, summary: "Nothing suggested.", data: out };
   }
 
-  if (needsPricing.length > 0 && referenceVariantId && basePrice > 0) {
-    // First region country per market (one uncached query — the admin
-    // button is rare; marketCountryMap's per-shop cache needs a shop key).
-    let countryOf = new Map<string, string>();
-    try {
-      const json = await gql<{
-        data?: {
-          markets?: {
-            nodes?: {
-              handle: string;
-              regions?: { nodes?: ({ code?: string } | null)[] } | null;
-            }[];
-          };
-        };
-      }>(admin, MARKET_FIRST_REGION_QUERY);
-      for (const m of json.data?.markets?.nodes ?? []) {
-        const code = m.regions?.nodes?.[0]?.code;
-        if (code) countryOf.set(m.handle, code);
-      }
-    } catch (error) {
-      errors.push(`Could not read market regions: ${errorMessage(error)}`);
-      countryOf = new Map();
-    }
-    const aliases: string[] = [];
-    const aliasMarket: Record<string, MarketSummary> = {};
-    needsPricing.forEach((m, i) => {
-      const iso = countryOf.get(m.handle);
-      if (!iso || !/^[A-Z]{2}$/.test(iso)) {
-        errors.push(`${m.name}: no region country found — kept the EUR amounts.`);
-        out[m.handle] = { amounts: [...eur], currencyCode: m.currencyCode };
-        return;
-      }
-      const alias = `m${i}`;
-      aliasMarket[alias] = m;
-      aliases.push(
-        `${alias}: productVariant(id: $id) { contextualPricing(context: {country: ${iso}}) { price { amount currencyCode } } }`,
+  // One contextual-pricing call per reference product, aliased over every
+  // country, so the whole table costs at most three round trips.
+  const priceByCountry = new Map<string, number[]>();
+  const currencyByCountry = new Map<string, string>();
+  for (const reference of references) {
+    for (let i = 0; i < wanted.length; i += CONTEXTUAL_BATCH) {
+      const slice = wanted.slice(i, i + CONTEXTUAL_BATCH);
+      const aliases = slice.map(
+        (code, n) =>
+          `c${n}: productVariant(id: $id) { contextualPricing(context: {country: ${code}}) { price { amount currencyCode } } }`,
       );
-    });
-    if (aliases.length > 0) {
       try {
         const json = await gql<{
           data?: Record<
@@ -1151,39 +1174,53 @@ export async function suggestGiftThresholds(
             { contextualPricing?: { price?: { amount?: string; currencyCode?: string } | null } | null } | null
           >;
         }>(admin, `query cellexiaContextualPrices($id: ID!) { ${aliases.join(" ")} }`, {
-          id: referenceVariantId,
+          id: reference.id,
         });
-        for (const [alias, m] of Object.entries(aliasMarket)) {
-          const price = json.data?.[alias]?.contextualPricing?.price;
-          const amount = parseFloat(price?.amount ?? "") || 0;
-          const currencyCode = price?.currencyCode || m.currencyCode;
-          if (amount > 0) {
-            const ratio = amount / basePrice;
-            out[m.handle] = { amounts: eur.map((v) => niceRound(v * ratio)), currencyCode };
-          } else {
-            errors.push(`${m.name}: no contextual price — kept the EUR amounts.`);
-            out[m.handle] = { amounts: [...eur], currencyCode: m.currencyCode };
-          }
-        }
+        slice.forEach((code, n) => {
+          const price = json.data?.[`c${n}`]?.contextualPricing?.price;
+          const amount = parseFloat(price?.amount ?? "");
+          if (!(amount > 0)) return;
+          const ratios = priceByCountry.get(code) ?? [];
+          ratios.push(amount / reference.price);
+          priceByCountry.set(code, ratios);
+          const currency = price?.currencyCode || "";
+          if (currency) currencyByCountry.set(code, currency);
+        });
       } catch (error) {
         errors.push(`Contextual pricing failed: ${errorMessage(error)}`);
-        for (const m of Object.values(aliasMarket)) {
-          out[m.handle] = { amounts: [...eur], currencyCode: m.currencyCode };
-        }
       }
     }
-  } else {
-    for (const m of needsPricing) {
-      out[m.handle] = { amounts: [...eur], currencyCode: m.currencyCode };
-    }
-    if (needsPricing.length > 0) {
-      errors.push("No reference product with a price was found — EUR amounts were kept for every market.");
-    }
   }
+
+  for (const code of wanted) {
+    const cluster = clusterForCountry(gt.clusters, code);
+    if (!cluster || cluster.tiers.length === 0) continue;
+    const eur = cluster.tiers.map((t) => t.amount);
+    const ratios = priceByCountry.get(code) ?? [];
+    const currencyCode = currencyByCountry.get(code) || shopCurrency || "EUR";
+    if (ratios.length === 0) {
+      errors.push(`${code}: no contextual price, so the cluster's own amounts were kept.`);
+      out[code] = { amounts: [...eur], currencyCode, ratio: 1, clusterId: cluster.id };
+      continue;
+    }
+    const ratio = median(ratios);
+    // Strictly increasing after rounding: two neighbouring tiers can round
+    // onto the same step in a big-number currency, and an equal pair would be
+    // refused by the sanitizer and drop the whole country.
+    const amounts: number[] = [];
+    for (const value of eur) {
+      let rounded = roundThreshold(value * ratio);
+      const previous = amounts[amounts.length - 1];
+      if (previous !== undefined && rounded <= previous) rounded = previous + 1;
+      amounts.push(rounded);
+    }
+    out[code] = { amounts, currencyCode, ratio, clusterId: cluster.id };
+  }
+
   return {
     ok: errors.length === 0,
     errors,
-    summary: `${Object.keys(out).length} markets suggested.`,
+    summary: `${Object.keys(out).length} countries priced from ${references.length} reference product(s).`,
     data: out,
   };
 }
@@ -1218,6 +1255,9 @@ const GIFT_STOCK_QUERY = `#graphql
 const GIFT_STOCK_BATCH = 15;
 /** Sentinel "available" for a variant whose inventory is not tracked (never paused, shown as plentiful). */
 export const UNTRACKED_AVAIL = 999999;
+/** v18: "Shopify has no inventory record here". Never pauses; the admin
+ *  renders it as "unknown" so it reads differently from a checked low count. */
+export const UNKNOWN_AVAIL = -1;
 
 /**
  * Every gift-pool + samplePool variant GID of the settings (deduped). v15:
@@ -1231,13 +1271,16 @@ export function giftVariantGids(
   hv: Record<string, string> = {},
 ): string[] {
   const ids = new Set<string>();
-  for (const tier of settings.rewards.giftTiers.tiers) {
-    for (const slot of tier.slots) {
-      for (const option of slot) {
-        if (option.kind !== "variant") continue;
-        if (option.variantId) ids.add(option.variantId);
-        else if (option.handle && hv[option.handle]) {
-          ids.add(`gid://shopify/ProductVariant/${hv[option.handle]}`);
+  // v18: every cluster's ladder, not one flat table.
+  for (const cluster of settings.rewards.giftTiers.clusters) {
+    for (const tier of cluster.tiers) {
+      for (const slot of tier.slots) {
+        for (const option of slot) {
+          if (option.kind !== "variant") continue;
+          if (option.variantId) ids.add(option.variantId);
+          else if (option.handle && hv[option.handle]) {
+            ids.add(`gid://shopify/ProductVariant/${hv[option.handle]}`);
+          }
         }
       }
     }
@@ -1262,14 +1305,14 @@ export async function refreshGiftStock(
   const gt = settings.rewards.giftTiers;
   const previous = await getRewardsState(shop);
   const gids = giftVariantGids(settings, previous.nodes.hv);
-  const next: GiftStockState = { t: new Date().toISOString(), byMarket: {}, items: {} };
+  const next: GiftStockState = { t: new Date().toISOString(), byCluster: {}, items: {} };
   if (gids.length === 0) {
     const saved = await saveRewardsState(shop, { giftStock: next });
-    if (Object.keys(pausedByMarket(previous.giftStock)).length > 0) {
+    if (Object.keys(pausedByCluster(previous.giftStock)).length > 0) {
       try {
-        await writeGiftStockMetafield(admin, {});
+        await writeGiftPlanMetafield(admin, buildGiftPlan(settings, {}, previous.nodes.hv));
       } catch (error) {
-        errors.push(`gift_stock metafield: ${errorMessage(error)}`);
+        errors.push(`gift plan metafield: ${errorMessage(error)}`);
       }
     }
     return { ok: errors.length === 0, errors, summary: "No gift variants configured.", data: saved.giftStock };
@@ -1333,51 +1376,58 @@ export async function refreshGiftStock(
     };
   }
 
-  let marketHandles: string[] = [];
-  try {
-    marketHandles = (await listMarkets(admin)).filter((m) => m.enabled).map((m) => m.handle);
-  } catch (error) {
-    errors.push(`Could not list markets: ${errorMessage(error)}`);
-  }
-  for (const handle of Object.keys(gt.warehouseByMarket)) {
-    if (!marketHandles.includes(handle)) marketHandles.push(handle);
-  }
-  if (marketHandles.length === 0) marketHandles = Object.keys(previous.giftStock.byMarket);
-
-  for (const market of marketHandles) {
-    const locs = gt.warehouseByMarket[market]?.length
-      ? gt.warehouseByMarket[market]
-      : [...activeLocations];
+  // v18: availability is per CLUSTER (a cluster is a fulfilment centre), so
+  // the locations come from the cluster itself. A cluster that names none
+  // falls back to every active location.
+  for (const cluster of gt.clusters) {
+    const locs = cluster.locations.length ? cluster.locations : [...activeLocations];
     const entries: Record<string, GiftStockEntry> = {};
     for (const stock of stocks) {
       if (!stock.tracked) {
-        // Untracked inventory reports 0 everywhere — never pause it.
+        // Untracked inventory reports 0 everywhere: never pause it.
         entries[stock.vid] = { avail: UNTRACKED_AVAIL, paused: false };
         continue;
       }
-      const avail = locs.reduce((sum, loc) => sum + (stock.byLocation[loc] ?? 0), 0);
+      // v18 FAIL OPEN. Only locations that actually reported a level count.
+      // Shopify returns a row with quantity 0 for a location that is genuinely
+      // empty, and NO row at all for one it has no record for, and third-party
+      // warehouses routinely have no record. Treating "no record" as zero
+      // paused real gifts and silently deleted whole tiers from the ladder,
+      // so unknown is now unknown and never pauses.
+      const known = locs.filter((loc) => stock.byLocation[loc] !== undefined);
+      if (known.length === 0) {
+        entries[stock.vid] = { avail: UNKNOWN_AVAIL, paused: false };
+        continue;
+      }
+      const avail = known.reduce((sum, loc) => sum + (stock.byLocation[loc] ?? 0), 0);
       const floor = Math.max(gt.stockFloor.minUnits, stock.sachet ? SACHET_STOCK_FLOOR : 0);
       entries[stock.vid] = { avail, paused: avail < floor };
     }
-    next.byMarket[market] = entries;
+    next.byCluster[cluster.id] = entries;
   }
 
   const saved = await saveRewardsState(shop, { giftStock: next });
-  const before = JSON.stringify(pausedByMarket(previous.giftStock));
-  const after = pausedByMarket(next);
-  if (before !== JSON.stringify(after)) {
-    try {
-      const result = await writeGiftStockMetafield(admin, after);
-      if (!result.ok) errors.push(...result.errors.map((e) => `gift_stock metafield: ${e}`));
-    } catch (error) {
-      errors.push(`gift_stock metafield: ${errorMessage(error)}`);
-    }
+  const after = pausedByCluster(next);
+  // v18: the plan is written EVERY refresh, not only when the paused set
+  // moved. It now carries the clusters, the country map and the per-country
+  // amounts as well as the pauses, so gating on stock alone would leave the
+  // storefront reading a stale ladder after any settings-only save. This runs
+  // on a save, on "Refresh stock", on a debounced inventory webhook and at
+  // most every 15 minutes from the loader, so the extra write is cheap.
+  try {
+    const result = await writeGiftPlanMetafield(
+      admin,
+      buildGiftPlan(settings, after, previous.nodes.hv),
+    );
+    if (!result.ok) errors.push(...result.errors.map((e: string) => `gift plan metafield: ${e}`));
+  } catch (error) {
+    errors.push(`gift plan metafield: ${errorMessage(error)}`);
   }
   const pausedCount = Object.values(after).reduce((n, list) => n + list.length, 0);
   return {
     ok: errors.length === 0,
     errors,
-    summary: `${stocks.length} gift variants checked across ${marketHandles.length} markets; ${pausedCount} paused option(s).`,
+    summary: `${stocks.length} gift variants checked across ${gt.clusters.length} clusters; ${pausedCount} paused option(s).`,
     data: saved.giftStock,
   };
 }

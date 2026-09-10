@@ -10,7 +10,7 @@ import { listMarkets } from "./markets.server";
 import {
   findRewardsFunctionId,
   getRewardsState,
-  pausedByMarket,
+  pausedByCluster,
   readDiscountNodes,
 } from "./rewards.server";
 
@@ -1785,23 +1785,28 @@ async function checkGiftProducts(
     }
     const handles = new Set<string>();
     let handleless = 0;
-    for (const tier of gt.tiers) {
-      for (const slot of tier.slots) {
-        for (const option of slot) {
-          if (option.kind !== "variant") continue;
-          if (option.handle) handles.add(option.handle);
-          else handleless += 1;
+    // v18: every cluster's ladder.
+    let tierCount = 0;
+    for (const cluster of gt.clusters) {
+      tierCount += cluster.tiers.length;
+      for (const tier of cluster.tiers) {
+        for (const slot of tier.slots) {
+          for (const option of slot) {
+            if (option.kind !== "variant") continue;
+            if (option.handle) handles.add(option.handle);
+            else handleless += 1;
+          }
         }
       }
     }
     for (const entry of gt.samplePool) handles.add(entry.handle);
     if (handles.size === 0) {
       return {
-        status: gt.tiers.length === 0 ? ("fail" as const) : ("warn" as const),
+        status: tierCount === 0 ? ("fail" as const) : ("warn" as const),
         detail:
-          gt.tiers.length === 0
-            ? "Gift tiers are enabled but no tier is configured — the meter has nothing to show."
-            : "Gift tiers hold no product option (samples only) and the sample pool is empty — nothing can be given.",
+          tierCount === 0
+            ? "Free gifts are on but no cluster has a tier, so the meter has nothing to show."
+            : "Every gift is a sample and the sachet pool is empty, so nothing can be given.",
         fixHint: "Open the Rewards page: add gift products or load the sachet pool.",
         fixUrl: "/app/features/rewards",
       };
@@ -1823,7 +1828,7 @@ async function checkGiftProducts(
       .filter((p) => p.status === "ACTIVE" && !p.publishedAt)
       .map((p) => p.handle);
     const state = await getRewardsState(shop);
-    const paused = pausedByMarket(state.giftStock);
+    const paused = pausedByCluster(state.giftStock);
     const pausedMarkets = Object.keys(paused);
     if (missing.length || inactive.length || unpublished.length) {
       return {

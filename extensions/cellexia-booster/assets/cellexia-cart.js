@@ -906,20 +906,31 @@
     var oneTime = Number(variant.price) || 0;
     var alloc = variantPlanAlloc(variant, anchor.planId);
     if (!alloc || !(Number(alloc.price) > 0) || Number(alloc.price) > oneTime) {
-      alloc = null;
-      var allocations = Array.isArray(variant.planAllocations) ? variant.planAllocations : [];
-      var cadence = variantDefaultCadence(variantId);
-      var meta = planMetaById(entry);
-      var first = null;
-      for (var i = 0; i < allocations.length; i++) {
-        var a = allocations[i];
-        if (!a || a.planId == null || !(Number(a.price) > 0) || Number(a.price) > oneTime || !ownedPlan(a.planId)) continue;
-        if (!first) first = a;
-        if (cadence && planNameMatchesCadence(meta[String(a.planId)], cadence)) { alloc = a; break; }
-      }
-      if (!alloc) alloc = first;
+      alloc = ownedCadenceAlloc(entry, variant);
     }
     return alloc ? { planId: alloc.planId, priceCents: Number(alloc.price) } : null;
+  }
+
+  function ownedCadenceAlloc(entry, variant) {
+    // The context-free half of the plan ladder (shared by the cross-sell
+    // resolver and the v17.2 card price decorator): an owned allocation
+    // whose plan name parses to the variant's default cadence
+    // (cellexia.variant_defaults — what the buy box itself preselects),
+    // else the first owned priced allocation; prepaid-guarded (an
+    // allocation priced above one-time is a multi-delivery lump, never
+    // offered implicitly). null = stay one-time, degrade never guess.
+    var oneTime = Number(variant.price) || 0;
+    var allocations = Array.isArray(variant.planAllocations) ? variant.planAllocations : [];
+    var cadence = variantDefaultCadence(variant.id);
+    var meta = planMetaById(entry);
+    var first = null;
+    for (var i = 0; i < allocations.length; i++) {
+      var a = allocations[i];
+      if (!a || a.planId == null || !(Number(a.price) > 0) || Number(a.price) > oneTime || !ownedPlan(a.planId)) continue;
+      if (!first) first = a;
+      if (cadence && planNameMatchesCadence(meta[String(a.planId)], cadence)) return a;
+    }
+    return first;
   }
 
   // ------------------------------------------------------------ mutations
@@ -3917,15 +3928,17 @@
   //   rw.ss     rewards.setSavings — tiers [{count,pct,code}],
   //             includeSubscriptions, surfaces, setSavingsExcludedByMarket,
   //             yieldToCodes (v15: codes we step aside for);
-  //   rw.gt     rewards.giftTiers — tiers [{amount (EUR), slots [[{kind,
-  //             variantId, handle, count}]]}], cumulative, choice,
-  //             maxGiftLines, sampleRule, samplePool, giftThresholdsByMarket,
-  //             showShippingMilestone;
-  //   rw.paused the stock watcher's paused variant ids for THIS market
-  //             (Liquid-resolved from the gift_stock metafield) or null.
+  //   rw.gt     v18: THIS COUNTRY'S CLUSTER, precomputed by the server into
+  //             the cellexia/gift_plan metafield and sliced by Liquid with
+  //             cx_country: {name, a [EUR amount per tier], t [slots per
+  //             tier, options {k:'v',vid,h} | {k:'s',n}], p [paused variant
+  //             ids for this cluster], cum, max, choice, rule, pool, ship}.
+  //             A browser never receives another country's ladder.
+  //   rw.gb     this country's OWN amounts {a, c} when it has explicit ones,
+  //             else null and the EUR ladder is converted at the shop rate.
   // Inside a verified preview session the preview-config "rw" field
-  // ({ss, gt, paused, market} for the SIMULATED market with the draft
-  // tiers/amounts merged in) is the config — the merchant's own browser
+  // ({ss, gt, gb, market, country} for the SIMULATED country with the draft
+  // clusters/amounts merged in) is the config — the merchant's own browser
   // only; live shoppers never see it. Gift PRODUCT data (title, price,
   // availability, variants) is no longer in Liquid either: rwGifts() is
   // filled lazily from the app proxy (cart-data?handles=…, productsByHandle
@@ -4133,8 +4146,17 @@
   }
 
   function rwGtTiers() {
+    // v18: the island now carries this COUNTRY'S CLUSTER, precomputed by the
+    // server: `a` is the per-tier EUR amount and `t` the per-tier slots. The
+    // browser never sees another country's ladder. Rebuilt into the v14
+    // {amount, slots} shape so every caller below is unchanged.
     var gt = rwGt();
-    return gt && Array.isArray(gt.tiers) ? gt.tiers : [];
+    if (!gt || !Array.isArray(gt.a) || !Array.isArray(gt.t)) return [];
+    var out = [];
+    for (var i = 0; i < gt.a.length; i++) {
+      out.push({ amount: Number(gt.a[i]) || 0, slots: Array.isArray(gt.t[i]) ? gt.t[i] : [] });
+    }
+    return out;
   }
 
   function rwPool() {
@@ -4142,19 +4164,21 @@
     // handle-only entry resolves to the fetched first variant by position)
     var gt = rwGt();
     var out = [];
-    var pool = gt && Array.isArray(gt.samplePool) ? gt.samplePool : [];
+    var pool = gt && Array.isArray(gt.pool) ? gt.pool : [];
     for (var i = 0; i < pool.length; i++) {
       if (!pool[i]) continue;
-      var h = pool[i].handle ? String(pool[i].handle) : '';
-      var vid = rwNum(pool[i].variantId) || (h ? rwGiftData.first[h] || '' : '');
+      var h = pool[i].h ? String(pool[i].h) : '';
+      var vid = rwNum(pool[i].vid) || (h ? rwGiftData.first[h] || '' : '');
       if (vid) out.push({ vid: vid, h: h });
     }
     return out;
   }
 
   function rwPaused() {
+    // v18: the paused set rides inside this country's cluster slice.
+    var gt = rwGt();
     var out = {};
-    var list = RW && Array.isArray(RW.paused) ? RW.paused : [];
+    var list = gt && Array.isArray(gt.p) ? gt.p : [];
     for (var i = 0; i < list.length; i++) {
       var vid = rwNum(list[i]);
       if (vid) out[vid] = true;
@@ -4309,10 +4333,12 @@
     var eur = tiers[i] ? Number(tiers[i].amount) : 0;
     var a = 0;
     var c = '';
-    var rec = gt.giftThresholdsByMarket && typeof gt.giftThresholdsByMarket === 'object' ? gt.giftThresholdsByMarket[rwMarket()] : null;
-    if (rec && Array.isArray(rec.amounts)) {
-      a = Number(rec.amounts[i]);
-      c = typeof rec.currencyCode === 'string' ? rec.currencyCode : '';
+    // v18: `gb` is THIS COUNTRY's own amounts, already resolved by the server
+    // (or by the preview proxy for a simulated country). No map lookup here.
+    var rec = RW && RW.gb && typeof RW.gb === 'object' ? RW.gb : null;
+    if (rec && Array.isArray(rec.a)) {
+      a = Number(rec.a[i]);
+      c = typeof rec.c === 'string' ? rec.c : '';
     }
     if (a > 0 && c && c === activeCurrency()) return Math.round(a * 100);
     if (eur > 0) return Math.round(eur * 100 * shopRate());
@@ -4413,8 +4439,8 @@
         }
       }
     }
-    var pool = gt && Array.isArray(gt.samplePool) ? gt.samplePool : [];
-    for (var pi = 0; pi < pool.length; pi++) if (pool[pi]) push(pool[pi].handle);
+    var pool = gt && Array.isArray(gt.pool) ? gt.pool : [];
+    for (var pi = 0; pi < pool.length; pi++) if (pool[pi]) push(pool[pi].h);
     return out;
   }
 
@@ -4540,7 +4566,7 @@
     // paid-lines hash; rotate: rotated; fixed: pool order. Paused /
     // not-free / used / unavailable excluded.
     var gt = rwGt();
-    var rule = gt && typeof gt.sampleRule === 'string' ? gt.sampleRule : 'not_in_cart';
+    var rule = gt && typeof gt.rule === 'string' ? gt.rule : 'not_in_cart';
     var paused = rwPaused();
     var unfree = rwUnfreeSet();
     var gifts = rwGifts();
@@ -4595,9 +4621,9 @@
     var gt = rwGt();
     var tiers = rwGtTiers();
     var reached = gt ? rwReached() : -1;
-    var maxLines = gt ? Math.floor(Number(gt.maxGiftLines)) : 4;
+    var maxLines = gt ? Math.floor(Number(gt.max)) : 4;
     if (!(maxLines >= 1)) maxLines = 4;
-    var cum = !gt || gt.cumulative !== false;
+    var cum = !gt || gt.cum !== false;
     var paid = {};
     var paidTitles = [];
     var giftLines = rwGiftLines();
@@ -5051,6 +5077,38 @@
     scheduleRefresh();
   }
 
+  function rwClearGifts() {
+    // v18: the preview bar's "Clear gifts" — undo a rehearsal in one click.
+    // Removes every gift line and remembers each as declined, otherwise the
+    // very next sync pass would put them straight back. The meter's "Add
+    // your free gift back" link is the documented way to restore them, so
+    // this is exactly the per-row Remove applied to the whole set.
+    if (state.busy || rwGift.busy) return;
+    var lines = rwGiftLines();
+    if (!lines.length) return;
+    state.busy = true;
+    renderAll();
+    var chain = Promise.resolve();
+    lines.forEach(function (item) {
+      rwRemember('cx_rw_gift_removed', String(item.variant_id), true);
+      rwGift.ours[String(item.variant_id)] = true;
+      chain = chain.then(function () {
+        return cartRequest('cart/change.js', { id: item.key, quantity: 0 }).catch(function () { /* keep going */ });
+      });
+    });
+    chain
+      .then(function () { return fetchCart(); })
+      .then(function (cart) {
+        state.busy = false;
+        rwGiftReplan();
+        rwAfterMutation(cart, false); // removal-only: never reloads the page
+      })
+      .catch(function () {
+        state.busy = false;
+        refresh();
+      });
+  }
+
   function rwSlotOf(item) {
     // {ti, si} of the slot a gift line was granted from (its tier property
     // + a variant/sample match), or null
@@ -5245,7 +5303,7 @@
       if (cents > 0) out.push({ kind: 'gift', cents: cents, i: i, done: spend >= cents });
     }
     var gt = rwGt();
-    if (gt && gt.showShippingMilestone !== false && (featureOn('shipbar') || featureOn('azCartFreeLine'))) {
+    if (gt && gt.ship !== false && (featureOn('shipbar') || featureOn('azCartFreeLine'))) {
       var ship = thresholdCents();
       if (ship > 0) out.push({ kind: 'ship', cents: ship, i: -1, done: spend >= ship });
     }
@@ -5259,6 +5317,48 @@
     node.appendChild(document.createTextNode(parts[0] || ''));
     node.appendChild(el('strong', 'cx-rw-meter__amount', amountText));
     if (parts.length > 1) node.appendChild(document.createTextNode(parts.slice(1).join('')));
+  }
+
+  function rwRenderLadder(wrap, ms, spend) {
+    // v18: the reward ladder under the track. One card per gift milestone,
+    // in order, each showing the gift's own picture, its name and the spend
+    // that unlocks it.
+    //
+    // This is what makes "cumulative" legible. A sentence saying the rewards
+    // stack is easy to skip and impossible to translate consistently; a row
+    // where the reward you already earned KEEPS its tick while the next one
+    // lights up says the same thing wordlessly, in every language, with no
+    // new copy to translate. It is also the AOV lever: a shopper who can see
+    // the next gift as an actual product, with a real gap to close, has a
+    // concrete reason to add one more item.
+    try {
+      var gifts = [];
+      for (var i = 0; i < ms.length; i++) if (ms[i].kind === 'gift') gifts.push(ms[i]);
+      if (gifts.length < 2) return; // a single reward is already the headline
+      var strip = el('div', 'cx-rw-ladder');
+      var nextSeen = false;
+      for (var g = 0; g < gifts.length; g++) {
+        var step = gifts[g];
+        var card = el('div', 'cx-rw-ladder__step');
+        if (step.done) card.setAttribute('data-state', 'done');
+        else if (!nextSeen) { card.setAttribute('data-state', 'next'); nextSeen = true; }
+        else card.setAttribute('data-state', 'locked');
+        var option = rwFirstOption(step.i);
+        var gift = option && option.vid ? rwGifts()[option.vid] : null;
+        if (gift && gift.i) {
+          var img = el('img', 'cx-rw-ladder__img');
+          img.src = gift.i;
+          img.alt = '';
+          img.setAttribute('loading', 'lazy');
+          img.setAttribute('aria-hidden', 'true');
+          card.appendChild(img);
+        }
+        card.appendChild(el('span', 'cx-rw-ladder__name', rwTierLabel(step.i)));
+        card.appendChild(el('span', 'cx-rw-ladder__at', money(step.cents)));
+        strip.appendChild(card);
+      }
+      wrap.appendChild(strip);
+    } catch (e) { /* never break the theme */ }
   }
 
   function rwRenderMeter(container, suppressShip) {
@@ -5340,6 +5440,7 @@
         track_.appendChild(mark);
       }
       wrap.appendChild(track_);
+      rwRenderLadder(wrap, ms, spend);
       var plan = rwGiftPlan();
       if (plan.back.length && !rwSim()) {
         var back = el('button', 'cx-rw-meter__back', rwT('gift_back'));
@@ -5496,6 +5597,80 @@
     scheduleRefresh();
   }
 
+  function rwGiftWhy() {
+    // v18: why the gift pass did (or did not) put a gift in the cart.
+    // Every silent stand-down in rwSyncGifts gets a sentence here — without
+    // one, "nothing happened" is indistinguishable from "broken", which is
+    // exactly how the preview simulator hid the rehearsal gate. Order is the
+    // debugging narrative: what the cart has earned first, then what is
+    // blocking the write, then what the write is doing. Merchant-facing
+    // English by design (preview-only DOM + window.CellexiaGiftWhy()).
+    if (!RW || !rwGt()) return { code: 'off', msg: 'Free gifts are not set up yet.' };
+    if (!featureOn('giftTiers')) return { code: 'off', msg: 'Free gifts are off for this market.' };
+    if (isB2B()) return { code: 'b2b', msg: 'Wholesale carts do not earn gifts.' };
+    if (!rwGiftsReady()) return { code: 'loading', msg: 'Still loading the gift products.' };
+    var plan = rwGiftPlan();
+    if (plan.reached < 0) {
+      var ms = rwMilestones();
+      var next = null;
+      for (var i = 0; i < ms.length; i++) {
+        if (ms[i].kind === 'gift' && !ms[i].done) { next = ms[i]; break; }
+      }
+      if (next) {
+        return {
+          code: 'no_tier',
+          msg: 'No reward reached yet, ' + money(next.cents - rwSpendCents()) + ' to go.',
+        };
+      }
+      return { code: 'no_tier', msg: 'No reward reached yet.' };
+    }
+    if (PREVIEW && rwSim()) {
+      return {
+        code: 'sim',
+        msg: 'The simulator fakes your basket total, so the reward is shown but never added. Press "Real cart", then add real products to watch the gift land.',
+      };
+    }
+    if (PREVIEW && PREVIEW.rehearsal !== true) {
+      return {
+        code: 'no_rehearsal',
+        msg: 'Preview never touches your cart. Tick "Test with my real cart" in the Preview Center to add gifts for real.',
+      };
+    }
+    if (rwGiftOff()) {
+      return {
+        code: 'unfree',
+        msg: 'A gift was not free on the last check, so adding is paused for this session. Use "Add your free gift back" to retry.',
+      };
+    }
+    if (plan.unfree.length) return { code: 'unfree', msg: 'A gift line is not free, so it is being removed.' };
+    if (!plan.wanted.length) {
+      if (plan.back.length) {
+        return { code: 'declined', msg: 'You removed this gift earlier in this session, so it is not added again.' };
+      }
+      return {
+        code: 'unavailable',
+        msg: 'Reward reached, but no gift can be granted here. Check the gift product is active, published and in stock for this market.',
+      };
+    }
+    if (state.busy || rwGift.busy || rwCode.busy) return { code: 'busy', msg: 'Updating the cart.' };
+    if (!plan.add.length && !plan.remove.length && !plan.reset.length) {
+      return { code: 'in_cart', msg: 'The gift is already in the cart.' };
+    }
+    return { code: 'adding', msg: 'Adding the gift to the cart now.' };
+  }
+
+  function rwUpdateWhy() {
+    // Refresh the preview bar status after every render, so the reason
+    // tracks the cart instead of freezing at page load.
+    try {
+      var node = document.querySelector('.cx-preview-bar__why');
+      if (!node) return;
+      var why = rwGiftWhy();
+      node.textContent = why ? why.msg : '';
+      node.setAttribute('data-cx-why', why ? why.code : '');
+    } catch (e) { /* never break the theme */ }
+  }
+
   function rwPreviewControls(bar) {
     // Preview bar simulator (§6, merchant-facing English): spend amount in
     // the presentment currency's major units + a products-count stepper;
@@ -5542,6 +5717,16 @@
     wrap.appendChild(plus);
     wrap.appendChild(real);
     bar.appendChild(wrap);
+    if (featureOn('giftTiers')) {
+      // v18: undo a rehearsal without hunting for the per-row Remove.
+      var clear = el('button', 'cx-preview-bar__real', 'Clear gifts');
+      clear.type = 'button';
+      clear.addEventListener('click', rwClearGifts);
+      wrap.appendChild(clear);
+      // v18: the status line that says why a gift did or did not land.
+      bar.appendChild(el('span', 'cx-preview-bar__why'));
+      rwUpdateWhy();
+    }
   }
 
   function renderInto(root, context) {
@@ -5971,9 +6156,13 @@
 
   function cardFlagCacheKey(handles) {
     var locale = typeof cfg.pageLocale === 'string' ? cfg.pageLocale : '';
-    // v6.6 bumped the map-entry shape ({badge, bought}) — the "2"
-    // segment retires v6.4 {rank, category} cache entries wholesale.
-    return 'cx_az_cardflags:2:' + locale + ':' + cardFlagHash(handles.slice().sort().join(','));
+    // v6.6 bumped the map-entry shape ({badge, bought}); v17.2 bumps to
+    // "3" (entries gain the resolved subscription cents) and keys the
+    // MARKET, CURRENCY and subscription state alongside the locale —
+    // badges never varied with them, presentment prices do, and a
+    // go-live/market/currency switch must never serve cached cents.
+    return 'cx_az_cardflags:3:' + locale + ':' + MARKET + ':' + activeCurrency() + ':' +
+      (subsAware() ? 's1' : 's0') + ':' + cardFlagHash(handles.slice().sort().join(','));
   }
 
   function cardFlagCacheGet(key) {
@@ -6018,10 +6207,57 @@
           var bought = entry && typeof entry.bought === 'number' && isFinite(entry.bought) && entry.bought > 0
             ? Math.floor(entry.bought)
             : 0;
-          map[handle] = badge || bought > 0 ? { badge: badge, bought: bought } : null;
+          // v17.2: the card's subscription price (the default owned plan
+          // on the card's shown variant) rides the same verdict — resolved
+          // only while the market's subscription context is on, so cached
+          // verdicts under an s0 key never carry cents.
+          var sub = subsAware() ? cardSubCents(entry) : null;
+          map[handle] = badge || bought > 0 || sub != null ? { badge: badge, bought: bought, sub: sub } : null;
         });
         return map;
       });
+  }
+
+  function cardSubCents(entry) {
+    // v17.2 card price truth: the theme card shows its FIRST AVAILABLE
+    // variant's price, so the subscription figure mirrors exactly that
+    // variant's owned default-cadence allocation (ownedCadenceAlloc =
+    // the cross-sell ladder minus the cart anchor, prepaid-guarded).
+    // null = the card keeps its one-time price.
+    if (!entry || !Array.isArray(entry.variants)) return null;
+    var variant = null;
+    for (var i = 0; i < entry.variants.length; i++) {
+      var v = entry.variants[i];
+      if (v && v.id != null && v.available !== false) { variant = v; break; }
+    }
+    if (!variant) return null;
+    var alloc = ownedCadenceAlloc(entry, variant);
+    return alloc ? Number(alloc.price) : null;
+  }
+
+  function cardSubSwapPrice(box, cents) {
+    // v17.2: swap the card's shown price text for the subscription
+    // figure — text only, no new elements (merchant rule: nothing
+    // visually new). Card anatomy mirrors insertCardBought: the
+    // .product__price div lives under the .product--default root; a card
+    // without that anatomy fails closed (its one-time price stays).
+    try {
+      var root = null;
+      var n = box;
+      for (var i = 0; i < 4 && n; i++) {
+        if (n.classList && n.classList.contains('product--default')) { root = n; break; }
+        n = n.parentNode;
+      }
+      var priceEl = root ? root.querySelector('.product__price') : null;
+      if (!priceEl && box.parentNode && typeof box.parentNode.querySelector === 'function') {
+        priceEl = box.parentNode.querySelector('.product__price');
+      }
+      if (!priceEl) return false;
+      var txt = money(Number(cents) || 0);
+      if (!txt || typeof txt !== 'string') return false;
+      priceEl.textContent = txt;
+      return true;
+    } catch (e) { return false; }
   }
 
   function buildCardFlag(badge) {
@@ -6175,7 +6411,8 @@
     // exactly when our flag re-renders on the fresh node.
     var wantBadge = badgeCardsOn() && !!azStr('amazon.bestseller');
     var wantBought = boughtCardsOn() && !!azStr('amazon.bought_count.other');
-    if (!wantBadge && !wantBought) return;
+    var wantSub = subsAware(); // v17.2: card prices follow the market's subscription state
+    if (!wantBadge && !wantBought && !wantSub) return;
     for (var i = 0; i < anchors.length; i++) {
       var anchor = anchors[i];
       try {
@@ -6204,6 +6441,12 @@
         if (wantBought && verdict.bought > 0) {
           var line = buildCardBought(verdict.bought);
           if (line && insertCardBought(anchor.box, line)) did = true;
+        }
+        // v17.2: subscription card price — verdict.sub only exists when it
+        // was resolved under an active context (the cache key's s1 side),
+        // and the live gate re-checks at decorate time (B2B, kill switch).
+        if (wantSub && verdict.sub != null) {
+          if (cardSubSwapPrice(anchor.box, verdict.sub)) did = true;
         }
         anchor.box.setAttribute('data-cx-cardflag', did ? '1' : '0');
       } catch (e) { /* skip this card */ }
@@ -6321,9 +6564,13 @@
       // v6.6: boot when EITHER card element is renderable — gate on AND
       // usable strings per element (an element whose gate or strings
       // fail simply never renders; both failing = zero DOM writes).
+      // v17.2: the subscription card price is the third boot reason —
+      // subsAware() bundles the kill switch, B2B and the sx island
+      // (installed + market + ownership), all fail closed.
       var wantBadge = badgeCardsOn() && !!azStr('amazon.bestseller');
       var wantBought = boughtCardsOn() && !!azStr('amazon.bought_count.other');
-      if (!wantBadge && !wantBought) return;
+      var wantSub = subsAware();
+      if (!wantBadge && !wantBought && !wantSub) return;
       if (!window.fetch || typeof Promise === 'undefined') return;
       cardFlagMap = {};
       cardFlagPass(false);
@@ -6350,6 +6597,7 @@
       // single-flight, one correction per cart signature, never looping)
       rwSyncCode();
       rwSyncGifts();
+      rwUpdateWhy(); // v18: keep the preview status line tracking the cart
     } catch (e) { /* never break the theme */ }
   }
 
@@ -6649,6 +6897,9 @@
     schedulePageProductPrefetch(); // v16: product pages — product data + cross-sell warm before the add
     refresh();
     window.CellexiaBooster.refreshCart = scheduleRefresh;
+    // v18: live-page counterpart of the preview status line. Answers
+    // "it worked in preview but not live" from the console without a deploy.
+    window.CellexiaBooster.giftWhy = rwGiftWhy;
   }
 
   if (document.readyState === 'loading') {

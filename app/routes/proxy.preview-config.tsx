@@ -7,12 +7,11 @@ import {
 } from "../models/settings.server";
 import {
   getPreviewState,
-  rewardsForMarket,
   rewardsPreviewSections,
   tokenHashFor,
   verifyToken,
 } from "../services/preview.server";
-import { getRewardsState, pausedByMarket } from "../services/rewards.server";
+import { getRewardsState, pausedByCluster } from "../services/rewards.server";
 
 /**
  * Preview runtime config endpoint, reached through the Shopify App Proxy:
@@ -54,7 +53,7 @@ import { getRewardsState, pausedByMarket } from "../services/rewards.server";
  *                               //   these; no cart mutation while set)
  *     rehearsal,                // v14: true = live rehearsal (real cart
  *                               //   mutations allowed on the preview cart)
- *     rewardsForMarket,         // v14: {ssTiers, gtAmounts:{a,c}, gifts:
+ *     rw,                       // v18: {ss, gt (the country's cluster slice),
  *                               //   [{vid,handle,title}]} — live + armed
  *                               //   draft tiers for the simulated market
  *                               //   (kept for backward compat)
@@ -115,6 +114,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Draft config only ever leaves the server while armed (defense in
     // depth — disarmPreview clears it, but never trust a stale row).
     const draftConfig = state.armed ? state.draftConfig : {};
+    // v18: clusters are country-keyed, so the slice is resolved for the
+    // simulated country (carried in draftConfig, no Prisma column needed).
+    const simulatedCountry = draftConfig.country ?? "";
     const liveEffectiveForMarket = Object.fromEntries(
       FEATURE_KEYS.map((key) => [
         key,
@@ -133,16 +135,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         tokenHash: tokenHashFor(state.token),
         simCart: draftConfig.simCart ?? null,
         rehearsal: draftConfig.rehearsal === true,
-        rewardsForMarket: rewardsForMarket(
-          settings,
-          draftConfig,
-          simulatedMarket ?? "",
-        ),
         rw: rewardsPreviewSections(
           settings,
           draftConfig,
           simulatedMarket ?? "",
-          rewardsState ? pausedByMarket(rewardsState.giftStock) : {},
+          rewardsState ? pausedByCluster(rewardsState.giftStock) : {},
+          simulatedCountry,
         ),
       },
       { headers: JSON_HEADERS },

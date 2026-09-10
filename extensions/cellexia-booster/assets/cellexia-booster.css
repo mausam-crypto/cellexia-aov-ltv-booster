@@ -1708,12 +1708,15 @@ body.customer--b2b .cx-sub-remove {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
   max-width: calc(100vw - 32px);
   padding: 8px 14px;
   background: #1d1d1b;
   color: #fff;
   border: 2px solid #b1cded;
-  border-radius: 70px;
+  /* v18: 20px, not the old 70px pill — the bar now carries a wrapping
+     status line, and a stadium radius reads as a mistake on two rows. */
+  border-radius: 20px;
   font-size: 13px;
   line-height: 1.2;
   pointer-events: auto;
@@ -6050,6 +6053,202 @@ body.customer--b2b .cx-sub-remove {
   padding: 2px;
 }
 
+/* v18 free-gift product-page surface. Three placements, one rule: the CARD
+   renders after the Add-to-cart actions, so the button can never be pushed
+   down the page by a promotion. */
+.cx-rw-gift {
+  /* Shared base: every placement hides itself when the country has no
+     ladder left to unlock, so an empty tier never renders an empty shell. */
+  box-sizing: border-box;
+}
+
+.cx-rw-gift--line {
+  display: block;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.cx-rw-gift--line::before {
+  content: '🎁 ';
+}
+
+.cx-rw-gift--card {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-block-start: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+}
+
+.cx-rw-gift__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cx-rw-gift__text {
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.cx-rw-gift__track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.cx-rw-gift__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--cx-accent, #b1cded);
+}
+
+.cx-rw-gift--ladder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-block: 6px;
+  font-size: 12px;
+}
+
+.cx-rw-gift__step {
+  padding: 2px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
+  opacity: 0.6;
+}
+
+.cx-rw-gift__step[data-state='done'] {
+  opacity: 1;
+  border-color: var(--cx-accent, #b1cded);
+  background: color-mix(in srgb, var(--cx-accent, #b1cded) 18%, transparent);
+}
+
+.cx-rw-gift__step[data-state='next'] {
+  opacity: 1;
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+.cx-rw-gift__cap {
+  flex: 1 0 100%;
+  line-height: 1.35;
+  opacity: 0.85;
+}
+
+/* v18 reward ladder (cart): one card per gift tier under the meter track.
+   Unlocked cards KEEP their tick and stay full-strength, which is what makes
+   the cumulative rule obvious without a sentence to translate. The next card
+   is emphasised; later ones dim but stay readable, so the ladder reads as a
+   promise rather than a locked door. Scrolls sideways rather than wrapping,
+   so the meter can never grow tall enough to push checkout below the fold. */
+.cx-rw-ladder {
+  display: flex;
+  gap: 8px;
+  margin-block-start: 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cx-rw-ladder__step {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 74px;
+  max-width: 104px;
+  padding: 6px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.cx-rw-ladder__img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.cx-rw-ladder__name {
+  font-size: 11px;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cx-rw-ladder__at {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.cx-rw-ladder__step[data-state='done'] {
+  border-color: var(--cx-accent, #b1cded);
+  background: color-mix(in srgb, var(--cx-accent, #b1cded) 14%, transparent);
+}
+
+.cx-rw-ladder__step[data-state='done'] .cx-rw-ladder__at::before {
+  content: '✓ ';
+}
+
+.cx-rw-ladder__step[data-state='next'] {
+  border-color: currentColor;
+  box-shadow: 0 0 0 1px currentColor inset;
+}
+
+.cx-rw-ladder__step[data-state='locked'] {
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cx-rw-ladder__step {
+    transition: opacity 0.2s ease, border-color 0.2s ease;
+  }
+}
+
+/* v18: preview status line — says why a gift did or did not land in the
+   cart. Full-width row inside the bar so a whole sentence fits; colour
+   codes the three families (working / blocked by a preview control /
+   something is wrong). Never shown to shoppers: preview-only DOM. */
+.cx-preview-bar__why {
+  flex: 1 0 100%;
+  margin-block-start: 2px;
+  padding-block-start: 6px;
+  border-block-start: 1px solid rgba(255, 255, 255, 0.18);
+  color: #e8eef6;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.cx-preview-bar__why:empty {
+  display: none;
+}
+
+.cx-preview-bar__why[data-cx-why='adding'],
+.cx-preview-bar__why[data-cx-why='in_cart'] {
+  color: #bfe3c4;
+}
+
+.cx-preview-bar__why[data-cx-why='sim'],
+.cx-preview-bar__why[data-cx-why='no_rehearsal'] {
+  color: #ffd9a0;
+}
+
+.cx-preview-bar__why[data-cx-why='unavailable'],
+.cx-preview-bar__why[data-cx-why='unfree'] {
+  color: #ffc2c2;
+}
+
 @media (max-width: 559px) {
   .cx-preview-bar__sim {
     display: none;
@@ -6083,4 +6282,339 @@ body.customer--b2b .cx-sub-remove {
   font-size: 14px;
   color: #565959;
   text-decoration: line-through;
+}
+
+/* ------------------------------------------- v19 buy-box proof block */
+
+.cx-bbp {
+  margin-block-start: 12px;
+  font-family: "argumentum", sans-serif;
+  color: #1d1d1b;
+}
+
+.cx-bbp__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.cx-bbp__row .cx-icon {
+  flex: 0 0 auto;
+}
+
+.cx-bbp__text strong {
+  font-weight: 700;
+}
+
+/* The date row carries the guarantee pill, which drops to its own line
+   before the sentence itself ever wraps mid-date. */
+.cx-bbp__deliver {
+  row-gap: 6px;
+}
+
+.cx-bbp__badge-label {
+  min-width: 0;
+}
+
+/* Ships-from reads as the "good news" line — the one green row. */
+.cx-bbp__ships {
+  color: #067d62;
+}
+
+.cx-bbp__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid #b1cded;
+  border-radius: 70px;
+  background: #eef4fb;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.cx-bbp__pill .cx-icon {
+  color: #1d1d1b;
+}
+
+.cx-bbp__pill-label {
+  font-weight: 600;
+}
+
+.cx-bbp__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 12px 0 0;
+  padding-block-start: 12px;
+  border-block-start: 1px solid #d8d8d8;
+}
+
+.cx-bbp__badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.cx-bbp__badge .cx-icon {
+  flex: 0 0 auto;
+}
+
+.cx-bbp__guarantee {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-block-start: 14px;
+  padding: 12px 15px;
+  background: #fff;
+  border: 2px solid #f4f4f4;
+  border-radius: 16px;
+}
+
+.cx-bbp__guarantee-icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #b1cded;
+  color: #1d1d1b;
+}
+
+.cx-bbp__guarantee-title {
+  margin: 0;
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.cx-bbp__rating {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-block-start: 14px;
+}
+
+.cx-bbp__score {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.cx-bbp__count {
+  font-size: 13px;
+  color: #565959;
+}
+
+.cx-bbp__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 14px;
+  color: #1d1d1b;
+}
+
+.cx-bbp__brand-link {
+  display: inline-flex;
+  color: inherit;
+}
+
+/* ------------------------------------ research + certification band */
+
+.cx-bbp-research {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  margin-block-start: 12px;
+  padding: 16px 18px;
+  background: #f4f4f4;
+  border-radius: 16px;
+}
+
+.cx-bbp-research__col {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.cx-bbp-research__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.3px;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: #565959;
+}
+
+.cx-bbp-research__eyebrow::before,
+.cx-bbp-research__eyebrow::after {
+  content: "";
+  flex: 1 1 auto;
+  min-width: 10px;
+  height: 1px;
+  background: #d8d8d8;
+}
+
+/* Text wordmarks stack: three of them never fit one buy-box-column row,
+   and a wrapped row would show a stray leading rule. */
+.cx-bbp-research__logos {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+
+/* Uploaded logos are compact — the design's single row with vertical rules. */
+.cx-bbp-research__logos--row {
+  flex-direction: row;
+  justify-content: center;
+  gap: 0;
+}
+
+.cx-bbp-research__logo {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Evenly divided cells, like the design: each mark keeps its own aspect
+   ratio inside its cell, so a wide lockup and a short wordmark sit on the
+   same optical baseline instead of being forced to one height. */
+.cx-bbp-research__logos--row .cx-bbp-research__logo {
+  flex: 1 1 0;
+  justify-content: center;
+  height: 52px;
+  padding-inline: 10px;
+}
+
+.cx-bbp-research__logos--row .cx-bbp-research__logo + .cx-bbp-research__logo {
+  border-inline-start: 1px solid #d8d8d8;
+}
+
+.cx-bbp-research__logo-name {
+  font-family: "Gobold", sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  text-align: center;
+  color: #1f3243;
+}
+
+/* An explicit WIDTH is what makes an aspect-ratio-only SVG resolve a
+   height inside a flex row (with width:auto it collapses to 0); raster
+   logos letterbox inside the same box via object-fit. */
+.cx-bbp-research__logo-img {
+  display: block;
+  width: 100%;
+  max-width: 165px;
+  height: auto;
+  max-height: 52px;
+  object-fit: contain;
+  object-position: center;
+}
+
+.cx-bbp-research__seal {
+  flex: 0 1 28%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-inline-start: 20px;
+  border-inline-start: 1px solid #d8d8d8;
+}
+
+.cx-bbp-research__seal-art,
+.cx-bbp-research__seal-img {
+  flex: 0 0 92px;
+  display: block;
+  width: 92px;
+  height: 92px;
+  object-fit: contain;
+}
+
+.cx-bbp-research__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #565959;
+}
+
+.cx-bbp-research__note::after {
+  content: "";
+  display: block;
+  width: 26px;
+  height: 1px;
+  margin-block-start: 8px;
+  background: #8a9aa8;
+}
+
+/* Narrow columns: the band stacks, the seal keeps its own full-width row so
+   the logos never squeeze to an unreadable size. */
+@media screen and (max-width: 559px) {
+  .cx-bbp-research {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .cx-bbp-research__seal {
+    flex: 0 0 auto;
+    padding-inline-start: 0;
+    padding-block-start: 14px;
+    border-inline-start: 0;
+    border-block-start: 1px solid #d8d8d8;
+  }
+}
+
+@media screen and (max-width: 749px) {
+  .cx-bbp__badges {
+    gap: 8px 14px;
+  }
+
+  .cx-bbp__badge {
+    font-size: 13px;
+  }
+
+  .cx-bbp__guarantee-title {
+    font-size: 15px;
+  }
+}
+
+/* Very narrow phones: keep the rating line on ONE row. */
+@media screen and (max-width: 400px) {
+  .cx-bbp__rating {
+    gap: 6px;
+  }
+
+  .cx-bbp__score {
+    font-size: 14px;
+  }
+
+  .cx-bbp__count {
+    font-size: 11px;
+  }
+
+  .cx-bbp__brand {
+    font-size: 12px;
+  }
 }

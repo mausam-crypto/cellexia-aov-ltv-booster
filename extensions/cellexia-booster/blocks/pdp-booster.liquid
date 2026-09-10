@@ -9,29 +9,29 @@
 {%- liquid
 assign show_badges = false
 if cfg.trustBadges.enabled == true and block.settings.show_badges
-assign cx_scope = cfg.marketScopes.trust_badges
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.trust_badges
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign show_badges = true
 endif
 endif
 assign show_guarantee = false
 if cfg.guarantee.enabled == true and block.settings.show_guarantee
-assign cx_scope = cfg.marketScopes.guarantee
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.guarantee
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign show_guarantee = true
 endif
 endif
 assign show_trustpilot = false
 if cfg.trustpilot.enabled == true and block.settings.show_trustpilot
-assign cx_scope = cfg.marketScopes.trustpilot
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.trustpilot
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign show_trustpilot = true
 endif
 endif
 assign show_nudge = false
 if cfg.subscriptionNudge.enabled == true and block.settings.show_nudge
-assign cx_scope = cfg.marketScopes.subscription_nudge
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.subscription_nudge
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign show_nudge = true
 endif
 endif
@@ -47,8 +47,8 @@ assign cx_name_token = '{name}'
 assign survey_ok = false
 assign show_survey = false
 if cfg.dermSurvey.enabled == true and block.settings.show_derm_survey
-assign cx_scope = cfg.marketScopes.derm_survey
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.derm_survey
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 if cx_pdp_flags.derm_survey != false
 assign cx_svy = product.metafields.cellexia.product_survey.value
 if cx_svy
@@ -81,8 +81,8 @@ endif
 endif
 assign show_study = false
 if cfg.clinicalStudy.enabled == true and block.settings.show_clinical_study
-assign cx_scope = cfg.marketScopes.clinical_study
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.clinical_study
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 if cx_pdp_flags.clinical_study != false
 assign cx_study = product.metafields.cellexia.clinical_study.value
 if cx_study
@@ -95,8 +95,8 @@ assign show_batch = false
 assign cx_batch_ing_count = 0
 assign cx_batch_coa_count = 0
 if cfg.batchTransparency.enabled == true and block.settings.show_batch
-assign cx_scope = cfg.marketScopes.batch_transparency
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.batch_transparency
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 if cx_pdp_flags.batch_transparency != false
 assign cx_batch = product.metafields.cellexia.batch_transparency.value
 if cx_batch
@@ -111,15 +111,29 @@ endif
 endif
 assign show_bottle = false
 if cfg.emptyBottleGuarantee.enabled == true and block.settings.show_bottle
-assign cx_scope = cfg.marketScopes.empty_bottle_guarantee
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.empty_bottle_guarantee
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 if cx_pdp_flags.empty_bottle_guarantee != false
 assign show_bottle = true
 endif
 endif
 endif
 assign cx_country = localization.country.iso_code | upcase
+assign cx_eff_gt = false
+if cfg.rewards.giftTiers.enabled == true
+assign cx_s = cfg.marketScopes.gift_tiers
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
+assign cx_eff_gt = true
+endif
+endif
 assign cx_pgid = 'gid://shopify/Product/' | append: product.id
+assign show_bbp = false
+if cfg.buyBoxProof.enabled == true
+assign cx_s = cfg.marketScopes.buy_box_proof
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
+assign show_bbp = true
+endif
+endif
 assign cx_exc_dsp = false
 if cfg.dispatch.excludedByMarket[cx_market] contains cx_pgid
 assign cx_exc_dsp = true
@@ -137,8 +151,8 @@ endif
 assign show_dispatch = false
 if cfg.dispatch.enabled == true and cx_exc_dsp == false
 unless cfg.dispatch.showOnPdp == false
-assign cx_scope = cfg.marketScopes.dispatch_countdown
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.dispatch_countdown
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign show_dispatch = true
 endif
 endunless
@@ -154,8 +168,8 @@ assign cx_del_hidden = true
 endif
 assign show_delivery = false
 if cx_de.enabled == true and cx_de.showOnPdp != false and cx_del_hidden == false
-assign cx_scope = cfg.marketScopes.delivery_estimate
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.delivery_estimate
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign show_delivery = true
 endif
 endif
@@ -192,8 +206,12 @@ assign cx_draft_batch = false
 assign cx_draft_bottle = false
 assign cx_draft_dispatch = false
 assign cx_draft_delivery = false
+assign cx_draft_bbp = false
 if cx_prev_armed
 assign cx_prev_flags = cx_prev.draftFlags
+if cx_prev_flags.buy_box_proof == true or cfg.buyBoxProof.enabled == true
+assign cx_draft_bbp = true
+endif
 if block.settings.show_badges
 if cx_prev_flags.trust_badges == true or cfg.trustBadges.enabled == true
 assign cx_draft_badges = true
@@ -289,13 +307,32 @@ assign cx_draft_delivery = true
 endif
 endif
 endif
+assign cx_bbp_on = show_bbp
+if cx_draft_bbp
+assign cx_bbp_on = true
+endif
+assign cx_bbp_del = false
+if cx_bbp_on and cx_del_hidden == false
+assign cx_bbp_del = true
+endif
+assign cx_bbp_sf = ''
+if cx_bbp_on
+unless cfg.amazon.shipsFromExcludedByMarket[cx_market] contains cx_pgid
+assign cx_bbp_sf = cfg.amazon.shipsFromByCountry[cx_country] | default: cfg.amazon.defaultWarehouse
+endunless
+endif
 assign cx_draft_any = false
-if cx_draft_badges or cx_draft_guarantee or cx_draft_trustpilot or cx_draft_nudge or cx_draft_survey or cx_draft_study or cx_draft_batch or cx_draft_bottle or cx_draft_dispatch or cx_draft_delivery
+if cx_draft_badges or cx_draft_guarantee or cx_draft_trustpilot or cx_draft_nudge or cx_draft_survey or cx_draft_study or cx_draft_batch or cx_draft_bottle or cx_draft_dispatch or cx_draft_delivery or cx_draft_bbp
 assign cx_draft_any = true
 endif
 -%}
-{%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_batch or show_bottle or show_dispatch or show_delivery or cx_draft_any -%}
+{%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_batch or show_bottle or show_dispatch or show_delivery or show_bbp or cx_draft_any -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
+{%- if cx_eff_gt %}
+{%- assign cx_gp = app.metafields.cellexia.gift_plan.value -%}
+{%- assign cx_cl = cx_gp.cc[cx_country] | default: cx_gp.rest -%}
+<script type="application/json" id="cx-gift-config">{"c": {{ cx_gp.cl[cx_cl] | json }}, "b": {{ cx_gp.bc[cx_country] | json }}, "p": {{ cx_gp.pdp | json }}}</script>
+{%- endif %}
 <script type="application/json" id="cx-pdp-config" data-cx-market="{{ cx_market | escape }}">
 {
 "b2b": {% if customer.b2b? %}true{% else %}false{% endif %},
@@ -307,7 +344,7 @@ endif
 {%- if cx_prev_armed and cx_exc_dsp %}
 "dspx": 1,
 {%- endif %}
-{%- if show_delivery or cx_draft_delivery %}
+{%- if show_delivery or cx_draft_delivery or cx_bbp_del %}
 "delivery": {"live": {{ show_delivery }}, "format": {{ cx_de.format | json }}, "pageLocale": {{ request.locale.iso_code | json }}, "minDays": {{ cx_de.minDays | json }}, "maxDays": {{ cx_de.maxDays | json }}, "deliveryDays": {{ cx_de.deliveryDays | json }}, "holidaysEnabled": {{ cx_de.holidaysEnabled | json }}, "country": {{ cx_country | json }}, "override": {{ cx_del_c | json }}, "schedule": {"cutoff": {{ cx_dsp_cutoff | json }}, "timezone": {{ cx_dsp_tz | json }}, "days": {{ cx_dsp_days | json }}}{% if cx_us %}, "us": {{ cx_us | json }}{% endif %}},
 "deliveryStrings": {"delivery.line": {{ 'delivery.line' | t: date: '@@DATE@@' | json }}, "delivery.range": {{ 'delivery.range' | t: from: '@@FROM@@', to: '@@TO@@' | json }}, "delivery.range_same": {{ 'delivery.range_same' | t: date: '@@DATE@@' | json }}, "delivery.timeline_ship": {{ 'delivery.timeline_ship' | t: date: '@@DATE@@' | json }}, "delivery.timeline_delivered": {{ 'delivery.timeline_delivered' | t: date: '@@DATE@@' | json }}, "delivery.box_title": {{ 'delivery.box_title' | t: date: '@@DATE@@' | json }}, "delivery.tooltip": {{ 'delivery.tooltip' | t: date: '@@DATE@@' | json }}, "delivery.badge": {{ 'delivery.badge' | t | json }}, "delivery.timeline_order": {{ 'delivery.timeline_order' | t | json }}, "delivery.box_sub": {{ 'delivery.box_sub' | t | json }}, "delivery.deliver_to": {{ 'delivery.deliver_to' | t | json }}, "delivery.select_state": {{ 'delivery.select_state' | t | json }}},
 {%- endif %}
@@ -330,7 +367,7 @@ assign survey_verifier = survey_verifier | replace: cx_name_token, cx_pname
 "survey": {"live": {{ show_survey }}{% if cfg.dermSurvey.compact == true %}, "cm": 1{% endif %}{% if cfg.dermSurvey.design == "certificate" %}, "sd": "c"{% elsif cfg.dermSurvey.design == "dossier" %}, "sd": "d"{% elsif cfg.dermSurvey.design == "seal" %}, "sd": "s"{% endif %}, "total": {{ cx_svy_total }}{% if cx_svy_rec > 0 %}, "rec": {{ cx_svy_rec }}{% endif %}{% if cx_svy.title.value != blank %}, "t": {{ cx_svy.title.value | replace: cx_name_token, cx_pname | json }}{% endif %}{% if cx_svy.question.value != blank %}, "q": {{ cx_svy.question.value | replace: cx_name_token, cx_pname | json }}{% endif %}{% if cx_svy.intro.value != blank %}, "intro": {{ cx_svy.intro.value | replace: cx_name_token, cx_pname | json }}{% endif %}, "o": [{%- for cx_o in cx_svy.outcomes.value -%}{%- unless forloop.first -%},{%- endunless -%}{"s": {{ cx_o.statement.value | replace: cx_name_token, cx_pname | json }}, "y": {{ cx_o.yes_count.value | json }}}{%- endfor -%}], "method": {{ cx_svy_method | replace: cx_name_token, cx_pname | json }}, "verifier": {{ survey_verifier | default: '' | json }}, "url": {{ survey_url | default: '' | json }}},
 "surveyStrings": {"eyebrow": {{ 'survey.eyebrow' | t | json }}, "how": {{ 'survey.how' | t | json }}, "verified_badge": {{ 'survey.verified_badge' | t | json }}, "verified_by": {{ 'survey.verified_by' | t: name: survey_verifier | json }}, "p1": {{ 'survey.methodology_p1' | t: total: cx_svy_total | json }}, "p2": {{ 'survey.methodology_p2' | t | json }}, "p3": {{ 'survey.methodology_p3' | t | json }}, {% if cx_svy_rec > 0 %}"p4": {{ 'survey.methodology_p4' | t: total: cx_svy_total, yes: cx_svy_rec, percent: cx_svy_pct | json }}, {% endif %}"p5": {{ 'survey.methodology_p5' | t | json }}, "rec_line": {{ 'survey.rec_line' | t: total: cx_svy_total, product: cx_pname | json }}, "outcomes_intro": {{ 'survey.outcomes_intro' | t: product: cx_pname | json }}, "outcome_agree": {{ 'survey.outcome_agree' | t | json }}{% if cfg.dermSurvey.compact == true %}, "more_outcomes": {{ 'survey.more_outcomes' | t | json }}{% endif %}},
 {%- endif %}
-{%- if show_badges or cx_draft_badges %}
+{%- if show_badges or cx_draft_badges or cx_bbp_on %}
 {%- liquid
 if cfg.trustBadges.items
 assign badge_keys = cfg.trustBadges.items
@@ -340,10 +377,10 @@ endif
 -%}
 "badges": {"live": {{ show_badges }}, "k": {{ badge_keys | json }}, "fs": {{ cx_fs_badge_ok }}, "l": [{{ 'badges.secure_checkout' | t | json }}, {{ 'badges.free_shipping_over' | t: amount: cx_fs_badge_money | json }}, {{ 'badges.money_back' | t: days: guarantee_days | json }}, {{ 'badges.dermatologist_tested' | t | json }}, {{ 'badges.cruelty_free' | t | json }}, {{ 'badges.clinically_proven' | t | json }}, {{ 'badges.ssl_encrypted' | t | json }}, {{ 'badges.easy_returns' | t | json }}]},
 {%- endif %}
-{%- if show_guarantee or cx_draft_guarantee %}
+{%- if show_guarantee or cx_draft_guarantee or cx_bbp_on %}
 "g": {"live": {{ show_guarantee }}, "t": {{ 'guarantee.title' | t: days: guarantee_days | json }}},
 {%- endif %}
-{%- if show_trustpilot or cx_draft_trustpilot %}
+{%- if show_trustpilot or cx_draft_trustpilot or cx_bbp_on %}
 {%- liquid
 assign tp_stars = tp_rating | times: 1.0
 if tp_stars > 5
@@ -358,6 +395,9 @@ assign tp_stars_label = tp_stars | round: 1
 {%- endif %}
 {%- if show_nudge or cx_draft_nudge %}
 "n": {"live": {{ show_nudge }}, "t": {{ 'subscription.nudge_title' | t | json }}, "b": {{ 'subscription.nudge_body' | t: percent: nudge_pct | json }}},
+{%- endif %}
+{%- if cx_bbp_on %}
+"bbp": {"live": {{ show_bbp }}, "c": {{ cfg.buyBoxProof | json }}, "dl": {{ cx_bbp_del }}, "sf": {{ cx_bbp_sf | json }}, "sfs": {{ 'amazon.ships_from' | t: country: '@@C@@' | json }}, "rs": {{ 'badges.research' | t | json }}, "sl": {{ 'badges.seal' | t | json }}},
 {%- endif %}
 "placement": {{ block.settings.proof_placement | default: 'above_tabs' | json }}
 {%- if cx_prev_armed -%}
@@ -467,5 +507,5 @@ endif
 {%- endif -%}
 {%- endif -%}
 {% schema %}
-{"name":"Cellexia PDP booster","target":"body","settings":[{"type":"checkbox","id":"show_badges","label":"Show trust badges on product pages","default":true},{"type":"checkbox","id":"show_guarantee","label":"Show guarantee on product pages","default":true},{"type":"checkbox","id":"show_trustpilot","label":"Show Trustpilot strip on product pages","default":true},{"type":"checkbox","id":"show_nudge","label":"Show subscription nudge on product pages","default":true},{"type":"header","content":"Trust boosters (proof stack)"},{"type":"select","id":"proof_placement","label":"Placement","options":[{"value":"above_tabs","label":"Above the product tabs"},{"value":"below_tabs","label":"Below the product tabs"}],"default":"above_tabs"},{"type":"checkbox","id":"show_derm_survey","label":"Show dermatologist survey","default":true},{"type":"checkbox","id":"show_clinical_study","label":"Show clinical study","default":true},{"type":"checkbox","id":"show_batch","label":"Show batch transparency","default":true},{"type":"checkbox","id":"show_bottle","label":"Show empty bottle guarantee","default":true},{"type":"text","id":"bottle_title_override","label":"Guarantee title override","info":"Leave blank to use the translated default."},{"type":"text","id":"bottle_body_override","label":"Guarantee body override","info":"Leave blank to use the translated default."},{"type":"text","id":"bottle_point_1_override","label":"Guarantee point 1 override","info":"Leave blank to use the translated default."},{"type":"text","id":"bottle_point_2_override","label":"Guarantee point 2 override","info":"Leave blank to use the translated default."},{"type":"text","id":"bottle_point_3_override","label":"Guarantee point 3 override","info":"Leave blank to use the translated default."},{"type":"header","content":"Guarantee check window"},{"type":"paragraph","content":"Company facts shown under \"Why you can count on it\" in the guarantee-check window. Enter only your own verifiable company facts (e.g. registration number, years in operation). Blank facts are hidden; all four blank hides the section. Translatable via Translate & Adapt."},{"type":"text","id":"guarantee_fact_1","label":"Company fact 1"},{"type":"text","id":"guarantee_fact_2","label":"Company fact 2"},{"type":"text","id":"guarantee_fact_3","label":"Company fact 3"},{"type":"text","id":"guarantee_fact_4","label":"Company fact 4"}]}
+{"name":"Cellexia PDP booster","target":"body","settings":[{"type":"checkbox","id":"show_badges","label":"Show trust badges on product pages","default":true},{"type":"checkbox","id":"show_guarantee","label":"Show guarantee on product pages","default":true},{"type":"checkbox","id":"show_trustpilot","label":"Show Trustpilot strip on product pages","default":true},{"type":"checkbox","id":"show_nudge","label":"Show subscription nudge on product pages","default":true},{"type":"header","content":"Trust boosters (proof stack)"},{"type":"select","id":"proof_placement","label":"Placement","options":[{"value":"above_tabs","label":"Above the product tabs"},{"value":"below_tabs","label":"Below the product tabs"}],"default":"above_tabs"},{"type":"checkbox","id":"show_derm_survey","label":"Show dermatologist survey","default":true},{"type":"checkbox","id":"show_clinical_study","label":"Show clinical study","default":true},{"type":"checkbox","id":"show_batch","label":"Show batch transparency","default":true},{"type":"checkbox","id":"show_bottle","label":"Show empty bottle guarantee","default":true},{"type":"paragraph","content":"Leave blank to use the translated default."},{"type":"text","id":"bottle_title_override","label":"Guarantee title override"},{"type":"text","id":"bottle_body_override","label":"Guarantee body override"},{"type":"text","id":"bottle_point_1_override","label":"Guarantee point 1 override"},{"type":"text","id":"bottle_point_2_override","label":"Guarantee point 2 override"},{"type":"text","id":"bottle_point_3_override","label":"Guarantee point 3 override"},{"type":"header","content":"Guarantee check window"},{"type":"paragraph","content":"Company facts shown under \"Why you can count on it\" in the guarantee-check window. Enter only your own verifiable company facts (e.g. registration number, years in operation). Blank facts are hidden; all four blank hides the section. Translatable via Translate & Adapt."},{"type":"text","id":"guarantee_fact_1","label":"Company fact 1"},{"type":"text","id":"guarantee_fact_2","label":"Company fact 2"},{"type":"text","id":"guarantee_fact_3","label":"Company fact 3"},{"type":"text","id":"guarantee_fact_4","label":"Company fact 4"}]}
 {% endschema %}

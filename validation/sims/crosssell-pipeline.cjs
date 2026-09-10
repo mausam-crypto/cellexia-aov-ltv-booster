@@ -163,6 +163,7 @@ const EXTRACTED = extractAll(SRC, {
     "variantDefaultCadence",
     "planNameMatchesCadence",
     "crossSellPlanFor",
+    "ownedCadenceAlloc",
     "ensureCrossSellPlanData",
     "performUnsubscribe",
   ],

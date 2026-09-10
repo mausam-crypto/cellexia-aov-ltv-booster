@@ -45,7 +45,9 @@
     "cruelty_free": "Nietestowane na zwierzętach",
     "clinically_proven": "Potwierdzone klinicznie",
     "ssl_encrypted": "Płatność szyfrowana SSL",
-    "easy_returns": "Łatwe zwroty"
+    "easy_returns": "Łatwe zwroty",
+    "research": "Na podstawie badań opublikowanych przez",
+    "seal": "Niezależne badania. Potwierdzona tolerancja skóry."
   },
   "guarantee": {
     "title": "{{ days }}-dniowa gwarancja zwrotu pieniędzy",

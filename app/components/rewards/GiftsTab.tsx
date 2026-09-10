@@ -23,21 +23,19 @@ import type { VariantSummary } from "../../services/products.server";
 import { GiftPicker } from "./GiftPicker";
 import {
   CAPS,
-  GIFT_PRESET_BADGES,
-  GIFT_PRESET_LABELS,
+  GIFT_PDP_STYLE_LABELS,
+  UNKNOWN_AVAIL,
   formatEur,
   giftOptionLabel,
-  isLoadableGiftPreset,
   numericId,
   shortGid,
   variantLabel,
+  type GiftClusterRow,
   type GiftOptionRow,
   type GiftTierErrors,
   type GiftTierRow,
-  type LoadableGiftPreset,
   type LocationOption,
   type MarketOption,
-  type PresetTables,
   type RewardsFormState,
   type SampleRule,
   type StockView,
@@ -52,24 +50,36 @@ import {
  */
 
 type PickerTarget =
-  | { kind: "option"; tier: number; slot: number; option: number }
+  | { kind: "option"; clusterId: string; tier: number; slot: number; option: number }
   | { kind: "pool" };
 
 export interface GiftsTabProps {
   gt: RewardsFormState["gt"];
   setGt: (patch: Partial<RewardsFormState["gt"]>) => void;
-  presets: PresetTables;
   variantIndex: Record<string, VariantSummary>;
   registerVariant: (variant: VariantSummary) => void;
-  updateTier: (index: number, update: Partial<GiftTierRow>) => void;
-  removeTier: (index: number) => void;
-  addTier: () => void;
-  updateSlots: (tier: number, slots: GiftOptionRow[][]) => void;
-  updateOption: (tier: number, slot: number, option: number, update: Partial<GiftOptionRow>) => void;
-  setThresholdAmount: (handle: string, currencyCode: string, index: number, value: string) => void;
-  clearThreshold: (handle: string) => void;
-  toggleWarehouse: (handle: string, locationId: string, checked: boolean) => void;
-  tierErrors: GiftTierErrors[];
+  updateTier: (clusterId: string, index: number, update: Partial<GiftTierRow>) => void;
+  removeTier: (clusterId: string, index: number) => void;
+  addTier: (clusterId: string) => void;
+  updateSlots: (clusterId: string, tier: number, slots: GiftOptionRow[][]) => void;
+  updateOption: (
+    clusterId: string,
+    tier: number,
+    slot: number,
+    option: number,
+    update: Partial<GiftOptionRow>,
+  ) => void;
+  addCluster: () => void;
+  removeCluster: (clusterId: string) => void;
+  updateCluster: (clusterId: string, update: Partial<GiftClusterRow>) => void;
+  toggleClusterCountry: (clusterId: string, code: string, checked: boolean) => void;
+  toggleClusterLocation: (clusterId: string, locationId: string, checked: boolean) => void;
+  setThresholdAmount: (code: string, currencyCode: string, index: number, value: string) => void;
+  clearThreshold: (code: string) => void;
+  /** How many tiers a country's cluster has (sizes its amount row). */
+  tierCountForCountry: (code: string) => number;
+  /** Cluster id -> that cluster's ladder errors. */
+  clusterErrors: Record<string, { tierErrors: GiftTierErrors[]; formErrors: string[] }>;
   formErrors: string[];
   thresholdErrors: Record<string, string>;
   maxGiftLinesError?: string;
@@ -89,9 +99,7 @@ export interface GiftsTabProps {
   reach: string;
   onEditMarkets: () => void;
   // intents
-  giftPresetChoice: LoadableGiftPreset;
-  setGiftPresetChoice: (preset: LoadableGiftPreset) => void;
-  onLoadPreset: (preset: LoadableGiftPreset) => void;
+  onLoadPreset: () => void;
   presetLoading: boolean;
   presetNotes: string[];
   onLoadSachets: () => void;
@@ -111,7 +119,6 @@ export function GiftsTab(props: GiftsTabProps) {
   const {
     gt,
     setGt,
-    presets,
     variantIndex,
     registerVariant,
     updateTier,
@@ -119,10 +126,15 @@ export function GiftsTab(props: GiftsTabProps) {
     addTier,
     updateSlots,
     updateOption,
+    addCluster,
+    removeCluster,
+    updateCluster,
+    toggleClusterCountry,
+    toggleClusterLocation,
     setThresholdAmount,
     clearThreshold,
-    toggleWarehouse,
-    tierErrors,
+    tierCountForCountry,
+    clusterErrors,
     formErrors,
     thresholdErrors,
     maxGiftLinesError,
@@ -136,8 +148,6 @@ export function GiftsTab(props: GiftsTabProps) {
     locations,
     reach,
     onEditMarkets,
-    giftPresetChoice,
-    setGiftPresetChoice,
     onLoadPreset,
     presetLoading,
     presetNotes,
@@ -160,6 +170,9 @@ export function GiftsTab(props: GiftsTabProps) {
   const poolFull = gt.samplePool.length >= poolCap;
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [showBackups, setShowBackups] = useState(false);
+  /** Which cluster card is expanded ("" = all collapsed). Starts on the
+   *  first one so the tab is never a wall of closed rows. */
+  const [openCluster, setOpenCluster] = useState<string>(() => gt.clusters[0]?.id ?? "");
 
   const closePicker = () => setPicker(null);
   const pickVariant = (variant: VariantSummary) => {
@@ -172,7 +185,7 @@ export function GiftsTab(props: GiftsTabProps) {
         });
       }
     } else {
-      updateOption(picker.tier, picker.slot, picker.option, {
+      updateOption(picker.clusterId, picker.tier, picker.slot, picker.option, {
         kind: "variant",
         variantId: variant.id,
         handle: variant.productHandle,
@@ -190,14 +203,16 @@ export function GiftsTab(props: GiftsTabProps) {
   // ---- Stock table --------------------------------------------------------
   const stockColumns = (() => {
     const seen = new Map<string, string>();
-    for (const tier of gt.tiers) {
-      for (const slot of tier.slots) {
-        for (const option of slot) {
-          if (option.kind === "variant" && option.variantId) {
-            const nid = numericId(option.variantId);
-            if (nid && !seen.has(nid)) {
-              const v = variantIndex[option.variantId];
-              seen.set(nid, v ? variantLabel(v) : option.handle || shortGid(option.variantId));
+    for (const cluster of gt.clusters) {
+      for (const tier of cluster.tiers) {
+        for (const slot of tier.slots) {
+          for (const option of slot) {
+            if (option.kind === "variant" && option.variantId) {
+              const nid = numericId(option.variantId);
+              if (nid && !seen.has(nid)) {
+                const v = variantIndex[option.variantId];
+                seen.set(nid, v ? variantLabel(v) : option.handle || shortGid(option.variantId));
+              }
             }
           }
         }
@@ -210,34 +225,38 @@ export function GiftsTab(props: GiftsTabProps) {
         seen.set(nid, `${v ? variantLabel(v) : entry.handle} (sachet)`);
       }
     }
-    for (const entries of Object.values(stockView.byMarket)) {
+    for (const entries of Object.values(stockView.byCluster)) {
       for (const nid of Object.keys(entries)) {
         if (!seen.has(nid)) seen.set(nid, `#${nid}`);
       }
     }
     return [...seen.entries()];
   })();
-  const stockMarkets = Object.keys(stockView.byMarket).sort();
-  const stockRows = stockMarkets.map((handle) => [
-    marketName(handle),
+  const stockClusters = Object.keys(stockView.byCluster).sort();
+  const clusterName = (id: string) => gt.clusters.find((c) => c.id === id)?.name ?? id;
+  const stockRows = stockClusters.map((id) => [
+    clusterName(id),
     ...stockColumns.map(([nid]) => {
-      const entry = stockView.byMarket[handle]?.[nid];
-      if (!entry) return "—";
+      const entry = stockView.byCluster[id]?.[nid];
+      if (!entry) return "not checked";
+      // v18: -1 means Shopify has no inventory row at this cluster's
+      // warehouses. That is unknown, not zero, and never pauses a gift.
+      if (entry.avail === UNKNOWN_AVAIL) return "unknown";
       return entry.paused ? `${entry.avail} · paused` : String(entry.avail);
     }),
   ]);
-  const pausedTotal = stockMarkets.reduce(
-    (n, handle) => n + Object.values(stockView.byMarket[handle] ?? {}).filter((e) => e.paused).length,
+  const pausedTotal = stockClusters.reduce(
+    (n, id) => n + Object.values(stockView.byCluster[id] ?? {}).filter((e) => e.paused).length,
     0,
   );
 
-  const renderTierCard = (tier: GiftTierRow, ti: number) => {
-    const errors = tierErrors[ti];
+  const renderTierCard = (cluster: GiftClusterRow, tier: GiftTierRow, ti: number) => {
+    const errors = clusterErrors[cluster.id]?.tierErrors[ti];
     const giftNames = tier.slots
       .map((slot) => (slot[0] ? giftOptionLabel(slot[0], variantIndex) : ""))
       .filter((s) => s !== "");
     return (
-      <Box key={`gt-tier-${ti}`} padding="300" borderColor="border" borderWidth="025" borderRadius="200">
+      <Box key={`gt-${cluster.id}-tier-${ti}`} padding="300" borderColor="border" borderWidth="025" borderRadius="200">
         <BlockStack gap="300">
           <InlineStack gap="300" blockAlign="start" wrap align="space-between">
             <InlineStack gap="300" blockAlign="start" wrap>
@@ -248,7 +267,7 @@ export function GiftsTab(props: GiftsTabProps) {
                   prefix="€"
                   min={0}
                   value={tier.amount}
-                  onChange={(amount) => updateTier(ti, { amount })}
+                  onChange={(amount) => updateTier(cluster.id, ti, { amount })}
                   error={errors?.amount}
                   autoComplete="off"
                 />
@@ -266,7 +285,7 @@ export function GiftsTab(props: GiftsTabProps) {
                 icon={DeleteIcon}
                 variant="tertiary"
                 accessibilityLabel={`Remove tier ${ti + 1}`}
-                onClick={() => removeTier(ti)}
+                onClick={() => removeTier(cluster.id, ti)}
               />
             </Box>
           </InlineStack>
@@ -305,7 +324,7 @@ export function GiftsTab(props: GiftsTabProps) {
                           min={1}
                           max={CAPS.samplesPerOption}
                           value={primary.count}
-                          onChange={(count) => updateOption(ti, si, 0, { count })}
+                          onChange={(count) => updateOption(cluster.id, ti, si, 0, { count })}
                           autoComplete="off"
                         />
                       </Box>
@@ -318,7 +337,7 @@ export function GiftsTab(props: GiftsTabProps) {
                         size="slim"
                         variant="plain"
                         onClick={() =>
-                          setPicker(isPicking ? null : { kind: "option", tier: ti, slot: si, option: 0 })
+                          setPicker(isPicking ? null : { kind: "option", clusterId: cluster.id, tier: ti, slot: si, option: 0 })
                         }
                       >
                         {isPicking ? "Cancel" : primary.variantId || primary.handle ? "Change" : "Pick a product"}
@@ -329,7 +348,7 @@ export function GiftsTab(props: GiftsTabProps) {
                       variant="tertiary"
                       size="slim"
                       accessibilityLabel="Remove this gift"
-                      onClick={() => updateSlots(ti, tier.slots.filter((_, i) => i !== si))}
+                      onClick={() => updateSlots(cluster.id, ti, tier.slots.filter((_, i) => i !== si))}
                     />
                   </InlineStack>
                   {optionError ? (
@@ -346,8 +365,8 @@ export function GiftsTab(props: GiftsTabProps) {
               disabled={tier.slots.length >= CAPS.giftSlots}
               onClick={() => {
                 const next = [...tier.slots, [{ kind: "variant" as const, variantId: "", handle: "", count: "1" }]];
-                updateSlots(ti, next);
-                setPicker({ kind: "option", tier: ti, slot: next.length - 1, option: 0 });
+                updateSlots(cluster.id, ti, next);
+                setPicker({ kind: "option", clusterId: cluster.id, tier: ti, slot: next.length - 1, option: 0 });
               }}
             >
               Add a gift product
@@ -357,7 +376,7 @@ export function GiftsTab(props: GiftsTabProps) {
               icon={PlusIcon}
               disabled={tier.slots.length >= CAPS.giftSlots}
               onClick={() =>
-                updateSlots(ti, [...tier.slots, [{ kind: "samples", variantId: "", handle: "", count: "2" }]])
+                updateSlots(cluster.id, ti, [...tier.slots, [{ kind: "samples", variantId: "", handle: "", count: "2" }]])
               }
             >
               Add sample sachets
@@ -392,7 +411,7 @@ export function GiftsTab(props: GiftsTabProps) {
                                 size="micro"
                                 variant="plain"
                                 onClick={() =>
-                                  setPicker(picking ? null : { kind: "option", tier: ti, slot: si, option: oi })
+                                  setPicker(picking ? null : { kind: "option", clusterId: cluster.id, tier: ti, slot: si, option: oi })
                                 }
                               >
                                 {picking ? "Cancel" : "Change"}
@@ -403,6 +422,7 @@ export function GiftsTab(props: GiftsTabProps) {
                                 tone="critical"
                                 onClick={() =>
                                   updateSlots(
+                                    cluster.id,
                                     ti,
                                     tier.slots.map((s, i) => (i === si ? s.filter((_, j) => j !== oi) : s)),
                                   )
@@ -425,8 +445,8 @@ export function GiftsTab(props: GiftsTabProps) {
                             const nextSlots = tier.slots.map((s, i) =>
                               i === si ? [...s, { kind: "variant" as const, variantId: "", handle: "", count: "1" }] : s,
                             );
-                            updateSlots(ti, nextSlots);
-                            setPicker({ kind: "option", tier: ti, slot: si, option: slot.length });
+                            updateSlots(cluster.id, ti, nextSlots);
+                            setPicker({ kind: "option", clusterId: cluster.id, tier: ti, slot: si, option: slot.length });
                           }}
                         >
                           Add a backup
@@ -454,17 +474,15 @@ export function GiftsTab(props: GiftsTabProps) {
               Free gifts
             </Text>
             <InlineStack gap="200" blockAlign="center">
-              <Badge tone={gt.giftPreset === "custom" ? "info" : "attention"}>
-                {GIFT_PRESET_BADGES[gt.giftPreset]}
-              </Badge>
+              <Badge>{`${gt.clusters.length} cluster${gt.clusters.length === 1 ? "" : "s"}`}</Badge>
               <Badge tone={gt.enabled ? "success" : undefined}>{gt.enabled ? "On" : "Off"}</Badge>
             </InlineStack>
           </InlineStack>
           <Text as="p" tone="subdued" variant="bodySm">
-            Shoppers who spend more than a tier amount get a free gift. The
-            cart shows a progress bar towards the next gift, the app adds the
-            gift line at 100 % off, and a gift that runs out of stock is
-            paused for that market.
+            Shoppers who spend past a tier get a free gift. The cart shows a
+            reward ladder towards the next one, the app adds the gift line at
+            100 % off, and a gift that runs out of stock is paused for the
+            cluster it belongs to.
           </Text>
           <Checkbox
             label="Turn free gifts on"
@@ -480,28 +498,17 @@ export function GiftsTab(props: GiftsTabProps) {
             </Button>
           </InlineStack>
           <Divider />
-          <InlineStack gap="300" blockAlign="end" wrap>
-            <Box minWidth="320px">
-              <Select
-                label="Start from a preset"
-                options={presets.giftKeys.map((key) => ({ label: GIFT_PRESET_LABELS[key], value: key }))}
-                value={giftPresetChoice}
-                onChange={(value) => {
-                  if (isLoadableGiftPreset(value, presets.giftKeys)) setGiftPresetChoice(value);
-                }}
-              />
-            </Box>
-            <Button onClick={() => onLoadPreset(giftPresetChoice)} loading={presetLoading}>
-              Use this preset
+          <InlineStack gap="300" blockAlign="center" wrap>
+            <Button onClick={onLoadPreset} loading={presetLoading}>
+              Load the default clusters
             </Button>
+            <Text as="p" tone="subdued" variant="bodySm">
+              Replaces the clusters below with the recommended ones, looked up
+              in your store. Nothing is saved until you press Save.
+            </Text>
           </InlineStack>
-          <Text as="p" tone="subdued" variant="bodySm">
-            “Use this preset” replaces the tiers below with the preset's
-            gifts, looked up in your store. Nothing is saved until you press
-            Save. Edit any tier afterwards — it then counts as Custom.
-          </Text>
           {presetNotes.length > 0 ? (
-            <Banner tone="warning" title="Preset loaded with notes">
+            <Banner tone="warning" title="Defaults loaded with notes">
               <BlockStack gap="100">
                 {presetNotes.map((note) => (
                   <Text as="p" key={note}>
@@ -513,27 +520,197 @@ export function GiftsTab(props: GiftsTabProps) {
           ) : null}
           <InlineStack align="space-between" blockAlign="center" wrap>
             <Text as="h3" variant="headingSm">
-              Tiers (amounts in EUR — other currencies under Advanced)
+              Clusters (amounts in EUR; each country converts under Advanced)
             </Text>
             <Button variant="plain" onClick={() => setShowBackups((v) => !v)}>
               {showBackups ? "Hide backup gifts" : "Show backup gifts"}
             </Button>
           </InlineStack>
-          {gt.tiers.map(renderTierCard)}
+          <Text as="p" tone="subdued" variant="bodySm">
+            A cluster is a group of countries that share one reward ladder,
+            usually because they ship from the same warehouse. Every country
+            belongs to exactly one cluster, and the catch-all at the bottom
+            covers everything you have not listed, so a country can never end
+            up with no answer.
+          </Text>
+          {gt.clusters.map((cluster) => {
+            const open = openCluster === cluster.id;
+            const tierSummary =
+              cluster.tiers.length === 0
+                ? "no tier yet"
+                : cluster.tiers.map((t) => formatEur(t.amount)).join(" · ");
+            return (
+              <Box
+                key={`cluster-${cluster.id}`}
+                padding="300"
+                borderColor="border"
+                borderWidth="025"
+                borderRadius="200"
+              >
+                <BlockStack gap="300">
+                  <InlineStack align="space-between" blockAlign="center" wrap>
+                    <InlineStack gap="200" blockAlign="center" wrap>
+                      <Text as="h4" variant="headingSm">
+                        {cluster.name}
+                      </Text>
+                      {cluster.rest ? <Badge tone="info">Catch-all</Badge> : null}
+                      <Text as="span" tone="subdued" variant="bodySm">
+                        {cluster.rest
+                          ? "every country not listed above"
+                          : `${cluster.countries.length} countr${cluster.countries.length === 1 ? "y" : "ies"}`}
+                        {" · "}
+                        {tierSummary}
+                      </Text>
+                    </InlineStack>
+                    <InlineStack gap="200" blockAlign="center">
+                      <Button
+                        variant="plain"
+                        onClick={() => setOpenCluster(open ? "" : cluster.id)}
+                      >
+                        {open ? "Close" : "Edit"}
+                      </Button>
+                      {cluster.rest ? null : (
+                        <Button
+                          icon={DeleteIcon}
+                          variant="tertiary"
+                          accessibilityLabel={`Remove ${cluster.name}`}
+                          onClick={() => removeCluster(cluster.id)}
+                        />
+                      )}
+                    </InlineStack>
+                  </InlineStack>
+                  <Collapsible id={`cluster-body-${cluster.id}`} open={open}>
+                    <BlockStack gap="300">
+                      <InlineStack gap="300" blockAlign="start" wrap>
+                        <Box width="260px">
+                          <TextField
+                            label="Cluster name"
+                            value={cluster.name}
+                            onChange={(name) => updateCluster(cluster.id, { name })}
+                            autoComplete="off"
+                            maxLength={60}
+                          />
+                        </Box>
+                        <Box width="320px">
+                          <TextField
+                            label="Countries"
+                            value={cluster.rest ? "" : cluster.countries.join(", ")}
+                            disabled={cluster.rest}
+                            helpText={
+                              cluster.rest
+                                ? "The catch-all covers every country you have not listed in another cluster."
+                                : "Two-letter codes, comma separated. A country listed here is removed from any other cluster."
+                            }
+                            onChange={(value) => {
+                              const codes = value
+                                .split(/[\s,]+/)
+                                .map((c) => c.trim().toUpperCase())
+                                .filter((c) => /^[A-Z]{2}$/.test(c));
+                              const wanted = new Set(codes);
+                              for (const code of codes) {
+                                if (!cluster.countries.includes(code)) {
+                                  toggleClusterCountry(cluster.id, code, true);
+                                }
+                              }
+                              for (const code of cluster.countries) {
+                                if (!wanted.has(code)) toggleClusterCountry(cluster.id, code, false);
+                              }
+                            }}
+                            autoComplete="off"
+                            multiline={2}
+                          />
+                        </Box>
+                      </InlineStack>
+                      <BlockStack gap="100">
+                        <Text as="p" variant="bodySm" fontWeight="semibold">
+                          Warehouses that serve this cluster
+                        </Text>
+                        <Text as="p" tone="subdued" variant="bodySm">
+                          Stock is checked at these locations. Leave them all
+                          unticked to check every active location.
+                        </Text>
+                        <InlineStack gap="300" wrap>
+                          {locations.map((location) => (
+                            <Checkbox
+                              key={`${cluster.id}-${location.id}`}
+                              label={location.countryCode ? `${location.name} (${location.countryCode})` : location.name}
+                              checked={cluster.locations.includes(location.id)}
+                              onChange={(checked) =>
+                                toggleClusterLocation(cluster.id, location.id, checked)
+                              }
+                            />
+                          ))}
+                        </InlineStack>
+                      </BlockStack>
+                      {cluster.tiers.map((tier, ti) => renderTierCard(cluster, tier, ti))}
+                      {(clusterErrors[cluster.id]?.formErrors ?? []).map((error) => (
+                        <Text as="p" tone="critical" variant="bodySm" key={error}>
+                          {error}
+                        </Text>
+                      ))}
+                      <InlineStack>
+                        <Button
+                          icon={PlusIcon}
+                          onClick={() => addTier(cluster.id)}
+                          disabled={cluster.tiers.length >= CAPS.giftTiers}
+                        >
+                          Add a tier to {cluster.name}
+                        </Button>
+                      </InlineStack>
+                    </BlockStack>
+                  </Collapsible>
+                </BlockStack>
+              </Box>
+            );
+          })}
           {formErrors.map((error) => (
             <Text as="p" tone="critical" variant="bodySm" key={error}>
               {error}
             </Text>
           ))}
           <InlineStack>
-            <Button icon={PlusIcon} onClick={addTier} disabled={gt.tiers.length >= CAPS.giftTiers}>
-              Add a tier
+            <Button
+              icon={PlusIcon}
+              onClick={addCluster}
+              disabled={gt.clusters.length >= CAPS.clusters}
+            >
+              Add a cluster
             </Button>
           </InlineStack>
           <Text as="p" tone="subdued" variant="bodySm">
             Every gift of a reached tier is granted{gt.cumulative ? ", and the gifts of the lower tiers stay" : ""}.
             “Sample sachets” are taken from the sample pool under Advanced.
           </Text>
+        </BlockStack>
+      </Card>
+
+      <Card>
+        <BlockStack gap="300">
+          <Text as="h3" variant="headingSm">
+            On product pages
+          </Text>
+          <Checkbox
+            label="Show a line on product pages"
+            checked={gt.pdpEnabled}
+            onChange={(pdpEnabled) => setGt({ pdpEnabled })}
+            helpText="Reads the shopper's cart, so it can say how far they are from the next gift rather than just advertising it."
+          />
+          {gt.pdpEnabled ? (
+            <ChoiceList
+              title="Where it goes and how it looks"
+              choices={(["card", "line", "ladder"] as const).map((style) => ({
+                label: GIFT_PDP_STYLE_LABELS[style],
+                value: style,
+              }))}
+              selected={[gt.pdpStyle]}
+              onChange={(values) => {
+                const next = values[0];
+                if (next === "line" || next === "card" || next === "ladder") {
+                  setGt({ pdpStyle: next });
+                }
+              }}
+            />
+          ) : null}
         </BlockStack>
       </Card>
 
@@ -681,21 +858,27 @@ export function GiftsTab(props: GiftsTabProps) {
               </BlockStack>
 
               <Divider />
-              {/* ---- Per-market amounts ---- */}
+              {/* ---- v18 per-country amounts ---- */}
               <BlockStack gap="200">
                 <InlineStack align="space-between" blockAlign="center" wrap>
                   <Text as="h4" variant="headingSm">
-                    Amounts per market
+                    Amounts per country
                   </Text>
-                  <Button size="slim" onClick={onSuggestAmounts} loading={suggestLoading} disabled={gt.tiers.length === 0}>
+                  <Button
+                    size="slim"
+                    onClick={onSuggestAmounts}
+                    loading={suggestLoading}
+                    disabled={gt.clusters.every((cluster) => cluster.tiers.length === 0)}
+                  >
                     Suggest from local prices
                   </Button>
                 </InlineStack>
                 <Text as="p" tone="subdued" variant="bodySm">
-                  Blank rows use the EUR amounts converted at Shopify's rate.
-                  “Suggest from local prices” scales the EUR amounts by the
-                  real price difference of your reference product in each
-                  market and rounds them — review, then Save.
+                  A blank row scales that country's cluster ladder by its own
+                  price level and rounds it to a clean number, which is what
+                  most countries should use. “Suggest from local prices” fills
+                  every row with what it would be, so you can see and change
+                  them. Review, then Save.
                 </Text>
                 {suggestNotes.length > 0 ? (
                   <Banner tone="warning" title="Suggestion notes">
@@ -708,67 +891,65 @@ export function GiftsTab(props: GiftsTabProps) {
                     </BlockStack>
                   </Banner>
                 ) : null}
-                {markets.length === 0 ? (
-                  <Text as="p" tone="subdued" variant="bodySm">
-                    No markets could be loaded.
-                  </Text>
-                ) : (
-                  <BlockStack gap="200">
-                    {markets.map((market) => {
-                      const currency = market.currencyCode || "EUR";
-                      const row = gt.thresholds[market.handle];
-                      const error = thresholdErrors[market.handle];
-                      return (
-                        <InlineStack key={market.handle} gap="300" blockAlign="start" wrap>
-                          <Box width="200px" paddingBlockStart="200">
-                            <Text as="span" variant="bodyMd">
-                              {market.name}
-                              {market.primary ? " (primary)" : ""}
-                            </Text>
-                            <Text as="p" tone="subdued" variant="bodySm">
-                              {currency}
-                              {!market.enabled ? " · inactive" : ""}
-                            </Text>
-                          </Box>
-                          {gt.tiers.map((_, ti) => (
-                            <Box width="130px" key={`th-${market.handle}-${ti}`}>
-                              <TextField
-                                label={`Tier ${ti + 1}`}
-                                labelHidden
-                                type="number"
-                                min={0}
-                                suffix={currency}
-                                placeholder={gt.tiers[ti]?.amount || "—"}
-                                value={row?.amounts[ti] ?? ""}
-                                onChange={(value) => setThresholdAmount(market.handle, currency, ti, value)}
-                                error={ti === 0 ? error : undefined}
-                                autoComplete="off"
-                              />
-                            </Box>
-                          ))}
-                          {row && row.amounts.some((a) => a.trim() !== "") ? (
-                            <Box paddingBlockStart="100">
-                              <Button variant="plain" onClick={() => clearThreshold(market.handle)}>
-                                Use EUR amounts
-                              </Button>
-                            </Box>
-                          ) : null}
-                        </InlineStack>
-                      );
-                    })}
-                    {Object.entries(gt.thresholds)
-                      .filter(([handle]) => !markets.some((m) => m.handle === handle))
-                      .map(([handle, row]) => (
-                        <Text as="p" tone="subdued" variant="bodySm" key={handle}>
-                          Stored amounts for “{handle}” (market not found): {row.amounts.join(" / ")}{" "}
-                          {row.currencyCode} — kept until you clear them.{" "}
-                          <Button variant="plain" onClick={() => clearThreshold(handle)}>
-                            Clear
-                          </Button>
+                <BlockStack gap="300">
+                  {gt.clusters.map((cluster) => {
+                    const codes = cluster.rest
+                      ? Object.keys(gt.thresholds)
+                          .filter(
+                            (code) =>
+                              !gt.clusters.some((c) => !c.rest && c.countries.includes(code)),
+                          )
+                          .sort()
+                      : cluster.countries;
+                    return (
+                      <BlockStack gap="200" key={`amt-${cluster.id}`}>
+                        <Text as="p" variant="bodySm" fontWeight="semibold">
+                          {cluster.name}
+                          {cluster.rest && codes.length === 0
+                            ? ": no country has its own amounts yet"
+                            : ""}
                         </Text>
-                      ))}
-                  </BlockStack>
-                )}
+                        {codes.map((code) => {
+                          const row = gt.thresholds[code];
+                          const error = thresholdErrors[code];
+                          const currency = row?.currencyCode || "EUR";
+                          return (
+                            <InlineStack key={`th-${code}`} gap="300" blockAlign="start" wrap>
+                              <Box width="90px" paddingBlockStart="200">
+                                <Text as="span" variant="bodyMd">
+                                  {code}
+                                </Text>
+                              </Box>
+                              {cluster.tiers.map((tier, ti) => (
+                                <Box width="130px" key={`th-${code}-${ti}`}>
+                                  <TextField
+                                    label={`Tier ${ti + 1}`}
+                                    labelHidden
+                                    type="number"
+                                    min={0}
+                                    suffix={currency}
+                                    placeholder={tier.amount || "auto"}
+                                    value={row?.amounts[ti] ?? ""}
+                                    onChange={(value) => setThresholdAmount(code, currency, ti, value)}
+                                    error={ti === 0 ? error : undefined}
+                                    autoComplete="off"
+                                  />
+                                </Box>
+                              ))}
+                              {row && row.amounts.some((a) => a.trim() !== "") ? (
+                                <Box paddingBlockStart="100">
+                                  <Button variant="plain" onClick={() => clearThreshold(code)}>
+                                    Use automatic
+                                  </Button>
+                                </Box>
+                              ) : null}
+                            </InlineStack>
+                          );
+                        })}
+                      </BlockStack>
+                    );
+                  })}
+                </BlockStack>
               </BlockStack>
 
               <Divider />
@@ -809,44 +990,15 @@ export function GiftsTab(props: GiftsTabProps) {
                     />
                   </Box>
                 </InlineStack>
-                {locations.length === 0 ? (
-                  <Text as="p" tone="subdued" variant="bodySm">
-                    No locations could be loaded — every market reads all active locations.
-                  </Text>
-                ) : (
-                  <BlockStack gap="200">
-                    {markets.map((market) => (
-                      <BlockStack gap="100" key={`wh-${market.handle}`}>
-                        <Text as="span" variant="bodyMd">
-                          {market.name}
-                          <Text as="span" tone="subdued" variant="bodySm">
-                            {" "}
-                            ({gt.warehouse[market.handle]?.length
-                              ? `${gt.warehouse[market.handle].length} location(s)`
-                              : "all active locations"})
-                          </Text>
-                        </Text>
-                        <InlineStack gap="300" wrap>
-                          {locations.map((location) => (
-                            <Checkbox
-                              key={`${market.handle}-${location.id}`}
-                              label={location.countryCode ? `${location.name} (${location.countryCode})` : location.name}
-                              checked={(gt.warehouse[market.handle] ?? []).includes(location.id)}
-                              disabled={
-                                !(gt.warehouse[market.handle] ?? []).includes(location.id) &&
-                                (gt.warehouse[market.handle] ?? []).length >= CAPS.warehouseLocations
-                              }
-                              onChange={(checked) => toggleWarehouse(market.handle, location.id, checked)}
-                            />
-                          ))}
-                        </InlineStack>
-                      </BlockStack>
-                    ))}
-                  </BlockStack>
-                )}
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Warehouses are chosen per cluster, on each cluster's own
+                  card above, because a cluster is a fulfilment centre. A gift
+                  with no inventory record at all at those locations counts as
+                  unknown rather than zero, and is never paused.
+                </Text>
                 <InlineStack align="space-between" blockAlign="center" wrap>
                   <Text as="h4" variant="headingSm">
-                    Gift stock by market
+                    Gift stock by cluster
                   </Text>
                   <Button size="slim" onClick={onRefreshStock} loading={stockLoading}>
                     Check stock now

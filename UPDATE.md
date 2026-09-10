@@ -231,6 +231,75 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
+## 3b. v18 free gifts V2 — what this release changes
+
+**No database migration. No new API scopes. No webhook changes.** Deploy the
+app server and the extensions exactly as §3 describes; nothing extra is needed
+for this release.
+
+### What changed
+
+- Free gifts are now organised into **country clusters**, each with its own
+  reward ladder: Amphora (ES, PT, IT, FR), Active Ants (31 countries) and a
+  catch-all for everything else. Countries, not markets, because a market is
+  the wrong unit here (this store has both a `germany` market and an `eu`
+  market listing Germany).
+- Every country's amounts are **scaled to its own price level** and rounded to
+  a clean number, instead of a flat euro ladder converted at the FX rate.
+- The cart shows a **reward ladder** under the progress bar, and the product
+  page gains its own line in one of **three placements** the merchant chooses.
+- Preview now **explains why a gift did or did not land**, which fixes the
+  reported "gifts never get added in preview".
+
+### A live bug this release fixes
+
+The old per-market amount suggester skipped any market whose currency equals
+the shop currency. **Finland carries an explicit +15 % price-list adjustment in
+euros**, so it silently kept the flat EUR ladder, as did the euro-denominated
+Rest Of World countries at +20 %. Those countries were reaching gift tiers
+cheaper than intended. The new per-country suggester prices them correctly.
+
+### Merchant wiring, once, after the deploy
+
+1. **Rewards → Free gifts → "Load the default clusters"**. This resolves every
+   gift handle to a real variant in the store. Review, then **Save**.
+2. **"Suggest from local prices"**, then Save. This fills the per-country
+   amounts from live contextual pricing. Nobody should hand-type 93 numbers;
+   the button exists because Active Ants alone spans about fifteen currencies.
+   Spot-check the non-euro rows before going live, since a wrong multiplier is
+   invisible in code review and obvious on the page.
+3. **Assign a warehouse to each cluster** on its own card. Stock is checked
+   only at those locations. A gift with **no inventory record at all** there is
+   now treated as *unknown* rather than zero and is never paused, which is a
+   deliberate change: the old rule paused real gifts held at third-party
+   warehouses that Shopify has no row for.
+4. **Choose the product-page placement** (reward card is the default and the
+   safest, because it renders below Add to cart and cannot push the button
+   down the page).
+5. **Preview it.** Arm a preview, tick "Test with my real cart", and build a
+   real basket past a threshold. If nothing is added, the preview bar now says
+   why in one sentence. Note that the **cart simulator and "Test with my real
+   cart" cancel each other** by design (a pretend total must not buy a real
+   free product); the Preview Center now says so with a one-click fix.
+
+### Known gap to close before non-English markets go live
+
+The three product-page gift sentences ship in **English only**. Every locale
+file has to carry the same 24 rewards keys, so a product-page-only string
+cannot be added to `en.default.json` without forcing translations into all 18
+languages, and machine-translating them would breach the rule that translated
+copy has to read natively. They live as the documented English fallback in
+`cellexia-pdp.js` until they go through the curated-copy pass.
+
+### Liquid budget
+
+Total Liquid is **99,383 B** of a 99,500 B budget (Shopify's hard cap is
+102,400 B), so **117 bytes spare**. This release paid for itself first by
+renaming a scratch variable across all nine blocks (516 B freed, no behaviour
+change). **Any further Liquid work must slim before it spends.**
+
+Contract: `docs/SPEC-v18-gifts-v2.md`.
+
 ## 4. Post-deploy checklist (10 minutes, in order)
 
 1. **Setup & health** (app nav): re-run checks — everything green. Three checks
@@ -370,6 +439,27 @@ Run it after `npm ci` and before deploying; a red scoreboard means stop.
 strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
+
+v17.2 — SUBSCRIPTION PRICES ON COLLECTION / HOME PRODUCT CARDS (2026-09-05,
+same release):
+
+- When subscriptions are on for the shopper's market (the same signals as
+  v17: app installed + market enabled + plans present + the admin switch),
+  every theme product card — the shop-all collection grid, the home page
+  cards, and anywhere else the theme renders its standard cards — shows
+  the SUBSCRIPTION price instead of the one-time price. The figure is the
+  card's own shown variant priced at its default-schedule plan (the same
+  schedule the buy box preselects), so the card, the product page and the
+  cart all agree. Markets without subscriptions, business customers, and
+  products without plans keep their one-time prices untouched; prepaid
+  lump plans are never used. Text-only swap, nothing visually new, zero
+  new translated strings, ZERO new Liquid bytes.
+- Plumbing: the price rides the EXISTING bestseller-card decorator
+  pipeline (one batched app-proxy call per page, 10-minute cache, the
+  same re-scan that survives Boost PFS filter re-renders) — no new
+  network cost. The card cache key now carries market + currency +
+  subscription state so cached prices can never leak across markets,
+  currencies, or the go-live moment.
 
 v17.1 — MERCHANT TEST ROUND FIXES + PRODUCT-PAGE SUBSCRIPTION PRICES
 (2026-09-05, same release as v17 below; both halves deploy together):

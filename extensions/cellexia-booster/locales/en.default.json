@@ -41,7 +41,9 @@
     "cruelty_free": "Cruelty free",
     "clinically_proven": "Clinically proven",
     "ssl_encrypted": "SSL-encrypted payment",
-    "easy_returns": "Easy returns"
+    "easy_returns": "Easy returns",
+    "research": "Based on published research from",
+    "seal": "Independent testing. Proven skin tolerance."
   },
   "guarantee": {
     "title": "{{ days }}-Day Money-Back Guarantee",

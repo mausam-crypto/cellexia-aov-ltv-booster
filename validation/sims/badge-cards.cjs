@@ -46,12 +46,27 @@ const EXTRACTED = extractAll(SRC, {
     "cardFlagFetches",
     "CARD_FLAG_FETCH_MAX",
     "CARD_FLAG_CONTAINERS",
+    "MARKET",
   ],
   functions: [
     "routeRoot",
     "t",
     "el",
     "azStr",
+    // v17.2 subscription card prices
+    "isB2B",
+    "activeCurrency",
+    "money",
+    "subscriptionAware",
+    "subsAware",
+    "ownedPlan",
+    "planMetaById",
+    "variantPlanAlloc",
+    "variantDefaultCadence",
+    "planNameMatchesCadence",
+    "ownedCadenceAlloc",
+    "cardSubCents",
+    "cardSubSwapPrice",
     "cardGateOn",
     "badgeCardsOn",
     "boughtCardsOn",
@@ -119,10 +134,19 @@ function addThemeCard(doc, handle, opts) {
   }
   const info = new El("div");
   info.className = "product__info";
+  // v17.2: the live Sleepify card carries its price as plain text in a
+  // .product__price div inside .product__info (captured collection markup).
+  let price = null;
+  if (opts.price !== false) {
+    price = new El("div");
+    price.className = "product__price d-flex align-center";
+    price.textContent = opts.priceText || "€67.00";
+    info.appendChild(price);
+  }
   card.appendChild(image);
   card.appendChild(info);
   doc.body.appendChild(card);
-  return { card, image, info };
+  return { card, image, info, price };
 }
 
 function addBoostCard(doc, handle) {
@@ -169,9 +193,12 @@ function makeSim(opts) {
     PREVIEW: opts.preview || null,
     cfg: Object.assign({
       pageLocale: "en",
+      market: "eu",
+      currency: "EUR",
       badgeCards: { setting: true, live: true },
       boughtCards: { setting: true, live: true },
     }, opts.cfg || {}),
+    SETTINGS: Object.assign({}, opts.settings || {}), // v17.2: the kill switch rides the settings blob
     STRINGS: Object.assign({}, STRINGS, opts.strings || {}),
     decodeEntities: (s) => s,
     fetchJSON: (url) => {
@@ -228,8 +255,8 @@ async function main() {
     const { sandbox, clock } = makeSim();
     const key = vm.runInContext("cardFlagCacheKey(['b', 'a'])", sandbox);
     const key2 = vm.runInContext("cardFlagCacheKey(['a', 'b'])", sandbox);
-    ok(key === key2 && key.indexOf("cx_az_cardflags:2:en:") === 0,
-      "cache key: v2 namespace + locale + order-independent handle hash");
+    ok(key === key2 && key.indexOf("cx_az_cardflags:3:en:eu:EUR:s0:") === 0,
+      "cache key: v3 namespace + locale + market + currency + subscription-state + order-independent handle hash (v17.2: presentment cents must never cross markets/currencies/go-live)");
     vm.runInContext("cardFlagCachePut(" + JSON.stringify(key) + ", { a: null, b: { badge: null, bought: 7 } })", sandbox);
     clock.now += 599_999;
     const hit = vm.runInContext("cardFlagCacheGet(" + JSON.stringify(key) + ")", sandbox);
@@ -458,6 +485,104 @@ async function main() {
     await flush();
     ok(noStrings.calls.fetches.length === 0,
       "gates on but no usable strings for either element: never boots");
+  }
+
+  // --- v17.2 subscription card prices (collections / home) ----------------------
+  const SX = { p: ["700", "701"], d: { default: { unit: "MONTH", count: 3 } } };
+  const SUB_ENTRY = {
+    variants: [{ id: 11, price: 6700, available: true, planAllocations: [
+      { planId: "700", price: 6231 },  // 'Every 3 weeks' (first owned)
+      { planId: "701", price: 6030 },  // 'Every 3 months' (cadence match)
+      { planId: "999", price: 5000 },  // foreign (Joy-class): never eligible
+    ] }],
+    sellingPlanGroups: [{ id: "g", name: "Main", plans: [
+      { id: "700", name: "Every 3 weeks" },
+      { id: "701", name: "Every 3 months" },
+      { id: "999", name: "Every 2 months" },
+    ] }],
+  };
+
+  {
+    // Badges AND bought lines OFF (the merchant's likely live state) —
+    // subscriptions on for the market still boots the decorator and swaps
+    // the card's price text to the default-cadence owned allocation.
+    const sim = makeSim({
+      cfg: { sx: SX, badgeCards: { setting: false, live: false }, boughtCards: { setting: false, live: false } },
+      responders: { proxy: () => ({ productsByHandle: { alpha: SUB_ENTRY } }) },
+    });
+    const { price, image } = addThemeCard(sim.doc, "alpha");
+    vm.runInContext("initCardFlags()", sim.sandbox);
+    await flush();
+    const eur = (c) => vm.runInContext(`money(${c})`, sim.sandbox);
+    ok(price.textContent === eur(6030),
+      "v17.2: card price swapped to the CADENCE-matched owned allocation (Every 3 months beats the first owned)");
+    ok(image.getAttribute("data-cx-cardflag") === "1", "v17.2: card marked decorated");
+    const key = vm.runInContext("cardFlagCacheKey(['alpha'])", sim.sandbox);
+    ok(key.indexOf(":s1:") !== -1, "v17.2: active context caches under the s1 key side");
+    ok(sim.calls.fetches.length === 1, "v17.2: one batched proxy call, same budget as the flags");
+  }
+
+  {
+    // Subscriptions OFF for the market (no cfg.sx): allocations in the
+    // response resolve to NOTHING and the card keeps its one-time price.
+    const sim = makeSim({
+      responders: { proxy: () => ({ productsByHandle: { alpha: SUB_ENTRY } }) },
+    });
+    const { price } = addThemeCard(sim.doc, "alpha");
+    vm.runInContext("initCardFlags()", sim.sandbox);
+    await flush();
+    ok(price.textContent === "€67.00",
+      "v17.2: no sx island (market off / app dark): price untouched");
+    const map = await vm.runInContext("cardFlagFetch(['alpha'])", sim.sandbox);
+    ok(map.alpha === null || map.alpha.sub == null,
+      "v17.2: verdicts resolved without context never carry cents");
+    ok(vm.runInContext("cardFlagCacheKey(['alpha'])", sim.sandbox).indexOf(":s0:") !== -1,
+      "v17.2: inactive context caches under the s0 key side");
+  }
+
+  {
+    // B2B and the kill switch: context never activates.
+    const b2b = makeSim({
+      cfg: { sx: SX },
+      responders: { proxy: () => ({ productsByHandle: { alpha: SUB_ENTRY } }) },
+    });
+    b2b.sandbox.window.isB2BCustomer = true;
+    const bCard = addThemeCard(b2b.doc, "alpha");
+    vm.runInContext("initCardFlags()", b2b.sandbox);
+    await flush();
+    ok(bCard.price.textContent === "€67.00", "v17.2 B2B: card price untouched");
+
+    const off = makeSim({
+      cfg: { sx: SX },
+      settings: { subscriptionAware: false },
+      responders: { proxy: () => ({ productsByHandle: { alpha: SUB_ENTRY } }) },
+    });
+    const oCard = addThemeCard(off.doc, "alpha");
+    vm.runInContext("initCardFlags()", off.sandbox);
+    await flush();
+    ok(oCard.price.textContent === "€67.00", "v17.2 kill switch off: card price untouched");
+  }
+
+  {
+    // Prepaid guard + badge coexistence in ONE pass.
+    const prepaid = JSON.parse(JSON.stringify(SUB_ENTRY));
+    prepaid.variants[0].planAllocations = [{ planId: "700", price: 19000 }];
+    const sim = makeSim({
+      cfg: { sx: SX },
+      responders: { proxy: () => ({ productsByHandle: {
+        alpha: Object.assign({ bestseller: { rank: 1, category: "Serums" } }, SUB_ENTRY),
+        lump: prepaid,
+      } }) },
+    });
+    const a = addThemeCard(sim.doc, "alpha");
+    const l = addThemeCard(sim.doc, "lump");
+    vm.runInContext("initCardFlags()", sim.sandbox);
+    await flush();
+    const eur = (c) => vm.runInContext(`money(${c})`, sim.sandbox);
+    ok(a.price.textContent === eur(6030) && a.image.querySelectorAll(".cx-az-cardflag").length === 1,
+      "v17.2: badge + subscription price land together in one pass");
+    ok(l.price.textContent === "€67.00" && l.image.getAttribute("data-cx-cardflag") === "0",
+      "v17.2 prepaid: lump-priced allocation never dresses a card");
   }
 
   if (failures > 0) {

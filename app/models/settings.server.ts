@@ -86,7 +86,10 @@ export type FeatureKey =
   // v14 rewards (docs/SPEC-v14-rewards.md §1) — appended at the END so every
   // existing index-based consumer keeps its positions.
   | "set_savings"
-  | "gift_tiers";
+  | "gift_tiers"
+  // v19 buy-box proof block (docs/SPEC-v19-buy-box-proof.md) — appended at
+  // the END so every existing index-based consumer keeps its positions.
+  | "buy_box_proof";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "cart_volume_upsell",
@@ -127,6 +130,8 @@ export const FEATURE_KEYS: FeatureKey[] = [
   // v14 rewards — appended last (35 → 37 keys).
   "set_savings",
   "gift_tiers",
+  // v19 buy-box proof block — appended last (37 → 38 keys).
+  "buy_box_proof",
 ];
 
 /**
@@ -479,34 +484,115 @@ const giftSamples = (count: number): GiftOption => ({
 });
 
 /**
- * v14.2 gift presets (EUR, cumulative; handles + empty variantIds — the admin
- * "Load defaults" fills GIDs from the store). `value_first` (shipped default)
- * leads with the towel so the €119 headline gift is a value item and the
- * cream (the store's hero SKU) is earned at €200; `cream_first` is the v14.0
- * order. `giftPreset` is informational — the tiers array is always the truth.
+ * v18 gift cluster: a named group of COUNTRIES with its own reward ladder.
+ *
+ * Countries, not markets, because a Shopify market is the wrong unit here —
+ * this store has both a `germany` market and an `eu` market that lists
+ * Germany, and `rest-of-world` alone spans 37 countries in a dozen
+ * currencies. A cluster also maps one-to-one onto a fulfilment centre, which
+ * is why it owns its own `locations` for the stock check.
+ *
+ * Exactly one cluster carries `rest: true`. It is the catch-all for every
+ * country not named anywhere else, so a country Shopify adds later is always
+ * covered and can never fall through to "no gifts, no explanation".
  */
-export const GIFT_PRESETS = {
-  value_first: [
-    { amount: 119, slots: [[giftVariant("bamboo-beauty-towel")], [giftSamples(2)]] },
-    { amount: 200, slots: [[giftVariant("jawline-contour-tightening-cream")], [giftSamples(2)]] },
-    { amount: 350, slots: [[giftVariant("premium-leather-cosmetic-bag")], [giftSamples(3)]] },
-  ],
-  cream_first: [
-    { amount: 119, slots: [[giftVariant("jawline-contour-tightening-cream")], [giftSamples(2)]] },
-    { amount: 200, slots: [[giftVariant("bamboo-beauty-towel")], [giftSamples(2)]] },
-    { amount: 350, slots: [[giftVariant("premium-leather-cosmetic-bag")], [giftSamples(3)]] },
-  ],
-} satisfies Record<string, GiftTier[]>;
-/** Loadable presets (the "Load defaults" choices); the stored field may also be "custom". */
-export const GIFT_PRESET_KEYS = ["value_first", "cream_first"] as const;
-export const GIFT_PRESET_VALUES = [...GIFT_PRESET_KEYS, "custom"] as const;
-export type GiftPreset = (typeof GIFT_PRESET_VALUES)[number];
+export interface GiftCluster {
+  /** Stable slug (never reused after a delete). */
+  id: string;
+  /** Merchant-facing name, e.g. "Amphora". */
+  name: string;
+  /** The catch-all. Exactly one cluster has it; its `countries` is ignored. */
+  rest: boolean;
+  /** ISO-3166-1 alpha-2, uppercase, unique across ALL clusters. */
+  countries: string[];
+  /** Location GIDs that serve this cluster (stock awareness). */
+  locations: string[];
+  /** 0..4 tiers, amounts strictly increasing, in the shop currency (EUR). */
+  tiers: GiftTier[];
+}
 
-/** Closed enums of the v14 gift-tier section (sanitized like the others). */
+const AMPHORA_COUNTRIES = ["ES", "PT", "IT", "FR"];
+const ACTIVE_ANTS_COUNTRIES = [
+  // Europe
+  "DE", "AT", "DK", "SE", "FI", "NO", "IS", "GR", "IE", "GB", "GG", "JE",
+  // Americas
+  "CA", "BR", "MX", "CL", "AR", "UY",
+  // Asia Pacific
+  "AU", "NZ", "SG", "HK", "JP", "KR",
+  // Middle East and North Africa
+  "AE", "SA", "QA", "KW", "OM", "IL", "EG",
+];
+
+/**
+ * v18 shipped clusters (EUR amounts, cumulative; handles with empty
+ * variantIds, which the admin "Load defaults" resolves to GIDs from the
+ * store). Cumulative means a tier keeps every lower tier's gifts, so Amphora
+ * at €350 grants 2 sachets + the towel + 3 more sachets = a towel and five
+ * sachets, six lines, exactly the `maxGiftLines` default.
+ */
+export const GIFT_CLUSTER_PRESETS: GiftCluster[] = [
+  {
+    id: "amphora",
+    name: "Amphora",
+    rest: false,
+    countries: [...AMPHORA_COUNTRIES],
+    locations: [],
+    tiers: [
+      { amount: 150, slots: [[giftSamples(2)]] },
+      { amount: 200, slots: [[giftVariant("bamboo-beauty-towel")]] },
+      { amount: 350, slots: [[giftSamples(3)]] },
+    ],
+  },
+  {
+    id: "active-ants",
+    name: "Active Ants",
+    rest: false,
+    countries: [...ACTIVE_ANTS_COUNTRIES],
+    locations: [],
+    tiers: [
+      { amount: 150, slots: [[giftSamples(2)]] },
+      { amount: 200, slots: [[giftVariant("bamboo-beauty-towel")]] },
+      {
+        amount: 350,
+        slots: [
+          [giftVariant("premium-leather-cosmetic-bag")],
+          [giftVariant("advanced-cooling-mask")],
+        ],
+      },
+    ],
+  },
+  {
+    id: "rest",
+    name: "Rest of world",
+    rest: true,
+    countries: [],
+    locations: [],
+    tiers: [
+      { amount: 200, slots: [[giftVariant("bamboo-beauty-towel")]] },
+      { amount: 350, slots: [[giftVariant("jawline-contour-tightening-cream")]] },
+    ],
+  },
+];
+
+/** The id of the catch-all cluster in the shipped presets. */
+export const REST_CLUSTER_ID = "rest";
+
+/** Closed enums of the gift-tier section (sanitized like the others). */
 export const GIFT_CHOICE_MODES = ["auto", "choose"] as const;
 export type GiftChoiceMode = (typeof GIFT_CHOICE_MODES)[number];
 export const GIFT_SAMPLE_RULES = ["not_in_cart", "rotate", "fixed"] as const;
 export type GiftSampleRule = (typeof GIFT_SAMPLE_RULES)[number];
+/**
+ * v18 product-page surface. Three placements, chosen for different jobs:
+ * `line` is one row inside the buy box above Add to cart (smallest
+ * footprint); `card` sits BELOW the button with the gift's thumbnail and a
+ * progress bar, so it can never push Add to cart down the page (the default,
+ * and the strongest basket-size lever); `ladder` is a slim strip under the
+ * product title showing every tier, which anchors high but competes with the
+ * title for attention.
+ */
+export const GIFT_PDP_STYLES = ["line", "card", "ladder"] as const;
+export type GiftPdpStyle = (typeof GIFT_PDP_STYLES)[number];
 
 export interface BoosterSettings {
   version: number;
@@ -1023,6 +1109,61 @@ export interface BoosterSettings {
     };
   };
   /**
+   * v19 BUY-BOX PROOF BLOCK — the CRO-designed proof stack that renders
+   * directly under the theme's Add-to-cart panel (inside `.pdp__grey`,
+   * after `.stock-msg`). It is ONE feature with its own flag, market scope
+   * and preview draft flag, but it owns NO duplicate data: the ships-from
+   * warehouse comes from `amazon.shipsFromByCountry` / `defaultWarehouse`,
+   * the delivery date from the `deliveryEstimate` engine, the guarantee
+   * window from `guarantee.days`, and the rating/count/URL from
+   * `trustpilot.*` — one source of truth per fact, whatever those features'
+   * own flags say.
+   *
+   * REPLACEMENT RULE (the az_microcopy precedent): while this block is
+   * effective on a product page it OWNS the buy-box proof area, so the
+   * legacy singles that would duplicate it there are suppressed —
+   * trust_badges, guarantee, trustpilot, the PDP delivery-estimate widget,
+   * az_microcopy and the az_ships_from line. Their beacons are suppressed
+   * with them (impression honesty: a widget never painted is never
+   * counted). The dispatch countdown is a different message and stays.
+   */
+  buyBoxProof: {
+    enabled: boolean;
+    /** "Ships from {country}" row. Reads the SHARED warehouse map (it stays
+     *  valid while az_ships_from itself is off) and honours the same
+     *  `amazon.shipsFromExcludedByMarket` product exclusions. */
+    showShipsFrom: boolean;
+    /** "Get it by {date}" row, computed by the shared delivery engine and
+     *  fail-closed: no resolvable date, a `hidden` country override or a
+     *  delivery market exclusion means NO row (never a vague promise). */
+    showDelivery: boolean;
+    /** The "Delivery guarantee" pill beside the date (delivery.badge). */
+    showDeliveryBadge: boolean;
+    /** Icon row keys, VALID_BADGE_KEYS, max BUY_BOX_PROOF_MAX_BADGES.
+     *  Rendered in the merchant's order; unknown keys are dropped. */
+    badges: string[];
+    /** The "{days}-day money-back guarantee" card (guarantee.days). */
+    showGuarantee: boolean;
+    /** The star rating + review-count + Trustpilot row (trustpilot.*). */
+    showRating: boolean;
+    /** "Based on published research from" band. */
+    research: {
+      enabled: boolean;
+      /** Max BUY_BOX_PROOF_MAX_INSTITUTIONS. `name` is merchant free text
+       *  and stays UNTRANSLATED (institution names are proper nouns — the
+       *  US_STATE_NAMES precedent); `imageUrl` is an optional https logo
+       *  (Shopify Files), "" = the name renders as a text wordmark. */
+      institutions: { name: string; imageUrl: string }[];
+    };
+    /** Independent-certification seal beside the research logos. */
+    seal: {
+      enabled: boolean;
+      /** "" = the built-in DermaCert seal artwork drawn by the extension
+       *  JS; an https URL replaces it with the merchant's own file. */
+      imageUrl: string;
+    };
+  };
+  /**
    * Amazon-pattern features (v6.1; eleven flags since the v6.8
    * stock/ships-from split) — independent flags plus the
    * language-neutral "Ships from" warehouse config. We model Amazon's
@@ -1192,25 +1333,28 @@ export interface BoosterSettings {
       maxGiftLines: number;
       /** How sample sachets are picked from samplePool. */
       sampleRule: GiftSampleRule;
-      /** ≤ 4 tiers, EUR amounts strictly increasing. Default GIFT_PRESETS.value_first. */
-      tiers: GiftTier[];
-      /** v14.2: which gift preset "Load defaults" applied last ("custom" once
-       *  hand-edited). Informational — `tiers` is always the truth. */
-      giftPreset: GiftPreset;
-      /** DYNAMIC record: market handle -> {amounts (one per tier index),
-       *  currencyCode} — explicit per-market amounts in the market currency. */
-      giftThresholdsByMarket: Record<string, { amounts: number[]; currencyCode: string }>;
+      /** v18: ≤ 8 country clusters, each with its own ladder. Exactly one
+       *  carries `rest: true` and catches every unlisted country. Replaces
+       *  the single flat `tiers` array of v14. */
+      clusters: GiftCluster[];
+      /** v18 DYNAMIC record: ISO-3166-1 alpha-2 -> {amounts (one per tier of
+       *  THAT country's cluster), currencyCode}. Manual overrides only; a
+       *  country with no entry uses its cluster's EUR amounts scaled by the
+       *  local price ratio and rounded (see roundThreshold). */
+      thresholdsByCountry: Record<string, { amounts: number[]; currencyCode: string }>;
       /** Sachet variants usable as samples: ≤ 9 {variantId, handle} (REWARDS_CAPS.samplePool). */
       samplePool: { variantId: string; handle: string }[];
-      /** DYNAMIC record: market handle -> location GIDs that ship that market
-       *  (inventory awareness; ≤ 6 locations per market). */
-      warehouseByMarket: Record<string, string[]>;
-      /** Stock floor: a gift option pauses in a market when available <
+      /** Stock floor: a gift option pauses for a cluster when available <
        *  max(minUnits, sachet ? 100 : 0). `days` is kept for the future
-       *  days-of-cover rule (unused in v14). */
+       *  days-of-cover rule (unused). Availability is checked at the
+       *  cluster's own `locations`; a variant with NO inventory row there is
+       *  unknown, not zero, and is never paused. */
       stockFloor: { days: number; minUnits: number };
       /** Show the meter's free-shipping milestone from freeShipping.byMarket. */
       showShippingMilestone: boolean;
+      /** v18 product-page surface: its own on/off plus one of three
+       *  placements (see GIFT_PDP_STYLES). */
+      pdp: { enabled: boolean; style: GiftPdpStyle };
     };
     /** Free-shipping guarantee: an automatic SHIPPING discount run by the
      *  same Function. NOT a FeatureKey — its own MarketScope below. */
@@ -1461,6 +1605,32 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
       byState: {},
     },
   },
+  buyBoxProof: {
+    enabled: false,
+    showShipsFrom: true,
+    showDelivery: true,
+    showDeliveryBadge: true,
+    badges: [
+      "secure_checkout",
+      "dermatologist_tested",
+      "cruelty_free",
+      "easy_returns",
+    ],
+    showGuarantee: true,
+    showRating: true,
+    research: {
+      enabled: true,
+      institutions: [
+        { name: "Harvard Medical School", imageUrl: "" },
+        { name: "University of Oxford", imageUrl: "" },
+        { name: "The Lancet", imageUrl: "" },
+      ],
+    },
+    seal: {
+      enabled: true,
+      imageUrl: "",
+    },
+  },
   amazon: {
     buyBox: false,
     microcopy: false,
@@ -1511,13 +1681,12 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
       choice: "auto",
       maxGiftLines: 6,
       sampleRule: "not_in_cart",
-      tiers: structuredClone(GIFT_PRESETS.value_first),
-      giftPreset: "value_first",
-      giftThresholdsByMarket: {},
+      clusters: structuredClone(GIFT_CLUSTER_PRESETS),
+      thresholdsByCountry: {},
       samplePool: [],
-      warehouseByMarket: {},
       stockFloor: { days: 3, minUnits: 25 },
       showShippingMilestone: true,
+      pdp: { enabled: true, style: "card" },
     },
     freeShip: {
       enabled: false,
@@ -1571,14 +1740,15 @@ const DYNAMIC_RECORD_KEYS = new Set([
   "customsExcludedByMarket",
   "trackedExcludedByMarket",
   "shipsFromExcludedByMarket",
-  // v14 rewards per-market records (market-handle keyed, default {}):
-  // rewards.setSavings.setSavingsExcludedByMarket (exclusion rule),
-  // rewards.giftTiers.giftThresholdsByMarket ({amounts[], currencyCode}) and
-  // rewards.giftTiers.warehouseByMarket (location GID lists). Distinct names
-  // on purpose (see the v12 note above).
+  // v14 rewards per-market record (market-handle keyed, default {}):
+  // rewards.setSavings.setSavingsExcludedByMarket (exclusion rule).
+  // Distinct name on purpose (see the v12 note above).
   "setSavingsExcludedByMarket",
-  "giftThresholdsByMarket",
-  "warehouseByMarket",
+  // v18 rewards per-COUNTRY record (ISO-3166-1 alpha-2 keyed, default {}):
+  // rewards.giftTiers.thresholdsByCountry ({amounts[], currencyCode}).
+  // Replaces v14's giftThresholdsByMarket; warehouseByMarket is gone
+  // entirely, its locations now living on each cluster.
+  "thresholdsByCountry",
 ]);
 
 /**
@@ -1731,10 +1901,14 @@ export const REWARDS_CAPS = {
   // Liquid page capped at 20 unique handles (Shopify's all_products limit),
   // and 11 full-size + 9 sachet handles is exactly that page.
   samplePool: 9,
-  thresholdMarkets: 60,
   thresholdAmountMax: 1000000,
-  warehouseMarkets: 60,
-  warehouseLocations: 6,
+  /** v18: country clusters, and what each may hold. */
+  clusters: 8,
+  countriesPerCluster: 120,
+  /** v18: manual per-country amount overrides (ISO-3166 has ~250 codes). */
+  thresholdCountries: 260,
+  /** v18: fulfilment locations serving one cluster (was warehouseLocations). */
+  locationsPerCluster: 6,
   maxGiftLines: 8,
   checkoutMessage: 60,
   /** v15: step-aside codes (rewards.setSavings.yieldToCodes) */
@@ -1864,26 +2038,6 @@ export function inferLadderPreset(tiers: SetSavingsTier[]): LadderPreset {
   return "custom";
 }
 
-/** v14.2: which gift preset a tier table equals by amounts + slot shape
- *  (variant handles / sample counts; variantIds ignored — "Load defaults"
- *  fills them from the store) — "custom" otherwise. */
-export function inferGiftPreset(tiers: GiftTier[]): GiftPreset {
-  const shape = (list: GiftTier[]) =>
-    JSON.stringify(
-      list.map((t) => [
-        t.amount,
-        t.slots.map((slot) =>
-          slot.map((o) => (o.kind === "variant" ? `v:${o.handle}` : `s:${o.count}`)),
-        ),
-      ]),
-    );
-  const key = shape(tiers);
-  for (const preset of GIFT_PRESET_KEYS) {
-    if (key === shape(GIFT_PRESETS[preset])) return preset;
-  }
-  return "custom";
-}
-
 function sanitizeGiftOption(raw: unknown): GiftOption | null {
   if (!isPlainObject(raw)) return null;
   if (raw.kind === "samples") {
@@ -1917,9 +2071,11 @@ function sanitizeGiftOption(raw: unknown): GiftOption | null {
  * dropped. A non-array falls back to the defaults.
  */
 export function sanitizeGiftTiers(raw: unknown): GiftTier[] {
-  if (!Array.isArray(raw)) {
-    return structuredClone(DEFAULT_SETTINGS.rewards.giftTiers.tiers);
-  }
+  // v18: a non-array is an EMPTY ladder, not the shipped defaults. A cluster
+  // is allowed to grant nothing (the Rest cluster ships with no €150 tier),
+  // and silently substituting a default ladder would hand out gifts in a
+  // country the merchant deliberately left empty.
+  if (!Array.isArray(raw)) return [];
   const clean: GiftTier[] = [];
   const seen = new Set<number>();
   const sorted = raw
@@ -1955,24 +2111,146 @@ export function sanitizeGiftTiers(raw: unknown): GiftTier[] {
   return clean;
 }
 
-/** giftThresholdsByMarket: ≤ 60 markets; ISO-4217 currency; amounts (≤ 8)
- *  must ALL be finite, > 0, ≤ 1,000,000 and strictly increasing tier by tier,
- *  otherwise the whole market entry drops (a 0 or a non-increasing amount is
- *  never kept — the Function/storefront would treat it as "reached at 0"). */
-export function sanitizeGiftThresholdsByMarket(
+/**
+ * v18 threshold rounding: magnitude-based, so it reads as a deliberate price
+ * in every currency without a zero-decimal special case.
+ *
+ *   < 20        nearest 1
+ *   20 – 99     nearest 5
+ *   100 – 999   nearest 10      147 -> 150,  £155 -> £160
+ *   1k – 9,999  nearest 50      kr 1,676 -> kr 1,700
+ *   10k – 99k   nearest 500     ¥32,895 -> ¥33,000
+ *   100k+       nearest 5,000   ₩286,842 -> ₩285,000
+ *
+ * The old three-band niceRound turned 147 into 145 and had no answer at all
+ * for a won or yen amount.
+ */
+export function roundThreshold(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const step =
+    value >= 100000 ? 5000
+      : value >= 10000 ? 500
+        : value >= 1000 ? 50
+          : value >= 100 ? 10
+            : value >= 20 ? 5
+              : 1;
+  return Math.max(step, Math.round(value / step) * step);
+}
+
+/** v18: an ISO-3166-1 alpha-2 country code, uppercased ("" when unusable). */
+export function toCountryCode(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  const up = raw.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(up) ? up : "";
+}
+
+/** v18: ≤ 6 Location GIDs, deduped, numeric ids self-healed to GIDs. */
+export function sanitizeLocationGids(raw: unknown): string[] {
+  const ids: string[] = [];
+  if (!Array.isArray(raw)) return ids;
+  for (const entry of raw) {
+    let id =
+      typeof entry === "string"
+        ? entry.trim()
+        : typeof entry === "number" && Number.isInteger(entry) && entry > 0
+          ? String(entry)
+          : "";
+    if (/^\d{1,20}$/.test(id)) {
+      id = `gid://shopify/Location/${id.replace(/^0+(?=\d)/, "")}`;
+    }
+    if (LOCATION_GID_PATTERN.test(id) && !ids.includes(id)) ids.push(id);
+    if (ids.length >= REWARDS_CAPS.locationsPerCluster) break;
+  }
+  return ids;
+}
+
+const CLUSTER_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+/**
+ * v18 clusters. Invariants the rest of the app is allowed to rely on:
+ *
+ *   - ids are unique and slug-shaped; a duplicate id drops the later cluster.
+ *   - a country appears in AT MOST ONE cluster (first cluster wins), so
+ *     resolution by country is total and deterministic.
+ *   - EXACTLY ONE cluster carries `rest: true`. The first one claiming it
+ *     wins; if none does, the LAST cluster is promoted. There is always a
+ *     catch-all, so a country Shopify adds tomorrow can never resolve to
+ *     nothing.
+ *   - the rest cluster's own `countries` is always emptied: it is defined by
+ *     what nobody else claimed, and storing members would rot.
+ *
+ * A wholly unusable value falls back to the shipped presets, because "no
+ * clusters" would silently disable gifts everywhere.
+ */
+export function sanitizeGiftClusters(raw: unknown): GiftCluster[] {
+  if (!Array.isArray(raw)) return structuredClone(GIFT_CLUSTER_PRESETS);
+  const clean: GiftCluster[] = [];
+  const seenIds = new Set<string>();
+  const claimed = new Set<string>();
+  for (const entry of raw) {
+    if (clean.length >= REWARDS_CAPS.clusters) break;
+    if (!isPlainObject(entry)) continue;
+    const id = typeof entry.id === "string" ? entry.id.trim().toLowerCase() : "";
+    if (!CLUSTER_ID_PATTERN.test(id) || seenIds.has(id)) continue;
+    const name =
+      typeof entry.name === "string" && entry.name.trim() ? entry.name.trim().slice(0, 60) : id;
+    const countries: string[] = [];
+    for (const c of Array.isArray(entry.countries) ? entry.countries : []) {
+      const code = toCountryCode(c);
+      if (!code || claimed.has(code) || countries.includes(code)) continue;
+      countries.push(code);
+      if (countries.length >= REWARDS_CAPS.countriesPerCluster) break;
+    }
+    for (const code of countries) claimed.add(code);
+    seenIds.add(id);
+    clean.push({
+      id,
+      name,
+      rest: entry.rest === true,
+      countries,
+      locations: sanitizeLocationGids(entry.locations),
+      tiers: sanitizeGiftTiers(entry.tiers),
+    });
+  }
+  if (clean.length === 0) return structuredClone(GIFT_CLUSTER_PRESETS);
+  let restIndex = clean.findIndex((c) => c.rest);
+  if (restIndex === -1) restIndex = clean.length - 1;
+  clean.forEach((c, i) => {
+    c.rest = i === restIndex;
+    if (c.rest) c.countries = [];
+  });
+  return clean;
+}
+
+/** v18: {enabled, style} for the product-page surface; style is a closed enum. */
+export function sanitizeGiftPdp(raw: unknown): { enabled: boolean; style: GiftPdpStyle } {
+  const fallback = DEFAULT_SETTINGS.rewards.giftTiers.pdp;
+  if (!isPlainObject(raw)) return { ...fallback };
+  return {
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : fallback.enabled,
+    style: GIFT_PDP_STYLES.includes(raw.style as GiftPdpStyle)
+      ? (raw.style as GiftPdpStyle)
+      : fallback.style,
+  };
+}
+
+/** thresholdsByCountry: ISO-3166 alpha-2 keys; ISO-4217 currency; amounts
+ *  (≤ 8) must ALL be finite, > 0, ≤ 1,000,000 and strictly increasing tier by
+ *  tier, otherwise the whole country entry drops (a 0 or a non-increasing
+ *  amount is never kept — both engines would read it as "reached at 0"). */
+export function sanitizeThresholdsByCountry(
   raw: unknown,
 ): Record<string, { amounts: number[]; currencyCode: string }> {
   const clean: Record<string, { amounts: number[]; currencyCode: string }> = {};
   if (!isPlainObject(raw)) return clean;
   const currencyKey = /^[A-Z]{3}$/;
-  let markets = 0;
-  for (const [handle, entry] of Object.entries(raw)) {
-    if (markets >= REWARDS_CAPS.thresholdMarkets) break;
-    if (!isExclusionMarketHandle(handle) || !isPlainObject(entry)) continue;
+  let countries = 0;
+  for (const [key, entry] of Object.entries(raw)) {
+    if (countries >= REWARDS_CAPS.thresholdCountries) break;
+    const code = toCountryCode(key);
+    if (!code || !isPlainObject(entry)) continue;
     const currencyCode =
-      typeof entry.currencyCode === "string"
-        ? entry.currencyCode.toUpperCase()
-        : "";
+      typeof entry.currencyCode === "string" ? entry.currencyCode.toUpperCase() : "";
     if (!currencyKey.test(currencyCode)) continue;
     const rawAmounts = Array.isArray(entry.amounts) ? entry.amounts.slice(0, 8) : [];
     if (rawAmounts.length === 0) continue;
@@ -1992,42 +2270,29 @@ export function sanitizeGiftThresholdsByMarket(
       amounts.push(rounded);
     }
     if (!valid) continue;
-    clean[handle] = { amounts, currencyCode };
-    markets += 1;
+    clean[code] = { amounts, currencyCode };
+    countries += 1;
   }
   return clean;
 }
 
-/** warehouseByMarket: ≤ 60 markets × ≤ 6 Location GIDs (deduped). */
-export function sanitizeWarehouseByMarket(
-  raw: unknown,
-): Record<string, string[]> {
-  const clean: Record<string, string[]> = {};
-  if (!isPlainObject(raw)) return clean;
-  let markets = 0;
-  for (const [handle, list] of Object.entries(raw)) {
-    if (markets >= REWARDS_CAPS.warehouseMarkets) break;
-    if (!isExclusionMarketHandle(handle) || !Array.isArray(list)) continue;
-    const ids: string[] = [];
-    for (const entry of list) {
-      let id =
-        typeof entry === "string"
-          ? entry.trim()
-          : typeof entry === "number" && Number.isInteger(entry) && entry > 0
-            ? String(entry)
-            : "";
-      if (/^\d{1,20}$/.test(id)) {
-        id = `gid://shopify/Location/${id.replace(/^0+(?=\d)/, "")}`;
-      }
-      if (LOCATION_GID_PATTERN.test(id) && !ids.includes(id)) ids.push(id);
-      if (ids.length >= REWARDS_CAPS.warehouseLocations) break;
-    }
-    if (ids.length > 0) {
-      clean[handle] = ids;
-      markets += 1;
-    }
+/**
+ * v18 resolution: the cluster serving `country`, or the catch-all. Total by
+ * construction (sanitizeGiftClusters guarantees exactly one `rest`), so every
+ * caller — server, storefront and Function — agrees without a fallback of
+ * its own.
+ */
+export function clusterForCountry(
+  clusters: GiftCluster[],
+  country: string,
+): GiftCluster | null {
+  if (!Array.isArray(clusters) || clusters.length === 0) return null;
+  const code = toCountryCode(country);
+  if (code) {
+    const named = clusters.find((c) => !c.rest && c.countries.includes(code));
+    if (named) return named;
   }
-  return clean;
+  return clusters.find((c) => c.rest) ?? clusters[clusters.length - 1] ?? null;
 }
 
 /** samplePool: ≤ REWARDS_CAPS.samplePool (9) {variantId GID, handle} entries, deduped by variant. */
@@ -2189,120 +2454,231 @@ export function validateSetSavingsPatch(patch: unknown): string[] {
 }
 
 /** v14 fail-loud validator for a `rewards.giftTiers` PATCH (same contract). */
+/** v18: validate one cluster's tier ladder. Returns the tier count, or null
+ *  when the list itself was unusable. `where` names the cluster in errors. */
+function validateGiftTierList(
+  tiers: unknown,
+  label: string,
+  where: string,
+  errors: string[],
+): number | null {
+  if (!Array.isArray(tiers)) {
+    errors.push(`${label}: ${where} tiers must be a list.`);
+    return null;
+  }
+  if (tiers.length > REWARDS_CAPS.giftTiers) {
+    errors.push(`${label}: ${where} has more than ${REWARDS_CAPS.giftTiers} tiers.`);
+  }
+  let last = -1;
+  tiers.forEach((t, i) => {
+    const n = i + 1;
+    if (!isPlainObject(t)) {
+      errors.push(`${label}: ${where} tier ${n} is malformed.`);
+      return;
+    }
+    if (
+      typeof t.amount !== "number" ||
+      !Number.isFinite(t.amount) ||
+      t.amount < 0 ||
+      t.amount > REWARDS_CAPS.thresholdAmountMax
+    ) {
+      errors.push(`${label}: ${where} tier ${n} amount must be between 0 and ${REWARDS_CAPS.thresholdAmountMax}.`);
+    } else if (t.amount <= last) {
+      errors.push(`${label}: ${where} tier ${n} amount must be higher than the tier below it.`);
+    } else {
+      last = t.amount;
+    }
+    if (!Array.isArray(t.slots) || t.slots.length === 0) {
+      errors.push(`${label}: ${where} tier ${n} needs at least one gift.`);
+      return;
+    }
+    if (t.slots.length > REWARDS_CAPS.giftSlots) {
+      errors.push(`${label}: ${where} tier ${n} has more than ${REWARDS_CAPS.giftSlots} gifts.`);
+    }
+    t.slots.forEach((slot, j) => {
+      if (!Array.isArray(slot) || slot.length === 0) {
+        errors.push(`${label}: ${where} tier ${n} gift ${j + 1} needs at least one option.`);
+        return;
+      }
+      if (slot.length > REWARDS_CAPS.giftOptionsPerSlot) {
+        errors.push(`${label}: ${where} tier ${n} gift ${j + 1} has more than ${REWARDS_CAPS.giftOptionsPerSlot} options.`);
+      }
+      slot.forEach((option, k) => {
+        const spot = `${where} tier ${n} gift ${j + 1} option ${k + 1}`;
+        if (!isPlainObject(option)) {
+          errors.push(`${label}: ${spot} is malformed.`);
+          return;
+        }
+        if (option.kind === "samples") {
+          if (
+            !Number.isInteger(option.count) ||
+            (option.count as number) < 1 ||
+            (option.count as number) > REWARDS_CAPS.samplesPerOption
+          ) {
+            errors.push(`${label}: ${spot} sample count must be 1 to ${REWARDS_CAPS.samplesPerOption}.`);
+          }
+        } else if (option.kind === "variant") {
+          const vid = coerceVariantGid(option.variantId);
+          const handle =
+            typeof option.handle === "string" && PRODUCT_HANDLE_PATTERN.test(option.handle)
+              ? option.handle
+              : "";
+          if (option.variantId && !vid) {
+            errors.push(`${label}: ${spot} has an invalid variant id.`);
+          }
+          if (!vid && !handle) {
+            errors.push(`${label}: ${spot} needs a product (variant or handle).`);
+          }
+        } else {
+          errors.push(`${label}: ${spot} kind must be "variant" or "samples".`);
+        }
+      });
+    });
+  });
+  return tiers.length;
+}
+
+/** v18 fail-loud validator for a `rewards.giftTiers` PATCH (same contract as
+ *  its siblings: an absent field is valid, a present one must be right). */
 export function validateGiftTiersPatch(patch: unknown): string[] {
   if (patch === undefined || patch === null) return [];
-  if (!isPlainObject(patch)) return ["Gift tiers: settings must be an object."];
+  if (!isPlainObject(patch)) return ["Free gifts: settings must be an object."];
   const errors: string[] = [];
-  const label = "Gift tiers";
-  let tierCount: number | null = null;
-  if (patch.tiers !== undefined && patch.tiers !== null) {
-    if (!Array.isArray(patch.tiers)) {
-      errors.push(`${label}: tiers must be a list.`);
+  const label = "Free gifts";
+  /** Country -> the tier count of its cluster, for the cross-field check on
+   *  thresholdsByCountry. Only populated when `clusters` rides the patch. */
+  const tiersByCountry = new Map<string, number>();
+  let restTierCount: number | null = null;
+  let sawClusters = false;
+
+  if (patch.clusters !== undefined && patch.clusters !== null) {
+    if (!Array.isArray(patch.clusters)) {
+      errors.push(`${label}: clusters must be a list.`);
     } else {
-      tierCount = patch.tiers.length;
-      if (patch.tiers.length > REWARDS_CAPS.giftTiers) {
-        errors.push(`${label}: at most ${REWARDS_CAPS.giftTiers} tiers.`);
+      sawClusters = true;
+      if (patch.clusters.length === 0) {
+        errors.push(`${label}: keep at least one cluster.`);
       }
-      let last = -1;
-      patch.tiers.forEach((t, i) => {
-        const n = i + 1;
-        if (!isPlainObject(t)) {
-          errors.push(`${label}: tier ${n} is malformed.`);
+      if (patch.clusters.length > REWARDS_CAPS.clusters) {
+        errors.push(`${label}: at most ${REWARDS_CAPS.clusters} clusters.`);
+      }
+      const ids = new Set<string>();
+      const owner = new Map<string, string>();
+      const rows: { name: string; rest: boolean; countries: string[]; count: number | null }[] = [];
+      let restCount = 0;
+      patch.clusters.forEach((c, i) => {
+        const where = `cluster ${i + 1}`;
+        if (!isPlainObject(c)) {
+          errors.push(`${label}: ${where} is malformed.`);
           return;
         }
-        if (
-          typeof t.amount !== "number" ||
-          !Number.isFinite(t.amount) ||
-          t.amount < 0 ||
-          t.amount > REWARDS_CAPS.thresholdAmountMax
-        ) {
-          errors.push(`${label}: tier ${n} amount must be between 0 and ${REWARDS_CAPS.thresholdAmountMax}.`);
-        } else if (t.amount <= last) {
-          errors.push(`${label}: tier ${n} amount must be higher than the previous tier's.`);
+        const id = typeof c.id === "string" ? c.id.trim().toLowerCase() : "";
+        const name = typeof c.name === "string" && c.name.trim() ? c.name.trim() : where;
+        if (!CLUSTER_ID_PATTERN.test(id)) {
+          errors.push(`${label}: "${name}" needs a short id of lowercase letters, numbers and dashes.`);
+        } else if (ids.has(id)) {
+          errors.push(`${label}: two clusters share the id "${id}".`);
         } else {
-          last = t.amount;
+          ids.add(id);
         }
-        if (!Array.isArray(t.slots) || t.slots.length === 0) {
-          errors.push(`${label}: tier ${n} needs at least one gift slot.`);
-          return;
-        }
-        if (t.slots.length > REWARDS_CAPS.giftSlots) {
-          errors.push(`${label}: tier ${n} has more than ${REWARDS_CAPS.giftSlots} slots.`);
-        }
-        t.slots.forEach((slot, j) => {
-          if (!Array.isArray(slot) || slot.length === 0) {
-            errors.push(`${label}: tier ${n} slot ${j + 1} needs at least one option.`);
-            return;
-          }
-          if (slot.length > REWARDS_CAPS.giftOptionsPerSlot) {
-            errors.push(`${label}: tier ${n} slot ${j + 1} has more than ${REWARDS_CAPS.giftOptionsPerSlot} options.`);
-          }
-          slot.forEach((option, k) => {
-            const where = `tier ${n} slot ${j + 1} option ${k + 1}`;
-            if (!isPlainObject(option)) {
-              errors.push(`${label}: ${where} is malformed.`);
-              return;
+        const rest = c.rest === true;
+        if (rest) restCount += 1;
+        const countries: string[] = [];
+        if (c.countries !== undefined && c.countries !== null) {
+          if (!Array.isArray(c.countries)) {
+            errors.push(`${label}: "${name}" countries must be a list.`);
+          } else {
+            if (c.countries.length > REWARDS_CAPS.countriesPerCluster) {
+              errors.push(`${label}: "${name}" has more than ${REWARDS_CAPS.countriesPerCluster} countries.`);
             }
-            if (option.kind === "samples") {
+            for (const entry of c.countries) {
+              const code = toCountryCode(entry);
+              if (!code) {
+                errors.push(`${label}: "${String(entry)}" is not a 2-letter country code ("${name}").`);
+                continue;
+              }
+              const already = owner.get(code);
+              if (already !== undefined && already !== name) {
+                errors.push(`${label}: ${code} is in both "${already}" and "${name}". A country belongs to one cluster only.`);
+                continue;
+              }
+              owner.set(code, name);
+              if (!countries.includes(code)) countries.push(code);
+            }
+          }
+        }
+        if (c.locations !== undefined && c.locations !== null) {
+          if (!Array.isArray(c.locations)) {
+            errors.push(`${label}: "${name}" locations must be a list.`);
+          } else {
+            if (c.locations.length > REWARDS_CAPS.locationsPerCluster) {
+              errors.push(`${label}: at most ${REWARDS_CAPS.locationsPerCluster} locations for "${name}".`);
+            }
+            for (const gid of c.locations) {
+              const value = typeof gid === "number" && Number.isInteger(gid) ? String(gid) : gid;
               if (
-                !Number.isInteger(option.count) ||
-                (option.count as number) < 1 ||
-                (option.count as number) > REWARDS_CAPS.samplesPerOption
+                typeof value !== "string" ||
+                !(LOCATION_GID_PATTERN.test(value.trim()) || /^\d{1,20}$/.test(value.trim()))
               ) {
-                errors.push(`${label}: ${where} sample count must be 1–${REWARDS_CAPS.samplesPerOption}.`);
+                errors.push(`${label}: "${String(gid)}" is not a location id ("${name}").`);
               }
-            } else if (option.kind === "variant") {
-              const vid = coerceVariantGid(option.variantId);
-              const handle =
-                typeof option.handle === "string" &&
-                PRODUCT_HANDLE_PATTERN.test(option.handle)
-                  ? option.handle
-                  : "";
-              if (option.variantId && !vid) {
-                errors.push(`${label}: ${where} has an invalid variant id.`);
-              }
-              if (!vid && !handle) {
-                errors.push(`${label}: ${where} needs a product (variant or handle).`);
-              }
-            } else {
-              errors.push(`${label}: ${where} kind must be "variant" or "samples".`);
             }
-          });
-        });
+          }
+        }
+        const count = validateGiftTierList(c.tiers ?? [], label, `"${name}"`, errors);
+        rows.push({ name, rest, countries, count });
       });
+      if (restCount > 1) {
+        errors.push(`${label}: only one cluster can be the catch-all for every other country.`);
+      }
+      if (restCount === 0 && patch.clusters.length > 0) {
+        errors.push(`${label}: one cluster must be the catch-all for every other country.`);
+      }
+      for (const row of rows) {
+        if (row.count === null) continue;
+        if (row.rest) restTierCount = row.count;
+        for (const code of row.countries) tiersByCountry.set(code, row.count);
+      }
     }
   }
-  if (patch.giftThresholdsByMarket !== undefined && patch.giftThresholdsByMarket !== null) {
-    if (!isPlainObject(patch.giftThresholdsByMarket)) {
-      errors.push(`${label}: per-market amounts must be a map of market handles.`);
+
+  if (patch.thresholdsByCountry !== undefined && patch.thresholdsByCountry !== null) {
+    if (!isPlainObject(patch.thresholdsByCountry)) {
+      errors.push(`${label}: per-country amounts must be a map of country codes.`);
     } else {
-      const entries = Object.entries(patch.giftThresholdsByMarket);
-      if (entries.length > REWARDS_CAPS.thresholdMarkets) {
-        errors.push(`${label}: at most ${REWARDS_CAPS.thresholdMarkets} markets with explicit amounts.`);
+      const entries = Object.entries(patch.thresholdsByCountry);
+      if (entries.length > REWARDS_CAPS.thresholdCountries) {
+        errors.push(`${label}: at most ${REWARDS_CAPS.thresholdCountries} countries with their own amounts.`);
       }
-      for (const [handle, entry] of entries) {
-        if (!isExclusionMarketHandle(handle)) {
-          errors.push(`${label}: "${handle}" is not a valid market handle.`);
+      for (const [key, entry] of entries) {
+        const code = toCountryCode(key);
+        if (!code) {
+          errors.push(`${label}: "${key}" is not a 2-letter country code.`);
           continue;
         }
         if (!isPlainObject(entry) || !Array.isArray(entry.amounts)) {
-          errors.push(`${label}: amounts for "${handle}" must be {amounts, currencyCode}.`);
+          errors.push(`${label}: amounts for ${code} must be {amounts, currencyCode}.`);
           continue;
         }
         if (typeof entry.currencyCode !== "string" || !/^[A-Za-z]{3}$/.test(entry.currencyCode)) {
-          errors.push(`${label}: "${handle}" needs a 3-letter currency code.`);
+          errors.push(`${label}: ${code} needs a 3-letter currency code.`);
         }
-        if (tierCount !== null && entry.amounts.length !== tierCount) {
-          errors.push(`${label}: "${handle}" needs exactly one amount per tier (${tierCount}).`);
+        // Cross-field: a country's amounts must match ITS OWN cluster's ladder,
+        // which is why this only fires when the clusters ride the same patch.
+        if (sawClusters) {
+          const expected = tiersByCountry.has(code) ? tiersByCountry.get(code)! : restTierCount;
+          if (expected !== null && expected !== undefined && entry.amounts.length !== expected) {
+            errors.push(`${label}: ${code} needs exactly one amount per tier of its cluster (${expected}).`);
+          }
         }
         let previous = 0;
         for (const a of entry.amounts) {
           if (typeof a !== "number" || !Number.isFinite(a) || a <= 0 || a > REWARDS_CAPS.thresholdAmountMax) {
-            errors.push(`${label}: "${handle}" amount "${String(a)}" must be greater than 0 and at most ${REWARDS_CAPS.thresholdAmountMax}.`);
+            errors.push(`${label}: ${code} amount "${String(a)}" must be greater than 0 and at most ${REWARDS_CAPS.thresholdAmountMax}.`);
             break;
           }
           if (a <= previous) {
-            errors.push(`${label}: "${handle}" amounts must increase tier by tier.`);
+            errors.push(`${label}: ${code} amounts must increase tier by tier.`);
             break;
           }
           previous = a;
@@ -2310,38 +2686,23 @@ export function validateGiftTiersPatch(patch: unknown): string[] {
       }
     }
   }
-  if (patch.warehouseByMarket !== undefined && patch.warehouseByMarket !== null) {
-    if (!isPlainObject(patch.warehouseByMarket)) {
-      errors.push(`${label}: the warehouse map must be a map of market handles.`);
+
+  if (patch.pdp !== undefined && patch.pdp !== null) {
+    if (!isPlainObject(patch.pdp)) {
+      errors.push(`${label}: the product-page setting must be {enabled, style}.`);
     } else {
-      const entries = Object.entries(patch.warehouseByMarket);
-      if (entries.length > REWARDS_CAPS.warehouseMarkets) {
-        errors.push(`${label}: at most ${REWARDS_CAPS.warehouseMarkets} markets in the warehouse map.`);
+      if (patch.pdp.enabled !== undefined && typeof patch.pdp.enabled !== "boolean") {
+        errors.push(`${label}: the product-page line must be on or off.`);
       }
-      for (const [handle, list] of entries) {
-        if (!isExclusionMarketHandle(handle)) {
-          errors.push(`${label}: "${handle}" is not a valid market handle (warehouse map).`);
-          continue;
-        }
-        if (!Array.isArray(list)) {
-          errors.push(`${label}: locations for "${handle}" must be a list.`);
-          continue;
-        }
-        if (list.length > REWARDS_CAPS.warehouseLocations) {
-          errors.push(`${label}: at most ${REWARDS_CAPS.warehouseLocations} locations per market ("${handle}").`);
-        }
-        for (const id of list) {
-          const value = typeof id === "number" && Number.isInteger(id) ? String(id) : id;
-          if (
-            typeof value !== "string" ||
-            !(LOCATION_GID_PATTERN.test(value.trim()) || /^\d{1,20}$/.test(value.trim()))
-          ) {
-            errors.push(`${label}: "${String(id)}" is not a location id (market "${handle}").`);
-          }
-        }
+      if (
+        patch.pdp.style !== undefined &&
+        !(GIFT_PDP_STYLES as readonly unknown[]).includes(patch.pdp.style)
+      ) {
+        errors.push(`${label}: the product-page style must be "line", "card" or "ladder".`);
       }
     }
   }
+
   if (patch.samplePool !== undefined && patch.samplePool !== null) {
     if (!Array.isArray(patch.samplePool)) {
       errors.push(`${label}: the sample pool must be a list.`);
@@ -2391,13 +2752,13 @@ export function validateGiftTiersPatch(patch: unknown): string[] {
     } else {
       const sf = patch.stockFloor;
       if (sf.days !== undefined && (!Number.isInteger(sf.days) || (sf.days as number) < 0 || (sf.days as number) > 60)) {
-        errors.push(`${label}: stock floor days must be a whole number 0–60.`);
+        errors.push(`${label}: stock floor days must be a whole number 0 to 60.`);
       }
       if (
         sf.minUnits !== undefined &&
         (!Number.isInteger(sf.minUnits) || (sf.minUnits as number) < 0 || (sf.minUnits as number) > 100000)
       ) {
-        errors.push(`${label}: stock floor minimum units must be a whole number 0–100000.`);
+        errors.push(`${label}: stock floor minimum units must be a whole number 0 to 100000.`);
       }
     }
   }
@@ -2483,6 +2844,47 @@ export function mergeSettings<T>(defaults: T, patch: unknown): T {
  * rule, applied where old JSON actually surfaces). The next save persists
  * the derived value, after which this is a no-op.
  */
+/**
+ * v18 migration: lift a v14 flat gift ladder into the cluster shape.
+ *
+ * mergeSettings is key-driven off the defaults, so by the time the sanitizer
+ * runs the retired `rewards.giftTiers.tiers` has already been dropped. This
+ * reads the RAW stored row instead, and only acts when the row predates
+ * clusters (no `clusters` key).
+ *
+ * The rule is deliberately conservative about WHOSE ladder wins:
+ *   - gifts were never switched on -> keep the shipped v18 cluster presets,
+ *     because the stored ladder was only ever a default nobody chose.
+ *   - gifts WERE on -> copy the merchant's live ladder into EVERY cluster,
+ *     which reproduces v14 behaviour exactly (one ladder everywhere). They
+ *     can then differentiate per cluster in the admin.
+ *
+ * What is deliberately NOT migrated: `giftThresholdsByMarket` (per-MARKET
+ * amounts cannot be mapped to countries without an Admin API call, and the
+ * new price-scaled per-country defaults supersede them) and
+ * `warehouseByMarket` (locations now live on the cluster that owns them).
+ * Both are regenerated from the admin, which is why the readiness checklist
+ * asks the merchant to re-run "Suggest amounts" after upgrading.
+ */
+export function coerceLegacyGiftClusters(
+  settings: BoosterSettings,
+  raw: unknown,
+): BoosterSettings {
+  if (!isPlainObject(raw)) return settings;
+  const rewards = (raw as Record<string, unknown>).rewards;
+  if (!isPlainObject(rewards)) return settings;
+  const stored = rewards.giftTiers;
+  if (!isPlainObject(stored)) return settings;
+  if (Array.isArray(stored.clusters)) return settings; // already v18
+  if (stored.enabled !== true) return settings; // never ran: keep the presets
+  const legacy = sanitizeGiftTiers(stored.tiers);
+  if (legacy.length === 0) return settings;
+  settings.rewards.giftTiers.clusters = settings.rewards.giftTiers.clusters.map(
+    (cluster) => ({ ...cluster, tiers: structuredClone(legacy) }),
+  );
+  return settings;
+}
+
 export function coerceLegacyProofDensities(
   settings: BoosterSettings,
   raw: unknown,
@@ -2552,6 +2954,11 @@ const VALID_BADGE_KEYS = new Set([
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{3,8}$/;
 const VARIANT_GID_PATTERN = /^gid:\/\/shopify\/ProductVariant\/\d+$/;
 const MAX_CLINICAL_STATS = 4;
+/** v19 buy-box proof block caps (kept small on purpose — the block sits in
+ *  the buy box and must stay one screenful on a 375px phone). */
+export const BUY_BOX_PROOF_MAX_BADGES = 6;
+export const BUY_BOX_PROOF_MAX_INSTITUTIONS = 6;
+const BUY_BOX_PROOF_MAX_NAME = 60;
 
 function clampNumber(
   value: unknown,
@@ -2648,6 +3055,45 @@ export function sanitizeSettings(
   next.trustBadges.items = (next.trustBadges.items ?? []).filter(
     (item) => typeof item === "string" && VALID_BADGE_KEYS.has(item),
   );
+
+  // v19 buy-box proof block. Every row switch is "anything but an explicit
+  // false is on" (the v17 subscriptionAware convention) so a stored blob
+  // written before this feature existed lights the designed layout up.
+  next.buyBoxProof.showShipsFrom = next.buyBoxProof.showShipsFrom !== false;
+  next.buyBoxProof.showDelivery = next.buyBoxProof.showDelivery !== false;
+  next.buyBoxProof.showDeliveryBadge =
+    next.buyBoxProof.showDeliveryBadge !== false;
+  next.buyBoxProof.showGuarantee = next.buyBoxProof.showGuarantee !== false;
+  next.buyBoxProof.showRating = next.buyBoxProof.showRating !== false;
+  next.buyBoxProof.badges = Array.from(
+    new Set(
+      (next.buyBoxProof.badges ?? []).filter(
+        (item): item is string =>
+          typeof item === "string" && VALID_BADGE_KEYS.has(item),
+      ),
+    ),
+  ).slice(0, BUY_BOX_PROOF_MAX_BADGES);
+  next.buyBoxProof.research.enabled =
+    next.buyBoxProof.research.enabled !== false;
+  next.buyBoxProof.research.institutions = (
+    next.buyBoxProof.research.institutions ?? []
+  )
+    .filter(isPlainObject)
+    .map((item) => ({
+      name:
+        typeof item.name === "string"
+          ? item.name.trim().slice(0, BUY_BOX_PROOF_MAX_NAME)
+          : "",
+      // A malformed logo URL degrades to the text wordmark — it never
+      // falls back to some OTHER institution's previous logo.
+      imageUrl: isSafeHttpsUrl(item.imageUrl) ? item.imageUrl : "",
+    }))
+    .filter((item) => item.name !== "")
+    .slice(0, BUY_BOX_PROOF_MAX_INSTITUTIONS);
+  next.buyBoxProof.seal.enabled = next.buyBoxProof.seal.enabled !== false;
+  next.buyBoxProof.seal.imageUrl = isSafeHttpsUrl(next.buyBoxProof.seal.imageUrl)
+    ? next.buyBoxProof.seal.imageUrl
+    : "";
 
   next.trustpilot.rating = clampNumber(
     next.trustpilot.rating,
@@ -3405,15 +3851,16 @@ export function sanitizeSettings(
     if (!GIFT_SAMPLE_RULES.includes(gt.sampleRule as GiftSampleRule)) {
       gt.sampleRule = D.giftTiers.sampleRule;
     }
-    gt.tiers = sanitizeGiftTiers(gt.tiers);
-    if (!GIFT_PRESET_VALUES.includes(gt.giftPreset as GiftPreset)) {
-      gt.giftPreset = inferGiftPreset(gt.tiers);
-    }
-    gt.giftThresholdsByMarket = sanitizeGiftThresholdsByMarket(
-      gt.giftThresholdsByMarket,
-    );
+    gt.clusters = sanitizeGiftClusters(gt.clusters);
+    gt.thresholdsByCountry = sanitizeThresholdsByCountry(gt.thresholdsByCountry);
     gt.samplePool = sanitizeSamplePool(gt.samplePool);
-    gt.warehouseByMarket = sanitizeWarehouseByMarket(gt.warehouseByMarket);
+    gt.pdp = sanitizeGiftPdp(gt.pdp);
+    // v18: the v14 shape is gone. Drop the retired keys so a stored row that
+    // predates clusters cannot keep resurfacing them through the merge.
+    delete (gt as Record<string, unknown>).tiers;
+    delete (gt as Record<string, unknown>).giftPreset;
+    delete (gt as Record<string, unknown>).giftThresholdsByMarket;
+    delete (gt as Record<string, unknown>).warehouseByMarket;
     if (!isPlainObject(gt.stockFloor)) {
       gt.stockFloor = structuredClone(D.giftTiers.stockFloor);
     }
@@ -3543,6 +3990,14 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     get: (s) => s.guarantee.enabled,
     set: (s, on) => {
       s.guarantee.enabled = on;
+    },
+    siblings: [],
+  },
+  buy_box_proof: {
+    label: "Buy-box proof block",
+    get: (s) => s.buyBoxProof.enabled,
+    set: (s, on) => {
+      s.buyBoxProof.enabled = on;
     },
     siblings: [],
   },
@@ -3877,6 +4332,7 @@ export const STANDALONE_SECTION_FIELDS = [
   "cartCrossSell",
   "dispatch",
   "deliveryEstimate",
+  "buyBoxProof",
 ] as const;
 export type StandaloneSectionField = (typeof STANDALONE_SECTION_FIELDS)[number];
 
@@ -3901,6 +4357,7 @@ export const FEATURE_RAW_FIELD: Record<
   trust_badges: { kind: "section", field: "trustBadges" },
   trustpilot: { kind: "section", field: "trustpilot" },
   guarantee: { kind: "section", field: "guarantee" },
+  buy_box_proof: { kind: "section", field: "buyBoxProof" },
   clinical_results: { kind: "section", field: "clinicalResults" },
   subscription_nudge: { kind: "section", field: "subscriptionNudge" },
   checkout_upsell: { kind: "section", field: "checkoutUpsell" },
@@ -4213,8 +4670,11 @@ export async function getSettings(shop: string): Promise<BoosterSettings> {
   try {
     const raw: unknown = JSON.parse(row.data);
     return upgradeRetiredEndorsementCopy(
-      coerceLegacyProofDensities(
-        mergeSettings(structuredClone(DEFAULT_SETTINGS), raw),
+      coerceLegacyGiftClusters(
+        coerceLegacyProofDensities(
+          mergeSettings(structuredClone(DEFAULT_SETTINGS), raw),
+          raw,
+        ),
         raw,
       ),
     );

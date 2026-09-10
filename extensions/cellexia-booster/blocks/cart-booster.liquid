@@ -134,8 +134,8 @@ endif
 assign cx_eff_volume = false
 if cx_live_cart
 unless cfg.cartUpsell.showVolumeUpsell == false
-assign cx_scope = cfg.marketScopes.cart_volume_upsell
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.cart_volume_upsell
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_volume = true
 endif
 endunless
@@ -143,8 +143,8 @@ endif
 assign cx_eff_shipbar = false
 if cx_live_cart
 unless cfg.cartUpsell.showFreeShippingBar == false
-assign cx_scope = cfg.marketScopes.free_shipping_bar
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.free_shipping_bar
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_shipbar = true
 endif
 endunless
@@ -152,8 +152,8 @@ endif
 assign cx_eff_subscription = false
 if cx_live_cart
 unless cfg.cartUpsell.showSubscriptionUpsell == false
-assign cx_scope = cfg.marketScopes.cart_subscription_upsell
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.cart_subscription_upsell
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_subscription = true
 endif
 endunless
@@ -161,23 +161,23 @@ endif
 assign cx_eff_trustrow = false
 if cx_live_cart
 unless cfg.cartUpsell.showTrustRow == false
-assign cx_scope = cfg.marketScopes.cart_trust_row
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.cart_trust_row
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_trustrow = true
 endif
 endunless
 endif
 assign cx_eff_crosssell = false
 if cfg.cartCrossSell.enabled == true
-assign cx_scope = cfg.marketScopes.cart_cross_sell
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.cart_cross_sell
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_crosssell = true
 endif
 endif
 assign cx_tp_on = false
 if cfg.trustpilot.enabled == true
-assign cx_scope = cfg.marketScopes.trustpilot
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.trustpilot
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_tp_on = true
 endif
 endif
@@ -195,8 +195,8 @@ endif
 assign cx_eff_dispatch = false
 if cfg.dispatch.enabled == true
 unless cfg.dispatch.showInCart == false
-assign cx_scope = cfg.marketScopes.dispatch_countdown
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.dispatch_countdown
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_dispatch = true
 endif
 endunless
@@ -204,8 +204,8 @@ endif
 assign cx_eff_delivery = false
 if cx_de.enabled == true and cx_del_hidden == false
 unless cx_de.showInCart == false
-assign cx_scope = cfg.marketScopes.delivery_estimate
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.delivery_estimate
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_delivery = true
 endif
 endunless
@@ -218,23 +218,23 @@ assign cx_us = cx_de.usStates
 endif
 assign cx_eff_azfree = false
 if cfg.amazon.cartFreeLine == true
-assign cx_scope = cfg.marketScopes.az_cart_free_line
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_cart_free_line
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_azfree = true
 endif
 endif
 assign cx_eff_azcta = false
 if cfg.amazon.ctaCount == true
-assign cx_scope = cfg.marketScopes.az_cta_count
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_cta_count
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_azcta = true
 endif
 endif
 assign cx_azbadge_setting = false
 assign cx_eff_azbadge = false
 if cfg.amazon.bestsellerOnCards != false
-assign cx_scope = cfg.marketScopes.az_bestseller_badge
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_bestseller_badge
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_azbadge_setting = true
 if cfg.amazon.bestsellerBadge == true
 assign cx_eff_azbadge = true
@@ -244,8 +244,8 @@ endif
 assign cx_azbought_setting = false
 assign cx_eff_azbought = false
 if cfg.amazon.boughtOnCards != false
-assign cx_scope = cfg.marketScopes.az_bought_count
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_bought_count
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_azbought_setting = true
 if cfg.amazon.boughtCount == true
 assign cx_eff_azbought = true
@@ -254,15 +254,15 @@ endif
 endif
 assign cx_eff_ss = false
 if cx_rw.setSavings.enabled
-assign cx_scope = cfg.marketScopes.set_savings
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.set_savings
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_ss = true
 endif
 endif
 assign cx_eff_gt = false
 if cx_rw.giftTiers.enabled
-assign cx_scope = cfg.marketScopes.gift_tiers
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.gift_tiers
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_eff_gt = true
 endif
 endif
@@ -486,7 +486,9 @@ assign tp_stars_label = tp_stars | round: 1
 }
 </script>
 {%- if cx_eff_ss or cx_eff_gt %}
-<script type="application/json" id="cx-rw-config">{"ss": {{ cx_rw.setSavings | json }}, "gt": {{ cx_rw.giftTiers | json }}, "paused": {{ app.metafields.cellexia.gift_stock.value.paused[cx_market] | json }}}</script>
+{%- assign cx_gp = app.metafields.cellexia.gift_plan.value -%}
+{%- assign cx_cl = cx_gp.cc[cx_country] | default: cx_gp.rest -%}
+<script type="application/json" id="cx-rw-config">{"ss": {{ cx_rw.setSavings | json }}, "gt": {{ cx_gp.cl[cx_cl] | json }}, "gb": {{ cx_gp.bc[cx_country] | json }}}</script>
 {%- endif %}
 <script src="{{ 'cellexia-cart.js' | asset_url }}" defer></script>
 {%- endif -%}

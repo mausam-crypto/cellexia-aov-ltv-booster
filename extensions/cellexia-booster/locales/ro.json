@@ -45,7 +45,9 @@
     "cruelty_free": "Netestat pe animale",
     "clinically_proven": "Dovedit clinic",
     "ssl_encrypted": "Plată criptată SSL",
-    "easy_returns": "Retururi ușoare"
+    "easy_returns": "Retururi ușoare",
+    "research": "Pe baza cercetărilor publicate de",
+    "seal": "Testare independentă. Toleranță cutanată dovedită."
   },
   "guarantee": {
     "title": "Garanția banilor înapoi în {{ days }} de zile",

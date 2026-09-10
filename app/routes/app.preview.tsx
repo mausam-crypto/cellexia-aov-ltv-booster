@@ -37,7 +37,10 @@ import {
   getSettings,
   isFeatureOnForMarket,
   resolveFeatureFlag,
-  sanitizeGiftThresholdsByMarket,
+  sanitizeGiftClusters,
+  sanitizeThresholdsByCountry,
+  toCountryCode,
+  clusterForCountry,
   sanitizeGiftTiers,
   sanitizeSetSavingsTiers,
   type FeatureKey,
@@ -105,6 +108,7 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
   {
     title: "Product page",
     keys: [
+      "buy_box_proof",
       "trust_badges",
       "trustpilot",
       "guarantee",
@@ -495,19 +499,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   for (const market of markets) {
     chipsByMarket[market.handle] = simCartChips(settings, armedDraftConfig, market.handle);
   }
+  // v18: every cluster travels to the client, which picks the one the
+  // simulated COUNTRY resolves to. Clusters are country-keyed, so a single
+  // flat ladder no longer describes what a preview will show.
   const rewardsPreview = {
     liveSsTiers: settings.rewards.setSavings.tiers.map((tier) => ({
       count: tier.count,
       pct: tier.pct,
       code: tier.code,
     })),
-    liveGtEur: settings.rewards.giftTiers.tiers.map((tier) => tier.amount),
-    gtLabels: settings.rewards.giftTiers.tiers.map((tier) => {
-      const first = tier.slots[0]?.[0];
-      if (!first) return "(empty tier)";
-      return first.kind === "samples" ? `${first.count} samples` : first.handle || "gift";
-    }),
-    liveGtByMarket: settings.rewards.giftTiers.giftThresholdsByMarket,
+    clusters: settings.rewards.giftTiers.clusters.map((cluster) => ({
+      id: cluster.id,
+      name: cluster.name,
+      rest: cluster.rest,
+      countries: [...cluster.countries],
+      eur: cluster.tiers.map((tier) => tier.amount),
+      labels: cluster.tiers.map((tier) => {
+        const first = tier.slots[0]?.[0];
+        if (!first) return "(empty tier)";
+        return first.kind === "samples" ? `${first.count} samples` : first.handle || "gift";
+      }),
+    })),
+    liveGtByCountry: settings.rewards.giftTiers.thresholdsByCountry,
     chipsByMarket,
   };
 
@@ -662,15 +675,15 @@ function findApplyConflicts(
 /**
  * v14: writes the armed draft rewards tiers/amounts into the settings object
  * (mutating, inside handleApply's transaction). Returns human labels of what
- * changed ("Set savings tiers", "Gift tier amounts (EUR)", "Gift amounts —
- * <market>"); empty when nothing differs. The draft was sanitized at arm
+ * changed ("Set savings tiers", "Gift tier amounts (EUR)", "Gift amounts for
+ * <country>"); empty when nothing differs. The draft was sanitized at arm
  * time; saveSettingsWith re-sanitizes the whole blob anyway.
  */
 function applyDraftRewards(
   settings: Awaited<ReturnType<typeof getSettingsWith>>,
   draft: Record<string, unknown> | undefined,
   allow: { setSavings: boolean; giftTiers: boolean },
-  simulatedMarket: string | null,
+  simulatedCountry: string,
 ): string[] {
   if (!draft) return [];
   const labels: string[] = [];
@@ -685,41 +698,51 @@ function applyDraftRewards(
     }
   }
   if (allow.giftTiers) {
-    if (Array.isArray(draft.giftTiers)) {
-      // Gift tiers: only the EUR amount is applied, BY INDEX onto the LIVE
-      // tiers — the live slots (product picks) are never replaced by the
-      // draft's copy of them.
-      const drafted = sanitizeGiftTiers(draft.giftTiers);
-      const live = settings.rewards.giftTiers.tiers;
-      if (drafted.length === live.length) {
-        const merged = live.map((tier, index) => ({
+    if (Array.isArray(draft.giftClusters)) {
+      // v18: only the EUR AMOUNTS go live, matched by cluster id and tier
+      // index onto the live clusters. The live slots (the product picks) are
+      // never replaced by the draft's copy of them, and a cluster the draft
+      // does not mention is left alone.
+      const drafted = sanitizeGiftClusters(draft.giftClusters);
+      const live = settings.rewards.giftTiers.clusters;
+      const byId = new Map(drafted.map((cluster) => [cluster.id, cluster]));
+      let changed = false;
+      const merged = live.map((cluster) => {
+        const from = byId.get(cluster.id);
+        if (!from || from.tiers.length !== cluster.tiers.length) return cluster;
+        const tiers = cluster.tiers.map((tier, index) => ({
           ...tier,
-          amount: drafted[index].amount,
+          amount: from.tiers[index].amount,
         }));
-        if (!same(merged.map((tier) => tier.amount), live.map((tier) => tier.amount))) {
-          settings.rewards.giftTiers.tiers = merged;
-          labels.push("Gift tier amounts (EUR)");
+        if (!same(tiers.map((t) => t.amount), cluster.tiers.map((t) => t.amount))) {
+          changed = true;
+          return { ...cluster, tiers };
         }
+        return cluster;
+      });
+      if (changed) {
+        settings.rewards.giftTiers.clusters = merged;
+        labels.push("Gift tier amounts (EUR)");
       }
     }
     if (
-      simulatedMarket &&
-      typeof draft.giftAmountsByMarket === "object" &&
-      draft.giftAmountsByMarket !== null &&
-      !Array.isArray(draft.giftAmountsByMarket)
+      simulatedCountry &&
+      typeof draft.giftAmountsByCountry === "object" &&
+      draft.giftAmountsByCountry !== null &&
+      !Array.isArray(draft.giftAmountsByCountry)
     ) {
-      // Per-market: only the drafted (simulated) market's entry may go live;
-      // the other markets in the draft record are a snapshot of the saved
-      // values at arm time and must not clobber later edits.
-      const record = sanitizeGiftThresholdsByMarket(draft.giftAmountsByMarket);
-      const live = settings.rewards.giftTiers.giftThresholdsByMarket;
-      const entry = record[simulatedMarket];
-      if (entry && !same(entry, live[simulatedMarket])) {
-        settings.rewards.giftTiers.giftThresholdsByMarket = {
+      // Per-country: only the simulated country's entry may go live; the
+      // other entries are a snapshot taken at arm time and must not clobber
+      // later edits made on the Rewards page.
+      const record = sanitizeThresholdsByCountry(draft.giftAmountsByCountry);
+      const live = settings.rewards.giftTiers.thresholdsByCountry;
+      const entry = record[simulatedCountry];
+      if (entry && !same(entry, live[simulatedCountry])) {
+        settings.rewards.giftTiers.thresholdsByCountry = {
           ...live,
-          [simulatedMarket]: entry,
+          [simulatedCountry]: entry,
         };
-        labels.push(`Gift amounts — ${simulatedMarket}`);
+        labels.push(`Gift amounts for ${simulatedCountry}`);
       }
     }
   }
@@ -813,7 +836,7 @@ async function handleApply(
     const tierChanges = applyDraftRewards(settings, state.draftConfig.rewards, {
       setSavings: draftKeys.includes("set_savings"),
       giftTiers: draftKeys.includes("gift_tiers"),
-    }, state.simulatedMarket);
+    }, state.draftConfig.country ?? "");
     for (const key of draftKeys) {
       for (const target of targets) {
         const scope = settings.marketScopes[key] ?? {
@@ -940,47 +963,60 @@ async function buildRewardsDraft(
   if (Array.isArray(payload.setSavingsTiers)) {
     out.setSavingsTiers = sanitizeSetSavingsTiers(payload.setSavingsTiers);
   }
+  // v18: the draft edits the amounts of ONE cluster, the one the simulated
+  // country resolves to, plus that country's own local amounts.
+  const country = toCountryCode(payload.country);
+  if (country) out.country = country;
   const needsSettings =
     Array.isArray(payload.giftEurAmounts) ||
-    (typeof payload.giftMarketAmounts === "object" && payload.giftMarketAmounts !== null);
+    (typeof payload.giftCountryAmounts === "object" && payload.giftCountryAmounts !== null);
   if (needsSettings) {
     const settings = await getSettings(shop);
-    const liveTiers = settings.rewards.giftTiers.tiers;
-    if (Array.isArray(payload.giftEurAmounts)) {
+    const clusters = settings.rewards.giftTiers.clusters;
+    const cluster = clusterForCountry(clusters, country);
+    const liveTiers = cluster?.tiers ?? [];
+    if (Array.isArray(payload.giftEurAmounts) && cluster) {
       const amounts = payload.giftEurAmounts.map((value) => Number(value));
-      const drafted: GiftTier[] = liveTiers.map((tier, index) => ({
-        amount:
-          Number.isFinite(amounts[index]) && amounts[index] > 0 ? amounts[index] : tier.amount,
-        slots: tier.slots.map((slot) => slot.map((option) => ({ ...option }))),
-      }));
-      out.giftTiers = sanitizeGiftTiers(drafted);
+      out.giftClusters = sanitizeGiftClusters(
+        clusters.map((entry) =>
+          entry.id !== cluster.id
+            ? entry
+            : {
+                ...entry,
+                tiers: entry.tiers.map((tier, index) => ({
+                  amount:
+                    Number.isFinite(amounts[index]) && amounts[index] > 0
+                      ? amounts[index]
+                      : tier.amount,
+                  slots: tier.slots.map((slot) => slot.map((option) => ({ ...option }))),
+                })),
+              },
+        ),
+      );
     }
-    const marketAmounts = payload.giftMarketAmounts;
+    const countryAmounts = payload.giftCountryAmounts;
     if (
-      typeof marketAmounts === "object" &&
-      marketAmounts !== null &&
-      !Array.isArray(marketAmounts)
+      typeof countryAmounts === "object" &&
+      countryAmounts !== null &&
+      !Array.isArray(countryAmounts)
     ) {
-      const entry = marketAmounts as Record<string, unknown>;
-      const market = sanitizeMarketHandle(entry.market);
-      // All-or-nothing: the market column is accepted only when it has one
-      // finite amount > 0 per live tier; anything partial is dropped.
-      const marketAmounts_ = Array.isArray(entry.amounts)
+      const entry = countryAmounts as Record<string, unknown>;
+      const code = toCountryCode(entry.country);
+      // All-or-nothing: a country column is accepted only when it carries one
+      // finite amount > 0 per tier of ITS cluster; anything partial is dropped.
+      const values = Array.isArray(entry.amounts)
         ? entry.amounts.map((value) => Number(value))
         : null;
-      const marketComplete =
-        marketAmounts_ !== null &&
-        marketAmounts_.length === liveTiers.length &&
-        marketAmounts_.every((amount) => Number.isFinite(amount) && amount > 0);
-      if (market && marketAmounts_ && marketComplete) {
-        const record = {
-          ...settings.rewards.giftTiers.giftThresholdsByMarket,
-          [market]: {
-            amounts: marketAmounts_,
-            currencyCode: String(entry.currencyCode ?? ""),
-          },
-        };
-        out.giftAmountsByMarket = sanitizeGiftThresholdsByMarket(record);
+      const complete =
+        values !== null &&
+        liveTiers.length > 0 &&
+        values.length === liveTiers.length &&
+        values.every((amount) => Number.isFinite(amount) && amount > 0);
+      if (code && values && complete) {
+        out.giftAmountsByCountry = sanitizeThresholdsByCountry({
+          ...settings.rewards.giftTiers.thresholdsByCountry,
+          [code]: { amounts: values, currencyCode: String(entry.currencyCode ?? "") },
+        });
       }
     }
   }
@@ -1236,35 +1272,52 @@ export default function PreviewCenter() {
       code: tier.code,
     })),
   );
-  const [gtEur, setGtEur] = useState<string[]>(() =>
-    (armedRewards?.giftTiers
-      ? armedRewards.giftTiers.map((tier) => tier.amount)
-      : rewardsPreview.liveGtEur
-    ).map((amount) => String(amount)),
+  // v18: clusters are country-keyed, so the preview simulates a COUNTRY and
+  // the editors below act on the cluster that country resolves to.
+  const [simulatedCountry, setSimulatedCountry] = useState(
+    (preview.draftConfig?.country as string | undefined) ?? "",
   );
-  // Per-market gift amounts for the SIMULATED market only (one row set;
-  // switching the market reloads the row from the armed draft / live record).
-  const marketGiftRecord = (market: string) =>
-    (armedRewards?.giftAmountsByMarket?.[market] ??
-      rewardsPreview.liveGtByMarket[market]) ?? null;
-  const [gtMarket, setGtMarket] = useState<string[]>(() => {
-    const record = marketGiftRecord(preview.simulatedMarket ?? "");
-    return rewardsPreview.liveGtEur.map((_, index) =>
+  const activeCluster = useMemo(() => {
+    const code = simulatedCountry.trim().toUpperCase();
+    const named = code
+      ? rewardsPreview.clusters.find((c) => !c.rest && c.countries.includes(code))
+      : undefined;
+    return (
+      named ??
+      rewardsPreview.clusters.find((c) => c.rest) ??
+      rewardsPreview.clusters[rewardsPreview.clusters.length - 1] ??
+      null
+    );
+  }, [simulatedCountry, rewardsPreview.clusters]);
+  const clusterEur = useMemo(() => activeCluster?.eur ?? [], [activeCluster]);
+  const [gtEur, setGtEur] = useState<string[]>(() => clusterEur.map((a) => String(a)));
+  useEffect(() => {
+    setGtEur(clusterEur.map((a) => String(a)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCluster?.id]);
+  // Per-country amounts for the SIMULATED country only (one row set;
+  // switching country reloads it from the armed draft / live record).
+  const countryGiftRecord = (code: string) =>
+    (armedRewards?.giftAmountsByCountry?.[code] ??
+      rewardsPreview.liveGtByCountry[code]) ?? null;
+  const [gtCountry, setGtCountry] = useState<string[]>(() => {
+    const record = countryGiftRecord(simulatedCountry);
+    return clusterEur.map((_, index) =>
       record && Number.isFinite(record.amounts[index]) ? String(record.amounts[index]) : "",
     );
   });
   useEffect(() => {
-    const record = marketGiftRecord(simulatedMarket);
-    setGtMarket(
-      rewardsPreview.liveGtEur.map((_, index) =>
+    const record = countryGiftRecord(simulatedCountry);
+    setGtCountry(
+      clusterEur.map((_, index) =>
         record && Number.isFinite(record.amounts[index]) ? String(record.amounts[index]) : "",
       ),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simulatedMarket]);
+  }, [simulatedCountry, activeCluster?.id]);
   const simulatedMarketInfo = markets.find((market) => market.handle === simulatedMarket);
   const marketCurrency =
-    marketGiftRecord(simulatedMarket)?.currencyCode ||
+    countryGiftRecord(simulatedCountry)?.currencyCode ||
     simulatedMarketInfo?.currencyCode ||
     "EUR";
   const simChips = rewardsPreview.chipsByMarket[simulatedMarket] ??
@@ -1468,35 +1521,36 @@ export default function PreviewCenter() {
         }
       }
       if (checked.has("gift_tiers")) {
+        draft.country = simulatedCountry;
         const eur = parseAmounts(gtEur);
-        if (JSON.stringify(eur) !== JSON.stringify(rewardsPreview.liveGtEur)) {
+        if (JSON.stringify(eur) !== JSON.stringify(clusterEur)) {
           draft.giftEurAmounts = eur;
         }
-        // The per-market column is all-or-nothing: every tier cell must hold
+        // The per-country column is all-or-nothing: every tier cell must hold
         // a finite amount > 0, or the whole column stays blank (untouched).
-        const marketFilled = gtMarket.filter((value) => value.trim() !== "").length;
-        if (simulatedMarket && marketFilled > 0) {
+        const countryFilled = gtCountry.filter((value) => value.trim() !== "").length;
+        if (simulatedCountry && countryFilled > 0) {
           const complete =
-            marketFilled === gtMarket.length &&
-            gtMarket.every((value) => {
+            countryFilled === gtCountry.length &&
+            gtCountry.every((value) => {
               const amount = Number(value);
               return Number.isFinite(amount) && amount > 0;
             });
           if (!complete) {
-            shopify.toast.show("Fill every market amount or leave the column blank", {
+            shopify.toast.show("Fill every amount for this country or leave them all blank", {
               isError: true,
             });
             return;
           }
-          const amounts = parseAmounts(gtMarket);
-          const live = rewardsPreview.liveGtByMarket[simulatedMarket];
+          const amounts = parseAmounts(gtCountry);
+          const live = rewardsPreview.liveGtByCountry[simulatedCountry];
           if (
             !live ||
             live.currencyCode !== marketCurrency ||
             JSON.stringify(live.amounts) !== JSON.stringify(amounts)
           ) {
-            draft.giftMarketAmounts = {
-              market: simulatedMarket,
+            draft.giftCountryAmounts = {
+              country: simulatedCountry,
               amounts,
               currencyCode: marketCurrency,
             };
@@ -2085,24 +2139,47 @@ export default function PreviewCenter() {
                 ) : null}
                 <Divider />
                 <Checkbox
-                  label="Test with my real cart — really add gifts and discount codes to my own preview cart"
+                  label="Test with my real cart: really add gifts and discount codes to my own preview cart"
                   checked={rehearsal}
                   onChange={setRehearsal}
                   helpText="Off by default. Tick it only when you want to see the gift lines and the discount code really appear in your own cart."
                 />
-                <Banner tone="warning" title="Warning: this changes your own cart for real">
-                  <Text as="p">
-                    With this on, your own preview cart really changes (gift
-                    lines added and removed, the set-savings discount code
-                    applied) — in the cart drawer and at checkout. If you
-                    complete that checkout it is a REAL order that deducts
-                    real gift stock unless you cancel it or use a test
-                    payment. The simulator above wins while it is on: turn it
-                    off to test with your real cart. Live shoppers are never
-                    affected — the preview only shows in your own browser
-                    session.
-                  </Text>
-                </Banner>
+                {rehearsal && simEnabled ? (
+                  // v18: the two controls silently cancel each other. The
+                  // simulator fakes the basket total, so rwMutable() refuses
+                  // every cart write while it is on, which is why "gifts never
+                  // get added in preview" was reported as a bug. Say so at the
+                  // point of conflict, and offer the one click that fixes it.
+                  <Banner
+                    tone="critical"
+                    title="The simulator is cancelling this"
+                    action={{
+                      content: "Turn the simulator off",
+                      onAction: () => setSimEnabled(false),
+                    }}
+                  >
+                    <Text as="p">
+                      The simulator fakes your basket total, so nothing is ever
+                      added to a real cart while it is on. That is deliberate: a
+                      pretend total must not buy a real free product. To watch a
+                      gift actually land, turn the simulator off and add real
+                      products until you pass a reward amount.
+                    </Text>
+                  </Banner>
+                ) : null}
+                {rehearsal ? (
+                  <Banner tone="warning" title="This changes your own cart for real">
+                    <Text as="p">
+                      Your own preview cart really changes: gift lines are added
+                      and removed, and the set-savings discount code is applied,
+                      both in the cart drawer and at checkout. If you complete
+                      that checkout it is a REAL order that deducts real gift
+                      stock unless you cancel it or use a test payment. Live
+                      shoppers are never affected, because the preview only
+                      shows in your own browser session.
+                    </Text>
+                  </Banner>
+                ) : null}
                 <Divider />
                 <BlockStack gap="200">
                   <Text as="h3" variant="headingSm">
@@ -2220,16 +2297,36 @@ export default function PreviewCenter() {
                   {checked.has("gift_tiers") ? (
                     <BlockStack gap="200">
                       <Text as="p" fontWeight="semibold" variant="bodySm">
-                        Gift tier thresholds
-                        {rewardsPreview.liveGtEur.length === 0
-                          ? " — no gift tiers configured yet (add them on the Rewards page)"
+                        Gift tiers
+                        {activeCluster ? ` for ${activeCluster.name}` : ""}
+                        {clusterEur.length === 0
+                          ? ": no tier configured yet (add one on the Rewards page)"
                           : ""}
                       </Text>
-                      {rewardsPreview.liveGtEur.map((_, index) => (
+                      <TextField
+                        label="Simulate a country"
+                        value={simulatedCountry}
+                        onChange={(value) =>
+                          setSimulatedCountry(value.trim().toUpperCase().slice(0, 2))
+                        }
+                        autoComplete="off"
+                        maxLength={2}
+                        placeholder="ES"
+                        helpText={
+                          activeCluster
+                            ? `Two-letter country code. ${
+                                activeCluster.rest
+                                  ? `Not listed in any cluster, so it uses "${activeCluster.name}".`
+                                  : `Uses the "${activeCluster.name}" ladder.`
+                              }`
+                            : "Two-letter country code. Clusters decide which ladder a shopper sees."
+                        }
+                      />
+                      {clusterEur.map((_, index) => (
                         <InlineStack key={index} gap="200" wrap blockAlign="end">
                           <Box minWidth="180px">
                             <Text as="p" variant="bodySm">
-                              Tier {index + 1} · {rewardsPreview.gtLabels[index]}
+                              Tier {index + 1} · {activeCluster?.labels[index] ?? "gift"}
                             </Text>
                           </Box>
                           <Box minWidth="140px">
@@ -2248,31 +2345,31 @@ export default function PreviewCenter() {
                               autoComplete="off"
                             />
                           </Box>
-                          {simulatedMarket ? (
+                          {simulatedCountry ? (
                             <Box minWidth="140px">
                               <TextField
-                                label={`${simulatedMarketInfo?.name ?? simulatedMarket} (${marketCurrency})`}
+                                label={`${simulatedCountry} (${marketCurrency})`}
                                 labelHidden={index > 0}
                                 type="number"
                                 min={0}
                                 step={1}
-                                value={gtMarket[index] ?? ""}
+                                value={gtCountry[index] ?? ""}
                                 onChange={(value) =>
-                                  setGtMarket((values) =>
+                                  setGtCountry((values) =>
                                     values.map((v, i) => (i === index ? value : v)),
                                   )
                                 }
                                 autoComplete="off"
-                                placeholder="EUR × rate"
+                                placeholder="scaled to local price"
                               />
                             </Box>
                           ) : null}
                         </InlineStack>
                       ))}
                       <Text as="p" tone="subdued" variant="bodySm">
-                        {simulatedMarket
-                          ? `Leave the ${marketCurrency} column blank to keep converting the EUR default at the shop rate; fill every row to draft explicit ${marketCurrency} amounts for this market.`
-                          : "Simulate a market above to draft that market's own amounts in its currency."}
+                        {simulatedCountry
+                          ? `Leave the ${marketCurrency} column blank to keep scaling the EUR ladder to this country's own price level; fill every row to draft explicit ${marketCurrency} amounts for ${simulatedCountry}.`
+                          : "Enter a country above to draft that country's own amounts in its currency."}
                       </Text>
                     </BlockStack>
                   ) : null}

@@ -3,8 +3,8 @@
 assign cx_market = localization.market.handle | default: ''
 assign cx_on = false
 if cfg.trustpilot.enabled == true
-assign cx_scope = cfg.marketScopes.trustpilot
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.trustpilot
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_on = true
 endif
 endif

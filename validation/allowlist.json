@@ -145,6 +145,56 @@
       "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
       "reason": "v14 rewards (SPEC-v14 §5/§6/§7): NEW region before the az entry — the cxRwTier/cxRwNext twin (byte-identical to cellexia-cart.js, pinned by sims/rewards-tiers.mjs), RW_DEFAULTS (5 PDP keys), PDP-only azRw* helpers (azRwT/azRwCfg/azRwTiers/azRwPct/azRwOn/azRwNum/azRwIdSet/azRwSkip/azRwCartCount/azRwSub/azRwFbtApply), azBuildRwPdp (p.cx-az-row.cx-rw-pdp[data-cx-feature=set_savings]) + azMountRwPdp (after .stock-msg, skipped for excluded/gift/sachet products, tracks set_savings once); hooks: azFbtUpdate (tier for the checked count → discounted total + struck original + fbt_add_save label), azFbtFinish (fbt_caption), azFbtCollect/azMountSimilar pick loops + azFbtEnrich/similar byHandle stage skip gift/sachet/excluded via azRwSkip, similar caption, AZ_BUYBOX_ORDER gains '.cx-rw-pdp', azInit calls azMountRwPdp(). Cart awareness reads window.CartJS.cart.items only (never a fetch). ES5, no new innerHTML (10 pinned sites unchanged). Pinned by harness v14 block + EVIDENCE + sims/fbt.cjs (extraction carries the azRw* helpers) + sims/rewards-tiers.mjs pdp-only rule.",
       "wave": "v14"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/clinical-results.liquid",
+      "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
+      "wave": "v18"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/guarantee.liquid",
+      "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
+      "wave": "v18"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/subscription-nudge.liquid",
+      "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
+      "wave": "v18"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/trust-badges.liquid",
+      "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
+      "wave": "v18"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/trustpilot.liquid",
+      "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
+      "wave": "v18"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+      "reason": "v18 gift diagnostics: new rwGiftWhy() names, in merchant-facing English, the reason the gift pass did or did not put a gift in the cart, and rwUpdateWhy() renders it into the preview bar after every renderAll. Fixes the reported \"gifts never get added in preview\": rwMutable() requires PREVIEW.rehearsal AND no simulator, so typing a spend into the simulator silently cancelled the \"Test with my real cart\" tick with no explanation. Decision ORDER is load-bearing (distance to the next tier before the simulator notice, simulator before the rehearsal tick) and is pinned by validation/sims/gift-why.mjs. Also exposes window.CellexiaBooster.giftWhy for live pages. No behaviour change to the gift sync itself: rwSyncGifts, its single-flight, its one-correction-per-cart-signature and its never-loop guarantees are untouched.",
+      "wave": "v18"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+      "reason": "v18 gift clusters: the #cx-rw-config island stops dumping the whole rewards settings section and instead emits THIS COUNTRY's cluster slice, sliced out of the new cellexia/gift_plan app-data metafield with cx_country (the pattern gift_stock.paused[cx_market] already used). A browser therefore only ever receives its own ladder, which shrinks the island and stops one country's offers leaking into another's page source. The paused set now rides inside the cluster entry, so the separate \"paused\" member is gone.",
+      "wave": "v18"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+      "reason": "v18: new #cx-gift-config island carrying the same per-country gift slice for the product page, in its OWN script tag rather than inside #cx-pdp-config, so a Liquid problem in the gift data can only break the gift surface (the 2026-08-17 isolation lesson). Gated live-effective on cx_eff_gt exactly like the cart island.",
+      "wave": "v18"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+      "reason": "v18 free-gift product-page surface: azGtIsland/azGtCfg/azGtPlan/azBuildGiftSurface/azMountGift render one of three merchant-chosen placements (quiet line above Add to cart, reward card below it, ladder strip under the title). All three are cart-aware and pick the strongest of three sentences, so the line says how far the shopper is from a named gift instead of advertising one. Adds azShopRate/azCurrency/azProductPriceCents (twins of the cart helpers). The card renders after the Add-to-cart actions so a promotion can never push the button down the page.",
+      "wave": "v18"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+      "reason": "v18 gift clusters + reward ladder: the storefront readers now consume the per-country cluster slice (rwGtTiers rebuilds {amount,slots} from the plan's a/t arrays, rwPool/rwPaused/rwGiftThresholdCents read the short plan keys, and the country's own amounts arrive pre-resolved as RW.gb instead of a market map lookup). rwRenderLadder draws a card per gift tier under the meter track: unlocked cards keep their tick and stay full-strength, which communicates the cumulative rule with no new copy to translate into 18 languages. The gift sync itself, its single-flight, one-correction-per-cart-signature and never-loop guarantees are untouched.",
+      "wave": "v18"
     }
   ]
 }

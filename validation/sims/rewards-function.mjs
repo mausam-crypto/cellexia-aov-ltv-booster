@@ -39,6 +39,7 @@ import {
   pctString,
   computeKit,
   computeGifts,
+  clusterFor,
   computeShipping,
   cartLinesOperations,
   deliveryOperations,
@@ -71,12 +72,28 @@ const LIVE = {
     on: true,
     cum: true,
     max: 4,
-    tiers: [
-      { eur: 119, slots: [[{ k: "v", vid: "61" }], [{ k: "s", n: 2 }]] },
-      { eur: 200, slots: [[{ k: "v", vid: "62" }], [{ k: "s", n: 2 }]] },
-      { eur: 350, slots: [[{ k: "v", vid: "63" }], [{ k: "s", n: 3 }]] },
-    ],
-    bm: { usa: { a: [129, 219, 379], c: "USD" }, france: { a: [119, 200, 350], c: "EUR" } },
+    // v18: gifts resolve by COUNTRY through clusters. `cc` maps a country to
+    // its cluster, `rest` is the catch-all, `bc` holds a country's own
+    // amounts. FR sits in the named cluster, US falls to the catch-all.
+    cl: {
+      eu: {
+        tiers: [
+          { eur: 119, slots: [[{ k: "v", vid: "61" }], [{ k: "s", n: 2 }]] },
+          { eur: 200, slots: [[{ k: "v", vid: "62" }], [{ k: "s", n: 2 }]] },
+          { eur: 350, slots: [[{ k: "v", vid: "63" }], [{ k: "s", n: 3 }]] },
+        ],
+      },
+      rest: {
+        tiers: [
+          { eur: 119, slots: [[{ k: "v", vid: "61" }], [{ k: "s", n: 2 }]] },
+          { eur: 200, slots: [[{ k: "v", vid: "62" }], [{ k: "s", n: 2 }]] },
+          { eur: 350, slots: [[{ k: "v", vid: "63" }], [{ k: "s", n: 3 }]] },
+        ],
+      },
+    },
+    cc: { FR: "eu", DE: "eu" },
+    rest: "rest",
+    bc: { US: { a: [129, 219, 379], c: "USD" }, FR: { a: [119, 200, 350], c: "EUR" } },
     pool: ["71", "72"],
     scope: { mode: "all", markets: [] },
   },
@@ -303,32 +320,43 @@ ok(cartDeliveryOptionsDiscountsGenerateRun(null).operations.length === 0, "deliv
 {
   // market amounts in cart currency vs EUR × rate
   const usd = [line(11, 1, 125, { cur: "USD" }), line(61, 6, 40, { gift: 1, cur: "USD" })];
-  ok(computeGifts(LIVE, input({ lines: usd, country: "US", rate: "1.1" })).length === 0, "usa: 125 USD < 129 USD market amount (EUR×rate NOT used when market entry matches currency)");
+  ok(computeGifts(LIVE, input({ lines: usd, country: "US", rate: "1.1" })).length === 0, "v18: US 125 USD < its own 129 USD amount (EUR×rate NOT used when the country entry matches the currency)");
   const usd2 = [line(11, 1, 129, { cur: "USD" }), line(61, 6, 40, { gift: 1, cur: "USD" })];
-  ok(computeGifts(LIVE, input({ lines: usd2, country: "US", rate: "1.1" })).length === 1, "usa: 129 USD reaches the market amount");
-  // australia has no bm entry → EUR × rate (119 × 1.6 = 190.4 AUD)
+  ok(computeGifts(LIVE, input({ lines: usd2, country: "US", rate: "1.1" })).length === 1, "v18: US 129 USD reaches its own amount");
+  // australia has no bc entry → its cluster's EUR ladder × rate (119 × 1.6)
   const aud = [line(11, 1, 190, { cur: "AUD" }), line(61, 6, 40, { gift: 1, cur: "AUD" })];
-  ok(computeGifts(LIVE, input({ lines: aud, country: "AU", rate: "1.6" })).length === 0, "australia: 190 AUD < 119 EUR × 1.6");
+  ok(computeGifts(LIVE, input({ lines: aud, country: "AU", rate: "1.6" })).length === 0, "v18: AU has no own amounts, so 190 AUD < 119 EUR × 1.6 from the catch-all ladder");
   const aud2 = [line(11, 1, 190.4, { cur: "AUD" }), line(61, 6, 40, { gift: 1, cur: "AUD" })];
-  ok(computeGifts(LIVE, input({ lines: aud2, country: "AU", rate: "1.6" })).length === 1, "australia: 190.40 AUD reaches 119 EUR × 1.6");
+  ok(computeGifts(LIVE, input({ lines: aud2, country: "AU", rate: "1.6" })).length === 1, "v18: AU 190.40 reaches 119 EUR × 1.6");
   // usa entry is USD but the cart is in EUR (mismatch) → EUR fallback
   const eurUs = [line(11, 1, 119), line(61, 6, 37, { gift: 1 })];
-  ok(computeGifts(LIVE, input({ lines: eurUs, country: "US", rate: "1.0" })).length === 1, "market entry currency ≠ cart currency → EUR tiers × rate");
-  // market handle wins: country FR but handle "usa" → USD market amounts apply
-  ok(computeGifts(LIVE, input({ lines: usd, country: "FR", market: "usa", rate: "1.1" })).length === 0, "gifts: localization.market.handle picks the usa amounts (125 USD < 129)");
-  ok(computeGifts(LIVE, input({ lines: usd2, country: "FR", market: "usa", rate: "1.1" })).length === 1, "gifts: localization.market.handle picks the usa amounts (129 USD reaches)");
-  // per-market amount 0 / null / "" → that tier falls back to EUR × rate (storefront parity)
+  ok(computeGifts(LIVE, input({ lines: eurUs, country: "US", rate: "1.0" })).length === 1, "country entry currency ≠ cart currency → the cluster's EUR ladder × rate");
+  // v18: the MARKET handle no longer steers gifts. A French shopper browsing
+  // with market "usa" still gets the French ladder, because clusters are
+  // country-keyed and that is the whole point of the change.
+  // A 129.50 USD cart discriminates the two rules: the US amount is 129 USD
+  // (would grant), while FR falls back to its cluster's 119 EUR × 1.1 = 130.90
+  // because its own entry is in EUR and the cart is in USD (does not grant).
+  const frUsd = [line(11, 1, 129.5, { cur: "USD" }), line(61, 6, 40, { gift: 1, cur: "USD" })];
+  ok(computeGifts(LIVE, input({ lines: frUsd, country: "FR", market: "usa", rate: "1.1" })).length === 0, "v18: gifts follow the COUNTRY, not the market handle (FR never picks up the US amounts)");
+  ok(computeGifts(LIVE, input({ lines: frUsd, country: "US", market: "france", rate: "1.1" })).length === 1, "v18: the same cart in the US DOES reach its own 129 USD amount, whatever the market handle says");
+  // per-country amount 0 / null / "" → that tier falls back to EUR × rate (storefront parity)
   const zeroed = clone(LIVE);
-  zeroed.gt.bm.usa.a = [0, null, ""];
+  zeroed.gt.bc.US.a = [0, null, ""];
   const usdFallback = [line(11, 1, 130.9, { cur: "USD" }), line(61, 6, 40, { gift: 1, cur: "USD" })];
   ok(computeGifts(zeroed, input({ lines: usdFallback, country: "US", rate: "1.1" })).length === 1, "gifts: market amount 0 → EUR × rate for that tier (119 × 1.1 = 130.9 reached)");
   ok(computeGifts(zeroed, input({ lines: [line(11, 1, 130.8, { cur: "USD" }), line(61, 6, 40, { gift: 1, cur: "USD" })], country: "US", rate: "1.1" })).length === 0, "gifts: market amount 0 → EUR × rate for that tier (130.8 < 130.9)");
   const partial = clone(LIVE);
-  partial.gt.bm.usa.a = [129, 0, 379];
+  partial.gt.bc.US.a = [129, 0, 379];
   const t2 = [line(11, 1, 220, { cur: "USD" }), line(62, 60, 20, { gift: 2, cur: "USD" })];
   ok(firstOp(computeGifts(partial, input({ lines: t2, country: "US", rate: "1.1" })))?.productDiscountsAdd.candidates.length === 1, "gifts: only the 0 slot falls back (tier 2 = 200 × 1.1 = 220 reached; tier 1 keeps 129)");
+  // v18: a country in a NAMED cluster and one in the catch-all resolve to
+  // different ladders from the same config.
+  ok(clusterFor(LIVE.gt, "FR") === LIVE.gt.cl.eu, "v18: FR resolves to its named cluster");
+  ok(clusterFor(LIVE.gt, "us") === LIVE.gt.cl.rest, "v18: an unlisted country (case-insensitive) resolves to the catch-all");
+  ok(clusterFor(LIVE.gt, "") === LIVE.gt.cl.rest, "v18: an unknown country still resolves to the catch-all, never null");
   const neg = clone(LIVE);
-  neg.gt.bm.usa.a = [-5, 219, 379];
+  neg.gt.bc.US.a = [-5, 219, 379];
   ok(computeGifts(neg, input({ lines: [line(11, 1, 100, { cur: "USD" }), line(61, 6, 40, { gift: 1, cur: "USD" })], country: "US", rate: "1.1" })).length === 0, "gifts: negative market amount is not used (100 USD < 119 × 1.1)");
 }
 {

@@ -23,6 +23,16 @@ functionality also rides the embeds, they stay only for stores whose themes
 can use them. The validation harness enforces this: any NEW `.liquid` block
 with `"target": "section"` fails the build.
 
+`blocks/proof-booster.liquid` is the single "Cellexia proof library" embed for
+the three proof-library widgets. Its islands keep their v8 ids and payload
+shape byte-for-byte (only the per-widget gates were renamed in v8.7);
+`cellexia-proof.js` self-inserts them in a fixed press -> endorsements ->
+results order (product pages: after `.pdp__tabs`; home page: end of `#main`,
+or after `press.homeAfterSection` when that key resolves). This note used to
+live as a 967-byte `{% comment %}` inside the block; it moved here in v19 so
+the Liquid byte budget buys shopper-facing markup, matching every other block
+in the extension (all comment-free).
+
 ## Cart stack
 - **CartJS 1.1.0 + jQuery** (both global). `CartJS.init({{ cart | json }})` in `snippets/script-tags.liquid`.
 - All cart mutations are AJAX (`/cart/add.js`, `/cart/change.js`, `/cart/update.js`) via `CartJS.addItem/updateItem/removeItem`.

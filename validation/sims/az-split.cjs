@@ -95,6 +95,15 @@ const FNS = [
   "azShipsTemplate",
   "azShipsCompose",
   "azShipsFormat",
+  // v19: azOn asks bbpEffective() whether the buy-box proof block owns the
+  // buy-box proof area on this page — extracted with its closure so the
+  // sim exercises the REAL gate, not a stub of it.
+  "pdpMember",
+  "pdpMemberAllowed",
+  "bbpData",
+  "bbpConf",
+  "bbpAllowed",
+  "bbpEffective",
   "azStockSync",
   "azMountStock",
   "azBuildStock",
@@ -263,6 +272,9 @@ function runScenario(config, opts) {
     console,
     // module-level state the extracted functions close over
     PREVIEW: opts.preview || null,
+    // v19: the PDP island the buy-box proof block reads. Absent member =
+    // block off, which is every pre-v19 scenario in this file.
+    cfg: opts.pdpCfg || {},
     AZ_CFG: null,
     AZ_CFG_READ: false,
     azStockState: null,
@@ -400,6 +412,40 @@ const CH_NAME = new Intl.DisplayNames(["en"], { type: "region" }).of("CH"); // "
   vm.runInContext("AZ_CFG.product.selectedVariant = '12'; azStockSync();", sandbox);
   ok(node.getAttribute("hidden") !== null, "R3 unavailable again: our node hides");
   ok(page.stockMsg.style.display === "", "R3 theme .stock-msg display RESTORED to its original value");
+}
+
+// --- v19 buy-box proof block owns the buy-box proof area ------------------------
+{
+  // The block renders its OWN ships-from line in the merchant's layout, so
+  // az_ships_from must stand down while it is effective — but az_stock_line
+  // is NOT its business and keeps rendering (and beaconing) as before.
+  const bbpCfg = { bbp: { live: true, c: { showShipsFrom: true }, dl: false, sf: "CH" } };
+  const both = runScenario(cfgFor(true, true, "CH"), { pdpCfg: bbpCfg });
+  const node = both.page.document.querySelector(".cx-az-stock");
+  ok(!!node, "B1 stock line still mounts while the proof block is live");
+  ok(!!node && node.querySelector(".cx-az-stock__instock") !== null, "B1 In Stock renders");
+  ok(!!node && node.querySelector(".cx-az-stock__ships") === null, "B1 az_ships_from stands down for the proof block");
+  ok(both.tracked.join(",") === "az_stock_line", "B1 beacon: az_stock_line only (no phantom ships impression)");
+
+  // Ships-only + the block live: nothing az mounts and the theme's own
+  // stock message must stay visible (a replacement never leaves a hole).
+  const shipsOnly = runScenario(cfgFor(false, true, "CH"), { pdpCfg: bbpCfg });
+  ok(shipsOnly.page.document.querySelector(".cx-az-stock") === null, "B2 ships-only + proof block: nothing az mounts");
+  ok(shipsOnly.page.stockMsg.style.display !== "none", "B2 theme .stock-msg untouched");
+  ok(shipsOnly.tracked.length === 0, "B2 no beacons");
+
+  // The block gated OFF (member present but not live) changes nothing.
+  const off = runScenario(cfgFor(false, true, "CH"), {
+    pdpCfg: { bbp: { live: false, c: { showShipsFrom: true }, dl: false, sf: "CH" } },
+  });
+  ok(off.page.document.querySelector(".cx-az-stock__ships") !== null, "B3 block not live: az_ships_from renders normally");
+
+  // A metafield written before v19 carries no settings object: fail closed
+  // to "the block is not there", never to suppressing a live az line.
+  const nullConf = runScenario(cfgFor(false, true, "CH"), {
+    pdpCfg: { bbp: { live: true, c: null, dl: false, sf: "CH" } },
+  });
+  ok(nullConf.page.document.querySelector(".cx-az-stock__ships") !== null, "B4 block with no settings payload: az_ships_from still renders");
 }
 
 // --- preview draft convention ---------------------------------------------------
@@ -745,6 +791,14 @@ if (!process.env.CX_SKIP_MUTANTS && SRC_PATH === REAL_SRC) {
       name: "m5-wrong-member",
       find: "var sh = AZ_CFG && AZ_CFG.ships;",
       replace: "var sh = AZ_CFG && AZ_CFG.shipsFrom;",
+    },
+    {
+      // v19: a suppression that fires on the island member alone (without
+      // the live/draft gate) would blank az_ships_from on every page that
+      // merely CARRIES the block's config — B3 catches it.
+      name: "m9-bbp-ignores-live-gate",
+      find: "      if (!d || !bbpAllowed(d)) return false;\n      return bbpConf(d) !== null;",
+      replace: "      if (!d) return false;\n      return bbpConf(d) !== null;",
     },
     {
       // v6.10: a decoder that ignores the merchant setting (always

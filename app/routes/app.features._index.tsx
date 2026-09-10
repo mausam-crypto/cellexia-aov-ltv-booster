@@ -58,6 +58,9 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   cart_subscription_upsell: "/app/features/cart",
   cart_trust_row: "/app/features/cart",
   trust_badges: "/app/features/badges",
+  // v19: the buy-box proof block has its own page (it composes several
+  // features' data, so it does not belong on any single one of them).
+  buy_box_proof: "/app/features/proof-block",
   trustpilot: "/app/features/badges",
   guarantee: "/app/features/badges",
   clinical_results: "/app/features/clinical",
@@ -112,6 +115,7 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
     description:
       "Trust and conversion widgets on product pages — badge rows, social proof, clinical evidence and per-product trust boosters.",
     keys: [
+      "buy_box_proof",
       "trust_badges",
       "trustpilot",
       "guarantee",

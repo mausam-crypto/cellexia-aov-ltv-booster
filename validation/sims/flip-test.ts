@@ -1,9 +1,9 @@
 /**
- * Flip-test — the 37-FeatureKey flip / scope / snapshot / selective-restore
+ * Flip-test — the 38-FeatureKey flip / scope / snapshot / selective-restore
  * tripwire, executed against the REAL app/models/settings.server.ts
  * (imported directly — the prisma client is constructed but never queried).
  *
- * Per key (all 37; v14 rewards added set_savings + gift_tiers):
+ * Per key (all 38; v14 rewards added set_savings + gift_tiers, v19 buy_box_proof):
  *  - FEATURE_DEFS get/set round-trip surfaces through resolveFeatureFlag;
  *  - FEATURE_RAW_FIELD arm exists and its raw field is the one the def
  *    actually flips;
@@ -48,7 +48,8 @@ const MARKETS = ["ch", "eu", "us"];
 
 // --- inventory ---------------------------------------------------------------
 // v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
-ok(FEATURE_KEYS.length === 37, `37 FeatureKeys (got ${FEATURE_KEYS.length})`);
+// v19 (2026-09-09): 37 -> 38 (buy_box_proof appended at the END).
+ok(FEATURE_KEYS.length === 38, `38 FeatureKeys (got ${FEATURE_KEYS.length})`);
 ok(new Set(FEATURE_KEYS).size === FEATURE_KEYS.length, "no duplicate keys");
 ok(AMAZON_FLAG_FIELDS.length === FEATURE_KEYS.filter((k) => k.startsWith("az_")).length,
   "one amazon flag field per az_* key");
@@ -366,4 +367,4 @@ if (failures > 0) {
   console.error(`\n${failures}/${checks} CHECKS FAILED`);
   process.exit(1);
 }
-console.log(`ALL ${checks} CHECKS PASSED (37-key flip/scope/snapshot/selective-restore vs the real settings.server.ts)`);
+console.log(`ALL ${checks} CHECKS PASSED (38-key flip/scope/snapshot/selective-restore vs the real settings.server.ts)`);

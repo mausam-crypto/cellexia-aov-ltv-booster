@@ -1,18 +1,3 @@
-{%- comment -%}
-v8.7: ONE app embed for the three proof-library widgets (press band,
-endorsement wall, results gallery). These shipped in v8 as section-target
-app blocks — but this store's Sleepify theme uses legacy Liquid templates,
-so app blocks can NOT be added on the product page (merchant-verified).
-STANDING RULE (docs/theme-integration.md): every storefront surface ships
-as an app embed (target "body"); cellexia-proof.js self-inserts the
-widgets (product pages: after .pdp__tabs; home page: end of #main) in
-fixed press → endorsements → results order. Islands keep their v8 ids and
-payload shape byte-for-byte — only the gates were renamed per widget.
-v8.15: the press island may carry "ha" (press.homeAfterSection, a home
-templates/index.json section key) — on the HOME page only, the press band
-then inserts itself right after that section's rendered wrapper instead
-of the end-of-#main default (missing key falls back to the default).
-{%- endcomment -%}
 {%- liquid
 assign cx_page_ok = false
 if request.page_type == 'product' or request.page_type == 'index'
@@ -33,8 +18,8 @@ endif
 
 assign cx_p_on = false
 if cfg.press.enabled == true
-assign cx_scope = cfg.marketScopes.press
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.press
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_p_on = true
 endif
 endif
@@ -54,8 +39,8 @@ endif
 
 assign cx_e_on = false
 if cfg.dermEndorsements.enabled == true
-assign cx_scope = cfg.marketScopes.derm_endorsements
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.derm_endorsements
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_e_on = true
 endif
 endif
@@ -75,8 +60,8 @@ endif
 
 assign cx_r_on = false
 if cfg.beforeAfter.enabled == true
-assign cx_scope = cfg.marketScopes.verified_before_after
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.verified_before_after
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_r_on = true
 endif
 endif

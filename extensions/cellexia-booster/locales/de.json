@@ -45,7 +45,9 @@
     "cruelty_free": "Ohne Tierversuche",
     "clinically_proven": "Klinisch bestätigt",
     "ssl_encrypted": "SSL-verschlüsselte Zahlung",
-    "easy_returns": "Einfache Rückgabe"
+    "easy_returns": "Einfache Rückgabe",
+    "research": "Basierend auf publizierter Forschung von",
+    "seal": "Unabhängige Tests. Nachgewiesene Hautverträglichkeit."
   },
   "guarantee": {
     "title": "{{ days }} Tage Geld-zurück-Garantie",

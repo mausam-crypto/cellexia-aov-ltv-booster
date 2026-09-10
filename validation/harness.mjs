@@ -97,6 +97,12 @@ const CSS = `${EXT}/assets/cellexia-booster.css`;
   // (+≈2,700B together; total 99,183B at the move). 3.2KB under the
   // Shopify cap (102,400B). NEXT Liquid work MUST slim before it spends —
   // there is no room for another documented pin move of this size.
+  // v19 (2026-09-09): NO budget move — the buy-box proof block's ~1.0KB of
+  // gates + island was paid for FIRST by deleting the 967B {% comment %}
+  // block from proof-booster.liquid (its content moved to
+  // docs/theme-integration.md, matching every other block in the extension)
+  // and by de-duplicating five identical schema `info` strings. The pin
+  // stays where v14 left it; the rule "slim before you spend" held.
   const BUDGET = 99_500; // our own margin below the cap
   const FLOOR = 500; // a shipped block/snippet below this has been gutted
   const CEILING = 30_000; // a single file above this needs a Liquid diet
@@ -117,7 +123,8 @@ const CSS = `${EXT}/assets/cellexia-booster.css`;
 // ==================================================== 2. PREVIEW COVERAGE
 const FEATURE_KEYS = parseFeatureKeys();
 // v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
-ok(FEATURE_KEYS.length === 37, `FEATURE_KEYS parsed live: 37 keys (got ${FEATURE_KEYS.length})`);
+// v19 (2026-09-09): 37 -> 38 (buy_box_proof appended at the END).
+ok(FEATURE_KEYS.length === 38, `FEATURE_KEYS parsed live: 38 keys (got ${FEATURE_KEYS.length})`);
 
 /**
  * Evidence map: every FeatureKey -> at least one verified pattern in a real
@@ -179,6 +186,9 @@ const EVIDENCE = {
     { file: CART_JS, has: MARK("gift_tiers") },
     { file: "extensions/checkout-protection/src/Checkout.tsx", has: "'gift_tiers'", note: "v14 RewardsSafetyNet gift-honesty gate" },
   ],
+  // v19: the buy-box proof block builds two nodes (the in-panel rows and the
+  // research band) — BOTH carry the marker, and one beacon covers the block.
+  buy_box_proof: [{ file: PDP_JS, has: MARK("buy_box_proof") }],
 };
 
 {
@@ -1351,6 +1361,7 @@ const EVIDENCE = {
     "cx-pdp-config": "pdp config-island id (getElementById)",
     "cx-az-config": "amazon config-island id (getElementById)",
     "cx-rw-config": "v15 rewards config-island id (getElementById; live-only separate tag)",
+    "cx-gift-config": "v18 gift-plan island id on the PDP (getElementById; its own tag so a Liquid problem there breaks only the gift surface)",
     "cx-batch-config": "batch config-island id (getElementById)",
     "cx-bottle-config": "bottle config-island id (getElementById)",
     "cx-study-config": "study config-island id (getElementById)",
@@ -2224,9 +2235,9 @@ const EVIDENCE = {
     );
     ok(
       settingsFlat.includes(
-        "return upgradeRetiredEndorsementCopy( coerceLegacyProofDensities( mergeSettings(structuredClone(DEFAULT_SETTINGS), raw), raw, ), );",
+        "return upgradeRetiredEndorsementCopy( coerceLegacyGiftClusters( coerceLegacyProofDensities( mergeSettings(structuredClone(DEFAULT_SETTINGS), raw), raw, ), raw, ), );",
       ),
-      "v8.3: getSettings wraps mergeSettings with the coercion, fed the RAW stored JSON (v15.5: + the retired-copy upgrade outermost)",
+      "v8.3/v18: getSettings wraps mergeSettings with every load-path coercion, each fed the RAW stored JSON (density, then the v14->v18 gift cluster lift, then the retired-copy upgrade outermost)",
     );
     ok(
       settingsSrc8.includes("if (PROOF_DENSITIES.includes(stored as ProofDensity)) continue;") &&
@@ -2731,7 +2742,7 @@ const EVIDENCE = {
   const ALLOWED_INNERHTML = [
     { re: /decodeArea\.innerHTML = str;/g, why: "HTML-entity decode trick; result only ever reaches textContent", expect: { [CART_JS]: 1, [PDP_JS]: 1, [PROOF_JS]: 0 } },
     { re: /span\.innerHTML = cxStarsSvgs\(rating, uid, size\);/g, why: "the annotated numeric-stars case (all inputs numeric)", expect: { [CART_JS]: 1, [PDP_JS]: 1, [PROOF_JS]: 0 } },
-    { re: /wrap\.innerHTML = '<svg [\s\S]*?';/g, why: "static svg icon constants; only numeric size + static icon-map spec are concatenated", expect: { [CART_JS]: 1, [PDP_JS]: 2, [PROOF_JS]: 0 } },
+    { re: /wrap\.innerHTML = '<svg [\s\S]*?';/g, why: "static svg icon constants (v19 adds the built-in certification seal); only numeric size + static icon-map spec are concatenated", expect: { [CART_JS]: 1, [PDP_JS]: 3, [PROOF_JS]: 0 } },
   ];
   for (const jf of [CART_JS, PDP_JS, PROOF_JS]) {
     const src = read(jf);
@@ -3353,7 +3364,7 @@ const EVIDENCE = {
     ["cx_eff_gt", "cx_rw.giftTiers.enabled", "cfg.marketScopes.gift_tiers"],
   ]) {
     ok(
-      cartLiquid14.includes(`assign ${flag} = false\nif ${master}\nassign cx_scope = ${scope}\nif cx_scope.mode != 'selected' or cx_scope.markets contains cx_market\nassign ${flag} = true`),
+      cartLiquid14.includes(`assign ${flag} = false\nif ${master}\nassign cx_s = ${scope}\nif cx_s.mode != 'selected' or cx_s.markets contains cx_market\nassign ${flag} = true`),
       `v14: cart island ${flag} = ${master} AND ${scope} allows cx_market`,
     );
   }
@@ -3380,15 +3391,24 @@ const EVIDENCE = {
   // only through the token-verified preview-config endpoint (PREVIEW.rw).
   const RW_STRINGS_GATE = "{%- if cx_eff_ss or cx_eff_gt or cx_draft_rw %}";
   const RW_ISLAND_GATE = "{%- if cx_eff_ss or cx_eff_gt %}";
-  const RW_ISLAND = '<script type="application/json" id="cx-rw-config">{"ss": {{ cx_rw.setSavings | json }}, "gt": {{ cx_rw.giftTiers | json }}, "paused": {{ app.metafields.cellexia.gift_stock.value.paused[cx_market] | json }}}</script>';
+  // v18: `gt` is no longer the raw settings section. The server precomputes
+  // the whole plan into cellexia/gift_plan and Liquid slices it by
+  // cx_country, so a browser only ever receives its OWN cluster (`gt`) and
+  // its own local amounts (`gb`). The paused set rides inside the cluster.
+  const RW_ISLAND_ASSIGNS =
+    "{%- assign cx_gp = app.metafields.cellexia.gift_plan.value -%}\n" +
+    "{%- assign cx_cl = cx_gp.cc[cx_country] | default: cx_gp.rest -%}";
+  const RW_ISLAND = '<script type="application/json" id="cx-rw-config">{"ss": {{ cx_rw.setSavings | json }}, "gt": {{ cx_gp.cl[cx_cl] | json }}, "gb": {{ cx_gp.bc[cx_country] | json }}}</script>';
   const rwIslandAt = cartLiquid14.indexOf(RW_ISLAND);
   const rwIslandGateAt = cartLiquid14.lastIndexOf(RW_ISLAND_GATE, rwIslandAt === -1 ? undefined : rwIslandAt);
   const mainIslandAt = cartLiquid14.indexOf('id="cx-cart-config"');
   const mainIslandEnd = mainIslandAt === -1 ? -1 : cartLiquid14.indexOf("</script>", mainIslandAt);
-  ok(rwIslandAt !== -1, "v15: cart-booster.liquid emits the separate #cx-rw-config script tag (ss / gt verbatim + paused, nothing else)");
+  ok(rwIslandAt !== -1, "v18: cart-booster.liquid emits the separate #cx-rw-config script tag (ss + this country's cluster slice + its local amounts, nothing else)");
   ok(
-    rwIslandGateAt !== -1 && rwIslandAt !== -1 && cartLiquid14.slice(rwIslandGateAt + RW_ISLAND_GATE.length, rwIslandAt).trim() === "",
-    "v15: #cx-rw-config is gated on cx_eff_ss or cx_eff_gt ONLY (live for the market — never on cx_draft_rw / draft flags)",
+    rwIslandGateAt !== -1 &&
+      rwIslandAt !== -1 &&
+      cartLiquid14.slice(rwIslandGateAt + RW_ISLAND_GATE.length, rwIslandAt).trim() === RW_ISLAND_ASSIGNS,
+    "v18: #cx-rw-config is gated on cx_eff_ss or cx_eff_gt ONLY (live for the market, never on cx_draft_rw / draft flags), and only the two gift-plan assigns sit between the gate and the tag",
   );
   ok(
     rwIslandAt !== -1 && cartLiquid14.slice(rwIslandAt + RW_ISLAND.length, rwIslandAt + RW_ISLAND.length + 40).trim().startsWith("{%- endif %}"),
@@ -3434,7 +3454,7 @@ const EVIDENCE = {
   const azLiquid14 = read(`${EXT}/blocks/amazon-booster.liquid`);
   ok(azLiquid14.includes("assign cx_rw = cfg.rewards.setSavings"), "v14: amazon-booster.liquid aliases cx_rw = cfg.rewards.setSavings");
   ok(
-    azLiquid14.includes("assign az_eff_ss = false\nif cx_rw.enabled == true\nassign cx_scope = cfg.marketScopes.set_savings\nif cx_scope.mode != 'selected' or cx_scope.markets contains cx_market\nassign az_eff_ss = true"),
+    azLiquid14.includes("assign az_eff_ss = false\nif cx_rw.enabled == true\nassign cx_s = cfg.marketScopes.set_savings\nif cx_s.mode != 'selected' or cx_s.markets contains cx_market\nassign az_eff_ss = true"),
     "v14: amazon island az_eff_ss = master AND marketScopes.set_savings allows cx_market",
   );
   ok(
@@ -3582,8 +3602,12 @@ const EVIDENCE = {
   // discount (the mutation names must not appear in the module at all); a
   // foreign code is reported with the exact merchant sentence.
   const settingsSrc142 = read("app/models/settings.server.ts");
-  for (const sym of ["LADDER_PRESETS", "LADDER_PRESET_KEYS", "GIFT_PRESETS", "GIFT_PRESET_KEYS", "DEFAULT_YIELD_TO_CODES"]) {
-    ok(settingsSrc142.includes(`export const ${sym} = `), `v15: settings.server.ts exports ${sym}`);
+  for (const sym of ["LADDER_PRESETS", "LADDER_PRESET_KEYS", "GIFT_CLUSTER_PRESETS", "GIFT_PDP_STYLES", "DEFAULT_YIELD_TO_CODES"]) {
+    ok(
+      settingsSrc142.includes(`export const ${sym} = `) ||
+        settingsSrc142.includes(`export const ${sym}: `),
+      `v15/v18: settings.server.ts exports ${sym}`,
+    );
   }
   ok(settingsSrc142.includes("export function sanitizeYieldToCodes("), "v15: settings.server.ts exports sanitizeYieldToCodes(raw, ladder)");
   ok(
@@ -3628,7 +3652,7 @@ const EVIDENCE = {
   // discount and PERSISTS them (empty when none) through the settings model
   // (saveSettings patch) BEFORE the metafield sync, which mirrors the
   // updated settings; the settings model defaults/sanitizes/caps the field.
-  ok(rewardsSrv.includes('import { saveSettings, type BoosterSettings } from "../models/settings.server";'), "v15.1: rewards.server.ts imports saveSettings (blockedCodes persistence)");
+  ok(rewardsSrv.includes("saveSettings,") && rewardsSrv.includes('} from "../models/settings.server";'), "v15.1: rewards.server.ts imports saveSettings (blockedCodes persistence)");
   ok(
     rewardsSrv.includes("const blockedCodes: string[] = [];") &&
       rewardsSrv.includes("errors.push(foreignCodeMessage(code));\n          delete nodes.kit[code];\n          blockedCodes.push(code);\n          continue;") &&
@@ -3665,7 +3689,7 @@ const EVIDENCE = {
   // Metafields: the third metafieldsSet entry + the app-data gift_stock.
   const mfSrc14 = read("app/services/metafields.server.ts");
   ok(mfSrc14.includes('namespace: "$app:cellexia",\n            key: "rewards",'), "v14: syncSettingsToMetafields writes $app:cellexia/rewards (v15: in its own second call)");
-  ok(mfSrc14.includes('key: "gift_stock"'), "v14: writeGiftStockMetafield writes cellexia/gift_stock");
+  ok(mfSrc14.includes('key: "gift_plan"'), "v18: writeGiftPlanMetafield writes cellexia/gift_plan (the per-country storefront slice that replaced gift_stock)");
   ok(mfSrc14.includes("export function buildRewardsMetafield(") || mfSrc14.includes("export async function buildRewardsMetafield("), "v14: buildRewardsMetafield exported");
   // Scopes + webhook (template toml) + the route file that receives it.
   const exampleToml14 = read("shopify.app.toml.example");
@@ -3726,12 +3750,12 @@ const EVIDENCE = {
 
   // (j) Preview: proxy keys, readiness, fix links, admin registrations.
   const pc14 = read("app/routes/proxy.preview-config.tsx");
-  for (const k of ["simCart:", "rehearsal:", "rewardsForMarket:", "rw: rewardsPreviewSections("]) {
+  for (const k of ["simCart:", "rehearsal:", "rw: rewardsPreviewSections("]) {
     ok(pc14.includes(k), `v14/v15: proxy.preview-config emits ${k.replace(/[:(].*$/, "")}`);
   }
   const ps14 = read("app/services/preview.server.ts");
   ok(ps14.includes("readiness.set_savings =") && ps14.includes("readiness.gift_tiers ="), "v14: featureReadiness covers set_savings + gift_tiers");
-  ok(ps14.includes("export function rewardsForMarket(") && ps14.includes("export function simCartChips("), "v14: preview.server exports rewardsForMarket + simCartChips");
+  ok(ps14.includes("export function rewardsForCountry(") && ps14.includes("export function simCartChips("), "v18: preview.server exports rewardsForCountry + simCartChips (clusters are country-keyed)");
   ok(
     ps14.includes("export function rewardsPreviewSections(") && ps14.includes("export interface RewardsPreviewSections {") && ps14.includes("warnings: string[];"),
     "v15: preview.server exports rewardsPreviewSections({ss, gt, paused, market}) and PreviewSyncResult carries warnings",
@@ -3814,8 +3838,16 @@ const EVIDENCE = {
   const pdpDefaults = rwDefaultsOf(pdpJs14);
   ok(cartDefaults.join(",") === enRw.join(","), "v14: cellexia-cart.js RW_DEFAULTS = the 24 en.default rewards keys in order");
   ok(
-    pdpDefaults.join(",") === enRw.slice(16, 21).concat(["fbt_add_save_both"]).join(","),
-    "v14: cellexia-pdp.js RW_DEFAULTS = the 5 PDP keys (pdp_line..similar_caption) + fbt_add_save_both (v14.1)",
+    pdpDefaults.join(",") ===
+      enRw
+        .slice(16, 21)
+        // v18: the three gift sentences + two labels are English-only in the
+        // PDP table until the curated-copy pass translates them (the locale
+        // files must all carry the SAME 24 rewards keys, so a PDP-only string
+        // cannot live in en.default without forcing 18 translations).
+        .concat(["fbt_add_save_both", "pdp_gift_unlock", "pdp_gift_away", "pdp_gift_spend", "sample_set", "gift_tag"])
+        .join(","),
+    "v14/v18: cellexia-pdp.js RW_DEFAULTS = the 5 set-savings PDP keys + fbt_add_save_both + the three v18 gift sentences + the two gift labels",
   );
   ok(
     pdpJs14.includes("count === 2 ? azRwT('fbt_add_save_both'"),
@@ -4106,6 +4138,40 @@ const EVIDENCE = {
     read("validation/sims/fbt.cjs").includes("v17.1 manual: exactly ONE proxy fetch") &&
       read("validation/sims/fbt.cjs").includes("v17.1 rw sub=false: plain subscription total"),
     "v17.1: fbt sim pins the subscription scenarios incl. the rw gate",
+  );
+
+  // v17.2: subscription prices on theme product cards (collections/home).
+  // The price rides the EXISTING card-flags verdict pipeline — one batched
+  // proxy call, shared cache, shared Boost re-render observer — so the
+  // pins protect the cache-key scoping (presentment cents must never
+  // cross markets/currencies/go-live) and the double gating (resolution
+  // AND decorate time).
+  ok(
+    cartJs17.includes("'cx_az_cardflags:3:' + locale + ':' + MARKET + ':' + activeCurrency() + ':' +") &&
+      cartJs17.includes("(subsAware() ? 's1' : 's0') + ':' + cardFlagHash("),
+    "v17.2: card cache key v3 carries locale + market + currency + subscription state",
+  );
+  ok(
+    cartJs17.includes("var sub = subsAware() ? cardSubCents(entry) : null;"),
+    "v17.2: subscription cents resolve into the verdict ONLY under an active context",
+  );
+  ok(
+    cartJs17.includes("var wantSub = subsAware(); // v17.2: card prices follow the market's subscription state") &&
+      cartJs17.includes("var wantSub = subsAware();\n      if (!wantBadge && !wantBought && !wantSub) return;"),
+    "v17.2: subsAware is both a decorate-time gate and a boot reason for the card pass",
+  );
+  ok(
+    cartJs17.includes("var alloc = ownedCadenceAlloc(entry, variant);\n    return alloc ? Number(alloc.price) : null;"),
+    "v17.2: cardSubCents delegates to the shared prepaid-guarded cadence ladder",
+  );
+  ok(
+    cartJs17.includes("priceEl.textContent = txt;"),
+    "v17.2: the card price swap is textContent-only (no new elements, merchant rule)",
+  );
+  ok(
+    read("validation/sims/badge-cards.cjs").includes("v17.2: card price swapped to the CADENCE-matched owned allocation") &&
+      read("validation/sims/badge-cards.cjs").includes("v17.2 prepaid: lump-priced allocation never dresses a card"),
+    "v17.2: badge-cards sim pins the card-price scenarios",
   );
 }
 

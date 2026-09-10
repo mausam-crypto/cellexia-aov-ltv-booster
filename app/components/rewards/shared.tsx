@@ -25,7 +25,10 @@ export const CAPS = {
    *  uses that at runtime, so a drift here only affects the fallback. */
   samplePool: 9,
   thresholdAmountMax: 1000000,
-  warehouseLocations: 6,
+  /** v18 — MUST match REWARDS_CAPS in settings.server.ts. */
+  clusters: 8,
+  countriesPerCluster: 120,
+  locationsPerCluster: 6,
   maxGiftLines: 8,
   checkoutMessage: 60,
   yieldToCodes: 20,
@@ -36,13 +39,10 @@ export const CAPS = {
 // ---------------------------------------------------------------------------
 
 export type LadderPresetKey = "compact" | "extended" | "custom";
-export type LoadableGiftPreset = "value_first" | "cream_first";
-export type GiftPresetKey = LoadableGiftPreset | "custom";
 
 export interface PresetTables {
   ladderKeys: readonly LadderPresetKey[];
   ladders: Record<Exclude<LadderPresetKey, "custom">, { count: number; pct: number; code: string }[]>;
-  giftKeys: readonly LoadableGiftPreset[];
 }
 
 export const LADDER_PRESET_LABELS: Record<LadderPresetKey, string> = {
@@ -51,26 +51,12 @@ export const LADDER_PRESET_LABELS: Record<LadderPresetKey, string> = {
   custom: "Custom — I set the tiers myself",
 };
 
-export const GIFT_PRESET_LABELS: Record<GiftPresetKey, string> = {
-  value_first:
-    "Value first (recommended): €119 towels + 2 samples · €200 Jawline cream + 2 samples · €350 cosmetic bag + 3 samples",
-  cream_first:
-    "Cream first: €119 Jawline cream + 2 samples · €200 towels + 2 samples · €350 cosmetic bag + 3 samples",
-  custom: "Custom",
+/** v18: the three product-page placements, described for the merchant. */
+export const GIFT_PDP_STYLE_LABELS: Record<"line" | "card" | "ladder", string> = {
+  line: "Quiet line: one line of text inside the buy box, above Add to cart. Smallest footprint and the safest on a busy page.",
+  card: "Reward card (recommended): a small card below Add to cart with the gift's picture and a progress bar. Strongest pull, and it cannot push the button down the page.",
+  ladder: "Ladder strip: a slim row under the product title showing every tier. The only one that shows the whole ladder, but the most eye-catching.",
 };
-
-export const GIFT_PRESET_BADGES: Record<GiftPresetKey, string> = {
-  value_first: "Value first",
-  cream_first: "Cream first",
-  custom: "Custom",
-};
-
-export function isLoadableGiftPreset(
-  value: unknown,
-  keys: readonly string[],
-): value is LoadableGiftPreset {
-  return keys.includes(String(value));
-}
 
 // ---------------------------------------------------------------------------
 // Markets / scopes
@@ -154,6 +140,18 @@ export interface GiftTierRow {
   slots: GiftOptionRow[][];
 }
 
+/** v18: one country cluster in the admin form (all values string-typed). */
+export interface GiftClusterRow {
+  id: string;
+  name: string;
+  rest: boolean;
+  /** ISO-3166 alpha-2, uppercase. Empty for the catch-all cluster. */
+  countries: string[];
+  /** Location GIDs serving this cluster. */
+  locations: string[];
+  tiers: GiftTierRow[];
+}
+
 export interface ThresholdRow {
   amounts: string[];
   currencyCode: string;
@@ -181,19 +179,22 @@ export interface RewardsFormState {
   };
   gt: {
     enabled: boolean;
-    giftPreset: GiftPresetKey;
     cumulative: boolean;
     choice: GiftChoice;
     maxGiftLines: string;
     sampleRule: SampleRule;
     showShippingMilestone: boolean;
-    tiers: GiftTierRow[];
-    /** market handle -> per-tier amount strings ("" = no explicit amount) */
+    /** v18: country clusters, each with its own ladder. */
+    clusters: GiftClusterRow[];
+    /** v18: ISO-3166 alpha-2 -> per-tier amount strings ("" = scale the EUR
+     *  ladder to that country's own price level instead). */
     thresholds: Record<string, ThresholdRow>;
     samplePool: { variantId: string; handle: string }[];
-    warehouse: Record<string, string[]>;
     stockFloorDays: string;
     stockFloorMinUnits: string;
+    /** v18: the product-page surface. */
+    pdpEnabled: boolean;
+    pdpStyle: "line" | "card" | "ladder";
   };
   fs: {
     enabled: boolean;
@@ -212,8 +213,12 @@ export interface DiscountNodesView {
 
 export interface StockView {
   t: string;
-  byMarket: Record<string, Record<string, { avail: number; paused: boolean }>>;
+  /** v18: cluster id -> variant id -> availability. */
+  byCluster: Record<string, Record<string, { avail: number; paused: boolean }>>;
 }
+
+/** v18: `avail` sentinel meaning Shopify has no inventory record at all. */
+export const UNKNOWN_AVAIL = -1;
 
 export interface LocationOption {
   id: string;
@@ -354,14 +359,17 @@ export function validateGiftTierRows(rows: GiftTierRow[]): {
  *  non-numeric amount is refused. Returns market handle -> message. */
 export function validateThresholdRows(
   thresholds: Record<string, ThresholdRow>,
-  tierCount: number,
+  /** v18: the expected tier count depends on WHICH cluster the country is in,
+   *  so the caller resolves it per country rather than passing one number. */
+  tierCountFor: (code: string) => number,
 ): Record<string, string> {
   const errors: Record<string, string> = {};
   for (const [handle, row] of Object.entries(thresholds)) {
     const filled = row.amounts.filter((a) => a.trim() !== "");
     if (filled.length === 0) continue;
+    const tierCount = tierCountFor(handle);
     if (row.amounts.length !== tierCount || filled.length !== tierCount) {
-      errors[handle] = "Fill every tier or leave the whole row blank";
+      errors[handle] = "Fill every tier of this country's cluster, or leave the whole row blank";
       continue;
     }
     // Mirrors validateGiftTiersPatch: every amount > 0, at most the cap, and

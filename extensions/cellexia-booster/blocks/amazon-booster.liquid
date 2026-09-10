@@ -75,72 +75,72 @@ endif
 assign guarantee_days = cfg.guarantee.days | default: 60
 assign az_eff_buybox = false
 if cfg.amazon.buyBox == true and block.settings.show_az_buy_box
-assign cx_scope = cfg.marketScopes.az_buy_box
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_buy_box
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_eff_buybox = true
 endif
 endif
 assign az_eff_micro = false
 if cfg.amazon.microcopy == true and block.settings.show_az_microcopy
-assign cx_scope = cfg.marketScopes.az_microcopy
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_microcopy
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_eff_micro = true
 endif
 endif
 assign az_eff_delivery = false
 if cfg.amazon.deliveryLine == true and block.settings.show_az_delivery_line and az_thr_ok and az_del_hidden == false
-assign cx_scope = cfg.marketScopes.az_delivery_line
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_delivery_line
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_eff_delivery = true
 endif
 endif
 assign az_eff_stock = false
 if cfg.amazon.stockLine == true and block.settings.show_az_stock_line
-assign cx_scope = cfg.marketScopes.az_stock_line
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_stock_line
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_eff_stock = true
 endif
 endif
 assign az_eff_ships = false
 if cfg.amazon.shipsFrom == true and block.settings.show_az_ships_from and az_exc_sf == false
-assign cx_scope = cfg.marketScopes.az_ships_from
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_ships_from
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_eff_ships = true
 endif
 endif
 assign az_eff_bought = false
 if cfg.amazon.boughtCount == true and block.settings.show_az_bought_count and az_bought_ok
-assign cx_scope = cfg.marketScopes.az_bought_count
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_bought_count
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_eff_bought = true
 endif
 endif
 assign az_eff_best = false
 if cfg.amazon.bestsellerBadge == true and block.settings.show_az_bestseller_badge and az_best_ok
-assign cx_scope = cfg.marketScopes.az_bestseller_badge
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_bestseller_badge
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_eff_best = true
 endif
 endif
 assign az_eff_fbt = false
 if cfg.amazon.fbt == true and block.settings.show_az_fbt
-assign cx_scope = cfg.marketScopes.az_fbt
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_fbt
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_eff_fbt = true
 endif
 endif
 assign az_eff_similar = false
 if cfg.amazon.similarItems == true and block.settings.show_az_similar_items
-assign cx_scope = cfg.marketScopes.az_similar_items
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_similar_items
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_eff_similar = true
 endif
 endif
 assign cx_rw = cfg.rewards.setSavings
 assign az_eff_ss = false
 if cx_rw.enabled == true
-assign cx_scope = cfg.marketScopes.set_savings
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.set_savings
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_eff_ss = true
 endif
 endif
@@ -250,8 +250,8 @@ assign az_need_ships = true
 endif
 assign az_cards_setting = false
 if cfg.amazon.bestsellerOnCards != false and block.settings.show_az_bestseller_badge
-assign cx_scope = cfg.marketScopes.az_bestseller_badge
-if cx_scope.mode != 'selected' or cx_scope.markets contains cx_market
+assign cx_s = cfg.marketScopes.az_bestseller_badge
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign az_cards_setting = true
 endif
 endif

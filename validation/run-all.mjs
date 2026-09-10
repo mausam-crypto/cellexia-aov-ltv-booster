@@ -61,7 +61,10 @@ const SUITES = [
   { name: "sims/flip-test", dir: "sims", base: "flip-test" },
   { name: "sims/rewards-tiers", dir: "sims", base: "rewards-tiers" },
   { name: "sims/rewards-function", dir: "sims", base: "rewards-function" },
+  { name: "sims/gift-why", dir: "sims", base: "gift-why" },
+  { name: "sims/rewards-clusters", dir: "sims", base: "rewards-clusters" },
   { name: "sims/deploy-safety", dir: "sims", base: "deploy-safety" },
+  { name: "sims/buy-box-proof", dir: "sims", base: "buy-box-proof" },
 ];
 
 const EXT_ORDER = [".mjs", ".js", ".cjs", ".ts", ".tsx"];

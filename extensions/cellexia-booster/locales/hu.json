@@ -45,7 +45,9 @@
     "cruelty_free": "Állatkísérlet-mentes",
     "clinically_proven": "Klinikailag igazolt",
     "ssl_encrypted": "SSL-titkosított fizetés",
-    "easy_returns": "Egyszerű visszaküldés"
+    "easy_returns": "Egyszerű visszaküldés",
+    "research": "Publikált kutatások alapján:",
+    "seal": "Független vizsgálatok. Igazolt bőrtolerancia."
   },
   "guarantee": {
     "title": "{{ days }} napos pénzvisszafizetési garancia",

@@ -45,7 +45,9 @@
     "cruelty_free": "Dierproefvrij",
     "clinically_proven": "Klinisch bewezen",
     "ssl_encrypted": "SSL-versleutelde betaling",
-    "easy_returns": "Eenvoudig retourneren"
+    "easy_returns": "Eenvoudig retourneren",
+    "research": "Gebaseerd op gepubliceerd onderzoek van",
+    "seal": "Onafhankelijk getest. Bewezen huidverdraagzaamheid."
   },
   "guarantee": {
     "title": "{{ days }} dagen geld-terug-garantie",

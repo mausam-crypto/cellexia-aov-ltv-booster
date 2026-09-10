@@ -45,7 +45,9 @@
     "cruelty_free": "クルエルティフリー",
     "clinically_proven": "臨床的に実証済み",
     "ssl_encrypted": "SSL暗号化決済",
-    "easy_returns": "返品も簡単"
+    "easy_returns": "返品も簡単",
+    "research": "公表された研究に基づく",
+    "seal": "第三者機関によるテスト。肌へのやさしさを確認。"
   },
   "guarantee": {
     "title": "{{ days }}日間返金保証",

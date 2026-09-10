@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import prisma from "../db.server";
+import type { GiftPlanMetafield } from "./gift-plan.server";
 import {
   DELIVERY_ESTIMATE_FORMATS,
   SHIPS_FROM_FORMATS,
-  sanitizeGiftThresholdsByMarket,
+  sanitizeGiftClusters,
+  sanitizeThresholdsByCountry,
   sanitizeGiftTiers,
   sanitizeSetSavingsTiers,
   type BoosterSettings,
@@ -126,11 +128,23 @@ export interface RewardsMetafieldLive {
     on: boolean;
     cum: boolean;
     max: number;
-    tiers: {
-      eur: number;
-      slots: ({ k: "v"; vid: string } | { k: "s"; n: number })[][];
-    }[];
-    bm: Record<string, { a: number[]; c: string }>;
+    /** v18: cluster id -> its ladder. The Function resolves a cart's cluster
+     *  from the buyer country, so it only ever reads one of these. */
+    cl: Record<
+      string,
+      {
+        tiers: {
+          eur: number;
+          slots: ({ k: "v"; vid: string } | { k: "s"; n: number })[][];
+        }[];
+      }
+    >;
+    /** v18: ISO-3166 alpha-2 -> cluster id. Named clusters only. */
+    cc: Record<string, string>;
+    /** v18: the catch-all cluster id, used for every country not in `cc`. */
+    rest: string;
+    /** v18: ISO-3166 alpha-2 -> explicit local amounts (was `bm`, per market). */
+    bc: Record<string, { a: number[]; c: string }>;
     pool: string[];
     scope: MarketScope;
   };
@@ -167,14 +181,14 @@ function projectRewards(
     ssOn?: boolean;
     gtOn?: boolean;
     ssTiers?: BoosterSettings["rewards"]["setSavings"]["tiers"];
-    gtTiers?: BoosterSettings["rewards"]["giftTiers"]["tiers"];
-    gtBm?: BoosterSettings["rewards"]["giftTiers"]["giftThresholdsByMarket"];
+    gtClusters?: BoosterSettings["rewards"]["giftTiers"]["clusters"];
+    gtByCountry?: BoosterSettings["rewards"]["giftTiers"]["thresholdsByCountry"];
   } = {},
 ): RewardsMetafieldLive {
   const rw = settings.rewards;
   const ssTiers = overrides.ssTiers ?? rw.setSavings.tiers;
-  const gtTiers = overrides.gtTiers ?? rw.giftTiers.tiers;
-  const gtBm = overrides.gtBm ?? rw.giftTiers.giftThresholdsByMarket;
+  const gtClusters = overrides.gtClusters ?? rw.giftTiers.clusters;
+  const gtByCountry = overrides.gtByCountry ?? rw.giftTiers.thresholdsByCountry;
   const vp = ctx.vp ?? {};
   const hv = ctx.hv ?? {};
   // v15: a variant option's numeric variant id — explicit variantId, else the
@@ -189,9 +203,9 @@ function projectRewards(
     const ids = gids.map(numeric).filter(Boolean);
     if (ids.length) excl[market] = ids;
   }
-  const bm: Record<string, { a: number[]; c: string }> = {};
-  for (const [market, entry] of Object.entries(gtBm)) {
-    bm[market] = { a: [...entry.amounts], c: entry.currencyCode };
+  const bc: Record<string, { a: number[]; c: string }> = {};
+  for (const [country, entry] of Object.entries(gtByCountry)) {
+    bc[country] = { a: [...entry.amounts], c: entry.currencyCode };
   }
   const fsBm: Record<string, { a: number; c: string }> = {};
   for (const [market, entry] of Object.entries(settings.freeShipping.byMarket)) {
@@ -199,12 +213,14 @@ function projectRewards(
   }
   const giftPids = new Set<string>();
   const giftVids = new Set<string>();
-  for (const tier of gtTiers) {
-    for (const slot of tier.slots) {
-      for (const option of slot) {
-        if (option.kind === "variant") {
-          const vid = optionVid(option);
-          if (vid) giftVids.add(vid);
+  for (const cluster of gtClusters) {
+    for (const tier of cluster.tiers) {
+      for (const slot of tier.slots) {
+        for (const option of slot) {
+          if (option.kind === "variant") {
+            const vid = optionVid(option);
+            if (vid) giftVids.add(vid);
+          }
         }
       }
     }
@@ -229,21 +245,34 @@ function projectRewards(
       on: overrides.gtOn ?? rw.giftTiers.enabled,
       cum: rw.giftTiers.cumulative,
       max: rw.giftTiers.maxGiftLines,
-      tiers: gtTiers.map((tier) => ({
-        eur: tier.amount,
-        slots: tier.slots.map((slot) =>
-          slot
-            .map((option) =>
-              option.kind === "samples"
-                ? { k: "s" as const, n: option.count }
-                : { k: "v" as const, vid: optionVid(option) },
-            )
-            // v15: an unresolvable variant option (no variantId, handle not
-            // in hv) is dropped — the Function must never see vid "".
-            .filter((o) => o.k === "s" || o.vid !== ""),
+      cl: Object.fromEntries(
+        gtClusters.map((cluster) => [
+          cluster.id,
+          {
+            tiers: cluster.tiers.map((tier) => ({
+              eur: tier.amount,
+              slots: tier.slots.map((slot) =>
+                slot
+                  .map((option) =>
+                    option.kind === "samples"
+                      ? { k: "s" as const, n: option.count }
+                      : { k: "v" as const, vid: optionVid(option) },
+                  )
+                  // v15: an unresolvable variant option (no variantId, handle
+                  // not in hv) is dropped — the Function must never see vid "".
+                  .filter((o) => o.k === "s" || o.vid !== ""),
+              ),
+            })),
+          },
+        ]),
+      ),
+      cc: Object.fromEntries(
+        gtClusters.flatMap((cluster) =>
+          cluster.rest ? [] : cluster.countries.map((code) => [code, cluster.id]),
         ),
-      })),
-      bm,
+      ),
+      rest: (gtClusters.find((c) => c.rest) ?? gtClusters[gtClusters.length - 1])?.id ?? "",
+      bc,
       pool,
       scope: scopeOf(settings.marketScopes?.gift_tiers),
     },
@@ -292,13 +321,12 @@ export function buildRewardsMetafield(
       ssTiers: Array.isArray(rewards.setSavingsTiers)
         ? sanitizeSetSavingsTiers(rewards.setSavingsTiers)
         : undefined,
-      gtTiers: Array.isArray(rewards.giftTiers)
-        ? sanitizeGiftTiers(rewards.giftTiers)
+      gtClusters: Array.isArray(rewards.giftClusters)
+        ? sanitizeGiftClusters(rewards.giftClusters)
         : undefined,
-      gtBm:
-        rewards.giftAmountsByMarket &&
-        typeof rewards.giftAmountsByMarket === "object"
-          ? sanitizeGiftThresholdsByMarket(rewards.giftAmountsByMarket)
+      gtByCountry:
+        rewards.giftAmountsByCountry && typeof rewards.giftAmountsByCountry === "object"
+          ? sanitizeThresholdsByCountry(rewards.giftAmountsByCountry)
           : undefined,
     });
   }
@@ -361,9 +389,10 @@ const GIFT_STOCK_OWNER_QUERY = `#graphql
  * Liquid (island `gsp`). Called by the stock watcher only when the paused
  * set changed. The Function ignores stock on purpose.
  */
-export async function writeGiftStockMetafield(
+/** Writes the app-data `cellexia/gift_plan` metafield (the storefront slice). */
+export async function writeGiftPlanMetafield(
   admin: AdminGraphqlClient,
-  paused: Record<string, string[]>,
+  plan: GiftPlanMetafield,
 ): Promise<{ ok: boolean; errors: string[] }> {
   const ownerResponse = await admin.graphql(GIFT_STOCK_OWNER_QUERY);
   const ownerJson = (await ownerResponse.json()) as {
@@ -379,9 +408,9 @@ export async function writeGiftStockMetafield(
         {
           ownerId: appInstallationId,
           namespace: "cellexia",
-          key: "gift_stock",
+          key: "gift_plan",
           type: "json",
-          value: JSON.stringify({ t: new Date().toISOString(), paused }),
+          value: JSON.stringify(plan),
         },
       ],
     },
@@ -485,6 +514,12 @@ async function loadPreviewPayload(shop: string): Promise<PreviewSyncPayload> {
         if ((parsed as Record<string, unknown>).rehearsal === true) {
           draftConfig.rehearsal = true;
         }
+        // v18 twin of preview.server's sanitizeDraftConfig: the simulated
+        // country, which the gift-plan slice is resolved for.
+        const country = String((parsed as Record<string, unknown>).country ?? "")
+          .trim()
+          .toUpperCase();
+        if (/^[A-Z]{2}$/.test(country)) draftConfig.country = country;
         const rewards = (parsed as Record<string, unknown>).rewards;
         if (typeof rewards === "object" && rewards !== null && !Array.isArray(rewards)) {
           const rw = rewards as Record<string, unknown>;
@@ -492,15 +527,15 @@ async function loadPreviewPayload(shop: string): Promise<PreviewSyncPayload> {
           if (Array.isArray(rw.setSavingsTiers)) {
             draft.setSavingsTiers = sanitizeSetSavingsTiers(rw.setSavingsTiers);
           }
-          if (Array.isArray(rw.giftTiers)) {
-            draft.giftTiers = sanitizeGiftTiers(rw.giftTiers);
+          if (Array.isArray(rw.giftClusters)) {
+            draft.giftClusters = sanitizeGiftClusters(rw.giftClusters);
           }
           if (
-            typeof rw.giftAmountsByMarket === "object" &&
-            rw.giftAmountsByMarket !== null &&
-            !Array.isArray(rw.giftAmountsByMarket)
+            typeof rw.giftAmountsByCountry === "object" &&
+            rw.giftAmountsByCountry !== null &&
+            !Array.isArray(rw.giftAmountsByCountry)
           ) {
-            draft.giftAmountsByMarket = sanitizeGiftThresholdsByMarket(rw.giftAmountsByMarket);
+            draft.giftAmountsByCountry = sanitizeThresholdsByCountry(rw.giftAmountsByCountry);
           }
           if (Object.keys(draft).length > 0) draftConfig.rewards = draft;
         }
