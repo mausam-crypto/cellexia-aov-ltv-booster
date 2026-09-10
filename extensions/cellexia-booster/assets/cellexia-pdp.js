@@ -6229,20 +6229,21 @@
     // (the cxIcon / cxStarIcon invariant).
     var wrap = document.createElement('div');
     wrap.innerHTML = '<svg viewBox="0 0 200 200" width="96" height="96" role="presentation" focusable="false">' +
-      '<defs><clipPath id="cxSealClip"><circle cx="100" cy="100" r="90"/></clipPath></defs>' +
+      '<defs><clipPath id="cxSealClip"><circle cx="100" cy="100" r="91"/></clipPath></defs>' +
       '<circle cx="100" cy="100" r="97" fill="#fff"/>' +
       '<circle cx="100" cy="100" r="94" fill="none" stroke="#2f6b5e" stroke-width="7"/>' +
-      '<circle cx="100" cy="100" r="86" fill="none" stroke="#c8a44d" stroke-width="2"/>' +
-      '<g clip-path="url(#cxSealClip)"><rect x="0" y="71" width="200" height="29" fill="#2f6b5e"/></g>' +
-      '<text x="100" y="61" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="19" font-weight="700" fill="#1f3243">DERMACERT<tspan font-size="9" dy="-7">\u00ae</tspan></text>' +
-      '<text x="100" y="93" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="23" font-weight="700" fill="#fff">EXCELLENT</text>' +
-      '<g fill="#d9a93f"><path d="M42.0 111.5 L44.6 118.4 L52.0 118.8 L46.2 123.4 L48.2 130.5 L42.0 126.4 L35.8 130.5 L37.8 123.4 L32.0 118.8 L39.4 118.4 Z"/><path d="M71.0 111.5 L73.6 118.4 L81.0 118.8 L75.2 123.4 L77.2 130.5 L71.0 126.4 L64.8 130.5 L66.8 123.4 L61.0 118.8 L68.4 118.4 Z"/><path d="M100.0 111.5 L102.6 118.4 L110.0 118.8 L104.2 123.4 L106.2 130.5 L100.0 126.4 L93.8 130.5 L95.8 123.4 L90.0 118.8 L97.4 118.4 Z"/><path d="M129.0 111.5 L131.6 118.4 L139.0 118.8 L133.2 123.4 L135.2 130.5 L129.0 126.4 L122.8 130.5 L124.8 123.4 L119.0 118.8 L126.4 118.4 Z"/><path d="M158.0 111.5 L160.6 118.4 L168.0 118.8 L162.2 123.4 L164.2 130.5 L158.0 126.4 L151.8 130.5 L153.8 123.4 L148.0 118.8 L155.4 118.4 Z"/></g>' +
-      '<path d="M30 145h13M157 145h13" stroke="#1f3243" stroke-width="1.5" stroke-linecap="round"/>' +
-      '<text x="100" y="149" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" letter-spacing="0.3" fill="#1f3243">CLINICALLY TESTED</text>' +
-      '<text x="100" y="162" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" letter-spacing="0.3" fill="#1f3243">DERMATOLOGICALLY</text>' +
-      '<text x="100" y="173" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" letter-spacing="0.3" fill="#1f3243">VERIFIED</text>' +
-      '<path d="M72 183h14M114 183h14" stroke="#2f6b5e" stroke-width="1.3" stroke-linecap="round"/>' +
-      '<path d="M105 177c.5 5-2 9.2-6.2 9.2-1.7 0-3.1-1-3.7-2.4 1.1-3.2 4.4-6.2 9.9-6.8Z" fill="none" stroke="#2f6b5e" stroke-width="1.5" stroke-linejoin="round"/>' +
+      '<circle cx="100" cy="100" r="85" fill="none" stroke="#c8a44d" stroke-width="2"/>' +
+      '<g clip-path="url(#cxSealClip)"><rect x="0" y="68" width="200" height="29" fill="#2f6b5e"/></g>' +
+      '<text x="100" y="60" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="18" font-weight="700" fill="#1f3243">DERMACERT<tspan font-size="9" dy="-6">\u00ae</tspan></text>' +
+      '<text x="100" y="90" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="22" font-weight="700" fill="#fff">EXCELLENT</text>' +
+      '<g fill="#d9a93f"><path d="M44.0 103.5 L46.3 109.8 L53.0 110.1 L47.8 114.2 L49.6 120.7 L44.0 117.0 L38.4 120.7 L40.2 114.2 L35.0 110.1 L41.7 109.8 Z"/><path d="M72.0 103.5 L74.3 109.8 L81.0 110.1 L75.8 114.2 L77.6 120.7 L72.0 117.0 L66.4 120.7 L68.2 114.2 L63.0 110.1 L69.7 109.8 Z"/><path d="M100.0 103.5 L102.3 109.8 L109.0 110.1 L103.8 114.2 L105.6 120.7 L100.0 117.0 L94.4 120.7 L96.2 114.2 L91.0 110.1 L97.7 109.8 Z"/><path d="M128.0 103.5 L130.3 109.8 L137.0 110.1 L131.8 114.2 L133.6 120.7 L128.0 117.0 L122.4 120.7 L124.2 114.2 L119.0 110.1 L125.7 109.8 Z"/><path d="M156.0 103.5 L158.3 109.8 L165.0 110.1 L159.8 114.2 L161.6 120.7 L156.0 117.0 L150.4 120.7 L152.2 114.2 L147.0 110.1 L153.7 109.8 Z"/></g>' +
+      '<path d="M32 132h14M154 132h14" stroke="#1f3243" stroke-width="1.5" stroke-linecap="round"/>' +
+      '<text x="100" y="136" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="700" letter-spacing="0.3" fill="#1f3243">CLINICALLY TESTED</text>' +
+      '<text x="100" y="148" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="700" letter-spacing="0.3" fill="#1f3243">DERMATOLOGICALLY</text>' +
+      '<text x="100" y="159" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="10" font-weight="700" letter-spacing="0.3" fill="#1f3243">VERIFIED</text>' +
+      '<path d="M74 171h14M112 171h14" stroke="#2f6b5e" stroke-width="1.3" stroke-linecap="round"/>' +
+      '<path d="M96 176.5c-1.4-6.4 2.6-10.8 8.4-11.6 1.2 5.8-2.2 10.6-8.4 11.6Z" fill="none" stroke="#2f6b5e" stroke-width="1.4" stroke-linejoin="round"/>' +
+      '<path d="M96 176.5c2.2-3.2 5.2-5.4 8.4-6.6" fill="none" stroke="#2f6b5e" stroke-width="1" stroke-linecap="round"/>' +
       '</svg>';
     // The class rides the <svg> ITSELF (the wrapper div is thrown away):
     // an SVG with only a viewBox has no intrinsic size, so without the

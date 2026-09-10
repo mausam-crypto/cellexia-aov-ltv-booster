@@ -6473,8 +6473,12 @@ body.customer--b2b .cx-sub-remove {
   background: #d8d8d8;
 }
 
-/* Text wordmarks stack: three of them never fit one buy-box-column row,
-   and a wrapped row would show a stray leading rule. */
+/* Phone default: text wordmarks stack (three of them do not fit a 375px
+   row). Uploaded logos are compact enough to take the design's row at any
+   width, and from 560px up the wordmarks take it too — each name wrapping
+   INSIDE its own cell, the way a two-line lockup does. The row itself uses
+   equal `flex: 1 1 0` cells and never wraps, so a vertical rule can never
+   end up leading a line. */
 .cx-bbp-research__logos {
   display: flex;
   flex-direction: column;
@@ -6483,26 +6487,22 @@ body.customer--b2b .cx-sub-remove {
   margin: 0;
 }
 
-/* Uploaded logos are compact — the design's single row with vertical rules. */
-.cx-bbp-research__logos--row {
-  flex-direction: row;
-  justify-content: center;
-  gap: 0;
-}
-
 .cx-bbp-research__logo {
   display: flex;
   align-items: center;
   min-width: 0;
 }
 
-/* Evenly divided cells, like the design: each mark keeps its own aspect
-   ratio inside its cell, so a wide lockup and a short wordmark sit on the
-   same optical baseline instead of being forced to one height. */
+.cx-bbp-research__logos--row {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 0;
+}
+
 .cx-bbp-research__logos--row .cx-bbp-research__logo {
   flex: 1 1 0;
   justify-content: center;
-  height: 52px;
   padding-inline: 10px;
 }
 
@@ -6510,11 +6510,17 @@ body.customer--b2b .cx-sub-remove {
   border-inline-start: 1px solid #d8d8d8;
 }
 
+/* Image cells share one height so a wide lockup and a short wordmark sit
+   on the same optical baseline; wordmark cells size to their own text. */
+.cx-bbp-research__logos--row .cx-bbp-research__logo {
+  height: 52px;
+}
+
 .cx-bbp-research__logo-name {
   font-family: "Gobold", sans-serif;
   font-weight: 700;
   font-size: 14px;
-  line-height: 1.2;
+  line-height: 1.25;
   letter-spacing: 0.4px;
   text-transform: uppercase;
   text-align: center;
@@ -6535,7 +6541,7 @@ body.customer--b2b .cx-sub-remove {
 }
 
 .cx-bbp-research__seal {
-  flex: 0 1 28%;
+  flex: 0 1 26%;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -6566,6 +6572,78 @@ body.customer--b2b .cx-sub-remove {
   height: 1px;
   margin-block-start: 8px;
   background: #8a9aa8;
+}
+
+/* Wider buy-box columns have room the phone layout does not: the marks and
+   the seal scale with it instead of sitting small in a big panel. Sleepify
+   splits the product page into two columns from 768px, so the column is
+   roughly half the viewport from there on. */
+@media screen and (min-width: 990px) {
+  .cx-bbp-research {
+    gap: 22px;
+    padding: 20px 22px;
+  }
+
+  .cx-bbp-research__eyebrow {
+    margin-block-end: 14px;
+  }
+
+  .cx-bbp-research__logos--row .cx-bbp-research__logo {
+    height: 66px;
+  }
+
+  .cx-bbp-research__logos--row .cx-bbp-research__logo {
+    padding-inline: 12px;
+  }
+
+  .cx-bbp-research__logo-img {
+    max-width: 210px;
+    max-height: 66px;
+  }
+
+  /* The wordmark fallback is what a store without uploaded logo files
+     actually shows — it has to fill a desktop panel, not sit in it. */
+  .cx-bbp-research__logos {
+    gap: 14px;
+  }
+
+  .cx-bbp-research__logo-name {
+    font-size: 18px;
+    letter-spacing: 0.6px;
+  }
+
+  .cx-bbp-research__seal-art,
+  .cx-bbp-research__seal-img {
+    flex-basis: 108px;
+    width: 108px;
+    height: 108px;
+  }
+
+  .cx-bbp-research__note {
+    font-size: 13px;
+  }
+}
+
+@media screen and (min-width: 1400px) {
+  .cx-bbp-research__logos--row .cx-bbp-research__logo {
+    height: 76px;
+  }
+
+  .cx-bbp-research__logo-name {
+    font-size: 20px;
+  }
+
+  .cx-bbp-research__logo-img {
+    max-width: 240px;
+    max-height: 76px;
+  }
+
+  .cx-bbp-research__seal-art,
+  .cx-bbp-research__seal-img {
+    flex-basis: 120px;
+    width: 120px;
+    height: 120px;
+  }
 }
 
 /* Narrow columns: the band stacks, the seal keeps its own full-width row so
