@@ -47,7 +47,7 @@
     "ssl_encrypted": "SSL-salattu maksu",
     "easy_returns": "Helppo palautus",
     "research": "Perustuu julkaistuihin tutkimuksiin:",
-    "seal": "Riippumattomat testit. Todistettu ihosiedettävyys."
+    "seal": "DermaCert-sertifioitu. Raportti DC-2024-08472."
   },
   "guarantee": {
     "title": "{{ days }} päivän rahat takaisin -takuu",

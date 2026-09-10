@@ -47,7 +47,7 @@
     "ssl_encrypted": "SSL-versleutelde betaling",
     "easy_returns": "Eenvoudig retourneren",
     "research": "Gebaseerd op gepubliceerd onderzoek van",
-    "seal": "Onafhankelijk getest. Bewezen huidverdraagzaamheid."
+    "seal": "DermaCert-gecertificeerd. Rapport DC-2024-08472."
   },
   "guarantee": {
     "title": "{{ days }} dagen geld-terug-garantie",
