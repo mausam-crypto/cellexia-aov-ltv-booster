@@ -49,7 +49,8 @@ const MARKETS = ["ch", "eu", "us"];
 // --- inventory ---------------------------------------------------------------
 // v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
 // v19 (2026-09-09): 37 -> 38 (buy_box_proof appended at the END).
-ok(FEATURE_KEYS.length === 38, `38 FeatureKeys (got ${FEATURE_KEYS.length})`);
+// v20 (2026-09-11): 38 -> 39 (image_badges appended at the END).
+ok(FEATURE_KEYS.length === 39, `39 FeatureKeys (got ${FEATURE_KEYS.length})`);
 ok(new Set(FEATURE_KEYS).size === FEATURE_KEYS.length, "no duplicate keys");
 ok(AMAZON_FLAG_FIELDS.length === FEATURE_KEYS.filter((k) => k.startsWith("az_")).length,
   "one amazon flag field per az_* key");

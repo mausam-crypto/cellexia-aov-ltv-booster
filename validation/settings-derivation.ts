@@ -80,13 +80,13 @@ const clone = <T,>(x: T): T => structuredClone(x);
 
 // --- 1. key inventory ------------------------------------------------------
 // v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
-ok(FEATURE_KEYS.length === 38, `FEATURE_KEYS has 38 keys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 39, `FEATURE_KEYS has 39 keys (got ${FEATURE_KEYS.length})`);
 ok(FEATURE_KEYS.includes("az_ships_from"), "az_ships_from is a FeatureKey");
 ok(
   FEATURE_KEYS.indexOf("az_ships_from") === FEATURE_KEYS.indexOf("az_stock_line") + 1,
   "az_ships_from sits right after az_stock_line",
 );
-ok(new Set(FEATURE_KEYS).size === 38, "FEATURE_KEYS has no duplicates");
+ok(new Set(FEATURE_KEYS).size === 39, "FEATURE_KEYS has no duplicates");
 // v9 trust-module V2 rows sit right after the module key, mirroring the
 // checkout block's order in the union.
 ok(
@@ -1124,10 +1124,11 @@ for (const key of FEATURE_KEYS) {
 // default OFF, and the tier sanitizers hold the SPEC caps.
 {
   ok(
-    FEATURE_KEYS[FEATURE_KEYS.length - 3] === "set_savings" &&
-      FEATURE_KEYS[FEATURE_KEYS.length - 2] === "gift_tiers" &&
-      FEATURE_KEYS[FEATURE_KEYS.length - 1] === "buy_box_proof",
-    "v14/v19: set_savings + gift_tiers, then buy_box_proof, are the LAST FeatureKeys (appended, never inserted)",
+    FEATURE_KEYS[FEATURE_KEYS.length - 4] === "set_savings" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 3] === "gift_tiers" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 2] === "buy_box_proof" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 1] === "image_badges",
+    "v14/v19/v20: set_savings + gift_tiers, then buy_box_proof, then image_badges, are the LAST FeatureKeys (appended, never inserted)",
   );
   const rwKeys = FEATURE_KEYS.filter(
     (k: string) => FEATURE_RAW_FIELD[k]?.kind === "rewards",

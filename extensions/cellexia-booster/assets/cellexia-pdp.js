@@ -6379,9 +6379,176 @@
     } catch (e) { /* never break the theme */ }
   }
 
+  // ------------------------------------------- v20 image badges (mobile)
+  //
+  // The THEME draws award/certification badges over the product image
+  // (.pdp .badges .badge, one <img> each) and pins every one of them to
+  // 45px under its own `@media (max-width: 576px)` rule. From 577px up it
+  // lets them be 100px — 17-21% of the picture, the proportion the merchant
+  // is happy with — so only the phone range is undersized.
+  //
+  // This feature changes exactly ONE declaration: the width of an existing
+  // badge, on phones, by the merchant's percentage of the theme's own 45px.
+  // Nothing is inserted, removed, reordered or restyled, so there is no
+  // widget here and nothing to beacon.
+  //
+  // The percentage is a REQUEST. What actually lands is clamped against the
+  // live image box so the row can never outgrow the picture:
+  //   - no badge wider than a quarter of the product image;
+  //   - no row wider than three quarters of it, and never past the image's
+  //     left edge (mirroring the inset the theme leaves on the right);
+  //   - never smaller than the theme's own size — the feature only adds.
+  // A row that cannot be measured yet (images not laid out) is left alone
+  // and re-measured on load/resize: the fallback is the theme's own look.
+  //
+  // CX_IB_* are TWINS of the settings-model constants (IMAGE_BADGE_BASE_PX,
+  // IMAGE_BADGE_MAX_IMAGE_SHARE, IMAGE_BADGE_MAX_ROW_SHARE) and of the
+  // stylesheet's 576px breakpoint — harness-pinned in both directions.
+  var CX_IB_BASE_PX = 45;
+  var CX_IB_MAX_IMAGE_SHARE = 0.25;
+  var CX_IB_MAX_ROW_SHARE = 0.75;
+  var CX_IB_MAX_VW = 576;
+  var ibBound = false;
+  var ibTimer = null;
+
+  function ibData() {
+    return pdpMember('ib');
+  }
+
+  function ibAllowed(d) {
+    // The house live/draft gate, so the Preview Center shows exactly what
+    // going live will show.
+    return !!d && pdpMemberAllowed(d, 'image_badges');
+  }
+
+  function ibScale(d) {
+    // Percent of the theme's own width. <= 100 is a deliberate no-op (the
+    // merchant parked the slider at "theme size"); a missing/odd value
+    // fails closed the same way.
+    var n = d && typeof d.s === 'number' ? d.s : 0;
+    if (!isFinite(n) || n <= 100) return 0;
+    return n > 200 ? 200 : n;
+  }
+
+  function ibPhone() {
+    // Same breakpoint as the stylesheet's media query — measuring outside
+    // it would size a row the CSS will not touch.
+    try {
+      if (window.matchMedia) return window.matchMedia('(max-width: ' + CX_IB_MAX_VW + 'px)').matches;
+    } catch (e) { /* fall through to the width test */ }
+    return (window.innerWidth || document.documentElement.clientWidth || 0) <= CX_IB_MAX_VW;
+  }
+
+  function ibImageBox(wrap) {
+    // The product image itself — NOT the slider box, which is wider than
+    // the picture. The current slide first (slick marks it), then any laid
+    // out image; an unmeasurable box means "leave the theme alone".
+    var host = wrap.parentNode;
+    if (!host || !host.querySelector) return null;
+    var candidates = [
+      host.querySelector('.slick-current img'),
+      host.querySelector('.pdp__slider--main img'),
+      host.querySelector('img')
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+      var img = candidates[i];
+      if (!img) continue;
+      var r = img.getBoundingClientRect();
+      if (r.width > 1 && r.height > 1) return r;
+    }
+    return null;
+  }
+
+  function ibBasePx(wrap, badge) {
+    // The theme's own width for one badge, captured BEFORE this feature
+    // ever touched the row and remembered on the element (re-measuring a
+    // widened badge would compound the scale on every resize).
+    var stored = parseFloat(wrap.getAttribute('data-cx-ib-base') || '');
+    if (isFinite(stored) && stored > 0) return stored;
+    var measured = badge.getBoundingClientRect().width;
+    if (!(measured > 0)) return 0;
+    wrap.setAttribute('data-cx-ib-base', String(measured));
+    return measured;
+  }
+
+  function ibClear(wrap) {
+    wrap.classList.remove('cx-ib-on');
+    wrap.style.removeProperty('--cx-ib-w');
+  }
+
+  function ibSizeFor(wrap, badges, scale) {
+    // Returns the width to apply, or 0 for "leave the theme alone".
+    var base = ibBasePx(wrap, badges[0]);
+    if (!(base > 0)) return 0;
+    var box = ibImageBox(wrap);
+    if (!box) return 0;
+    var rowRight = wrap.getBoundingClientRect().right; // fixed by the theme (right: 15px)
+    if (!(rowRight > box.left)) return 0;
+    // The theme leaves a gap between the row's right edge and the image's
+    // right edge; mirror it on the left so a grown row stays centred in the
+    // same optical margin instead of crashing into the picture's edge.
+    var inset = Math.max(0, box.right - rowRight);
+    var room = rowRight - box.left - inset;
+    var maxRow = Math.min(room, box.width * CX_IB_MAX_ROW_SHARE);
+    if (!(maxRow > 0)) return 0;
+    var maxOne = Math.min(box.width * CX_IB_MAX_IMAGE_SHARE, maxRow / badges.length);
+    var want = (base * scale) / 100;
+    var px = Math.floor(Math.min(want, maxOne));
+    return px > base ? px : 0; // only ever bigger than the theme's own size
+  }
+
+  function ibApply() {
+    try {
+      var d = ibData();
+      var rows = document.querySelectorAll('.pdp .badges');
+      if (!rows.length) return;
+      var scale = ibAllowed(d) ? ibScale(d) : 0;
+      var on = scale > 0 && ibPhone();
+      for (var i = 0; i < rows.length; i++) {
+        var wrap = rows[i];
+        if (!on) { ibClear(wrap); continue; }
+        var badges = wrap.querySelectorAll('.badge');
+        // A hidden row (the theme ships a desktop AND a mobile copy) has no
+        // box to measure — ibSizeFor returns 0 and it stays untouched.
+        if (!badges.length) { ibClear(wrap); continue; }
+        var px = ibSizeFor(wrap, badges, scale);
+        if (!px) { ibClear(wrap); continue; }
+        wrap.style.setProperty('--cx-ib-w', px + 'px');
+        wrap.classList.add('cx-ib-on');
+      }
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function ibBind() {
+    // Re-measure when the layout can have changed under us: late images
+    // (the badges and the product shot are lazy), rotation, resize.
+    if (ibBound) return;
+    ibBound = true;
+    var again = function () {
+      if (ibTimer) window.clearTimeout(ibTimer);
+      ibTimer = window.setTimeout(ibApply, 120);
+    };
+    try {
+      window.addEventListener('resize', again);
+      window.addEventListener('orientationchange', again);
+      if (document.readyState !== 'complete') window.addEventListener('load', again);
+    } catch (e) { /* noop */ }
+  }
+
+  function mountImageBadges() {
+    var d = ibData();
+    if (!d) return; // member absent: feature off for this page, nothing to bind
+    ibApply();
+    ibBind();
+  }
+
   function init() {
     try {
       cfg = readConfig();
+
+      // --- v20 image badges: a width on the theme's own badges, ahead of
+      // every mount below (it paints nothing and beacons nothing) ---
+      mountImageBadges();
 
       // v10: the synchronous state half (stored choice + fresh geo
       // cache) must be resolved BEFORE any mount below decides to paint

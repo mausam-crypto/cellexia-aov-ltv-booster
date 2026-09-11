@@ -6656,3 +6656,27 @@ body.customer--b2b .cx-sub-remove {
     font-size: 12px;
   }
 }
+
+/* ===========================================================================
+   v20 — Product-image badges, phones only (FeatureKey image_badges)
+   ===========================================================================
+   The THEME owns these badges (`.pdp .badges .badge`, one <img> each, filled
+   from the merchant's sleepless.badge / country_badges metafields). Below
+   577px it pins every one of them to `width: 45px !important`, which reads
+   far smaller than the 17-21% of the product image they occupy from 577px up.
+
+   This rule is the whole storefront surface of the feature: one width, taken
+   from a custom property that cellexia-pdp.js writes on the badge ROW after
+   measuring the live image box (ibApply). Two guards, either of which alone
+   keeps desktop untouched:
+     - the media query stops at the theme's own 576px breakpoint, so the
+       range where the theme already sizes badges well is never entered;
+     - the property only exists on a row the JS has measured and marked.
+   `.cx-ib-on` lifts specificity above the theme's own !important rule
+   (0,4,0 vs 0,3,0); the 45px fallback is the theme's value, so a missing
+   property renders exactly what the theme renders today. */
+@media screen and (max-width: 576px) {
+  .pdp .badges.cx-ib-on .badge {
+    width: var(--cx-ib-w, 45px) !important;
+  }
+}

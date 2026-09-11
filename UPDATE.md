@@ -231,6 +231,48 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
+## 3a. v20 image badges on mobile — what this release changes
+
+**No database migration. No new API scopes. No webhook changes. No new
+translated strings.** Deploy the app server and the extensions exactly as §3
+describes — but note that BOTH halves are needed: the extension carries the
+CSS/JS, the app server carries the setting and writes the metafield.
+
+### What changed
+
+- New feature **"Image badges on mobile"** (`image_badges`, the 39th
+  FeatureKey), **off by default**, armable in the Preview Center like every
+  other feature, with its own market targeting.
+- It widens the award/certification badges YOUR THEME lays over the product
+  image on phones. The theme pins them to 45 px below 577 px, which reads at
+  about 14 % of the product image against 17-21 % from tablet width up; the
+  merchant sets a percentage (100-200 %, default 140 %) of that 45 px.
+- The storefront measures the real image on every pass and clamps the result:
+  no badge wider than a quarter of the product image, no row wider than three
+  quarters of it or past the image's left edge, and never smaller than what
+  the theme already renders. Above 576 px nothing is touched at all.
+- Configure it on **Trust & badges** — the card carries a to-scale preview of
+  a 375 px phone and a 2-5 badge selector, so the size is chosen with the
+  clamp visible.
+
+### What it does NOT do
+
+It adds, removes, reorders, restyles and translates nothing: the badges, their
+artwork, their per-product/per-market selection and their order all stay the
+theme's business (`product.metafields.sleepless.badge*`). The whole storefront
+surface is one CSS width on an existing element, so there is no new widget on
+the page and no new impression in analytics.
+
+### Liquid budget
+
+Total theme-extension Liquid **98,129 B** (budget 99,500 B, Shopify's hard cap
+102,400 B). The feature's 403 B was paid for FIRST by slimming
+`snippets/cx-icons.liquid` from 3,610 B to 2,043 B — the nine identical `<svg>`
+opening tags are hoisted out of the icon `case`. That rewrite was generated
+mechanically and proved byte-identical for every icon before it landed, so the
+five legacy blocks that render those icons are unchanged on the page. The
+release LEAVES 1,371 B of headroom where it found 207 B.
+
 ## 3b. v18 free gifts V2 — what this release changes
 
 **No database migration. No new API scopes. No webhook changes.** Deploy the
@@ -439,6 +481,19 @@ Run it after `npm ci` and before deploying; a red scoreboard means stop.
 strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
+
+v20 — IMAGE BADGES ON MOBILE (2026-09-11):
+
+- New FeatureKey `image_badges` (38 -> 39, appended at the end), settings
+  section `imageBadges` {enabled false, scale 140}, configured on Trust &
+  badges, previewable, market-scoped. Full contract:
+  `docs/SPEC-v20-image-badges.md`; deploy notes in §3a above.
+- Storefront surface is ONE CSS declaration: the width of the theme's own
+  `.pdp .badges .badge` on phones, from a custom property the PDP asset
+  writes after measuring the live product image. No node, no copy, no locale
+  key, no beacon, nothing above 576 px.
+- Paid for its Liquid FIRST (`cx-icons.liquid` -1,567 B, render-identical),
+  so the 99,500 B pin did not move and headroom went UP.
 
 v17.2 — SUBSCRIPTION PRICES ON COLLECTION / HOME PRODUCT CARDS (2026-09-05,
 same release):

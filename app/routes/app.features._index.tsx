@@ -58,6 +58,9 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   cart_subscription_upsell: "/app/features/cart",
   cart_trust_row: "/app/features/cart",
   trust_badges: "/app/features/badges",
+  // v20: the image-badge size sits on the badges page — same subject, and
+  // the merchant looking for "badges" looks there first.
+  image_badges: "/app/features/badges",
   // v19: the buy-box proof block has its own page (it composes several
   // features' data, so it does not belong on any single one of them).
   buy_box_proof: "/app/features/proof-block",
@@ -117,6 +120,7 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
     keys: [
       "buy_box_proof",
       "trust_badges",
+      "image_badges",
       "trustpilot",
       "guarantee",
       "clinical_results",

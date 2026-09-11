@@ -509,6 +509,14 @@ rating row, research + certification band). It borrows every fact from the
 feature that already owns it and SUPPRESSES the widgets it would duplicate
 in the buy box. Full contract: `docs/SPEC-v19-buy-box-proof.md`.
 
+## v20 image badges on mobile
+
+`image_badges` — the SIZE of the award/certification badges the THEME lays
+over the product image, on phones only. One CSS width on existing elements:
+no node, no copy, no locale key, no beacon. Off by default, previewable, and
+clamped so the row can never outgrow the picture. Full contract:
+`docs/SPEC-v20-image-badges.md`.
+
 ## Conventions
 
 - TypeScript strict; no `any` unless unavoidable. Remix v2 flat routes.

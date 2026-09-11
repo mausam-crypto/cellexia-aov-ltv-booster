@@ -321,12 +321,23 @@ unless cfg.amazon.shipsFromExcludedByMarket[cx_market] contains cx_pgid
 assign cx_bbp_sf = cfg.amazon.shipsFromByCountry[cx_country] | default: cfg.amazon.defaultWarehouse
 endunless
 endif
+assign cx_ibs = 0
+assign cx_ibl = false
+assign cx_s = cfg.marketScopes.image_badges
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
+if cfg.imageBadges.enabled == true
+assign cx_ibl = true
+endif
+endif
+if cx_ibl or cx_prev_flags.image_badges == true
+assign cx_ibs = cfg.imageBadges.scale
+endif
 assign cx_draft_any = false
 if cx_draft_badges or cx_draft_guarantee or cx_draft_trustpilot or cx_draft_nudge or cx_draft_survey or cx_draft_study or cx_draft_batch or cx_draft_bottle or cx_draft_dispatch or cx_draft_delivery or cx_draft_bbp
 assign cx_draft_any = true
 endif
 -%}
-{%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_batch or show_bottle or show_dispatch or show_delivery or show_bbp or cx_draft_any -%}
+{%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_batch or show_bottle or show_dispatch or show_delivery or show_bbp or cx_ibs > 0 or cx_draft_any -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
 {%- if cx_eff_gt %}
 {%- assign cx_gp = app.metafields.cellexia.gift_plan.value -%}
@@ -398,6 +409,9 @@ assign tp_stars_label = tp_stars | round: 1
 {%- endif %}
 {%- if cx_bbp_on %}
 "bbp": {"live": {{ show_bbp }}, "c": {{ cfg.buyBoxProof | json }}, "dl": {{ cx_bbp_del }}, "sf": {{ cx_bbp_sf | json }}, "sfs": {{ 'amazon.ships_from' | t: country: '@@C@@' | json }}, "rs": {{ 'badges.research' | t | json }}},
+{%- endif %}
+{%- if cx_ibs > 0 %}
+"ib": {"live": {{ cx_ibl }}, "s": {{ cx_ibs }}},
 {%- endif %}
 "placement": {{ block.settings.proof_placement | default: 'above_tabs' | json }}
 {%- if cx_prev_armed -%}

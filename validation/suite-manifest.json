@@ -1,5 +1,5 @@
 {
-  "_doc": "Suite inventory \u2014 the anti-deletion tripwire. Every validation suite is listed here with a byte floor; the harness fails if a listed 'required' file is missing or has shrunk below its floor (a hollowed-out suite is a deleted suite). 'pending' entries are suites whose rebuild is assigned to other agents and has not landed yet: run-all counts them as loud SKIPs without --strict and as failures with --strict (the default). RATCHET: the moment a pending file exists on disk, the harness REQUIRES its phase to be flipped to 'required' \u2014 landing agents must edit this manifest in the same change.",
+  "_doc": "Suite inventory — the anti-deletion tripwire. Every validation suite is listed here with a byte floor; the harness fails if a listed 'required' file is missing or has shrunk below its floor (a hollowed-out suite is a deleted suite). 'pending' entries are suites whose rebuild is assigned to other agents and has not landed yet: run-all counts them as loud SKIPs without --strict and as failures with --strict (the default). RATCHET: the moment a pending file exists on disk, the harness REQUIRES its phase to be flipped to 'required' — landing agents must edit this manifest in the same change.",
   "files": [
     {
       "file": "validation/run-all.mjs",
@@ -204,6 +204,11 @@
     {
       "file": "validation/sims/buy-box-proof.cjs",
       "floorBytes": 26000,
+      "phase": "required"
+    },
+    {
+      "file": "validation/sims/image-badges.cjs",
+      "floorBytes": 14300,
       "phase": "required"
     }
   ]

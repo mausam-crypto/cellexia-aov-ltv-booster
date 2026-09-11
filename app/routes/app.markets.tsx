@@ -140,6 +140,9 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
       // widget / az_microcopy / az_ships_from on that page.
       { key: "buy_box_proof", label: "Buy-box proof block" },
       { key: "trust_badges", label: "Trust badges" },
+      // v20: not a widget of ours — the SIZE of the theme's own image
+      // badges on phones (see docs/SPEC-v20-image-badges.md).
+      { key: "image_badges", label: "Image badges on mobile" },
       { key: "trustpilot", label: "Trustpilot widget" },
       { key: "guarantee", label: "Money-back guarantee" },
       { key: "clinical_results", label: "Clinical results" },
@@ -579,6 +582,7 @@ export default function MarketsPage() {
       ["press", "press"],
       ["derm_endorsements", "dermEndorsements"],
       ["buy_box_proof", "buyBoxProof"],
+      ["image_badges", "imageBadges"],
     ] as const;
     for (const [key, section] of SIMPLE_SECTIONS) {
       if (state[key].on !== initial[key].on) {

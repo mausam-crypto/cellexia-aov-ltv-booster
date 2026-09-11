@@ -89,7 +89,10 @@ export type FeatureKey =
   | "gift_tiers"
   // v19 buy-box proof block (docs/SPEC-v19-buy-box-proof.md) — appended at
   // the END so every existing index-based consumer keeps its positions.
-  | "buy_box_proof";
+  | "buy_box_proof"
+  // v20 product-image badges (docs/SPEC-v20-image-badges.md) — appended at
+  // the END for the same reason.
+  | "image_badges";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "cart_volume_upsell",
@@ -132,6 +135,8 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "gift_tiers",
   // v19 buy-box proof block — appended last (37 → 38 keys).
   "buy_box_proof",
+  // v20 product-image badges — appended last (38 → 39 keys).
+  "image_badges",
 ];
 
 /**
@@ -1164,6 +1169,31 @@ export interface BoosterSettings {
     };
   };
   /**
+   * v20 — the SIZE of the award/certification badges the THEME overlays on
+   * the product image (`.pdp .badges .badge`, filled from the merchant's
+   * `sleepless.badge` / `country_badges` metafields), on phones only.
+   *
+   * The theme pins every badge to 45px under `@media (max-width: 576px)`
+   * (`width: 45px !important`), which reads as ~14% of the product image —
+   * against ~17-21% on desktop, where the merchant is happy with them. This
+   * feature widens them by a merchant-set percentage of that 45px base and
+   * NOTHING else: no badge is added, removed, reordered or restyled, and
+   * above 576px the theme keeps full control (its own `max-width: 100px`
+   * already matches the desktop proportion).
+   *
+   * The storefront clamps the result so the row can never outgrow the
+   * picture — see IMAGE_BADGE_MAX_IMAGE_SHARE / IMAGE_BADGE_MAX_ROW_SHARE
+   * and docs/SPEC-v20-image-badges.md §3.
+   */
+  imageBadges: {
+    enabled: boolean;
+    /** Percent of the theme's own phone width (IMAGE_BADGE_BASE_PX), between
+     *  IMAGE_BADGE_SCALE_MIN and IMAGE_BADGE_SCALE_MAX. 100 = the theme's
+     *  size, i.e. a deliberate no-op. Live setting: a preview renders the
+     *  SAVED value, so the merchant tunes it, saves, and previews again. */
+    scale: number;
+  };
+  /**
    * Amazon-pattern features (v6.1; eleven flags since the v6.8
    * stock/ships-from split) — independent flags plus the
    * language-neutral "Ships from" warehouse config. We model Amazon's
@@ -1383,6 +1413,27 @@ function defaultMarketScopes(): Record<FeatureKey, MarketScope> {
     FEATURE_KEYS.map((key) => [key, structuredClone(ALL_MARKETS_SCOPE)]),
   ) as Record<FeatureKey, MarketScope>;
 }
+
+/**
+ * v20 image badges. The base is the THEME's own phone width for
+ * `.pdp .badges .badge` (`width: 45px !important` under
+ * `@media (max-width: 576px)`, measured on the live Sleepify theme
+ * 2026-09-11); the scale is a percentage of it.
+ *
+ * The two shares are the storefront's fail-safe: whatever the merchant
+ * picks, one badge never exceeds a QUARTER of the product image's width and
+ * the badge row never exceeds THREE QUARTERS of it, so the row stays inside
+ * the picture at every phone size and badge count. Twinned in
+ * cellexia-pdp.js (CX_IB_* — harness-pinned) and surfaced to the admin
+ * through the route loader (never imported into a client bundle: the v8.3
+ * build lesson).
+ */
+export const IMAGE_BADGE_BASE_PX = 45;
+export const IMAGE_BADGE_SCALE_MIN = 100;
+export const IMAGE_BADGE_SCALE_MAX = 200;
+export const IMAGE_BADGE_DEFAULT_SCALE = 140;
+export const IMAGE_BADGE_MAX_IMAGE_SHARE = 0.25;
+export const IMAGE_BADGE_MAX_ROW_SHARE = 0.75;
 
 /**
  * SAFE-BY-DEFAULT: every feature master switch ships OFF, and every render
@@ -1630,6 +1681,10 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
       enabled: true,
       imageUrl: "",
     },
+  },
+  imageBadges: {
+    enabled: false,
+    scale: IMAGE_BADGE_DEFAULT_SCALE,
   },
   amazon: {
     buyBox: false,
@@ -3114,6 +3169,18 @@ export function sanitizeSettings(
     DEFAULT_SETTINGS.guarantee.days,
   );
 
+  // v20: whole percent of the theme's own phone badge width. 100 = no-op;
+  // the storefront clamps the pixel result again against the live image box.
+  next.imageBadges.enabled = next.imageBadges.enabled === true;
+  next.imageBadges.scale = Math.round(
+    clampNumber(
+      next.imageBadges.scale,
+      IMAGE_BADGE_SCALE_MIN,
+      IMAGE_BADGE_SCALE_MAX,
+      IMAGE_BADGE_DEFAULT_SCALE,
+    ),
+  );
+
   next.clinicalResults.stats = (next.clinicalResults.stats ?? [])
     .filter(
       (stat) =>
@@ -4001,6 +4068,14 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     },
     siblings: [],
   },
+  image_badges: {
+    label: "Image badges on mobile",
+    get: (s) => s.imageBadges.enabled,
+    set: (s, on) => {
+      s.imageBadges.enabled = on;
+    },
+    siblings: [],
+  },
   clinical_results: {
     label: "Clinical results",
     get: (s) => s.clinicalResults.enabled,
@@ -4333,6 +4408,7 @@ export const STANDALONE_SECTION_FIELDS = [
   "dispatch",
   "deliveryEstimate",
   "buyBoxProof",
+  "imageBadges",
 ] as const;
 export type StandaloneSectionField = (typeof STANDALONE_SECTION_FIELDS)[number];
 
@@ -4358,6 +4434,7 @@ export const FEATURE_RAW_FIELD: Record<
   trustpilot: { kind: "section", field: "trustpilot" },
   guarantee: { kind: "section", field: "guarantee" },
   buy_box_proof: { kind: "section", field: "buyBoxProof" },
+  image_badges: { kind: "section", field: "imageBadges" },
   clinical_results: { kind: "section", field: "clinicalResults" },
   subscription_nudge: { kind: "section", field: "subscriptionNudge" },
   checkout_upsell: { kind: "section", field: "checkoutUpsell" },

@@ -124,7 +124,8 @@ const CSS = `${EXT}/assets/cellexia-booster.css`;
 const FEATURE_KEYS = parseFeatureKeys();
 // v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
 // v19 (2026-09-09): 37 -> 38 (buy_box_proof appended at the END).
-ok(FEATURE_KEYS.length === 38, `FEATURE_KEYS parsed live: 38 keys (got ${FEATURE_KEYS.length})`);
+// v20 (2026-09-11): 38 -> 39 (image_badges appended at the END).
+ok(FEATURE_KEYS.length === 39, `FEATURE_KEYS parsed live: 39 keys (got ${FEATURE_KEYS.length})`);
 
 /**
  * Evidence map: every FeatureKey -> at least one verified pattern in a real
@@ -189,6 +190,11 @@ const EVIDENCE = {
   // v19: the buy-box proof block builds two nodes (the in-panel rows and the
   // research band) — BOTH carry the marker, and one beacon covers the block.
   buy_box_proof: [{ file: PDP_JS, has: MARK("buy_box_proof") }],
+  // v20: this feature paints NOTHING of its own — it widens the theme's own
+  // image badges on phones. No node means no marker and no beacon (the
+  // cart_trust_row / az_bought_count precedent): the gate key is the
+  // evidence, and the sizing it drives is pinned by sims/image-badges.
+  image_badges: [{ file: PDP_JS, has: "'image_badges'", note: "v20 width-only feature on the theme's badges (gate key, no own node)" }],
 };
 
 {
@@ -4218,6 +4224,113 @@ const EVIDENCE = {
       `v19.5: ${f} carries no retired badges.seal key`,
     );
   }
+}
+
+// ==================================================== v20 IMAGE BADGES
+//
+// The feature is one CSS width applied to the THEME's own product-image
+// badges on phones — no node, no copy, no locale key. What can silently
+// break it is exactly what is pinned here: the Liquid gates that put the
+// island member on the page (and the emission gate that keeps the island
+// alive when this is the ONLY feature on), the market scope, the
+// stylesheet rule's specificity and breakpoint, and the admin wiring that
+// makes it findable. The sizing maths itself is proved by
+// sims/image-badges.cjs against the real builders.
+{
+  const ibLiquid = read(`${EXT}/blocks/pdp-booster.liquid`);
+  ok(
+    ibLiquid.includes("assign cx_s = cfg.marketScopes.image_badges"),
+    "v20: the image-badge gate reads its OWN market scope",
+  );
+  ok(
+    /assign cx_s = cfg\.marketScopes\.image_badges\nif cx_s\.mode != 'selected' or cx_s\.markets contains cx_market/.test(
+      ibLiquid,
+    ),
+    "v20: the scope check uses the house idiom (unknown mode -> all markets)",
+  );
+  ok(
+    /\nendif\nendif\nif cx_ibl or cx_prev_flags\.image_badges == true\nassign cx_ibs = cfg\.imageBadges\.scale\nendif\n/.test(
+      ibLiquid,
+    ),
+    "v20: the draft union sits OUTSIDE the market scope — the house live(market-aware) ∪ draft(global) preview contract",
+  );
+  ok(
+    ibLiquid.includes('"ib": {"live": {{ cx_ibl }}, "s": {{ cx_ibs }}},'),
+    "v20: the island member carries the live/draft distinction AND the scale",
+  );
+  ok(
+    /\{%- if cx_ibs > 0 %\}\n"ib":/.test(ibLiquid),
+    "v20: the member is emitted only when the feature is live or drafted",
+  );
+  ok(
+    /or show_bbp or cx_ibs > 0 or cx_draft_any -%\}/.test(ibLiquid),
+    "v20: the island/CSS/JS emission gate admits this feature ALONE (no other feature needed)",
+  );
+
+  const ibCss = read(CSS);
+  ok(
+    ibCss.includes("@media screen and (max-width: 576px) {\n  .pdp .badges.cx-ib-on .badge {\n    width: var(--cx-ib-w, 45px) !important;\n  }\n}"),
+    "v20: the stylesheet rule is scoped to phones, class-marked, and falls back to the theme's own 45px",
+  );
+  ok(
+    (ibCss.match(/--cx-ib-w/g) || []).length === 1,
+    "v20: the custom property has exactly ONE consumer — the width of an existing badge",
+  );
+
+  const ibJs = read(PDP_JS);
+  ok(
+    ibJs.includes("var CX_IB_MAX_VW = 576;"),
+    "v20: the runtime measures at the same breakpoint the stylesheet paints at",
+  );
+  ok(
+    !/data-cx-feature', 'image_badges'/.test(ibJs),
+    "v20: the feature paints no node of its own, so it carries no marker",
+  );
+  ok(
+    !ibJs.includes("track('image_badges')"),
+    "v20: nothing is painted, so nothing is beaconed (impression honesty)",
+  );
+  ok(
+    ibJs.includes("mountImageBadges();"),
+    "v20: init() runs the sizing pass",
+  );
+
+  const ibSettings = read("app/models/settings.server.ts");
+  ok(
+    /"image_badges",\n\];/.test(ibSettings),
+    "v20: image_badges is the LAST FeatureKey (appended, never inserted)",
+  );
+  ok(
+    ibSettings.includes("image_badges: { kind: \"section\", field: \"imageBadges\" }"),
+    "v20: the experiment/restore path knows where the flag lives",
+  );
+  ok(
+    /next\.imageBadges\.scale = Math\.round\(/.test(ibSettings),
+    "v20: the scale is sanitized to a whole percent inside the admin range",
+  );
+
+  const ibBadgesRoute = read("app/routes/app.features.badges.tsx");
+  ok(
+    ibBadgesRoute.includes("imageBadgeCaps: {"),
+    "v20: the caps travel through the loader (no settings.server import at client module scope)",
+  );
+  ok(
+    ibBadgesRoute.includes('title="Markets — Image badges on mobile"'),
+    "v20: the badges page carries the feature's own market card",
+  );
+  ok(
+    read("app/routes/app.markets.tsx").includes('{ key: "image_badges", label: "Image badges on mobile" }') &&
+      read("app/routes/app.markets.tsx").includes('["image_badges", "imageBadges"]'),
+    "v20: the Markets matrix can both READ and WRITE the feature",
+  );
+  ok(
+    read("app/routes/app.preview.tsx").includes('"image_badges"'),
+    "v20: the Preview Center can arm it as a draft",
+  );
+  ok(
+    read("app/routes/app.features._index.tsx").includes('image_badges: "/app/features/badges"'),
+    "v20: the features hub points Configure at the page that owns it",
+  );
 }
 
 finish();

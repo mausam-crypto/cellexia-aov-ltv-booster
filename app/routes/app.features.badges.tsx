@@ -29,6 +29,12 @@ import {
   getSettings,
   resolveFeatureFlag,
   saveSettings,
+  IMAGE_BADGE_BASE_PX,
+  IMAGE_BADGE_DEFAULT_SCALE,
+  IMAGE_BADGE_MAX_IMAGE_SHARE,
+  IMAGE_BADGE_MAX_ROW_SHARE,
+  IMAGE_BADGE_SCALE_MAX,
+  IMAGE_BADGE_SCALE_MIN,
   type BoosterSettings,
   type DeepPartial,
 } from "../models/settings.server";
@@ -93,6 +99,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     markets,
     // Combined flag for the shared page header (cheap — settings loaded).
     headerEnabled: resolveFeatureFlag(settings, "trust_badges"),
+    // v20: the storefront's sizing constants travel through the loader —
+    // a route's client bundle may not reference settings.server at module
+    // scope (the v8.3 build lesson).
+    imageBadgeCaps: {
+      basePx: IMAGE_BADGE_BASE_PX,
+      scaleMin: IMAGE_BADGE_SCALE_MIN,
+      scaleMax: IMAGE_BADGE_SCALE_MAX,
+      defaultScale: IMAGE_BADGE_DEFAULT_SCALE,
+      maxImageShare: IMAGE_BADGE_MAX_IMAGE_SHARE,
+      maxRowShare: IMAGE_BADGE_MAX_ROW_SHARE,
+    },
   };
 };
 
@@ -265,6 +282,69 @@ function badgeLabel(key: string): string {
   return BADGE_OPTIONS.find((option) => option.key === key)?.label ?? key;
 }
 
+/**
+ * v20 — what the storefront will actually do, computed for a REFERENCE
+ * phone so the merchant can see the result before going live.
+ *
+ * Geometry measured on the live Sleepify PDP (2026-09-11), and linear in the
+ * viewport across the whole phone range (320/375/414 px all agree):
+ *   image column  = viewport - 2 x 20px page gutter
+ *   product image = that column - 2 x 12px slide padding
+ *   badge row     = right-anchored 15px inside the column (theme CSS)
+ * The clamp itself is the storefront's (cellexia-pdp.js ibSizeFor): a badge
+ * never wider than `maxImageShare` of the image, a row never wider than
+ * `maxRowShare` of it or past the image's left edge, and never smaller than
+ * the theme's own size.
+ */
+const IMAGE_BADGE_REFERENCE_VW = 375;
+/** Width of the to-scale mock in the admin, in CSS px. */
+const PREVIEW_BOX_PX = 180;
+
+interface ImageBadgeCaps {
+  basePx: number;
+  scaleMin: number;
+  scaleMax: number;
+  defaultScale: number;
+  maxImageShare: number;
+  maxRowShare: number;
+}
+
+interface ImageBadgePreview {
+  /** Width one badge will get, in CSS px. */
+  px: number;
+  /** The product image's width on the reference phone, in CSS px. */
+  imageWidth: number;
+  /** Share of the image width the whole row takes, 0-1. */
+  rowShare: number;
+  /** True when the clamp — not the merchant's percentage — decided the size. */
+  clamped: boolean;
+}
+
+function imageBadgePreview(
+  scale: number,
+  badgeCount: number,
+  caps: ImageBadgeCaps,
+  viewport: number = IMAGE_BADGE_REFERENCE_VW,
+): ImageBadgePreview {
+  const column = viewport - 40;
+  const imageWidth = column - 24;
+  const imageLeft = 20 + 12;
+  const imageRight = imageLeft + imageWidth;
+  const rowRight = 20 + column - 15;
+  const inset = Math.max(0, imageRight - rowRight);
+  const room = rowRight - imageLeft - inset;
+  const maxRow = Math.min(room, imageWidth * caps.maxRowShare);
+  const maxOne = Math.min(imageWidth * caps.maxImageShare, maxRow / badgeCount);
+  const want = (caps.basePx * scale) / 100;
+  const px = Math.max(caps.basePx, Math.floor(Math.min(want, maxOne)));
+  return {
+    px,
+    imageWidth,
+    rowShare: (px * badgeCount) / imageWidth,
+    clamped: px < Math.floor(want),
+  };
+}
+
 interface BadgesFormState {
   badgesEnabled: boolean;
   style: "light" | "dark";
@@ -276,10 +356,13 @@ interface BadgesFormState {
   showLink: boolean;
   guaranteeEnabled: boolean;
   days: string;
+  imageBadgesEnabled: boolean;
+  imageBadgesScale: number;
   scopes: {
     trust_badges: ScopeState;
     trustpilot: ScopeState;
     guarantee: ScopeState;
+    image_badges: ScopeState;
   };
 }
 
@@ -295,16 +378,20 @@ function initialFormState(settings: BoosterSettings): BadgesFormState {
     showLink: settings.trustpilot.showLink,
     guaranteeEnabled: settings.guarantee.enabled,
     days: String(settings.guarantee.days),
+    imageBadgesEnabled: settings.imageBadges.enabled,
+    imageBadgesScale: settings.imageBadges.scale,
     scopes: {
       trust_badges: toScopeState(settings.marketScopes.trust_badges),
       trustpilot: toScopeState(settings.marketScopes.trustpilot),
       guarantee: toScopeState(settings.marketScopes.guarantee),
+      image_badges: toScopeState(settings.marketScopes.image_badges),
     },
   };
 }
 
 export default function BadgesFeaturesPage() {
-  const { settings, markets, headerEnabled } = useLoaderData<typeof loader>();
+  const { settings, markets, headerEnabled, imageBadgeCaps } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -313,6 +400,9 @@ export default function BadgesFeaturesPage() {
   const [state, setState] = useState<BadgesFormState>(() =>
     initialFormState(settings),
   );
+  // Preview-only: how many badges this product carries. Not persisted — the
+  // badge list lives in the THEME's own metafields, per product and market.
+  const [previewBadgeCount, setPreviewBadgeCount] = useState(3);
 
   useEffect(() => {
     setState(initialFormState(settings));
@@ -413,6 +503,10 @@ export default function BadgesFeaturesPage() {
         enabled: state.guaranteeEnabled,
         days: Number(state.days),
       },
+      imageBadges: {
+        enabled: state.imageBadgesEnabled,
+        scale: Math.round(state.imageBadgesScale),
+      },
       marketScopes: scopesToPatch(state.scopes),
     };
     const formData = new FormData();
@@ -423,6 +517,20 @@ export default function BadgesFeaturesPage() {
   const availableBadges = BADGE_OPTIONS.filter(
     (option) => !state.items.includes(option.key),
   );
+
+  // v20 preview: the exact storefront clamp, run for the reference phone.
+  const badgePreview = imageBadgePreview(
+    state.imageBadgesScale,
+    previewBadgeCount,
+    imageBadgeCaps,
+  );
+  const themeSharePct = Math.round(
+    (imageBadgeCaps.basePx / badgePreview.imageWidth) * 100,
+  );
+  const previewFactor = PREVIEW_BOX_PX / badgePreview.imageWidth;
+  const previewBadgePx =
+    (state.imageBadgesScale <= 100 ? imageBadgeCaps.basePx : badgePreview.px) *
+    previewFactor;
 
   return (
     <Page
@@ -668,6 +776,127 @@ export default function BadgesFeaturesPage() {
               </BlockStack>
             </Card>
 
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Image badges on mobile
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  The award and certification badges your theme lays over the
+                  product image are pinned to {imageBadgeCaps.basePx} px on
+                  phones — about {themeSharePct}% of the picture, against
+                  17-21% from tablet width up, where you are happy with them.
+                  This widens those same badges on phones. It adds, removes
+                  and restyles nothing, and above 576 px the theme keeps full
+                  control.
+                </Text>
+                <Checkbox
+                  label="Enlarge the product-image badges on phones"
+                  helpText="Off by default. Arm it in the Preview Center to see it on the live store before anyone else does."
+                  checked={state.imageBadgesEnabled}
+                  onChange={(imageBadgesEnabled) =>
+                    setState((previous) => ({
+                      ...previous,
+                      imageBadgesEnabled,
+                    }))
+                  }
+                />
+                <RangeSlider
+                  label={`Size: ${state.imageBadgesScale}% of the theme's own badge width`}
+                  min={imageBadgeCaps.scaleMin}
+                  max={imageBadgeCaps.scaleMax}
+                  step={5}
+                  value={state.imageBadgesScale}
+                  output
+                  helpText={
+                    state.imageBadgesScale <= 100
+                      ? "100% is the theme's own size — nothing changes until you raise it."
+                      : `On a ${IMAGE_BADGE_REFERENCE_VW} px phone: ${imageBadgeCaps.basePx} px → ${badgePreview.px} px per badge. ${previewBadgeCount} badges then fill ${Math.round(
+                          badgePreview.rowShare * 100,
+                        )}% of the image width.${
+                          badgePreview.clamped
+                            ? " Capped here so the row stays inside the image."
+                            : ""
+                        }`
+                  }
+                  onChange={(value) =>
+                    setState((previous) => ({
+                      ...previous,
+                      imageBadgesScale: Math.round(
+                        typeof value === "number" ? value : value[0],
+                      ),
+                    }))
+                  }
+                />
+                <InlineStack gap="400" blockAlign="start" wrap>
+                  <BlockStack gap="150">
+                    <div
+                      style={{
+                        position: "relative",
+                        width: PREVIEW_BOX_PX,
+                        height: PREVIEW_BOX_PX,
+                        background: "#f6f6f7",
+                        border: "1px solid #e3e3e3",
+                        borderRadius: 8,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 15 * previewFactor,
+                          right: 3 * previewFactor,
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        {Array.from({ length: previewBadgeCount }).map(
+                          (_, index) => (
+                            <div
+                              key={index}
+                              style={{
+                                width: previewBadgePx,
+                                height: previewBadgePx,
+                                borderRadius: "50%",
+                                background: "#b1cded",
+                                border: "1px solid #8fb4e0",
+                                boxSizing: "border-box",
+                              }}
+                            />
+                          ),
+                        )}
+                      </div>
+                    </div>
+                    <Text as="span" tone="subdued" variant="bodySm">
+                      To scale, {IMAGE_BADGE_REFERENCE_VW} px phone
+                    </Text>
+                  </BlockStack>
+                  <Box width="220px">
+                    <ChoiceList
+                      title="Badges on the product"
+                      choices={[2, 3, 4, 5].map((count) => ({
+                        label: `${count} badges`,
+                        value: String(count),
+                      }))}
+                      selected={[String(previewBadgeCount)]}
+                      onChange={(selected) =>
+                        setPreviewBadgeCount(Number(selected[0]) || 3)
+                      }
+                    />
+                    <Box paddingBlockStart="200">
+                      <Text as="p" tone="subdued" variant="bodySm">
+                        Preview only — each product (and market) carries its
+                        own badges, set in the theme. The storefront measures
+                        the real image and shrinks the badges to fit whenever
+                        a product carries more of them.
+                      </Text>
+                    </Box>
+                  </Box>
+                </InlineStack>
+              </BlockStack>
+            </Card>
+
             <MarketScopeCard
               title="Markets — Trust badges"
               markets={markets}
@@ -685,6 +914,12 @@ export default function BadgesFeaturesPage() {
               markets={markets}
               scope={state.scopes.guarantee}
               onChange={(scope) => setScope("guarantee", scope)}
+            />
+            <MarketScopeCard
+              title="Markets — Image badges on mobile"
+              markets={markets}
+              scope={state.scopes.image_badges}
+              onChange={(scope) => setScope("image_badges", scope)}
             />
           </BlockStack>
         </Layout.Section>

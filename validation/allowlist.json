@@ -195,6 +195,21 @@
       "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
       "reason": "v18 gift clusters + reward ladder: the storefront readers now consume the per-country cluster slice (rwGtTiers rebuilds {amount,slots} from the plan's a/t arrays, rwPool/rwPaused/rwGiftThresholdCents read the short plan keys, and the country's own amounts arrive pre-resolved as RW.gb instead of a market map lookup). rwRenderLadder draws a card per gift tier under the meter track: unlocked cards keep their tick and stay full-strength, which communicates the cumulative rule with no new copy to translate into 18 languages. The gift sync itself, its single-flight, one-correction-per-cart-signature and never-loop guarantees are untouched.",
       "wave": "v18"
+    },
+    {
+      "file": "extensions/cellexia-booster/snippets/cx-icons.liquid",
+      "reason": "v20 Liquid diet (paid FIRST, the v19 \"slim before you spend\" rule): the nine <svg> branches repeated one identical opening tag. The head (class/width/height/viewBox) and the attribute sets are hoisted — one default stroke set, two named exceptions (star = filled, check = stroke-width 2) — and the case now carries only each icon's inner markup. Generated mechanically and proved byte-identical for all 8 keys plus the else branch before the write: 3,610B -> 2,043B (-1,567B), which pays for the v20 image-badge gates + island with ~1.1KB left over. No caller changed.",
+      "wave": "v20"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+      "reason": "v20 image badges: +403B of gates and one island member. cx_ibl is the market-scoped live flag (cfg.imageBadges.enabled + marketScopes.image_badges through the house idiom), cx_ibs carries the scale for the live OR preview-drafted case, the island emits \"ib\": {live, s} under cx_ibs > 0, and the island/CSS/JS emission gate gained `or cx_ibs > 0` so this feature ALONE keeps the asset on the page. A pre-v20 metafield has no cfg.imageBadges, so cx_ibs stays nil and every gate fails closed. Pinned by harness section v20 + sims/image-badges.cjs.",
+      "wave": "v20"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+      "reason": "v20 image badges: the ib* module (ibData/ibAllowed/ibScale/ibPhone/ibImageBox/ibBasePx/ibClear/ibSizeFor/ibApply/ibBind/mountImageBadges) plus its call at the top of init(). It paints NOTHING: it measures the theme's own badge row against the live product image and writes --cx-ib-w + .cx-ib-on on the row, which the stylesheet consumes below 576px only. No marker, no beacon, no template. The clamp, the fail-closed paths, idempotence and the live/draft gate are pinned by sims/image-badges.cjs (86 checks, 7 mutants).",
+      "wave": "v20"
     }
   ]
 }
