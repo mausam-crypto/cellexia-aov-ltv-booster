@@ -80,21 +80,21 @@ Every row drops on its own; the block never shows half a promise.
 
 ## 5. Copy and translation
 
-Two new locale keys, translated in all 17 store languages:
-`badges.research` ("Based on published research from") and `badges.seal`
-("Independent testing. Proven skin tolerance."). Everything else reuses
-existing translated strings (`amazon.ships_from`, `delivery.line`,
+ONE new locale key, translated in all 17 store languages:
+`badges.research` ("Based on published research from"). Everything else
+reuses existing translated strings (`amazon.ships_from`, `delivery.line`,
 `delivery.badge`, `badges.*`, `guarantee.title`, `trustpilot.*`).
 
 Institution names are merchant free text and stay **untranslated** — proper
-nouns, the `US_STATE_NAMES` precedent. The certification seal's own wording
-is a MARK and is not translated either (the Trustpilot wordmark precedent);
-only the note beside it is.
+nouns, the `US_STATE_NAMES` precedent. The certification seal carries no
+caption at all: its wording is part of the artwork, a MARK that stays as
+issued in every language (the Trustpilot wordmark precedent), and it renders
+with an empty `alt` as a decorative image. `badges.seal` was retired in
+v19.5 — a caption beside the seal cost the marks the width they need to stay
+legible in this theme's buy-box column.
 
-`el.json` (15,184 B) and `ar.json` (15,190 B) sit against the 15,200 B
-harness pin (Shopify hard-rejects at 15,360 B). Room for these two keys came
-from applying the merchant's standing no-em-dash rule to both files plus a
-handful of shorter, equally faithful phrasings. **Any further Greek or
+`el.json` (15,079 B) and `ar.json` (15,116 B) sit against the 15,200 B
+harness pin (Shopify hard-rejects at 15,360 B). **Any further Greek or
 Arabic copy must trim existing copy first.**
 
 ## 6. Logos and the seal
@@ -111,8 +111,31 @@ logo artwork of its own**; a blank URL renders the name as a plain wordmark.
 
 `seal.imageUrl` replaces the built-in DermaCert artwork, which is otherwise
 drawn as a static inline SVG (one of the harness-annotated `innerHTML`
-sites; sharp at any size, no extra request). The translated note is the
-seal's `alt` text.
+sites; sharp at any size, no extra request). The seal is decorative: empty
+`alt`, no caption.
+
+### Band layout (v19.5)
+
+The band is the reference's TWO-COLUMN lockup — marks left, seal right
+behind a full-height rule — but only where the buy-box column can hold both.
+The live Sleepify theme sizes `.pdp__info` **non-monotonically**:
+
+| viewport | `.pdp__info` | band |
+| --- | --- | --- |
+| > 1280 px | 470 px | two-column |
+| 769-1280 px | **300 px** | stacked |
+| <= 768 px | 100% of viewport | two-column at >= 480 px, else stacked |
+
+So the two-column gate is deliberately two ranges
+(`480-768px` **and** `1281px+`) and must not be folded into one
+`min-width` — harness-pinned, because a 990 px laptop sits in the 300 px
+band where three marks plus a seal cannot fit. Stacked is the default, so an
+unmatched gate fails closed to the readable layout.
+
+Measured on the live theme with the merchant's real files (Harvard 3.8:1,
+Oxford 3.4:1, The Lancet 9.1:1): 470 px column → band 100 px tall, Harvard
+86x23; 300 px column → 185 px, Harvard 68x18; 343 px phone → 185 px,
+Harvard 80x21.
 
 ## 7. Admin
 

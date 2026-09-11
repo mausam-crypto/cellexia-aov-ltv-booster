@@ -46,8 +46,7 @@
     "clinically_proven": "Kliniskt bevisat",
     "ssl_encrypted": "SSL-krypterad betalning",
     "easy_returns": "Enkla returer",
-    "research": "Baserat på publicerad forskning från",
-    "seal": "DermaCert-certifierad. Rapport DC-2024-08472."
+    "research": "Baserat på publicerad forskning från"
   },
   "guarantee": {
     "title": "{{ days }} dagars pengarna-tillbaka-garanti",

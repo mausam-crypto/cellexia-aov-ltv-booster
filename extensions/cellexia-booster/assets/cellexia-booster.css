@@ -6432,13 +6432,15 @@ body.customer--b2b .cx-sub-remove {
 
 /* ------------------------------------ research + certification band */
 
+/* STACKED default: the marks take a full-width row, the seal sits under
+   them behind its own rule. */
 .cx-bbp-research {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 14px;
+  gap: 12px;
   margin-block-start: 12px;
-  padding: 16px 18px;
+  padding: 14px 16px;
   background: #f4f4f4;
 }
 
@@ -6453,11 +6455,11 @@ body.customer--b2b .cx-sub-remove {
 .cx-bbp-research__eyebrow {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 0 0 10px;
+  gap: 8px;
+  margin: 0 0 9px;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
   line-height: 1.3;
   text-transform: uppercase;
   color: #565959;
@@ -6467,7 +6469,7 @@ body.customer--b2b .cx-sub-remove {
 .cx-bbp-research__eyebrow::after {
   content: "";
   flex: 1 1 auto;
-  min-width: 8px;
+  min-width: 6px;
   height: 1px;
   background: #d8d8d8;
 }
@@ -6477,12 +6479,10 @@ body.customer--b2b .cx-sub-remove {
   text-align: center;
 }
 
-/* Phone default: text wordmarks stack (three of them do not fit a 375px
-   row). Uploaded logos are compact enough to take the design's row at any
-   width, and from 560px up the wordmarks take it too — each name wrapping
-   INSIDE its own cell, the way a two-line lockup does. The row itself uses
-   equal `flex: 1 1 0` cells and never wraps, so a vertical rule can never
-   end up leading a line. */
+/* Text wordmarks stack (three names never fit a narrow column side by
+   side). Uploaded logos take the design's row at any width — the row uses
+   `flex: 1 1 0` cells and never wraps, so a vertical rule can never end up
+   leading a line. */
 .cx-bbp-research__logos {
   display: flex;
   flex-direction: column;
@@ -6504,7 +6504,7 @@ body.customer--b2b .cx-sub-remove {
   flex-wrap: nowrap;
   align-items: stretch;
   justify-content: center;
-  min-height: 54px;
+  min-height: 46px;
   gap: 0;
 }
 
@@ -6515,7 +6515,7 @@ body.customer--b2b .cx-sub-remove {
   flex: 1 1 0;
   align-items: center;
   justify-content: center;
-  padding-inline: 9px;
+  padding-inline: 5px;
 }
 
 .cx-bbp-research__logos--row .cx-bbp-research__logo + .cx-bbp-research__logo {
@@ -6541,7 +6541,7 @@ body.customer--b2b .cx-sub-remove {
   width: 100%;
   height: auto;
   /* Guard for a near-square logo only; at balanced sizes it never binds. */
-  max-height: 56px;
+  max-height: 52px;
   object-fit: contain;
   object-position: center;
 }
@@ -6551,67 +6551,74 @@ body.customer--b2b .cx-sub-remove {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding-block-start: 14px;
+  padding-block-start: 12px;
   border-block-start: 1px solid #d8d8d8;
+}
+
+/* A seal with no marks above it owns the band, so it carries no rule. */
+.cx-bbp-research > .cx-bbp-research__seal:first-child {
+  padding-block-start: 0;
+  border-block-start: 0;
 }
 
 .cx-bbp-research__seal-art,
 .cx-bbp-research__seal-img {
-  flex: 0 0 96px;
+  flex: 0 0 64px;
   display: block;
-  width: 96px;
-  height: 96px;
+  width: 64px;
+  height: 64px;
   object-fit: contain;
 }
 
-.cx-bbp-research__note {
-  flex: 0 1 auto;
-}
-
-.cx-bbp-research__note {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: #565959;
-}
-
-.cx-bbp-research__note::after {
-  content: "";
-  display: block;
-  width: 26px;
-  height: 1px;
-  margin-block-start: 8px;
-  background: #8a9aa8;
-}
-
-/* Wider buy-box columns have room the phone layout does not: the marks and
-   the seal scale with it instead of sitting small in a big panel. Sleepify
-   splits the product page into two columns from 768px, so the column is
-   roughly half the viewport from there on. */
-@media screen and (min-width: 990px) {
+/* TWO-COLUMN (the reference layout): marks left, seal right behind a
+   full-height rule. Gated on the widths where this theme's buy-box column
+   is actually wide enough to hold both, which is NOT a plain "big screen":
+   `.pdp__info` is 470px above 1280px, but only 300px between 769 and
+   1280px, and full width at 768px and below. Three marks plus a seal need
+   ~430px, so the column qualifies above 1280px and again below 769px
+   (where it spans the viewport), and never in between. Measured on the
+   live theme — do not fold these into one min-width. */
+@media screen and (min-width: 480px) and (max-width: 768px),
+       screen and (min-width: 1281px) {
   .cx-bbp-research {
-    gap: 20px;
-    padding: 18px 20px;
+    flex-direction: row;
+    gap: 10px;
   }
 
-  .cx-bbp-research__eyebrow {
-    margin-block-end: 14px;
+  .cx-bbp-research__seal {
+    padding-block-start: 0;
+    border-block-start: 0;
+    padding-inline-start: 10px;
+    border-inline-start: 1px solid #d8d8d8;
   }
 
-  /* The wordmark fallback is what a store without uploaded logo files
-     actually shows — it has to fill a desktop panel, not sit in it. */
-  .cx-bbp-research__logos {
-    gap: 14px;
+  .cx-bbp-research > .cx-bbp-research__seal:first-child {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
+}
+
+/* Only the >1280px column (470px) has room to scale up; a 990px-wide
+   viewport sits in the 300px band, where bigger type would overflow. */
+@media screen and (min-width: 1281px) {
+  .cx-bbp-research {
+    padding: 16px 18px;
+  }
+
+  .cx-bbp-research__logos--row .cx-bbp-research__logo {
+    padding-inline: 7px;
   }
 
   .cx-bbp-research__logo-name {
-    font-size: 18px;
+    font-size: 16px;
     letter-spacing: 0.6px;
   }
 
-  .cx-bbp-research__note {
-    font-size: 13px;
+  .cx-bbp-research__seal-art,
+  .cx-bbp-research__seal-img {
+    flex-basis: 68px;
+    width: 68px;
+    height: 68px;
   }
 }
 

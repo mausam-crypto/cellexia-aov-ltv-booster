@@ -46,8 +46,7 @@
     "clinically_proven": "Potwierdzone klinicznie",
     "ssl_encrypted": "Płatność szyfrowana SSL",
     "easy_returns": "Łatwe zwroty",
-    "research": "Na podstawie badań opublikowanych przez",
-    "seal": "Certyfikat DermaCert. Raport DC-2024-08472."
+    "research": "Na podstawie badań opublikowanych przez"
   },
   "guarantee": {
     "title": "{{ days }}-dniowa gwarancja zwrotu pieniędzy",

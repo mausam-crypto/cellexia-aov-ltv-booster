@@ -46,8 +46,7 @@
     "clinically_proven": "臨床的に実証済み",
     "ssl_encrypted": "SSL暗号化決済",
     "easy_returns": "返品も簡単",
-    "research": "公表された研究に基づく",
-    "seal": "DermaCert認証取得。報告書 DC-2024-08472。"
+    "research": "公表された研究に基づく"
   },
   "guarantee": {
     "title": "{{ days }}日間返金保証",

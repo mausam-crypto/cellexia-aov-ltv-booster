@@ -166,7 +166,7 @@ function baseCfg(over) {
     },
     g: { live: false, t: "60-Day Money-Back Guarantee" },
     tp: { live: false, aria: "Rated 4.7 out of 5", label: "4.7/5", r: 4.7, cnt: "4619 reviews on", view: "See our reviews on Trustpilot", url: "https://www.trustpilot.com/review/cellexia.com", link: true },
-    bbp: { live: true, c: baseConf(), dl: true, sf: "PL", sfs: "Ships from @@C@@", rs: "Based on published research from", sl: "Independent testing. Proven skin tolerance." },
+    bbp: { live: true, c: baseConf(), dl: true, sf: "PL", sfs: "Ships from @@C@@", rs: "Based on published research from" },
   };
   return Object.assign(cfg, over || {});
 }
@@ -268,11 +268,11 @@ const rowClasses = (root) =>
   ok(noMember.page.doc.querySelector(".cx-bbp") === null, "B1 no island member: nothing renders");
   ok(noMember.tracked.length === 0, "B1 no beacon");
 
-  const notLive = run(baseCfg({ bbp: { live: false, c: baseConf(), dl: true, sf: "PL", sfs: "Ships from @@C@@", rs: "x", sl: "y" } }));
+  const notLive = run(baseCfg({ bbp: { live: false, c: baseConf(), dl: true, sf: "PL", sfs: "Ships from @@C@@", rs: "x" } }));
   ok(notLive.page.doc.querySelector(".cx-bbp") === null, "B2 member present but not live: nothing renders");
   ok(notLive.tracked.length === 0, "B2 no beacon");
 
-  const nullConf = run(baseCfg({ bbp: { live: true, c: null, dl: true, sf: "PL", sfs: "Ships from @@C@@", rs: "x", sl: "y" } }));
+  const nullConf = run(baseCfg({ bbp: { live: true, c: null, dl: true, sf: "PL", sfs: "Ships from @@C@@", rs: "x" } }));
   ok(nullConf.page.doc.querySelector(".cx-bbp") === null, "B3 pre-v19 metafield (no settings payload): nothing renders");
   ok(nullConf.tracked.length === 0, "B3 no beacon");
 
@@ -478,8 +478,18 @@ const rowClasses = (root) =>
   sealImg.bbp.c = baseConf({ seal: { enabled: true, imageUrl: "https://cdn.shopify.com/seal.png" } });
   const si = run(sealImg).page.doc.querySelector(".cx-bbp-research__seal-img");
   ok(!!si && si.getAttribute("src") === "https://cdn.shopify.com/seal.png", "E7 a merchant seal file replaces the built-in artwork");
-  ok(!!si && si.getAttribute("alt") === "Independent testing. Proven skin tolerance.", "E7 the translated note is the seal alt text");
-  ok(textOf(run(baseCfg()).page.doc.querySelector(".cx-bbp-research__note")) === "Independent testing. Proven skin tolerance.", "E8 the note is the translated string");
+  // The seal is artwork that carries its own wording, so it is decorative:
+  // an empty alt, and no caption anywhere in the band.
+  ok(!!si && si.getAttribute("alt") === "", "E7 a merchant seal file is decorative (empty alt)");
+  const bandNow = run(baseCfg()).page.doc.querySelector(".cx-bbp-research");
+  ok(bandNow.querySelector(".cx-bbp-research__note") === null, "E8 the band paints no caption");
+  ok(!/DermaCert Certified|Independent testing/.test(textOf(bandNow)), "E8 no retired caption copy survives in the band");
+  // Marks and seal are DIRECT children of the band: the two-column media
+  // query styles `.cx-bbp-research > .cx-bbp-research__seal`, so a wrapper
+  // between them would silently drop the layout back to stacked.
+  const kids = [].slice.call(bandNow.children).map((n) => n.getAttribute("class") || "");
+  ok(kids.length === 2 && /__col/.test(kids[0]) && /__seal/.test(kids[1]),
+     "E8 the band has exactly two children: marks column then seal");
   ok(textOf(run(baseCfg()).page.doc.querySelector(".cx-bbp-research__eyebrow")) === "Based on published research from", "E8 the eyebrow is the translated string");
 }
 

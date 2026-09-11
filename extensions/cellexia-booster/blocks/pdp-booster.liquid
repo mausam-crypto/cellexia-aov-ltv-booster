@@ -397,7 +397,7 @@ assign tp_stars_label = tp_stars | round: 1
 "n": {"live": {{ show_nudge }}, "t": {{ 'subscription.nudge_title' | t | json }}, "b": {{ 'subscription.nudge_body' | t: percent: nudge_pct | json }}},
 {%- endif %}
 {%- if cx_bbp_on %}
-"bbp": {"live": {{ show_bbp }}, "c": {{ cfg.buyBoxProof | json }}, "dl": {{ cx_bbp_del }}, "sf": {{ cx_bbp_sf | json }}, "sfs": {{ 'amazon.ships_from' | t: country: '@@C@@' | json }}, "rs": {{ 'badges.research' | t | json }}, "sl": {{ 'badges.seal' | t | json }}},
+"bbp": {"live": {{ show_bbp }}, "c": {{ cfg.buyBoxProof | json }}, "dl": {{ cx_bbp_del }}, "sf": {{ cx_bbp_sf | json }}, "sfs": {{ 'amazon.ships_from' | t: country: '@@C@@' | json }}, "rs": {{ 'badges.research' | t | json }}},
 {%- endif %}
 "placement": {{ block.settings.proof_placement | default: 'above_tabs' | json }}
 {%- if cx_prev_armed -%}

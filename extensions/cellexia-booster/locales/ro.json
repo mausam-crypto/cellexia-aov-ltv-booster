@@ -46,8 +46,7 @@
     "clinically_proven": "Dovedit clinic",
     "ssl_encrypted": "Plată criptată SSL",
     "easy_returns": "Retururi ușoare",
-    "research": "Pe baza cercetărilor publicate de",
-    "seal": "Certificat DermaCert. Raport DC-2024-08472."
+    "research": "Pe baza cercetărilor publicate de"
   },
   "guarantee": {
     "title": "Garanția banilor înapoi în {{ days }} de zile",

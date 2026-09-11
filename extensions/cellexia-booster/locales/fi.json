@@ -46,8 +46,7 @@
     "clinically_proven": "Kliinisesti todistettu",
     "ssl_encrypted": "SSL-salattu maksu",
     "easy_returns": "Helppo palautus",
-    "research": "Perustuu julkaistuihin tutkimuksiin:",
-    "seal": "DermaCert-sertifioitu. Raportti DC-2024-08472."
+    "research": "Perustuu julkaistuihin tutkimuksiin:"
   },
   "guarantee": {
     "title": "{{ days }} päivän rahat takaisin -takuu",

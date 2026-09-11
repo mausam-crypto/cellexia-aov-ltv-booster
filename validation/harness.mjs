@@ -4176,4 +4176,48 @@ const EVIDENCE = {
 }
 
 
+// v19.5: the research band's TWO-COLUMN gate. `.pdp__info` in the live
+// Sleepify theme is 470px above 1280px, 300px between 769 and 1280px, and
+// full width at 768px and below — so column width is NOT monotonic in
+// viewport, and the band may only go side-by-side in the two ranges where
+// the column can hold three marks plus the seal. Folding these into a
+// single min-width silently returns the 300px laptop column to the cramped
+// layout that shipped in v19.4. Layout pinned by sims/buy-box-proof E8.
+{
+  const bandCss = read("extensions/cellexia-booster/assets/cellexia-booster.css");
+  ok(
+    bandCss.includes(
+      "@media screen and (min-width: 480px) and (max-width: 768px),\n       screen and (min-width: 1281px) {",
+    ),
+    "v19.5: the band's two-column gate keeps BOTH width ranges (480-768px and 1281px+)",
+  );
+  ok(
+    /\.cx-bbp-research \{[^}]*flex-direction: column;/.test(bandCss),
+    "v19.5: the band stacks by default, so an unmatched gate fails closed to the readable layout",
+  );
+  ok(
+    bandCss.includes(".cx-bbp-research > .cx-bbp-research__seal:first-child {"),
+    "v19.5: the seal's rule is suppressed when no marks sit beside/above it",
+  );
+  ok(
+    !bandCss.includes(".cx-bbp-research__note") && !bandCss.includes(".cx-bbp-research__top"),
+    "v19.5: the retired seal caption and its wrapper leave no dead CSS",
+  );
+  const pdpJs195 = read(PDP_JS);
+  ok(
+    !pdpJs195.includes("cx-bbp-research__note") && !pdpJs195.includes("cx-bbp-research__top"),
+    "v19.5: the runtime paints no seal caption and no wrapper between band and seal",
+  );
+  ok(
+    !read(`${EXT}/blocks/pdp-booster.liquid`).includes("badges.seal"),
+    "v19.5: the retired caption is not emitted into the island",
+  );
+  for (const f of listFiles(`${EXT}/locales`, ".json")) {
+    ok(
+      !JSON.parse(read(`${EXT}/locales/${f}`)).badges?.seal,
+      `v19.5: ${f} carries no retired badges.seal key`,
+    );
+  }
+}
+
 finish();

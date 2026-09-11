@@ -6200,26 +6200,22 @@
     return row;
   }
 
-  function bbpSealNode(conf, note) {
+  function bbpSealNode(conf) {
     // The independent-certification seal: the merchant's own file when
     // seal.imageUrl is set (a sanitized https URL — never innerHTML), else
-    // the built-in DermaCert artwork below. The seal is a MARK, so its own
-    // wording stays as issued in every language (the Trustpilot wordmark
-    // precedent); only the note beside it is translated.
+    // the built-in DermaCert artwork below. The seal is a MARK: its wording
+    // is part of the artwork and stays as issued in every language (the
+    // Trustpilot wordmark precedent). It carries no caption, and an empty
+    // alt keeps it decorative rather than read out over the marks.
     var seal = conf.seal && typeof conf.seal === 'object' ? conf.seal : null;
     if (!seal || seal.enabled === false) return null;
     var wrap = cxEl('div', 'cx-bbp-research__seal');
     var url = cxRawStr(seal, 'imageUrl');
     if (url) {
-      var img = cxEl('img', 'cx-bbp-research__seal-img', ['src', url, 'alt', note || '', 'loading', 'lazy', 'decoding', 'async', 'width', '96', 'height', '96']);
+      var img = cxEl('img', 'cx-bbp-research__seal-img', ['src', url, 'alt', '', 'loading', 'lazy', 'decoding', 'async', 'width', '96', 'height', '96']);
       wrap.appendChild(img);
     } else {
       wrap.appendChild(bbpBuiltInSeal());
-    }
-    if (note) {
-      var p = cxEl('p', 'cx-bbp-research__note');
-      p.textContent = note;
-      wrap.appendChild(p);
     }
     return wrap;
   }
@@ -6281,13 +6277,13 @@
     // "Based on published research from" + the institution wordmarks (or
     // their uploaded logos) + the seal. Institution names are merchant
     // free text and stay untranslated (proper nouns — the US_STATE_NAMES
-    // precedent); only the eyebrow and the seal note are locale strings.
+    // precedent); the eyebrow is the band's only locale string.
     var research = conf.research && typeof conf.research === 'object' ? conf.research : null;
     var items = research && research.enabled !== false && Object.prototype.toString.call(research.institutions) === '[object Array]'
       ? research.institutions
       : [];
     var eyebrowText = bottleStr(d, 'rs');
-    var seal = bbpSealNode(conf, bottleStr(d, 'sl'));
+    var seal = bbpSealNode(conf);
     var list = null;
     var painted = 0;
     // Uploaded logos are compact enough to sit in ONE row with the design's
