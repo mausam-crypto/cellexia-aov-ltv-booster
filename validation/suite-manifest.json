@@ -210,6 +210,11 @@
       "file": "validation/sims/image-badges.cjs",
       "floorBytes": 14300,
       "phase": "required"
+    },
+    {
+      "file": "validation/sims/cart-overlay-fix.cjs",
+      "floorBytes": 15000,
+      "phase": "required"
     }
   ]
 }

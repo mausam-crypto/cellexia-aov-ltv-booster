@@ -130,6 +130,11 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
       // the cart drawer AND on product pages, but it is grouped here for the
       // merchant. Not part of CART_KEYS either.
       { key: "dispatch_countdown", label: "Dispatch countdown" },
+      // v21: three independent overlayFix.* sibling flags (no shared
+      // master; see docs/SPEC-v21-cart-overlay.md). Not part of CART_KEYS.
+      { key: "cart_overlay_fix", label: "Cart overlay fix" },
+      { key: "cart_compact", label: "Compact cart" },
+      { key: "cart_pinned_checkout", label: "Pinned checkout button" },
     ],
   },
   {
@@ -282,6 +287,21 @@ const AZ_FLAG_FIELD = {
   az_cart_free_line: "cartFreeLine",
   az_cta_count: "ctaCount",
 } as const satisfies Record<AzMatrixKey, string>;
+
+/** v21 overlay flags — independent sibling booleans in the single overlayFix
+ *  section (the amazon convention; client-safe literal mirror, the action
+ *  validates server-side). */
+const OVERLAY_MATRIX_KEYS = [
+  "cart_overlay_fix",
+  "cart_compact",
+  "cart_pinned_checkout",
+] as const;
+type OverlayMatrixKey = (typeof OVERLAY_MATRIX_KEYS)[number];
+const OVERLAY_FLAG_FIELD = {
+  cart_overlay_fix: "scrollFix",
+  cart_compact: "compact",
+  cart_pinned_checkout: "pinned",
+} as const satisfies Record<OverlayMatrixKey, string>;
 
 interface RowState {
   /** Combined flag state (master && sub-flag) for this feature. */
@@ -605,6 +625,19 @@ export default function MarketsPage() {
       patch.amazon = Object.fromEntries(
         azChangedKeys.map((key) => [AZ_FLAG_FIELD[key], state[key].on]),
       ) as Partial<Record<(typeof AZ_FLAG_FIELD)[AzMatrixKey], boolean>>;
+    }
+
+    // v21 overlay flags — same independent-sibling shape and changed-only
+    // discipline as the amazon block above.
+    const overlayChangedKeys = OVERLAY_MATRIX_KEYS.filter(
+      (key) => state[key].on !== initial[key].on,
+    );
+    if (overlayChangedKeys.length > 0) {
+      patch.overlayFix = Object.fromEntries(
+        overlayChangedKeys.map((key) => [OVERLAY_FLAG_FIELD[key], state[key].on]),
+      ) as Partial<
+        Record<(typeof OVERLAY_FLAG_FIELD)[OverlayMatrixKey], boolean>
+      >;
     }
 
     const formData = new FormData();

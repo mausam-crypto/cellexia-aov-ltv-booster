@@ -6680,3 +6680,387 @@ body.customer--b2b .cx-sub-remove {
     width: var(--cx-ib-w, 45px) !important;
   }
 }
+
+/* ===========================================================================
+   v21 — Cart overlay features (FeatureKeys cart_overlay_fix / cart_compact /
+   cart_pinned_checkout; EFFECTIVE keys ofix / compact / pinned)
+   ===========================================================================
+   Three independent, default-OFF features for the theme's mini-cart drawer.
+   ALL rules are scoped under the html gate classes cx-ofix / cx-compact /
+   cx-pin, planted by cellexia-cart.js (ofixSync) only while the matching
+   feature is effective — absent classes mean every rule here is inert and
+   the drawer is byte-identical to the theme's own.
+
+   1) HEIGHT NORMALIZATION (shared by all three gates — each feature needs a
+      correctly sized drawer to deliver its promise). The theme has three
+      conflicting height authorities: headerOffset() (_sleepify.authored
+      .bundle.js) writes an INLINE `height: calc(100vh - headerPx)` on
+      .mini-cart on every scroll/resize (wrong: the drawer overlays from
+      top:0, so the header subtraction becomes a dead bottom band), while
+      .mini-cart__content carries its own hard 100vh (the iOS large-viewport
+      mismatch) and the backdrop uses 100%. The `!important` below is the
+      ONLY one in this section and exists to beat that inline style — jQuery
+      .css() cannot set priority, so an author !important wins permanently,
+      every re-write included. Not keyed on .is-open so the drawer keeps full
+      height during the theme's ~200ms fadeOut too. `dvh` tracks the REAL
+      visible viewport on phones (`svh` would leave a band when the iOS
+      toolbar collapses); the 100vh line is the fallback for engines without
+      dvh (iOS < 15.4), which keep exactly the theme's current best case. */
+html.cx-ofix .mini-cart,
+html.cx-compact .mini-cart,
+html.cx-pin .mini-cart {
+  top: 0;
+  height: 100vh !important;
+  height: 100dvh !important;
+}
+
+/* One height authority: the panel follows the corrected section box instead
+   of carrying its own 100vh. overflow-x hidden: the theme's removed-row
+   animation translates rows to -100%. */
+html.cx-ofix .mini-cart__content,
+html.cx-compact .mini-cart__content,
+html.cx-pin .mini-cart__content {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+html.cx-ofix .mini-cart__bg,
+html.cx-compact .mini-cart__bg,
+html.cx-pin .mini-cart__bg {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* Exactly ONE scroll region inside the drawer: the theme's
+   .mini-cart__list { overflow: auto } is a second scroll-eligible box that
+   never actually scrolls (no height cap) but participates in iOS
+   scroll-target selection and chaining. Neutralize it under our gates. */
+html.cx-ofix .mini-cart__list,
+html.cx-compact .mini-cart__list,
+html.cx-pin .mini-cart__list {
+  overflow: visible;
+}
+
+/* iOS focus-zoom guard: a sub-16px number input inside a fixed full-height
+   overlay triggers Safari's auto-zoom on focus (and it STAYS zoomed). The
+   theme renders the drawer qty input at 14px. House form-control rule. */
+html.cx-ofix .mini-cart__list .qty input,
+html.cx-compact .mini-cart__list .qty input,
+html.cx-pin .mini-cart__list .qty input {
+  font-size: 16px;
+}
+
+/* 2) SCROLL LOCK — cart_overlay_fix only. The theme's showMini() adds
+   body.cart-open but no CSS anywhere consumes it (dead class, verified),
+   so the page behind the drawer keeps scrolling. Layer 1 gives the theme's
+   own class meaning (zero-JS-latency). Layer 2 is the authoritative lock,
+   mirrored from .mini-cart.is-open by ofixSync in the same pre-paint
+   observer callback. BOTH html and body must be locked: the theme sets
+   html { overflow-x: clip }, and per css-overflow-3 body-to-viewport
+   overflow propagation only happens while html is visible on both axes —
+   body-only locking can silently no-op. Same mechanism as the theme's own
+   html.mobile-menu-open { overflow: hidden } menu lock. NO position:fixed
+   body lock on purpose: zeroing scrollY would fire the theme's accumulated
+   headerOffset scroll handlers and a missed restore would freeze the page;
+   overscroll containment on the single scroller plus the locked root
+   covers modern engines, and older ones degrade to today's behavior. */
+html.cx-ofix body.cart-open {
+  overflow: hidden;
+}
+
+html.cx-ofix-lock,
+html.cx-ofix-lock body {
+  overflow: hidden;
+}
+
+/* Classic (space-taking) scrollbars: hiding root overflow would widen the
+   viewport ~15px on every open and slide the fixed panel mid-fade on close.
+   Reserving the gutter for the WHOLE feature-on session keeps the page and
+   the drawer pixel-stable through open/lock/close (review C4); overlay
+   scrollbars (default macOS/iOS) are unaffected either way. */
+html.cx-ofix {
+  scrollbar-gutter: stable;
+}
+
+/* Stop chain-out of the drawer's one scroller (Safari 16+/Chrome). */
+html.cx-ofix .mini-cart__content {
+  overscroll-behavior: contain;
+}
+
+/* A drag that STARTS on the dimmed page can never become a page scroll. */
+html.cx-ofix .mini-cart__bg {
+  touch-action: none;
+}
+
+/* 3) PINNED CHECKOUT — cart_pinned_checkout. .mini-cart__actions is the
+   LAST child of the scroll container, the textbook sticky footer: pinned to
+   the visible bottom while content remains below, settling into flow at the
+   end. CSS-only, zero DOM moves — decorateCtaButtons' selector and the
+   theme section's subtotal observer keep working on the same nodes. A cart
+   too short to scroll renders it in normal flow, exactly like today. The
+   checkout pill keeps the theme's full size (merchant: a comfortable bar,
+   not a slim one); View Cart is demoted to a quiet underlined link with the
+   44px touch floor kept. safe-area padding: under a 100dvh drawer the bar
+   sits against the iPhone home indicator. */
+html.cx-pin .mini-cart__actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: #fff;
+  border-block-start: 1px solid #f4f4f4;
+  box-shadow: 0 -6px 16px rgba(29, 29, 27, 0.08);
+  padding: 14px 20px;
+  padding-block-end: calc(14px + env(safe-area-inset-bottom, 0px));
+}
+
+html.cx-pin .mini-cart__actions div {
+  margin-bottom: 0;
+  text-align: center;
+}
+
+html.cx-pin .mini-cart__actions div + div {
+  margin-block-start: 2px;
+}
+
+html.cx-pin .mini-cart__actions .btn--tert {
+  background: none;
+  border: 0;
+  width: auto;
+  min-width: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: #808080;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* 4) SCROLL CUE — cart_compact. Zero text, zero locale bytes, invisible to
+   the accessibility tree (content:"" pseudos), pointer-events none so it
+   can never intercept a tap. Shown only while .cx-more-below (maintained by
+   ofixCueUpdate) says content remains below; its disappearance at the end
+   is itself the "you have seen everything" signal. Chevron ONLY — an
+   earlier white fade veil was cut in review (C5): the veil zone spends the
+   last screenfuls over the theme's solid #f4f4f4 subtotal footer, where a
+   white haze reads as broken UI; the ink chevron is legible on both
+   grounds, and the cut-off content peek carries the rest of the affordance.
+   4a — WITH the pinned bar: chevron anchored ABOVE the bar (bottom: 100%
+   of the sticky, positioned actions element). */
+html.cx-compact.cx-pin .mini-cart__actions::after {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  width: 11px;
+  height: 11px;
+  border-right: 2px solid #1d1d1b;
+  border-bottom: 2px solid #1d1d1b;
+  transform: translateX(-50%) rotate(45deg);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+html.cx-compact.cx-pin .mini-cart__content.cx-more-below .mini-cart__actions::after {
+  opacity: 0.9;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html.cx-compact.cx-pin .mini-cart__content.cx-more-below .mini-cart__actions::after {
+    animation: cx-ofix-nudge 2s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes cx-ofix-nudge {
+  from {
+    transform: translateX(-50%) rotate(45deg) translate(0, 0);
+  }
+  to {
+    /* 45deg-rotated axis: translate(2px,2px) is a net DOWNWARD drift */
+    transform: translateX(-50%) rotate(45deg) translate(2px, 2px);
+  }
+}
+
+/* 4b — WITHOUT the pinned bar: a sticky, zero-flow-height pseudo pinned to
+   the visible bottom of the scroll container (its flow position is after
+   .mini-cart__actions, so sticky bottom:0 holds it at the scrollport edge
+   until the very end). The chevron is an inline-SVG background (ink
+   #1d1d1b, URL-encoded) — no fade layer, see the review-C5 note above. */
+html.cx-compact:not(.cx-pin) .mini-cart__content::after {
+  content: "";
+  position: sticky;
+  bottom: 0;
+  display: block;
+  height: 24px;
+  margin-block-start: -24px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='8'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%231d1d1b' stroke-width='2'/%3E%3C/svg%3E")
+      center bottom 8px / 14px 8px no-repeat;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+html.cx-compact:not(.cx-pin) .mini-cart__content.cx-more-below::after {
+  opacity: 0.9;
+}
+
+/* 5) COMPACTION — cart_compact, phones only (the theme's own 576px
+   breakpoint). Merchant rules: the product photo keeps its exact size, no
+   font-size is reduced anywhere, every touch target keeps the 44px floor —
+   all savings are padding/margin/duplication.
+   The product row is REORGANIZED instead of shrunk: the theme prints the
+   price twice per row (span.unit-price under the size line AND div.price
+   next to the qty stepper — visually identical for the qty-1 case) — keep
+   the one next to the stepper; and the theme's OWN slimmer stepper rule
+   (".mini-cart__list .product__info .actions .aty button { padding: 17px
+   0 }") has been dead since it shipped — `.aty` is a typo for `.qty` — so
+   the 17px value below simply enacts what the theme intended: 44px-tall
+   buttons, exactly the house touch floor.
+   The __actions rules stay out of the cx-pin case (the pinned bar owns its
+   own geometry above). */
+@media (max-width: 576px) {
+  html.cx-compact .mini-cart__header {
+    padding: 14px 20px;
+    border-bottom-width: 4px;
+  }
+
+  html.cx-compact .mini-cart__list {
+    padding: 16px;
+  }
+
+  html.cx-compact .mini-cart__list .product {
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+
+  html.cx-compact .mini-cart__list .product__info .title .var {
+    margin-top: 2px;
+  }
+
+  html.cx-compact .mini-cart__list .product__info .title .delivery {
+    margin-top: 4px;
+  }
+
+  html.cx-compact .mini-cart__list .product__info .unit-price {
+    display: none;
+  }
+
+  html.cx-compact .mini-cart__list .product__info .actions {
+    margin-top: 8px;
+  }
+
+  html.cx-compact .mini-cart__list .qty .js-qty {
+    padding: 17px 0;
+  }
+
+  html.cx-compact .mini-cart__footer {
+    padding: 16px 20px;
+  }
+
+  html.cx-compact .mini-cart__footer .sub-total {
+    margin-bottom: 8px;
+  }
+
+  html.cx-compact:not(.cx-pin) .mini-cart__actions {
+    padding: 16px 20px;
+  }
+
+  html.cx-compact:not(.cx-pin) .mini-cart__actions div {
+    margin-bottom: 8px;
+  }
+
+  html.cx-compact .cx-cart-booster {
+    padding-block: 2px;
+    padding-inline: 16px;
+  }
+
+  html.cx-compact .cx-azfree {
+    margin-block-end: 6px;
+  }
+
+  html.cx-compact .cx-dispatch--cart {
+    margin-block-end: 6px;
+  }
+
+  html.cx-compact .cx-cart-booster .cx-delivery {
+    margin-block-end: 6px;
+  }
+
+  html.cx-compact .cx-shipbar {
+    margin-block-end: 10px;
+  }
+
+  html.cx-compact .cx-shipbar__msg {
+    margin: 0 0 6px;
+  }
+
+  html.cx-compact .cx-rw-meter {
+    margin-block-end: 10px;
+  }
+
+  html.cx-compact .cx-rw-meter__track {
+    margin-block: 4px 8px;
+  }
+
+  html.cx-compact .cx-rw-meter--caps .cx-rw-meter__track {
+    margin-block-end: 24px;
+  }
+
+  html.cx-compact .cx-rw-nudge {
+    margin-block-end: 10px;
+  }
+
+  html.cx-compact .cx-volume {
+    margin-block-end: 10px;
+  }
+
+  html.cx-compact .cx-volume__title {
+    margin: 0 0 2px;
+  }
+
+  /* Merchant-approved: the "Your current pack" subtitle hides on phones —
+     the title plus the tiles carry the message; desktop keeps it. */
+  html.cx-compact .cx-volume__current {
+    display: none;
+  }
+
+  html.cx-compact .cx-volume__tile {
+    padding: 10px 8px 9px;
+  }
+
+  html.cx-compact .cx-subswitch {
+    padding: 12px;
+    margin-block-end: 10px;
+  }
+
+  html.cx-compact .cx-crosssell {
+    margin-block-end: 10px;
+  }
+
+  html.cx-compact .cx-crosssell__title {
+    margin: 0 0 6px;
+  }
+
+  html.cx-compact .cx-crosssell__list {
+    gap: 6px;
+  }
+
+  html.cx-compact .cx-crosssell__item {
+    padding: 6px 8px;
+  }
+
+  html.cx-compact .cx-crosssell__img {
+    width: 48px;
+    height: 48px;
+  }
+
+  html.cx-compact .cx-trust-row {
+    padding-block: 8px;
+  }
+}

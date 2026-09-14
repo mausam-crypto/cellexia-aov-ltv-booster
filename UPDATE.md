@@ -231,7 +231,101 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v20 image badges on mobile — what this release changes
+## 3a. v21 cart overlay features — what this release changes
+
+**No database migration. No new API scopes. No webhook changes. No new
+translated strings (the Greek/Arabic locale files are untouched).** Deploy
+BOTH halves exactly as §3 describes: the extension carries the CSS/JS, the
+app server carries the three settings and writes the metafield.
+
+### What changed
+
+Three new, fully independent features for the "YOUR CART" overlay, each its
+own switch on the **Cart** features page, each with its own market targeting,
+each armable in the Preview Center alone or in any combination. **All three
+ship OFF** — until you turn one on, the drawer is byte-identical to today.
+
+1. **Cart overlay fix** (`cart_overlay_fix`) — the bug fixes:
+   - The page behind the open cart is frozen, so a swipe always scrolls the
+     cart and never the site underneath. (Your theme adds a `cart-open` class
+     when the drawer opens but ships no CSS for it — nothing ever locked the
+     page. This feature gives that class meaning, plus a second, observer-
+     driven lock, the same `overflow: hidden` technique the theme already
+     uses for its own mobile menu.)
+   - The overlay fills the phone screen exactly. The theme sizes the drawer
+     with an inline `height: calc(100vh - headerPx)` (re-applied on every
+     scroll), which leaves a header-height band of the page visible at the
+     bottom because the drawer overlays from the very top; and `100vh` on
+     iPhones is the large viewport, not the visible one. The feature forces
+     `100dvh` (with a `100vh` fallback) on the drawer, panel and backdrop.
+   - **The quantity box is no longer blank.** `sections/mini-cart.liquid`
+     fills the qty input from `item.quantity` inside a `for line_item` loop —
+     `item` does not exist, so every page-load render ships `value=""`; only
+     the JS rebuild after a cart change fills it (that is why it came and
+     went). The extension now fills any BLANK qty input from the cart data by
+     line index. It never overwrites a non-blank value (a shopper's own
+     typing), so it stays harmless if your theme developer lands the real
+     one-word fix (`item` → `line_item` at the qty input, mini-cart.liquid
+     ~L84-93) — after that the heal simply never has anything to do.
+
+2. **Compact cart** (`cart_compact`) — phones only (≤ 576 px, the theme's own
+   breakpoint): tighter spacing so the whole cart fits about one screen with
+   every widget on. The product photo keeps its exact size and no text gets
+   smaller; the row is reorganized instead — the duplicated per-row price
+   (the theme prints it twice) is reduced to one, the quantity control drops
+   to the 44 px height the theme itself intended (its own slimmer rule has
+   been dead since it shipped: `.aty` is a typo for `.qty`), the small
+   "Your current pack" line hides on phones, and paddings/margins tighten
+   everywhere (header, items, totals, our widgets, "Pairs perfectly" rows).
+   It also adds the **scroll cue**: a small dark down-arrow near the bottom
+   edge while there is more content below, gone once the shopper reaches the
+   end. Pure CSS, no text, nothing to tap. (An earlier fade layer was cut in
+   review: it would have painted white haze over the grey subtotal block.)
+
+3. **Pinned checkout button** (`cart_pinned_checkout`): the checkout button
+   (which already shows the order total) stays always visible in a
+   comfortable white bar at the bottom of the drawer with a soft shadow;
+   "View Cart" becomes a small underlined link under it. The cart content
+   scrolls beneath the bar. CSS-only (`position: sticky` on the theme's own
+   actions element) — no node moves, so the cart button counter and the
+   theme's subtotal updater keep working untouched.
+
+One honest interaction: the cue and the pinned bar can only sit in the right
+place if the drawer is sized to the real screen, so features 2 and 3 each
+include the screen-fit height correction for themselves. Feature 1 remains
+the only one that locks the page and heals the quantity box.
+
+### What it does NOT do
+
+No new widget is painted, so there is no new impression in analytics (the
+image-badges precedent). Nothing changes on desktop layouts except the
+height/lock corrections (the 400 px right-hand panel keeps its width). The
+cart PAGE (/cart) is untouched. Turning a switch off restores the theme's
+current behavior instantly — the storefront CSS is inert without the gate
+classes the runtime plants.
+
+### Try it before it goes live
+
+Preview Center → draft any of the three (alone or together) → open the
+storefront preview on your phone → add something to the cart. Check: no site
+band at the bottom, swiping never moves the page behind, the quantity number
+shows right away, the checkout bar stays visible, the little arrow fades away
+at the end. Then turn the features on per market on the Cart page or the
+Markets matrix.
+
+### Liquid budget
+
+Total theme-extension Liquid **97,972 B** (budget 99,500 B, Shopify's hard
+cap 102,400 B); `blocks/cart-booster.liquid` **23,356 B** against its own
+23,600 B cap. The release's ~900 B of gates and island members were paid for
+FIRST (the "slim before you spend" rule) by ~1,050 B of diet in the same
+file: the top-of-file assigns folded into one `{%- liquid -%}` block, a
+duplicate `cx_country` assign deleted, and 24 translated-string lines
+collapsed into two loops that mirror the file's own `bought_count` loop
+precedent (identical keys and values; JSON member order is parser-neutral).
+The release leaves 244 B of per-file headroom where it found 87 B.
+
+## 3b. v20 image badges on mobile — what this release changes
 
 **No database migration. No new API scopes. No webhook changes. No new
 translated strings.** Deploy the app server and the extensions exactly as §3
@@ -273,7 +367,7 @@ mechanically and proved byte-identical for every icon before it landed, so the
 five legacy blocks that render those icons are unchanged on the page. The
 release LEAVES 1,371 B of headroom where it found 207 B.
 
-## 3b. v18 free gifts V2 — what this release changes
+## 3c. v18 free gifts V2 — what this release changes
 
 **No database migration. No new API scopes. No webhook changes.** Deploy the
 app server and the extensions exactly as §3 describes; nothing extra is needed
@@ -487,7 +581,7 @@ v20 — IMAGE BADGES ON MOBILE (2026-09-11):
 - New FeatureKey `image_badges` (38 -> 39, appended at the end), settings
   section `imageBadges` {enabled false, scale 140}, configured on Trust &
   badges, previewable, market-scoped. Full contract:
-  `docs/SPEC-v20-image-badges.md`; deploy notes in §3a above.
+  `docs/SPEC-v20-image-badges.md`; deploy notes in §3b above.
 - Storefront surface is ONE CSS declaration: the width of the theme's own
   `.pdp .badges .badge` on phones, from a custom property the PDP asset
   writes after measuring the live product image. No node, no copy, no locale

@@ -50,7 +50,8 @@ const MARKETS = ["ch", "eu", "us"];
 // v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
 // v19 (2026-09-09): 37 -> 38 (buy_box_proof appended at the END).
 // v20 (2026-09-11): 38 -> 39 (image_badges appended at the END).
-ok(FEATURE_KEYS.length === 39, `39 FeatureKeys (got ${FEATURE_KEYS.length})`);
+// v21 (2026-09-14): 39 -> 42 (cart_overlay_fix + cart_compact + cart_pinned_checkout appended at the END).
+ok(FEATURE_KEYS.length === 42, `42 FeatureKeys (got ${FEATURE_KEYS.length})`);
 ok(new Set(FEATURE_KEYS).size === FEATURE_KEYS.length, "no duplicate keys");
 ok(AMAZON_FLAG_FIELDS.length === FEATURE_KEYS.filter((k) => k.startsWith("az_")).length,
   "one amazon flag field per az_* key");
@@ -63,6 +64,8 @@ function rawValue(s: BoosterSettings, key: FeatureKey): boolean {
   if (raw.kind === "checkoutTrust") return s.checkoutTrust[raw.field];
   // v14: the two rewards masters live at rewards.<setSavings|giftTiers>.enabled.
   if (raw.kind === "rewards") return s.rewards[raw.field].enabled;
+  // v21: the three overlay flags are sibling booleans in overlayFix.
+  if (raw.kind === "overlay") return s.overlayFix[raw.field];
   return s.amazon[raw.field];
 }
 
@@ -226,7 +229,9 @@ for (const key of FEATURE_KEYS) {
             ? typeof snap.checkoutTrustSubFlags?.[raw.field] === "boolean"
             : raw.kind === "rewards"
               ? typeof snap.rewardsFlags?.[raw.field] === "boolean"
-              : typeof snap.amazonFlags?.[raw.field] === "boolean";
+              : raw.kind === "overlay"
+                ? typeof snap.overlayFlags?.[raw.field] === "boolean"
+                : typeof snap.amazonFlags?.[raw.field] === "boolean";
     ok(captured, `snapshot captures the raw field of ${key}`);
   }
   ok(typeof snap.cartMaster === "boolean", "snapshot captures the cart master");

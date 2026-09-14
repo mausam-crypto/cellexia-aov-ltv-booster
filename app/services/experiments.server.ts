@@ -1036,6 +1036,14 @@ function hashCanonical(
           { field: raw.field, on: snapshot.rewardsFlags?.[raw.field] ?? null },
         ];
       }
+      // v21 overlay-kind raw flags (scrollFix/compact/pinned under
+      // overlayFix.<field>) ride the same array under the same
+      // no-collision/byte-identical-without-them contract.
+      if (raw?.kind === "overlay") {
+        return [
+          { field: raw.field, on: snapshot.overlayFlags?.[raw.field] ?? null },
+        ];
+      }
       return raw?.kind === "section"
         ? [{ field: raw.field, on: snapshot.sectionEnabled[raw.field] }]
         : [];
@@ -1661,6 +1669,13 @@ export async function concludeExperiment(
               (typeof snapshot.checkoutTrustSubFlags?.[raw.field] !==
                 "boolean" ||
                 typeof snapshot.sectionEnabled?.checkoutTrust !== "boolean"),
+          ) ||
+          // v21: overlay-kind restores read overlayFlags — no pre-v21
+          // snapshot can carry a v21 flip key, so this can never false-fire.
+          flippedRawFields.some(
+            (raw) =>
+              raw.kind === "overlay" &&
+              typeof snapshot.overlayFlags?.[raw.field] !== "boolean",
           ) ||
           flippedKeys.some((key) => {
             const scope = snapshot.marketScopes?.[key];

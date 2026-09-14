@@ -92,7 +92,12 @@ export type FeatureKey =
   | "buy_box_proof"
   // v20 product-image badges (docs/SPEC-v20-image-badges.md) — appended at
   // the END for the same reason.
-  | "image_badges";
+  | "image_badges"
+  // v21 cart overlay features (docs/SPEC-v21-cart-overlay.md) — appended at
+  // the END for the same reason.
+  | "cart_overlay_fix"
+  | "cart_compact"
+  | "cart_pinned_checkout";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "cart_volume_upsell",
@@ -137,6 +142,10 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "buy_box_proof",
   // v20 product-image badges — appended last (38 → 39 keys).
   "image_badges",
+  // v21 cart overlay features — appended last (39 → 42 keys).
+  "cart_overlay_fix",
+  "cart_compact",
+  "cart_pinned_checkout",
 ];
 
 /**
@@ -169,6 +178,15 @@ export type AmazonFlagField = (typeof AMAZON_FLAG_FIELDS)[number];
  */
 export const REWARDS_FLAG_FIELDS = ["setSavings", "giftTiers"] as const;
 export type RewardsFlagField = (typeof REWARDS_FLAG_FIELDS)[number];
+
+/**
+ * v21: the three cart-overlay feature flags, stored as sibling booleans in
+ * the single `overlayFix` section (the amazon convention — no shared master,
+ * no `.enabled`). Array order mirrors FEATURE_KEYS' v21 order
+ * (cart_overlay_fix, cart_compact, cart_pinned_checkout).
+ */
+export const OVERLAY_FLAG_FIELDS = ["scrollFix", "compact", "pinned"] as const;
+export type OverlayFlagField = (typeof OVERLAY_FLAG_FIELDS)[number];
 
 /**
  * PDP placement choices for the az_fbt / az_similar_items sections (v6.5).
@@ -1194,6 +1212,30 @@ export interface BoosterSettings {
     scale: number;
   };
   /**
+   * v21 — the three cart-overlay features (docs/SPEC-v21-cart-overlay.md).
+   * Three INDEPENDENT flags (no master-child coupling), each its own
+   * FeatureKey, each market-scoped and previewable. All storefront work is
+   * CSS in cellexia-booster.css under a gate class the runtime plants only
+   * while the matching flag is effective, plus a small class-toggling module
+   * in cellexia-cart.js — no node is painted, so none of the three carries a
+   * data-cx-feature marker or a beacon (the v20 image_badges precedent).
+   */
+  overlayFix: {
+    /** cart_overlay_fix — the drawer bug fixes: freeze the page behind the
+     *  open drawer (scroll lock), size the drawer to the real visible
+     *  viewport (dvh vs the theme's stale inline 100vh calc), and heal the
+     *  qty inputs the theme's Liquid path renders with value="" (the
+     *  mini-cart.liquid `item` vs `line_item` typo). */
+    scrollFix: boolean;
+    /** cart_compact — phone-only spacing compaction of the drawer (row
+     *  reorg, one price per row, the theme's intended 44px stepper) plus the
+     *  fade+chevron "more below" scroll cue. */
+    compact: boolean;
+    /** cart_pinned_checkout — the checkout button pinned always-visible in a
+     *  sticky bottom bar of the drawer's scroll container. */
+    pinned: boolean;
+  };
+  /**
    * Amazon-pattern features (v6.1; eleven flags since the v6.8
    * stock/ships-from split) — independent flags plus the
    * language-neutral "Ships from" warehouse config. We model Amazon's
@@ -1685,6 +1727,11 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   imageBadges: {
     enabled: false,
     scale: IMAGE_BADGE_DEFAULT_SCALE,
+  },
+  overlayFix: {
+    scrollFix: false,
+    compact: false,
+    pinned: false,
   },
   amazon: {
     buyBox: false,
@@ -3181,6 +3228,12 @@ export function sanitizeSettings(
     ),
   );
 
+  // v21: three independent default-OFF flags — strict === true so any junk
+  // (or a pre-v21 blob healed by mergeSettings) lands on false, never on.
+  next.overlayFix.scrollFix = next.overlayFix.scrollFix === true;
+  next.overlayFix.compact = next.overlayFix.compact === true;
+  next.overlayFix.pinned = next.overlayFix.pinned === true;
+
   next.clinicalResults.stats = (next.clinicalResults.stats ?? [])
     .filter(
       (stat) =>
@@ -4076,6 +4129,30 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     },
     siblings: [],
   },
+  cart_overlay_fix: {
+    label: "Cart overlay fix",
+    get: (s) => s.overlayFix.scrollFix,
+    set: (s, on) => {
+      s.overlayFix.scrollFix = on;
+    },
+    siblings: [],
+  },
+  cart_compact: {
+    label: "Compact cart",
+    get: (s) => s.overlayFix.compact,
+    set: (s, on) => {
+      s.overlayFix.compact = on;
+    },
+    siblings: [],
+  },
+  cart_pinned_checkout: {
+    label: "Pinned checkout button",
+    get: (s) => s.overlayFix.pinned,
+    set: (s, on) => {
+      s.overlayFix.pinned = on;
+    },
+    siblings: [],
+  },
   clinical_results: {
     label: "Clinical results",
     get: (s) => s.clinicalResults.enabled,
@@ -4425,6 +4502,8 @@ export const FEATURE_RAW_FIELD: Record<
   | { kind: "checkoutTrust"; field: CheckoutTrustSubFlagField }
   // v14: rewards.<field>.enabled (setSavings / giftTiers).
   | { kind: "rewards"; field: RewardsFlagField }
+  // v21: overlayFix.<field> — sibling booleans, the amazon convention.
+  | { kind: "overlay"; field: OverlayFlagField }
 > = {
   cart_volume_upsell: { kind: "cart", field: "showVolumeUpsell" },
   free_shipping_bar: { kind: "cart", field: "showFreeShippingBar" },
@@ -4465,6 +4544,9 @@ export const FEATURE_RAW_FIELD: Record<
   az_cta_count: { kind: "amazon", field: "ctaCount" },
   set_savings: { kind: "rewards", field: "setSavings" },
   gift_tiers: { kind: "rewards", field: "giftTiers" },
+  cart_overlay_fix: { kind: "overlay", field: "scrollFix" },
+  cart_compact: { kind: "overlay", field: "compact" },
+  cart_pinned_checkout: { kind: "overlay", field: "pinned" },
 };
 
 /**
@@ -4491,6 +4573,9 @@ export interface FlagsSnapshot {
   /** v14 rewards masters (rewards.setSavings.enabled / rewards.giftTiers
    *  .enabled). Optional for the same old-snapshot back-compat reason. */
   rewardsFlags?: Record<RewardsFlagField, boolean>;
+  /** v21 overlayFix sibling flags. Optional for the same old-snapshot
+   *  back-compat reason. */
+  overlayFlags?: Record<OverlayFlagField, boolean>;
   marketScopes: Record<FeatureKey, MarketScope>;
 }
 
@@ -4521,6 +4606,9 @@ export function snapshotFlags(settings: BoosterSettings): FlagsSnapshot {
         settings.rewards[field].enabled,
       ]),
     ) as Record<RewardsFlagField, boolean>,
+    overlayFlags: Object.fromEntries(
+      OVERLAY_FLAG_FIELDS.map((field) => [field, settings.overlayFix[field]]),
+    ) as Record<OverlayFlagField, boolean>,
     marketScopes: structuredClone(settings.marketScopes),
   };
 }
@@ -4551,6 +4639,11 @@ export function restoreFlags(
   for (const field of REWARDS_FLAG_FIELDS) {
     const value = snapshot.rewardsFlags?.[field];
     if (typeof value === "boolean") settings.rewards[field].enabled = value;
+  }
+  // v21: same skip-if-absent contract for pre-v21 snapshots.
+  for (const field of OVERLAY_FLAG_FIELDS) {
+    const value = snapshot.overlayFlags?.[field];
+    if (typeof value === "boolean") settings.overlayFix[field] = value;
   }
   settings.marketScopes = structuredClone(snapshot.marketScopes);
   return settings;
@@ -4598,6 +4691,10 @@ export function restoreFlagsSelective(
     if (raw?.kind === "rewards") {
       const value = snapshot.rewardsFlags?.[raw.field];
       if (typeof value === "boolean") settings.rewards[raw.field].enabled = value;
+    }
+    if (raw?.kind === "overlay") {
+      const value = snapshot.overlayFlags?.[raw.field];
+      if (typeof value === "boolean") settings.overlayFix[raw.field] = value;
     }
     if (raw?.kind === "checkoutTrust") {
       // The row flip may have force-isolated the dormant SIBLING row, raised

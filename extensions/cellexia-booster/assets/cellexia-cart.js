@@ -123,7 +123,12 @@
     // v14 rewards (SPEC-v14 §4): the two new FeatureKeys ride the same
     // Liquid-precomputed effective flags — anyEffectiveLive() sees them.
     setSavings: 'set_savings',
-    giftTiers: 'gift_tiers'
+    giftTiers: 'gift_tiers',
+    // v21 cart overlay features (SPEC-v21): three independent flags, all
+    // CSS-scoped — the JS only plants gate classes (ofixSync).
+    ofix: 'cart_overlay_fix',
+    compact: 'cart_compact',
+    pinned: 'cart_pinned_checkout'
   };
 
   function featureOn(key) {
@@ -5799,6 +5804,131 @@
     });
   }
 
+  // ---------------------------------------------- v21 cart overlay features
+  // Three independent FeatureKeys (cart_overlay_fix / cart_compact /
+  // cart_pinned_checkout, EFFECTIVE keys ofix / compact / pinned). ALL layout
+  // ships as CSS in cellexia-booster.css scoped under the html gate classes
+  // cx-ofix / cx-compact / cx-pin; this module only (1) plants/strips those
+  // classes, (2) mirrors the drawer's is-open onto html.cx-ofix-lock (the
+  // scroll lock — CSS-only, no scrollY juggling: zeroing scrollY would fire
+  // the theme's accumulated headerOffset scroll handlers), (3) maintains the
+  // cx-more-below cue class on .mini-cart__content, and (4) heals the qty
+  // inputs the theme's Liquid path renders with value="" (mini-cart.liquid
+  // reads `item.quantity` inside a `for line_item` loop — undefined — while
+  // the theme's JS rebuild path fills them correctly, hence "sometimes").
+  // Classes go on documentElement and __content ONLY: writing to
+  // .mini-cart's own class attribute would fire the theme section's
+  // MutationObserver and its 1s-delayed /cart.js fetch on every sync.
+  // Paints no node of its own -> no data-cx-feature marker, no beacon (the
+  // v20 image_badges precedent). Everything try/caught and idempotent; any
+  // missing anchor degrades to the theme's current behavior.
+  var ofixBound = null; // the .mini-cart__content the cue listeners bind to
+  var ofixRaf = 0;
+  // The lock's RELEASE depends on the is-open class observer (setupObservers
+  // bails without MutationObserver) — a browser that cannot mirror close
+  // transitions must never lock at all, or a late renderAll could freeze the
+  // page for good. Height/cue/heal still work there (review C3).
+  var ofixCanLock = typeof MutationObserver === 'function';
+
+  function ofixQtyHeal() {
+    if (!featureOn('ofix')) return;
+    var cart = state.cart;
+    if (!cart || !cart.items) return;
+    var rows = document.querySelectorAll('.mini-cart__list .product--cart');
+    // Count mismatch = the DOM and state.cart disagree (mid-rebuild, or a
+    // foreign app's rows) — never guess a mapping, wait for the next pass.
+    if (!rows.length || rows.length !== cart.items.length) return;
+    for (var i = 0; i < rows.length; i++) {
+      var input = rows[i].querySelector('.qty input');
+      // Blank-only, and never the FOCUSED input: after the first heal the
+      // only blank field left is one the shopper just cleared to retype —
+      // refilling it under their cursor would let the theme's keyup
+      // autocommit order a concatenated quantity (review C1).
+      if (!input || input.value !== '' || input === document.activeElement) continue;
+      var lineid = parseInt(rows[i].getAttribute('data-lineid'), 10);
+      var item = cart.items[lineid - 1];
+      if (!item || typeof item.quantity !== 'number') continue;
+      // Identity check: the only render path that produces blanks (Liquid)
+      // also stamps data-varid — a mismatch means these rows predate the
+      // cart we hold (another tab changed it); skip rather than fill a
+      // different line's quantity (review C2). JS-rebuilt rows carry no
+      // data-varid, and their inputs are never blank.
+      var varid = rows[i].getAttribute('data-varid');
+      if (varid && String(item.id) !== varid) continue;
+      input.value = String(item.quantity);
+    }
+  }
+
+  function ofixCueUpdate() {
+    try {
+      var content = ofixBound || document.querySelector('.mini-cart__content');
+      if (!content) return;
+      var more = false;
+      if (featureOn('compact') && drawerIsOpen()) {
+        // 24px tolerance: sub-pixel scroll heights, iOS momentum jitter and
+        // the safe-area sliver all count as "at the end" — the cue's
+        // disappearance is itself the "you have seen everything" signal.
+        more = content.scrollHeight - content.clientHeight - content.scrollTop > 24;
+      }
+      if (more) content.classList.add('cx-more-below');
+      else content.classList.remove('cx-more-below');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function ofixSync() {
+    try {
+      var root = document.documentElement;
+      var mini = document.querySelector('.mini-cart');
+      if (!mini) {
+        // Fail closed: no drawer, no scope classes — every cx-ofix/cx-compact/
+        // cx-pin CSS rule goes inert and the page is exactly the theme's own.
+        root.classList.remove('cx-ofix');
+        root.classList.remove('cx-ofix-lock');
+        root.classList.remove('cx-compact');
+        root.classList.remove('cx-pin');
+        if (ofixBound) ofixBound.classList.remove('cx-more-below');
+        return;
+      }
+      var ofix = featureOn('ofix');
+      var compact = featureOn('compact');
+      var pinned = featureOn('pinned');
+      if (ofix) root.classList.add('cx-ofix');
+      else root.classList.remove('cx-ofix');
+      if (compact) root.classList.add('cx-compact');
+      else root.classList.remove('cx-compact');
+      if (pinned) root.classList.add('cx-pin');
+      else root.classList.remove('cx-pin');
+      if (ofix && ofixCanLock && drawerIsOpen()) root.classList.add('cx-ofix-lock');
+      else root.classList.remove('cx-ofix-lock');
+      var content = document.querySelector('.mini-cart__content');
+      if (compact && content && content !== ofixBound) {
+        // Scroll events are not cancelable, so no passive flag is needed;
+        // capture-phase load catches drawer <img> loads growing scrollHeight.
+        content.addEventListener('scroll', ofixCueUpdate, false);
+        content.addEventListener('load', ofixSchedule, true);
+        ofixBound = content;
+      }
+      ofixCueUpdate();
+      ofixQtyHeal();
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function ofixSchedule() { // rAF-coalesced for bursty resize/rotate/load
+    if (ofixRaf) return;
+    var raf = window.requestAnimationFrame || function (fn) { return window.setTimeout(fn, 16); };
+    ofixRaf = raf(function () { ofixRaf = 0; ofixSync(); });
+  }
+
+  function ofixInit() {
+    try {
+      if (!featureOn('ofix') && !featureOn('compact') && !featureOn('pinned')) return;
+      window.addEventListener('resize', ofixSchedule, false);
+      window.addEventListener('orientationchange', ofixSchedule, false);
+      window.addEventListener('pageshow', ofixSchedule, false); // bfcache restore re-verdict
+      ofixSync();
+    } catch (e) { /* never break the theme */ }
+  }
+
   function ensureDrawerRoot() {
     var content = document.querySelector('.mini-cart__content');
     if (!content) return null;
@@ -6598,6 +6728,7 @@
       rwSyncCode();
       rwSyncGifts();
       rwUpdateWhy(); // v18: keep the preview status line tracking the cart
+      ofixSync(); // v21: widget stack height is final for this pass
     } catch (e) { /* never break the theme */ }
   }
 
@@ -6608,6 +6739,9 @@
     var mini = document.querySelector('.mini-cart');
     if (mini) {
       var classObserver = new MutationObserver(function () {
+        // v21 FIRST and unconditional: close transitions must release the
+        // scroll lock in the same pre-paint callback that saw them.
+        ofixSync();
         var open = mini.classList.contains('is-open');
         if (open && !state.wasOpen) {
           state.openImpressions = {};
@@ -6641,6 +6775,7 @@
         // the debounced refresh reconcile with a fresh cart fetch.
         decorateSubscriptionRows();
         scheduleRefresh();
+        ofixSchedule(); // v21: list wipes change scrollHeight + qty inputs
       });
       listObserver.observe(list, { childList: true });
     }
@@ -6893,6 +7028,7 @@
     // guard. Verified preview sessions (PREVIEW set) still boot fully.
     if (!PREVIEW && !anyEffectiveLive()) return;
     setupObservers();
+    ofixInit(); // v21: gate classes + lock/cue/qty-heal listeners
     installThemeCartHook(); // v16: synchronous seed from the theme's own cart payload
     schedulePageProductPrefetch(); // v16: product pages — product data + cross-sell warm before the add
     refresh();

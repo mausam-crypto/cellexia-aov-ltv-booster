@@ -103,6 +103,9 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
       "dispatch_countdown",
       "set_savings",
       "gift_tiers",
+      "cart_overlay_fix",
+      "cart_compact",
+      "cart_pinned_checkout",
     ],
   },
   {

@@ -288,12 +288,18 @@ interface CartFormState {
   crossSellEnabled: boolean;
   crossSellMode: "auto" | "manual";
   crossSellMaxItems: string;
+  overlayScrollFix: boolean;
+  overlayCompact: boolean;
+  overlayPinned: boolean;
   scopes: {
     cart_volume_upsell: ScopeState;
     free_shipping_bar: ScopeState;
     cart_subscription_upsell: ScopeState;
     cart_trust_row: ScopeState;
     cart_cross_sell: ScopeState;
+    cart_overlay_fix: ScopeState;
+    cart_compact: ScopeState;
+    cart_pinned_checkout: ScopeState;
   };
 }
 
@@ -317,6 +323,9 @@ function initialFormState(settings: BoosterSettings): CartFormState {
     crossSellEnabled: settings.cartCrossSell.enabled,
     crossSellMode: settings.cartCrossSell.mode === "manual" ? "manual" : "auto",
     crossSellMaxItems: String(settings.cartCrossSell.maxItems),
+    overlayScrollFix: settings.overlayFix.scrollFix,
+    overlayCompact: settings.overlayFix.compact,
+    overlayPinned: settings.overlayFix.pinned,
     scopes: {
       cart_volume_upsell: toScopeState(settings.marketScopes.cart_volume_upsell),
       free_shipping_bar: toScopeState(settings.marketScopes.free_shipping_bar),
@@ -325,6 +334,11 @@ function initialFormState(settings: BoosterSettings): CartFormState {
       ),
       cart_trust_row: toScopeState(settings.marketScopes.cart_trust_row),
       cart_cross_sell: toScopeState(settings.marketScopes.cart_cross_sell),
+      cart_overlay_fix: toScopeState(settings.marketScopes.cart_overlay_fix),
+      cart_compact: toScopeState(settings.marketScopes.cart_compact),
+      cart_pinned_checkout: toScopeState(
+        settings.marketScopes.cart_pinned_checkout,
+      ),
     },
   };
 }
@@ -583,6 +597,27 @@ export default function CartFeaturesPage() {
         })),
         maxItems: Number(state.crossSellMaxItems) || 2,
       },
+      // Changed-only (the app.markets.tsx overlay discipline): an untouched
+      // stale tab must never rewrite the three overlay flags over a
+      // concurrent experiment flip. Only fields the merchant actually
+      // changed on THIS page ride the patch.
+      ...(state.overlayScrollFix !== initial.overlayScrollFix ||
+      state.overlayCompact !== initial.overlayCompact ||
+      state.overlayPinned !== initial.overlayPinned
+        ? {
+            overlayFix: {
+              ...(state.overlayScrollFix !== initial.overlayScrollFix
+                ? { scrollFix: state.overlayScrollFix }
+                : {}),
+              ...(state.overlayCompact !== initial.overlayCompact
+                ? { compact: state.overlayCompact }
+                : {}),
+              ...(state.overlayPinned !== initial.overlayPinned
+                ? { pinned: state.overlayPinned }
+                : {}),
+            },
+          }
+        : {}),
       marketScopes: scopesToPatch(state.scopes),
     };
     const formData = new FormData();
@@ -1055,6 +1090,45 @@ export default function CartFeaturesPage() {
               </BlockStack>
             </Card>
 
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Cart overlay on phones
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Three separate switches, independent of the cart upsells
+                  master above. Each one can be tried in the Preview Center
+                  first and turned on per market below, alone or in any
+                  combination. Compact cart and the pinned button each include
+                  the screen-fit correction they need to sit right.
+                </Text>
+                <Checkbox
+                  label="Cart overlay fix"
+                  helpText="Fixes three bugs in the cart overlay on phones: the page behind the cart no longer scrolls while the cart is open, the cart fills the whole screen so the site cannot peek through at the bottom, and the quantity number that sometimes showed empty is filled in."
+                  checked={state.overlayScrollFix}
+                  onChange={(overlayScrollFix) =>
+                    setState((previous) => ({ ...previous, overlayScrollFix }))
+                  }
+                />
+                <Checkbox
+                  label="Compact cart"
+                  helpText="Tightens spacing on phones so shoppers see more of the cart at once. The product photo keeps its size and no text gets smaller. Also adds a small down arrow while there is more to see below; it disappears at the end."
+                  checked={state.overlayCompact}
+                  onChange={(overlayCompact) =>
+                    setState((previous) => ({ ...previous, overlayCompact }))
+                  }
+                />
+                <Checkbox
+                  label="Pinned checkout button"
+                  helpText="Keeps the checkout button always visible in a white bar at the bottom of the cart, with View Cart as a small link under it. The cart content scrolls underneath the bar."
+                  checked={state.overlayPinned}
+                  onChange={(overlayPinned) =>
+                    setState((previous) => ({ ...previous, overlayPinned }))
+                  }
+                />
+              </BlockStack>
+            </Card>
+
             <MarketScopeCard
               title="Markets — Volume upsell"
               markets={markets}
@@ -1084,6 +1158,24 @@ export default function CartFeaturesPage() {
               markets={markets}
               scope={state.scopes.cart_cross_sell}
               onChange={(scope) => setScope("cart_cross_sell", scope)}
+            />
+            <MarketScopeCard
+              title="Markets — Cart overlay fix"
+              markets={markets}
+              scope={state.scopes.cart_overlay_fix}
+              onChange={(scope) => setScope("cart_overlay_fix", scope)}
+            />
+            <MarketScopeCard
+              title="Markets — Compact cart"
+              markets={markets}
+              scope={state.scopes.cart_compact}
+              onChange={(scope) => setScope("cart_compact", scope)}
+            />
+            <MarketScopeCard
+              title="Markets — Pinned checkout button"
+              markets={markets}
+              scope={state.scopes.cart_pinned_checkout}
+              onChange={(scope) => setScope("cart_pinned_checkout", scope)}
             />
           </BlockStack>
         </Layout.Section>

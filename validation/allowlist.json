@@ -210,6 +210,16 @@
       "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
       "reason": "v20 image badges: the ib* module (ibData/ibAllowed/ibScale/ibPhone/ibImageBox/ibBasePx/ibClear/ibSizeFor/ibApply/ibBind/mountImageBadges) plus its call at the top of init(). It paints NOTHING: it measures the theme's own badge row against the live product image and writes --cx-ib-w + .cx-ib-on on the row, which the stylesheet consumes below 576px only. No marker, no beacon, no template. The clamp, the fail-closed paths, idempotence and the live/draft gate are pinned by sims/image-badges.cjs (86 checks, 7 mutants).",
       "wave": "v20"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+      "reason": "v21 cart overlay features. Diet FIRST (the \"slim before you spend\" rule, -~1,050B): the top-of-file standalone assigns fold into one {%- liquid -%} block, the duplicate cx_country assign inside the main block is deleted (template-global, the top one always runs first), the six amazon.cta_count.* string lines become a for-loop mirroring the adjacent bought_count precedent, and 18 param-less strings (volume/subscription/crosssell/shipbar.unlocked/amazon.qualifies/a11y.loading) collapse into one cx_pk loop with identical keys and values (JSON member order/whitespace is parser-neutral). Then +~900B: cx_ov alias, three house-idiom gates (cx_eff_ofx/cpt/pin on their OWN marketScopes), three armed-preview draft flags into the draft-any chain, three emission-gate clauses in FRONT of the pinned v14 tail, and three always-emitted effective members (ofix/compact/pinned). Net: 23,513 -> 23,356B, 244B under the unmoved 23,600 cap. Pinned by harness v21 + sims/cart-overlay-fix.cjs.",
+      "wave": "v21"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+      "reason": "v21 cart overlay features: CART_FEATURE_KEYS gains ofix/compact/pinned and the ofix* module (ofixSync/ofixCueUpdate/ofixQtyHeal/ofixSchedule/ofixInit) plants the html gate classes cx-ofix/cx-compact/cx-pin, mirrors .mini-cart.is-open onto html.cx-ofix-lock from the EXISTING class observer, maintains cx-more-below on .mini-cart__content, and fills BLANK drawer qty inputs from state.cart by data-lineid (the theme's mini-cart.liquid `item` vs `line_item` typo renders value=\"\" on every page-load pass). Four hook lines: renderAll tail, classObserver first line, listObserver, init. Paints no node, no marker, no beacon (v20 precedent); never writes .mini-cart's own classList (theme observer fetch-storm guard). Pinned by harness v21 + sims/cart-overlay-fix.cjs (9 mutants).",
+      "wave": "v21"
     }
   ]
 }

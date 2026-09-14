@@ -125,7 +125,8 @@ const FEATURE_KEYS = parseFeatureKeys();
 // v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
 // v19 (2026-09-09): 37 -> 38 (buy_box_proof appended at the END).
 // v20 (2026-09-11): 38 -> 39 (image_badges appended at the END).
-ok(FEATURE_KEYS.length === 39, `FEATURE_KEYS parsed live: 39 keys (got ${FEATURE_KEYS.length})`);
+// v21 (2026-09-14): 39 -> 42 (cart_overlay_fix + cart_compact + cart_pinned_checkout appended at the END).
+ok(FEATURE_KEYS.length === 42, `FEATURE_KEYS parsed live: 42 keys (got ${FEATURE_KEYS.length})`);
 
 /**
  * Evidence map: every FeatureKey -> at least one verified pattern in a real
@@ -195,6 +196,9 @@ const EVIDENCE = {
   // cart_trust_row / az_bought_count precedent): the gate key is the
   // evidence, and the sizing it drives is pinned by sims/image-badges.
   image_badges: [{ file: PDP_JS, has: "'image_badges'", note: "v20 width-only feature on the theme's badges (gate key, no own node)" }],
+  cart_overlay_fix: [{ file: CART_JS, has: "'cart_overlay_fix'", note: "v21 CSS-scoped drawer bug fixes + qty heal (gate key, no own node, no beacon)" }],
+  cart_compact: [{ file: CART_JS, has: "'cart_compact'", note: "v21 CSS-scoped drawer compaction + scroll cue (gate key, no own node, no beacon)" }],
+  cart_pinned_checkout: [{ file: CART_JS, has: "'cart_pinned_checkout'", note: "v21 CSS-scoped sticky checkout bar (gate key, no own node, no beacon)" }],
 };
 
 {
@@ -3364,7 +3368,9 @@ const EVIDENCE = {
   // precede the member — a gate-less "rw" would leak gift variant data to
   // every visitor and inflate every cart page.
   const cartLiquid14 = read(`${EXT}/blocks/cart-booster.liquid`);
-  ok(cartLiquid14.includes("{%- assign cx_rw = cfg.rewards -%}"), "v14: cart-booster.liquid aliases cx_rw = cfg.rewards");
+  // v21 folded the top-of-file standalone assigns into one {%- liquid -%}
+  // block (byte diet) — the alias itself is unchanged.
+  ok(cartLiquid14.includes("assign cx_rw = cfg.rewards"), "v14: cart-booster.liquid aliases cx_rw = cfg.rewards");
   for (const [flag, master, scope] of [
     ["cx_eff_ss", "cx_rw.setSavings.enabled", "cfg.marketScopes.set_savings"],
     ["cx_eff_gt", "cx_rw.giftTiers.enabled", "cfg.marketScopes.gift_tiers"],
@@ -4297,8 +4303,8 @@ const EVIDENCE = {
 
   const ibSettings = read("app/models/settings.server.ts");
   ok(
-    /"image_badges",\n\];/.test(ibSettings),
-    "v20: image_badges is the LAST FeatureKey (appended, never inserted)",
+    ibSettings.includes('"image_badges",\n  // v21 cart overlay features — appended last (39 → 42 keys).\n  "cart_overlay_fix",\n  "cart_compact",\n  "cart_pinned_checkout",\n];'),
+    "v20/v21: image_badges then the three v21 overlay keys close FEATURE_KEYS (appended, never inserted)",
   );
   ok(
     ibSettings.includes("image_badges: { kind: \"section\", field: \"imageBadges\" }"),
@@ -4330,6 +4336,191 @@ const EVIDENCE = {
   ok(
     read("app/routes/app.features._index.tsx").includes('image_badges: "/app/features/badges"'),
     "v20: the features hub points Configure at the page that owns it",
+  );
+}
+
+// ==================================================== v21 CART OVERLAY
+//
+// Three independent FeatureKeys for the theme's mini-cart drawer —
+// cart_overlay_fix (scroll lock + dvh height + qty heal), cart_compact
+// (phone compaction + scroll cue) and cart_pinned_checkout (sticky checkout
+// bar). Everything visual is CSS scoped under html gate classes planted by
+// cellexia-cart.js (ofixSync); no node is painted, so none of the three
+// carries a data-cx-feature marker or a beacon (the v20 precedent). What
+// can silently break them is pinned here: the Liquid gates/members, the
+// load-bearing CSS (the !important that beats the theme's inline
+// headerOffset height, the html+body lock pair, the 44px stepper), the
+// JS's observer-storm guard (never write .mini-cart's own classList — the
+// theme section observer fetches /cart.js on every class change there) and
+// the qty heal's blank-only guard. Behavior is proved by
+// sims/cart-overlay-fix.cjs against the real extracted functions.
+{
+  const ovLiquid = read(`${EXT}/blocks/cart-booster.liquid`);
+  ok(
+    ovLiquid.includes("assign cx_ov = cfg.overlayFix"),
+    "v21: cart-booster.liquid aliases cx_ov = cfg.overlayFix",
+  );
+  for (const [flag, master, scope] of [
+    ["cx_eff_ofx", "cx_ov.scrollFix", "cfg.marketScopes.cart_overlay_fix"],
+    ["cx_eff_cpt", "cx_ov.compact", "cfg.marketScopes.cart_compact"],
+    ["cx_eff_pin", "cx_ov.pinned", "cfg.marketScopes.cart_pinned_checkout"],
+  ]) {
+    ok(
+      ovLiquid.includes(`assign ${flag} = false\nif ${master}\nassign cx_s = ${scope}\nif cx_s.mode != 'selected' or cx_s.markets contains cx_market\nassign ${flag} = true`),
+      `v21: ${flag} uses the house market-scope idiom on its OWN scope`,
+    );
+  }
+  ok(
+    ovLiquid.includes('"ofix": {{ cx_eff_ofx }},') &&
+      ovLiquid.includes('"compact": {{ cx_eff_cpt }},') &&
+      ovLiquid.includes('"pinned": {{ cx_eff_pin }}'),
+    "v21: cart island effective map carries ofix + compact + pinned (always emitted, anyEffectiveLive() sees them)",
+  );
+  ok(
+    ovLiquid.includes("or cx_ov.scrollFix or cx_ov.compact or cx_ov.pinned or cx_rw.setSavings.enabled"),
+    "v21: the island/CSS/JS emission gate admits each overlay feature ALONE (and stays in front of the pinned v14 tail)",
+  );
+  ok(
+    ovLiquid.includes("if cx_prev_flags.cart_overlay_fix == true\nassign cx_draft_ofx = true") &&
+      ovLiquid.includes("if cx_prev_flags.cart_compact == true\nassign cx_draft_cpt = true") &&
+      ovLiquid.includes("if cx_prev_flags.cart_pinned_checkout == true\nassign cx_draft_pin = true") &&
+      ovLiquid.includes("or cx_draft_ofx or cx_draft_cpt or cx_draft_pin -%}"),
+    "v21: armed preview drafts each overlay feature independently into the draft-any emission chain",
+  );
+
+  const ovCss = read(CSS);
+  ok(
+    ovCss.includes("html.cx-ofix .mini-cart,\nhtml.cx-compact .mini-cart,\nhtml.cx-pin .mini-cart {\n  top: 0;\n  height: 100vh !important;\n  height: 100dvh !important;\n}"),
+    "v21: the shared height normalization beats the theme's inline headerOffset calc (the ONLY !important in the section) with the vh fallback FIRST",
+  );
+  ok(
+    ovCss.includes("html.cx-ofix body.cart-open {\n  overflow: hidden;\n}") &&
+      ovCss.includes("html.cx-ofix-lock,\nhtml.cx-ofix-lock body {\n  overflow: hidden;\n}"),
+    "v21: the scroll lock covers BOTH html and body (the theme's html{overflow-x:clip} blocks body-only viewport propagation) in both layers",
+  );
+  ok(
+    ovCss.includes("html.cx-ofix {\n  scrollbar-gutter: stable;\n}"),
+    "v21 review C4: the gutter is reserved for the whole feature-on session so classic scrollbars cannot shift the page/panel at open/close",
+  );
+  ok(
+    ovCss.includes("html.cx-ofix .mini-cart__content {\n  overscroll-behavior: contain;\n}") &&
+      ovCss.includes("html.cx-ofix .mini-cart__bg {\n  touch-action: none;\n}"),
+    "v21: chain-out containment on the single scroller + backdrop drag guard ride cart_overlay_fix",
+  );
+  ok(
+    ovCss.includes("html.cx-pin .mini-cart__actions {\n  position: sticky;\n  bottom: 0;") &&
+      ovCss.includes("env(safe-area-inset-bottom, 0px)"),
+    "v21: the pinned bar is CSS-only sticky on the theme's own actions node, safe-area padded",
+  );
+  ok(
+    ovCss.includes("html.cx-compact.cx-pin .mini-cart__content.cx-more-below .mini-cart__actions::after") &&
+      ovCss.includes("html.cx-compact:not(.cx-pin) .mini-cart__content.cx-more-below::after"),
+    "v21: the scroll cue has BOTH anchorings — above the pinned bar, and sticky-bottom when the bar is off",
+  );
+  ok(
+    !/cx-more-below[^}]*linear-gradient/.test(ovCss) && !/linear-gradient\(to top, #fff/.test(ovCss),
+    "v21 review C5: the cue is chevron-only — no white fade veil to haze over the theme's grey subtotal footer",
+  );
+  ok(
+    ovCss.includes("html.cx-compact .mini-cart__list .qty .js-qty {\n    padding: 17px 0;\n  }") &&
+      ovCss.includes("html.cx-compact .mini-cart__list .product__info .unit-price {\n    display: none;\n  }") &&
+      ovCss.includes("html.cx-compact .cx-volume__current {\n    display: none;\n  }"),
+    "v21: compaction enacts the theme's intended 44px stepper (its own .aty-typo rule is dead) and removes the duplicated per-row price + the approved subtitle, phones only",
+  );
+  ok(
+    !/html\.cx-compact[^\n]*\.product__image/.test(ovCss),
+    "v21: the product photo is NEVER resized by the compaction (merchant rule)",
+  );
+
+  const ovJs = read(CART_JS);
+  ok(
+    ovJs.includes("ofix: 'cart_overlay_fix',") &&
+      ovJs.includes("compact: 'cart_compact',") &&
+      ovJs.includes("pinned: 'cart_pinned_checkout'"),
+    "v21: CART_FEATURE_KEYS maps ofix/compact/pinned to the canonical FeatureKeys",
+  );
+  ok(
+    !/data-cx-feature', 'cart_(overlay_fix|compact|pinned_checkout)'/.test(ovJs),
+    "v21: none of the three paints a node of its own, so none carries a marker",
+  );
+  ok(
+    !ovJs.includes("track('cart_overlay_fix'") &&
+      !ovJs.includes("track('cart_compact'") &&
+      !ovJs.includes("track('cart_pinned_checkout'"),
+    "v21: nothing is painted, so nothing is beaconed (impression honesty)",
+  );
+  ok(
+    !/\bmini\.classList\.(add|remove|toggle)/.test(ovJs),
+    "v21: the runtime never writes .mini-cart's own class attribute (the theme section observer fetches /cart.js on every change there)",
+  );
+  ok(
+    ovJs.includes("var root = document.documentElement;") &&
+      ovJs.includes("root.classList.add('cx-ofix')") &&
+      ovJs.includes("root.classList.remove('cx-ofix-lock')"),
+    "v21: gate classes live on documentElement and are actively stripped on the fail-closed/off paths",
+  );
+  ok(
+    ovJs.includes("if (!input || input.value !== '' || input === document.activeElement) continue;") &&
+      ovJs.includes("rows.length !== cart.items.length") &&
+      ovJs.includes("if (varid && String(item.id) !== varid) continue;"),
+    "v21: the qty heal fills only a BLANK, UNFOCUSED input (reviews C1/C2: never a mid-edit value, never under the shopper's cursor, never across a data-varid identity mismatch) and bails on any row/item count mismatch",
+  );
+  ok(
+    ovJs.includes("var ofixCanLock = typeof MutationObserver === 'function';") &&
+      ovJs.includes("if (ofix && ofixCanLock && drawerIsOpen()) root.classList.add('cx-ofix-lock');"),
+    "v21 review C3: a browser without MutationObserver (no close-mirror) never locks at all",
+  );
+  ok(
+    ovJs.includes("ofixSync(); // v21: widget stack height is final for this pass") &&
+      ovJs.includes("ofixInit(); // v21: gate classes + lock/cue/qty-heal listeners") &&
+      ovJs.includes("ofixSchedule(); // v21: list wipes change scrollHeight + qty inputs"),
+    "v21: the module is wired into renderAll, init and the list observer",
+  );
+  ok(
+    /new MutationObserver\(function \(\) \{\n\s*\/\/ v21 FIRST and unconditional[^]{0,200}ofixSync\(\);/.test(ovJs),
+    "v21: the is-open observer syncs FIRST and unconditionally — close transitions release the lock pre-paint",
+  );
+
+  const ovSettings = read("app/models/settings.server.ts");
+  ok(
+    ovSettings.includes('cart_overlay_fix: { kind: "overlay", field: "scrollFix" }') &&
+      ovSettings.includes('cart_compact: { kind: "overlay", field: "compact" }') &&
+      ovSettings.includes('cart_pinned_checkout: { kind: "overlay", field: "pinned" }'),
+    "v21: the experiment/restore path knows where the three sibling flags live",
+  );
+  ok(
+    ovSettings.includes("next.overlayFix.scrollFix = next.overlayFix.scrollFix === true;") &&
+      ovSettings.includes("next.overlayFix.compact = next.overlayFix.compact === true;") &&
+      ovSettings.includes("next.overlayFix.pinned = next.overlayFix.pinned === true;"),
+    "v21: all three flags sanitize strict === true (default OFF, junk lands off)",
+  );
+
+  const ovCartRoute = read("app/routes/app.features.cart.tsx");
+  ok(
+    ovCartRoute.includes('title="Markets — Cart overlay fix"') &&
+      ovCartRoute.includes('title="Markets — Compact cart"') &&
+      ovCartRoute.includes('title="Markets — Pinned checkout button"'),
+    "v21: the cart page carries each feature's own market card",
+  );
+  const ovMarkets = read("app/routes/app.markets.tsx");
+  ok(
+    ovMarkets.includes('{ key: "cart_overlay_fix", label: "Cart overlay fix" }') &&
+      ovMarkets.includes('cart_overlay_fix: "scrollFix",') &&
+      ovMarkets.includes('cart_compact: "compact",') &&
+      ovMarkets.includes('cart_pinned_checkout: "pinned",'),
+    "v21: the Markets matrix can both READ and WRITE all three features",
+  );
+  ok(
+    read("app/routes/app.preview.tsx").includes('"cart_overlay_fix"') &&
+      read("app/routes/app.preview.tsx").includes('"cart_compact"') &&
+      read("app/routes/app.preview.tsx").includes('"cart_pinned_checkout"'),
+    "v21: the Preview Center can arm each feature as a draft",
+  );
+  ok(
+    read("app/routes/app.features._index.tsx").includes('cart_overlay_fix: "/app/features/cart"') &&
+      read("app/routes/app.features._index.tsx").includes('cart_compact: "/app/features/cart"') &&
+      read("app/routes/app.features._index.tsx").includes('cart_pinned_checkout: "/app/features/cart"'),
+    "v21: the features hub points Configure at the cart page for all three",
   );
 }
 

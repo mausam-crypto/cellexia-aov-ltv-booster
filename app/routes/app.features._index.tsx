@@ -97,13 +97,18 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   // v14 rewards (SPEC v14 §11): both features configure on the Rewards page.
   set_savings: "/app/features/rewards",
   gift_tiers: "/app/features/rewards",
+  // v21 cart overlay features (SPEC v21): all three configure on the Cart
+  // page alongside the drawer widgets they reshape.
+  cart_overlay_fix: "/app/features/cart",
+  cart_compact: "/app/features/cart",
+  cart_pinned_checkout: "/app/features/cart",
 };
 
 const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
   {
     title: "Cart drawer",
     description:
-      "Widgets inside the mini-cart drawer: volume upgrades, free-shipping progress, subscription switch and the trust row.",
+      "Widgets inside the mini-cart drawer: volume upgrades, free-shipping progress, subscription switch and the trust row, plus the drawer overlay fixes.",
     keys: [
       "cart_volume_upsell",
       "free_shipping_bar",
@@ -111,6 +116,9 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
       "cart_trust_row",
       "cart_cross_sell",
       "dispatch_countdown",
+      "cart_overlay_fix",
+      "cart_compact",
+      "cart_pinned_checkout",
     ],
   },
   {
