@@ -6004,6 +6004,21 @@
         var pct = content.scrollTop / maxScroll;
         if (pct < 0) pct = 0;
         if (pct > 1) pct = 1;
+        // v21.3 (merchant report): the thumb must hug the PANEL's edge, not
+        // the full-screen overlay's — on wide phones the 400px panel leaves
+        // a dimmed page gutter on the left and the thumb was floating in
+        // it. The pseudo lives on the non-scrolling .mini-cart, so compute
+        // the panel's real edge here (it only moves on resize/rotation,
+        // both already re-verdicted). LTR: 4px inside the panel's left
+        // edge; RTL: mirrored inside its right edge, opposite the side the
+        // phone draws its own indicator on in each direction.
+        var rect = content.getBoundingClientRect();
+        var rtl = false;
+        try {
+          rtl = window.getComputedStyle(content).direction === 'rtl';
+        } catch (e) { /* no signal — LTR */ }
+        var spl = rtl ? rect.right - 8 : rect.left + 4;
+        mini.style.setProperty('--cx-spl', Math.round(spl) + 'px');
         mini.style.setProperty('--cx-sth', th + 'px');
         mini.style.setProperty('--cx-spt', 8 + Math.round((track - th) * pct) + 'px');
         mini.style.setProperty('--cx-spo', '1');

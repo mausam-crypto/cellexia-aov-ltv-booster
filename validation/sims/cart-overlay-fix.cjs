@@ -119,6 +119,18 @@ function buildDrawer(doc, opts) {
   content.scrollHeight = o.scrollHeight;
   content.clientHeight = o.clientHeight;
   content.scrollTop = o.scrollTop;
+  // Panel geometry for the thumb's --cx-spl: wide phones anchor the 400px
+  // panel right, leaving a page gutter (left > 0) — the v21.3 case.
+  const panelLeft = o.panelLeft || 0;
+  const panelRight = o.panelRight !== undefined ? o.panelRight : panelLeft + 375;
+  content.getBoundingClientRect = () => ({
+    left: panelLeft,
+    right: panelRight,
+    top: 0,
+    bottom: o.clientHeight,
+    width: panelRight - panelLeft,
+    height: o.clientHeight,
+  });
   const header = new El("div");
   header.className = "mini-cart__header";
   const list = new El("div");
@@ -228,6 +240,9 @@ function run(opts) {
         ? {}
         : { formatMoney: function (cents, fmt) { return "FMT[" + cents + "|" + fmt + "]"; } }),
       ...(o.moneyFormat !== undefined ? { moneyFormat: o.moneyFormat } : {}),
+      getComputedStyle: function () {
+        return { direction: o.rtl ? "rtl" : "ltr" };
+      },
       addEventListener: function (type) {
         listeners.push(type);
       },
@@ -403,6 +418,28 @@ const has = (el, cls) => el.classList.contains(cls);
   ok(
     pin.drawer.mini.style.getPropertyValue("--cx-sth") === "369px",
     `C2 the pinned bar's height comes out of the thumb track (got ${pin.drawer.mini.style.getPropertyValue("--cx-sth")})`,
+  );
+
+  // v21.3: the thumb hugs the PANEL edge, not the overlay's — a 400px
+  // panel anchored right on a 430pt phone has left=30.
+  const wide = run({
+    effective: { compact: true },
+    drawer: { open: true, scrollHeight: 1540, clientHeight: 812, panelLeft: 30, panelRight: 430 },
+  });
+  wide.sync();
+  ok(
+    wide.drawer.mini.style.getPropertyValue("--cx-spl") === "34px",
+    `C2b on a wide phone the thumb sits 4px inside the panel's LEFT edge (got ${wide.drawer.mini.style.getPropertyValue("--cx-spl")})`,
+  );
+  const rtl = run({
+    effective: { compact: true },
+    rtl: true,
+    drawer: { open: true, scrollHeight: 1540, clientHeight: 812, panelLeft: 30, panelRight: 430 },
+  });
+  rtl.sync();
+  ok(
+    rtl.drawer.mini.style.getPropertyValue("--cx-spl") === "422px",
+    `C2c in RTL the thumb mirrors to the panel's RIGHT edge (got ${rtl.drawer.mini.style.getPropertyValue("--cx-spl")})`,
   );
 
   const short = run({
@@ -937,6 +974,13 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         replace: "      /* reduced-motion guard removed */",
       },
       {
+        // v21.3: ignoring the panel offset floats the thumb in the dimmed
+        // page gutter on wide phones (the exact field report).
+        name: "m19-thumb-ignores-panel-edge",
+        find: "        var spl = rtl ? rect.right - 8 : rect.left + 4;",
+        replace: "        var spl = 4;",
+      },
+      {
         // v21.2: a badge that is built but never attached leaves the icon
         // blank exactly as the theme bug does.
         name: "m17-count-badge-never-attached",
@@ -961,6 +1005,6 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
     console.log(`\n${bad} MUTANT(S) NOT CAUGHT (cart-overlay-fix)`);
     process.exitCode = 1;
   } else {
-    console.log("ALL 18 MUTANTS CAUGHT (cart-overlay-fix)");
+    console.log("ALL 19 MUTANTS CAUGHT (cart-overlay-fix)");
   }
 }

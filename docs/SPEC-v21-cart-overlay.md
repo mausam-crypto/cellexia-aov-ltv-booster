@@ -121,11 +121,13 @@ dead `body.cart-open` class, the `item` vs `line_item` qty template bug, the
   `.cx-volume__current{display:none}` (merchant-approved), tightened
   paddings/margins per the shipped table. `__actions` compaction excludes
   `cx-pin` (`:not(.cx-pin)`) — the pinned bar owns its own geometry.
-- **Scroll cue v2** (v21.1/v21.2, merchant report #3 — the chevron above
+- **Scroll cue v2** (v21.1-v21.3, merchant report #3 — the chevron above
   the pinned bar read as "press Check Out Now" and was retired): a mini
-  scrollbar thumb along the drawer's inline-START edge (v21.2: the phone's
-  own overlay indicator owns the end edge and was hiding the thumb; start
-  flips with RTL, staying opposite the system's) — `html.cx-compact
+  scrollbar thumb hugging the PANEL's start edge — `--cx-spl` is
+  JS-resolved from the panel's live rect (v21.3: on wide phones the 400px
+  panel is anchored right, so a bare inset floated the thumb in the dimmed
+  page gutter; v21.2: the phone's own overlay indicator owns the end edge;
+  RTL mirrors to the panel's right edge) — `html.cx-compact
   .mini-cart::after`, geometry via `--cx-spo/--cx-spt/--cx-sth` written by
   `ofixCueUpdate`: 8px insets, pinned-bar height subtracted from the track,
   thumb ≥44px, position clamped for rubber-band overshoot), visible while
@@ -170,7 +172,7 @@ unmoved: file 23,394/23,600 B (incl. the v21.1 "mf" member), total ~98,010/99,50
   blank-only heal guard, the four wiring lines), settings pins (LAST keys,
   `overlay` kind, `=== true` sanitize), admin pins (cart page cards, Markets
   matrix read+write, preview keys, hub Configure).
-- `validation/sims/cart-overlay-fix.cjs` (94 checks, 18 mutants): the 2³
+- `validation/sims/cart-overlay-fix.cjs` (96 checks, 19 mutants): the 2³
   gating matrix incl. preview paths, lock both directions + ofix-only,
   cue threshold/tolerance/closed/compact-only + the LIVE listener wiring
   (scroll/image-load re-verdicts through the bound handlers), heal

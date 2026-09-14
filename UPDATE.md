@@ -259,10 +259,13 @@ build, same deploy procedure, no new settings:
    and settles back — physically showing the gesture, once per opening,
    never when the shopper has already scrolled, cancelled instantly if they
    touch anything, and skipped for people who turned off animations.
-4. **The scroll line sits on the LEFT edge of the cart** — you spotted that
-   the right edge is where the phone draws its own scrolling indicator,
-   which was hiding ours. (In right-to-left languages such as Arabic the
-   two swap sides automatically, staying apart there too.)
+4. **The scroll line sits on the LEFT edge of the cart panel itself** —
+   you spotted that the right edge is where the phone draws its own
+   scrolling indicator, which was hiding ours; and on larger phones the
+   cart panel does not span the whole screen, so the line now hugs the
+   white panel's own left edge rather than the screen's. (In right-to-left
+   languages such as Arabic it mirrors to the panel's right edge, again
+   opposite the phone's own indicator there.)
 5. **The header cart icon stayed empty after the first add.** Verified
    live: when a page loads with an empty cart, your live theme does not
    render the little count bubble at all, and its cart code can only write

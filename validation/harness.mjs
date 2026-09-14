@@ -4417,8 +4417,8 @@ const EVIDENCE = {
       ovCss.includes("opacity: var(--cx-spo, 0);") &&
       ovCss.includes("height: var(--cx-sth, 0px);") &&
       ovCss.includes("top: var(--cx-spt, 8px);") &&
-      ovCss.includes("inset-inline-start: 4px;"),
-    "v21.1/v21.2 (report #3): the cue is a var-driven mini scrollbar thumb on .mini-cart, on the inline-START edge — the phone's own overlay indicator owns the end edge",
+      ovCss.includes("left: var(--cx-spl, 4px);"),
+    "v21.1/v21.3 (report #3): the cue is a var-driven mini scrollbar thumb positioned by the JS-resolved --cx-spl panel-edge offset",
   );
   ok(
     ovCss.includes("html.cx-ofix .mini-cart__content.cx-noscroll {\n  touch-action: none;\n}"),
@@ -4484,6 +4484,11 @@ const EVIDENCE = {
       ovJs.includes("try { ofixMoneyHeal(cart); } catch (e) { /* never break the theme */ }") &&
       ovLiquid.includes('"mf": {{ shop.money_format | json }},'),
     "v21.1 (report #2): the wrapper re-writes the totals in the theme's own shop money format in the same task the theme's Intl flash lands, island-fed so the first open needs no theme global",
+  );
+  ok(
+    ovJs.includes("var spl = rtl ? rect.right - 8 : rect.left + 4;") &&
+      ovJs.includes("mini.style.setProperty('--cx-spl', Math.round(spl) + 'px');"),
+    "v21.3 (report #3): the thumb hugs the PANEL's edge — LTR 4px inside its left, RTL mirrored inside its right (wide phones leave a page gutter a bare inset floated in)",
   );
   ok(
     ovJs.includes("badge.className = 'cart-count';") &&
