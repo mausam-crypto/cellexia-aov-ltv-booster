@@ -30,8 +30,12 @@ dead `body.cart-open` class, the `item` vs `line_item` qty template bug, the
   plus the refresh wrapper: classObserver head, listObserver, `renderAll()`
   tail, `init()` (`ofixInit`, listeners only when ≥1 feature on). Everything
   try/caught; a missing `.mini-cart` strips all classes (fail closed).
-- **No node is painted, moved or rebuilt.** No `data-cx-feature` marker, no
-  beacon (the v20 image_badges precedent); FeatureKey evidence = the gate-key
+- **No node of OURS is painted, moved or rebuilt.** One deliberate v21.2
+  exception: `ofixCountHeal` recreates the THEME's own header count badge
+  (`span.cart-count > span`, verbatim markup, first child) because the live
+  theme only Liquid-renders it for a non-empty page load while its own JS
+  writer assumes it exists. Still no `data-cx-feature` marker, no beacon
+  (the v20 image_badges precedent); FeatureKey evidence = the gate-key
   strings in `CART_FEATURE_KEYS`.
 - **Never write `.mini-cart`'s own class attribute** — the theme section's
   MutationObserver fetches `/cart.js` a second after every class change
@@ -79,6 +83,16 @@ dead `body.cart-open` class, the `item` vs `line_item` qty template bug, the
   `.mini-cart__content` while `scrollHeight` fits, and
   `html.cx-ofix .mini-cart__content.cx-noscroll { touch-action: none }`
   kills the pan at its target (taps/steppers/inputs unaffected).
+- **Header count-badge heal** (v21.2, merchant report, gate `ofix`): the
+  LIVE theme's header omits `span.cart-count` entirely on an empty-cart
+  page load (verified live 2026-09-14; unlike this repo's theme copy), so
+  its own `refreshMiniCart` writer (`.icon--cart .cart-count span`) matches
+  nothing and the icon stays blank until a reload. `ofixCountHeal(cart)`
+  recreates the theme's exact badge markup once (first child, the Liquid
+  order) and keeps the number current; called in the wrapper BEFORE
+  `orig.apply` (so the theme's own write lands too) and from `ofixSync`'s
+  tail (quiet paths). Never invents a zero badge — an empty cart keeps the
+  theme's own rendering.
 - **Checkout-total format heal** (v21.1, merchant report #2, gate
   `ofix || pinned`): the theme's `refreshMiniCart` writes the checkout and
   footer totals through its Intl `formatter` (seen live: "253,00 PLN" for a
@@ -107,10 +121,12 @@ dead `body.cart-open` class, the `item` vs `line_item` qty template bug, the
   `.cx-volume__current{display:none}` (merchant-approved), tightened
   paddings/margins per the shipped table. `__actions` compaction excludes
   `cx-pin` (`:not(.cx-pin)`) — the pinned bar owns its own geometry.
-- **Scroll cue v2** (v21.1, merchant report #3 — the chevron above the
-  pinned bar read as "press Check Out Now" and was retired): a mini
-  scrollbar thumb along the drawer's edge (`html.cx-compact .mini-cart
-  ::after`, geometry via `--cx-spo/--cx-spt/--cx-sth` written by
+- **Scroll cue v2** (v21.1/v21.2, merchant report #3 — the chevron above
+  the pinned bar read as "press Check Out Now" and was retired): a mini
+  scrollbar thumb along the drawer's inline-START edge (v21.2: the phone's
+  own overlay indicator owns the end edge and was hiding the thumb; start
+  flips with RTL, staying opposite the system's) — `html.cx-compact
+  .mini-cart::after`, geometry via `--cx-spo/--cx-spt/--cx-sth` written by
   `ofixCueUpdate`: 8px insets, pinned-bar height subtracted from the track,
   thumb ≥44px, position clamped for rubber-band overshoot), visible while
   the drawer is open and scrollable. Re-verdicted on: content scroll, every
@@ -154,7 +170,7 @@ unmoved: file 23,394/23,600 B (incl. the v21.1 "mf" member), total ~98,010/99,50
   blank-only heal guard, the four wiring lines), settings pins (LAST keys,
   `overlay` kind, `=== true` sanitize), admin pins (cart page cards, Markets
   matrix read+write, preview keys, hub Configure).
-- `validation/sims/cart-overlay-fix.cjs` (86 checks, 16 mutants): the 2³
+- `validation/sims/cart-overlay-fix.cjs` (94 checks, 18 mutants): the 2³
   gating matrix incl. preview paths, lock both directions + ofix-only,
   cue threshold/tolerance/closed/compact-only + the LIVE listener wiring
   (scroll/image-load re-verdicts through the bound handlers), heal

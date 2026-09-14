@@ -6864,7 +6864,10 @@ html.cx-pin .mini-cart__actions .btn--tert {
 html.cx-compact .mini-cart::after {
   content: "";
   position: absolute;
-  inset-inline-end: 4px;
+  /* inline-START edge (v21.2, merchant report): the phone paints its own
+     overlay scroll indicator on the scroller's end edge and was hiding the
+     thumb under it; start flips with RTL, staying opposite the system's. */
+  inset-inline-start: 4px;
   top: var(--cx-spt, 8px);
   width: 4px;
   height: var(--cx-sth, 0px);

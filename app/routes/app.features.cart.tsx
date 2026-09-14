@@ -1104,7 +1104,7 @@ export default function CartFeaturesPage() {
                 </Text>
                 <Checkbox
                   label="Cart overlay fix"
-                  helpText="Fixes three bugs in the cart overlay on phones: the page behind the cart no longer scrolls while the cart is open, the cart fills the whole screen so the site cannot peek through at the bottom, and the quantity number that sometimes showed empty is filled in."
+                  helpText="Fixes the cart overlay bugs on phones: the page behind the cart no longer scrolls while the cart is open, the cart fills the whole screen so the site cannot peek through at the bottom, the quantity number that sometimes showed empty is filled in, and the little count bubble on the header cart icon appears right away after the first add instead of waiting for a reload."
                   checked={state.overlayScrollFix}
                   onChange={(overlayScrollFix) =>
                     setState((previous) => ({ ...previous, overlayScrollFix }))

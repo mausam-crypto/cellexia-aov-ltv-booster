@@ -5816,7 +5816,9 @@
   // properties on .mini-cart's style attribute), and (4) heals the qty
   // inputs the theme's Liquid path renders with value="" (mini-cart.liquid
   // reads `item.quantity` inside a `for line_item` loop — undefined — while
-  // the theme's JS rebuild path fills them correctly, hence "sometimes").
+  // the theme's JS rebuild path fills them correctly, hence "sometimes")
+  // plus the header count badge the LIVE theme only renders for a
+  // non-empty page load (ofixCountHeal, v21.2).
   // Classes go on documentElement and __content ONLY: writing to
   // .mini-cart's own class attribute would fire the theme section's
   // MutationObserver and its 1s-delayed /cart.js fetch on every sync.
@@ -5885,6 +5887,34 @@
     if (typeof txt !== 'string' || !txt) return;
     var spans = document.querySelectorAll('.checkout-subtotal, .updated-subtotal');
     for (var i = 0; i < spans.length; i++) spans[i].textContent = txt;
+  }
+
+  function ofixCountHeal(cart) {
+    // v21.2 (merchant report): the LIVE theme's header renders the cart
+    // count badge only when the cart already had items at page load (the
+    // live snippet gates it on item_count — unlike this repo's theme copy),
+    // so the theme's own refreshMiniCart writer
+    // ('.icon--cart .cart-count span') matches NOTHING on a page that
+    // loaded empty and the icon stays blank until a reload. Recreate the
+    // theme's own badge markup (span.cart-count > span, first child — the
+    // Liquid order) once, and keep the number current so quiet cart paths
+    // that skip refreshMiniCart stay truthful too. Never touches the
+    // zero-count case: an absent badge on an empty cart is the theme's own
+    // rendering, and a present one stays the theme's business.
+    if (!featureOn('ofix')) return;
+    if (!cart || typeof cart.item_count !== 'number' || cart.item_count <= 0) return;
+    var icons = document.querySelectorAll('.icon--cart');
+    for (var i = 0; i < icons.length; i++) {
+      var span = icons[i].querySelector('.cart-count span');
+      if (!span) {
+        var badge = document.createElement('span');
+        badge.className = 'cart-count';
+        span = document.createElement('span');
+        badge.appendChild(span);
+        icons[i].insertBefore(badge, icons[i].firstChild);
+      }
+      span.textContent = String(cart.item_count);
+    }
   }
 
   function ofixPeek(content) {
@@ -6018,6 +6048,7 @@
       }
       ofixCueUpdate();
       ofixQtyHeal();
+      ofixCountHeal(state.cart); // v21.2: quiet paths skip refreshMiniCart
       // Open-transition edge (module-local, independent of setupObservers):
       // one peek per open; re-armed the first sync that sees it closed.
       var nowOpen = drawerIsOpen();
@@ -7078,6 +7109,8 @@
             }).catch(function () { /* noop */ });
           }
         } catch (e) { /* never break the theme */ }
+        // v21.2: the badge must exist BEFORE the original's own count write.
+        try { ofixCountHeal(cart); } catch (e) { /* never break the theme */ }
         var out = orig.apply(this, arguments);
         // v21.1: the original just wrote the checkout/footer totals through
         // the theme's Intl `formatter` (wrong style in many locale/currency

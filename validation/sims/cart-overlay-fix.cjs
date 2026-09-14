@@ -64,6 +64,7 @@ const EXTRACTED = extractAll(SRC, {
     "activeCurrency",
     "money",
     "ofixMoneyHeal",
+    "ofixCountHeal",
     "ofixPeek",
     "ofixQtyHeal",
     "ofixCueUpdate",
@@ -178,9 +179,29 @@ function run(opts) {
   );
   const doc = makeDocument();
   // The default makeDocument documentElement is a static {lang} object —
-  // the module plants its gate classes there, so give it a real El.
+  // the module plants its gate classes there, so give it a real El; and
+  // ofixCountHeal builds the theme's badge markup, so it needs
+  // createElement (absent from the default document surface).
   const html = new El("html");
   doc.documentElement = html;
+  doc.createElement = (tag) => new El(tag);
+  // Header cart icon — the LIVE theme omits .cart-count entirely on an
+  // empty-cart page load (unlike this repo's theme copy).
+  const icon = new El("button");
+  icon.className = "icon icon--cart";
+  if (o.iconBadge) {
+    const b = new El("span");
+    b.className = "cart-count";
+    const bs = new El("span");
+    bs.textContent = String(o.iconBadge);
+    b.appendChild(bs);
+    icon.appendChild(b);
+  }
+  const sr = new El("span");
+  sr.className = "sr-only";
+  sr.textContent = "Cart";
+  icon.appendChild(sr);
+  doc.body.appendChild(icon);
   const drawer = buildDrawer(doc, o.drawer);
   const listeners = [];
   const rafQueue = [];
@@ -244,6 +265,11 @@ function run(opts) {
       sandbox.__cart = cart;
       vm.runInContext("ofixMoneyHeal(__cart)", sandbox);
     },
+    countHeal: function (cart) {
+      sandbox.__cart = cart;
+      vm.runInContext("ofixCountHeal(__cart)", sandbox);
+    },
+    icon,
   };
 }
 
@@ -453,6 +479,49 @@ const has = (el, cls) => el.classList.contains(cls);
   const bad = run({ effective: { ofix: true }, mf: "{{amount}}" });
   bad.moneyHeal({ total_price: "junk" });
   ok(bad.drawer.ckSpan.textContent === "0,00 zl", "M5 a malformed cart payload changes nothing");
+}
+
+// ------------------ H. the header count badge heal (v21.2 field report)
+{
+  const badgeOf = (t) => t.icon.querySelector(".cart-count span");
+
+  const t = run({ effective: { ofix: true } });
+  ok(badgeOf(t) === null, "H1 an empty-cart page load carries no badge (the live theme's markup)");
+  t.countHeal({ item_count: 1 });
+  ok(
+    badgeOf(t) !== null && badgeOf(t).textContent === "1",
+    "H1 the first add creates the theme's own badge markup with the count",
+  );
+  ok(
+    t.icon.children[0].className === "cart-count",
+    "H1 the badge lands FIRST inside the icon (the Liquid order)",
+  );
+  t.countHeal({ item_count: 3 });
+  ok(
+    t.icon.querySelectorAll(".cart-count").length === 1 && badgeOf(t).textContent === "3",
+    "H2 later heals update the same badge — never a second one",
+  );
+
+  const seeded = run({ effective: { ofix: true }, iconBadge: 2 });
+  seeded.countHeal({ item_count: 5 });
+  ok(
+    seeded.icon.querySelectorAll(".cart-count").length === 1 &&
+      badgeOf(seeded).textContent === "5",
+    "H3 a Liquid-rendered badge is reused, not duplicated",
+  );
+
+  const zero = run({ effective: { ofix: true } });
+  zero.countHeal({ item_count: 0 });
+  ok(badgeOf(zero) === null, "H4 an empty cart never invents a zero badge");
+
+  const off = run({ effective: { compact: true, pinned: true } });
+  off.countHeal({ item_count: 4 });
+  ok(badgeOf(off) === null, "H5 the badge heal rides cart_overlay_fix ONLY");
+
+  const bad = run({ effective: { ofix: true } });
+  bad.countHeal(null);
+  bad.countHeal({ item_count: "junk" });
+  ok(badgeOf(bad) === null, "H6 malformed cart payloads change nothing");
 }
 
 // ------------------------- P. the peek glide on open (v21.1 report #3)
@@ -868,6 +937,19 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         replace: "      /* reduced-motion guard removed */",
       },
       {
+        // v21.2: a badge that is built but never attached leaves the icon
+        // blank exactly as the theme bug does.
+        name: "m17-count-badge-never-attached",
+        find: "        icons[i].insertBefore(badge, icons[i].firstChild);",
+        replace: "        void badge;",
+      },
+      {
+        // v21.2: inventing a zero badge changes the theme's empty-cart look.
+        name: "m18-count-heal-invents-zero-badge",
+        find: "    if (!cart || typeof cart.item_count !== 'number' || cart.item_count <= 0) return;",
+        replace: "    if (!cart || typeof cart.item_count !== 'number') return;",
+      },
+      {
         // Report #3: a glide on EVERY sync would fight the shopper.
         name: "m16-peek-every-sync",
         find: "      if (ofixPeekDone || !featureOn('compact')) return;\n      ofixPeekDone = true; // one attempt per drawer-open, whatever happens",
@@ -879,6 +961,6 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
     console.log(`\n${bad} MUTANT(S) NOT CAUGHT (cart-overlay-fix)`);
     process.exitCode = 1;
   } else {
-    console.log("ALL 16 MUTANTS CAUGHT (cart-overlay-fix)");
+    console.log("ALL 18 MUTANTS CAUGHT (cart-overlay-fix)");
   }
 }

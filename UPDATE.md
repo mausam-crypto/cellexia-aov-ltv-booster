@@ -233,9 +233,9 @@ auto-detection, and booster auto-translation need them).
 
 ## 3a. v21 cart overlay features — what this release changes
 
-### v21.1 (2026-09-14, after your field test) — three fixes in this build
+### v21.2 (2026-09-14, after your field test) — five fixes in this build
 
-You reported three things after going live; all three are fixed in this
+You reported five things after going live; all five are fixed in this
 build, same deploy procedure, no new settings:
 
 1. **One-product carts could still scroll the page underneath.** When the
@@ -253,12 +253,23 @@ build, same deploy procedure, no new settings:
    temporary one, so the odd value never reaches the screen.
 3. **The little arrow read as "press Check Out Now".** Agreed and retired.
    The scroll cue is now the display every phone already uses for "this
-   scrolls": a slim scroll line along the cart's right edge that moves as
-   the shopper scrolls (visible whenever there is more than one screen of
+   scrolls": a slim scroll line along the cart's edge that moves as the
+   shopper scrolls (visible whenever there is more than one screen of
    cart), plus, the moment the cart opens, the content glides down a touch
    and settles back — physically showing the gesture, once per opening,
    never when the shopper has already scrolled, cancelled instantly if they
    touch anything, and skipped for people who turned off animations.
+4. **The scroll line sits on the LEFT edge of the cart** — you spotted that
+   the right edge is where the phone draws its own scrolling indicator,
+   which was hiding ours. (In right-to-left languages such as Arabic the
+   two swap sides automatically, staying apart there too.)
+5. **The header cart icon stayed empty after the first add.** Verified
+   live: when a page loads with an empty cart, your live theme does not
+   render the little count bubble at all, and its cart code can only write
+   a number into a bubble that exists — so the icon stayed blank until a
+   reload. The app now creates the theme's own bubble the moment the first
+   item lands, and keeps the number current from then on. An empty cart
+   still shows the icon exactly as the theme designed it.
 
 ### v21 — the original release notes
 

@@ -4416,8 +4416,9 @@ const EVIDENCE = {
     ovCss.includes("html.cx-compact .mini-cart::after {") &&
       ovCss.includes("opacity: var(--cx-spo, 0);") &&
       ovCss.includes("height: var(--cx-sth, 0px);") &&
-      ovCss.includes("top: var(--cx-spt, 8px);"),
-    "v21.1 (report #3): the cue is a var-driven mini scrollbar thumb on .mini-cart — the chevron that read as 'press checkout' is retired",
+      ovCss.includes("top: var(--cx-spt, 8px);") &&
+      ovCss.includes("inset-inline-start: 4px;"),
+    "v21.1/v21.2 (report #3): the cue is a var-driven mini scrollbar thumb on .mini-cart, on the inline-START edge — the phone's own overlay indicator owns the end edge",
   );
   ok(
     ovCss.includes("html.cx-ofix .mini-cart__content.cx-noscroll {\n  touch-action: none;\n}"),
@@ -4483,6 +4484,13 @@ const EVIDENCE = {
       ovJs.includes("try { ofixMoneyHeal(cart); } catch (e) { /* never break the theme */ }") &&
       ovLiquid.includes('"mf": {{ shop.money_format | json }},'),
     "v21.1 (report #2): the wrapper re-writes the totals in the theme's own shop money format in the same task the theme's Intl flash lands, island-fed so the first open needs no theme global",
+  );
+  ok(
+    ovJs.includes("badge.className = 'cart-count';") &&
+      ovJs.includes("if (!cart || typeof cart.item_count !== 'number' || cart.item_count <= 0) return;") &&
+      ovJs.includes("try { ofixCountHeal(cart); } catch (e) { /* never break the theme */ }") &&
+      ovJs.includes("ofixCountHeal(state.cart); // v21.2: quiet paths skip refreshMiniCart"),
+    "v21.2: the header count badge is recreated in the theme's own markup before the theme's writer runs, kept current on quiet paths, and never invents a zero badge",
   );
   ok(
     ovJs.includes("window.matchMedia('(prefers-reduced-motion: reduce)').matches") &&
