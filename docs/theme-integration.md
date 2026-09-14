@@ -59,6 +59,15 @@ section.mini-cart[data-freeship="{{ settings.free_ship | times: 100 }}"]   <- th
   - `body.cart-open` is a **dead class**: `showMini()`/`closeMini()` toggle it but zero CSS consumes it — the page behind the drawer is NEVER scroll-locked (the theme locks only its mobile menu, `html.mobile-menu-open{overflow:hidden}`). No `overscroll-behavior` anywhere; `.mini-cart__list{overflow:auto}` is a second, never-scrolling scroll-eligible box that adds an iOS chaining hop. Also note `html{overflow-x:clip}`: per css-overflow-3 it blocks body→viewport overflow propagation, so any lock must cover BOTH html and body.
   - The theme section itself runs a MutationObserver on `.mini-cart`'s `class` attribute (`sections/mini-cart.liquid` ~L176-188) that `fetch('/cart.js')`es a second after EVERY class change — never write classes onto `.mini-cart` (the v21 runtime keeps its gate classes on `document.documentElement` for exactly this reason).
   - **Qty template bug**: the Liquid-rendered qty input (`sections/mini-cart.liquid` ~L84-93) reads `value="{{ item.quantity }}"` (and `item.variant.quantity_rule`) inside a `{% for line_item in cart.items %}` loop — `item` is undefined, so every page-load render ships `value=""`; the JS rebuild (`refreshMiniCart`, bundle JS L454) uses its own loop var correctly, which is why the number "sometimes" shows. The real fix is the one-word `item` → `line_item` in the theme; until then `cellexia-cart.js` heals BLANK inputs from cart data (v21, blank-only so it can never fight a shopper or the fixed theme).
+  - **Two total-writers, two formats**: `refreshMiniCart` writes the
+    checkout/footer totals through the global `formatter` (footer.liquid's
+    `Intl.NumberFormat` — WRONG style for many locale/currency pairs, seen
+    live as "253,00 PLN" on a "253,00 zł" cart), then the section's
+    `updateCheckoutButtonSubtotal` rewrites them ~1-2s later via its own
+    `formatMoney(cart.total_price, shop.money_format)` + a fresh `/cart.js`
+    fetch (it also only sets `window.moneyFormat` when it first runs). The
+    v21.1 `ofixMoneyHeal` wrapper hook writes the shop-format value in the
+    same task as the theme's Intl write, fed by the island's `"mf"` member.
   - **Dead stepper rule**: `.mini-cart__list .product__info .actions .aty button { padding: 17px 0 }` (bundle CSS L3419) never applies — `.aty` is a typo for `.qty` — so drawer steppers render 54 px tall instead of the intended 44 px. The v21 compact feature enacts the intended value under its own gate.
 
 ## Volume pricing = VARIANTS (critical)

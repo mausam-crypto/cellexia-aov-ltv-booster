@@ -4413,13 +4413,19 @@ const EVIDENCE = {
     "v21: the pinned bar is CSS-only sticky on the theme's own actions node, safe-area padded",
   );
   ok(
-    ovCss.includes("html.cx-compact.cx-pin .mini-cart__content.cx-more-below .mini-cart__actions::after") &&
-      ovCss.includes("html.cx-compact:not(.cx-pin) .mini-cart__content.cx-more-below::after"),
-    "v21: the scroll cue has BOTH anchorings — above the pinned bar, and sticky-bottom when the bar is off",
+    ovCss.includes("html.cx-compact .mini-cart::after {") &&
+      ovCss.includes("opacity: var(--cx-spo, 0);") &&
+      ovCss.includes("height: var(--cx-sth, 0px);") &&
+      ovCss.includes("top: var(--cx-spt, 8px);"),
+    "v21.1 (report #3): the cue is a var-driven mini scrollbar thumb on .mini-cart — the chevron that read as 'press checkout' is retired",
   );
   ok(
-    !/cx-more-below[^}]*linear-gradient/.test(ovCss) && !/linear-gradient\(to top, #fff/.test(ovCss),
-    "v21 review C5: the cue is chevron-only — no white fade veil to haze over the theme's grey subtotal footer",
+    ovCss.includes("html.cx-ofix .mini-cart__content.cx-noscroll {\n  touch-action: none;\n}"),
+    "v21.1 (report #1): a rangeless drawer kills the pan at its target — iOS chains past a scroller with nothing to scroll",
+  );
+  ok(
+    !ovCss.includes("cx-more-below") && !/linear-gradient\(to top, #fff/.test(ovCss),
+    "v21.1: no chevron/fade remnants — the binary cue class is fully retired",
   );
   ok(
     ovCss.includes("html.cx-compact .mini-cart__list .qty .js-qty {\n    padding: 17px 0;\n  }") &&
@@ -4469,6 +4475,21 @@ const EVIDENCE = {
     ovJs.includes("var ofixCanLock = typeof MutationObserver === 'function';") &&
       ovJs.includes("if (ofix && ofixCanLock && drawerIsOpen()) root.classList.add('cx-ofix-lock');"),
     "v21 review C3: a browser without MutationObserver (no close-mirror) never locks at all",
+  );
+  ok(
+    ovJs.includes("var fmt = cfg.mf || window.moneyFormat;") &&
+      ovJs.includes("if (typeof window.formatMoney === 'function' && fmt) {") &&
+      ovJs.includes("if (!featureOn('ofix') && !featureOn('pinned')) return;") &&
+      ovJs.includes("try { ofixMoneyHeal(cart); } catch (e) { /* never break the theme */ }") &&
+      ovLiquid.includes('"mf": {{ shop.money_format | json }},'),
+    "v21.1 (report #2): the wrapper re-writes the totals in the theme's own shop money format in the same task the theme's Intl flash lands, island-fed so the first open needs no theme global",
+  );
+  ok(
+    ovJs.includes("window.matchMedia('(prefers-reduced-motion: reduce)').matches") &&
+      ovJs.includes("ofixPeekDone = true; // one attempt per drawer-open, whatever happens") &&
+      ovJs.includes("content.addEventListener('touchstart', stop, false);") &&
+      ovJs.includes("if (!nowOpen) ofixPeekDone = false;"),
+    "v21.1 (report #3): the peek glide is once per open, reduced-motion aware, and aborted by the shopper's own touch",
   );
   ok(
     ovJs.includes("ofixSync(); // v21: widget stack height is final for this pass") &&

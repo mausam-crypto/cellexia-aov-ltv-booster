@@ -233,6 +233,35 @@ auto-detection, and booster auto-translation need them).
 
 ## 3a. v21 cart overlay features — what this release changes
 
+### v21.1 (2026-09-14, after your field test) — three fixes in this build
+
+You reported three things after going live; all three are fixed in this
+build, same deploy procedure, no new settings:
+
+1. **One-product carts could still scroll the page underneath.** When the
+   cart is too small to scroll at all, iPhones ignore the overlay's scroll
+   area entirely and pass the swipe to the page behind. The cart now tells
+   the phone "no dragging here" whenever there is nothing to scroll, so the
+   page stays frozen in every cart size.
+2. **The checkout button showed an odd price for a second or two after an
+   add.** Verified live: your theme writes the new total twice — instantly
+   through a generic number formatter (which gets the style wrong, e.g.
+   "253,00 PLN" instead of "253,00 zł"), and again ~2 seconds later in the
+   store's own money format. The button was simply never visible during
+   that window before the pinned bar existed. The app now writes the final,
+   correctly formatted total in the same instant the theme writes its
+   temporary one, so the odd value never reaches the screen.
+3. **The little arrow read as "press Check Out Now".** Agreed and retired.
+   The scroll cue is now the display every phone already uses for "this
+   scrolls": a slim scroll line along the cart's right edge that moves as
+   the shopper scrolls (visible whenever there is more than one screen of
+   cart), plus, the moment the cart opens, the content glides down a touch
+   and settles back — physically showing the gesture, once per opening,
+   never when the shopper has already scrolled, cancelled instantly if they
+   touch anything, and skipped for people who turned off animations.
+
+### v21 — the original release notes
+
 **No database migration. No new API scopes. No webhook changes. No new
 translated strings (the Greek/Arabic locale files are untouched).** Deploy
 BOTH halves exactly as §3 describes: the extension carries the CSS/JS, the
@@ -277,10 +306,9 @@ ship OFF** — until you turn one on, the drawer is byte-identical to today.
    been dead since it shipped: `.aty` is a typo for `.qty`), the small
    "Your current pack" line hides on phones, and paddings/margins tighten
    everywhere (header, items, totals, our widgets, "Pairs perfectly" rows).
-   It also adds the **scroll cue**: a small dark down-arrow near the bottom
-   edge while there is more content below, gone once the shopper reaches the
-   end. Pure CSS, no text, nothing to tap. (An earlier fade layer was cut in
-   review: it would have painted white haze over the grey subtotal block.)
+   It also adds the **scroll cue** (reworked in v21.1, see above): a slim
+   scroll line along the cart's edge plus a one-time settle-back glide when
+   the cart opens. No text, nothing to tap.
 
 3. **Pinned checkout button** (`cart_pinned_checkout`): the checkout button
    (which already shows the order total) stays always visible in a
@@ -309,8 +337,8 @@ classes the runtime plants.
 Preview Center → draft any of the three (alone or together) → open the
 storefront preview on your phone → add something to the cart. Check: no site
 band at the bottom, swiping never moves the page behind, the quantity number
-shows right away, the checkout bar stays visible, the little arrow fades away
-at the end. Then turn the features on per market on the Cart page or the
+shows right away, the checkout bar stays visible, the cart glides down and
+back once as it opens, and the slim scroll line tracks your finger. Then turn the features on per market on the Cart page or the
 Markets matrix.
 
 ### Liquid budget

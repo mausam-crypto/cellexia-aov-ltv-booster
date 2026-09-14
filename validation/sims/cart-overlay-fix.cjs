@@ -9,10 +9,10 @@
  *    goes false;
  *  - the scroll lock: html.cx-ofix-lock mirrors .mini-cart.is-open in BOTH
  *    directions, only while cart_overlay_fix is on;
- *  - the scroll cue: cx-more-below on .mini-cart__content tracks
- *    scrollHeight - clientHeight - scrollTop > 24 (the tolerance absorbs
- *    sub-pixel heights and iOS momentum jitter), only while cart_compact is
- *    on AND the drawer is open;
+ *  - the scroll cue v2 (v21.1): a mini scrollbar thumb driven by inline
+ *    custom properties on .mini-cart (--cx-spo/--cx-spt/--cx-sth), plus a
+ *    once-per-open peek glide (ofixPeek) and the rangeless-drawer pan guard
+ *    (cx-noscroll) and the checkout-total format heal (ofixMoneyHeal);
  *  - the qty heal: a BLANK .qty input (the theme's mini-cart.liquid renders
  *    value="" on every page-load pass — `item.quantity` inside a
  *    `for line_item` loop) is filled from state.cart by data-lineid; a
@@ -57,10 +57,14 @@ const SRC_PATH = process.env.CX_SIM_SRC || REAL_SRC;
 const SRC = fs.readFileSync(SRC_PATH, "utf8");
 
 const EXTRACTED = extractAll(SRC, {
-  vars: ["CART_FEATURE_KEYS", "ofixBound", "ofixRaf", "ofixCanLock"],
+  vars: ["CART_FEATURE_KEYS", "ofixBound", "ofixRaf", "ofixWasOpen", "ofixPeekDone", "ofixCanLock"],
   functions: [
     "featureOn",
     "drawerIsOpen",
+    "activeCurrency",
+    "money",
+    "ofixMoneyHeal",
+    "ofixPeek",
     "ofixQtyHeal",
     "ofixCueUpdate",
     "ofixSync",
@@ -81,6 +85,16 @@ function ok(cond, label) {
 
 // ---------------------------------------------------------------- fixtures
 
+function styleStub() {
+  const props = {};
+  return {
+    props,
+    setProperty(name, value) { props[name] = String(value); },
+    removeProperty(name) { delete props[name]; },
+    getPropertyValue(name) { return props[name] || ""; },
+  };
+}
+
 function buildDrawer(doc, opts) {
   const o = Object.assign(
     {
@@ -96,6 +110,7 @@ function buildDrawer(doc, opts) {
   if (!o.present) return null;
   const mini = new El("section");
   mini.className = o.open ? "mini-cart is-open" : "mini-cart";
+  mini.style = styleStub(); // ofixCueUpdate writes the thumb custom props here
   const bg = new El("div");
   bg.className = "mini-cart__bg";
   const content = new El("div");
@@ -124,11 +139,20 @@ function buildDrawer(doc, opts) {
   });
   const footer = new El("div");
   footer.className = "mini-cart__footer";
+  const ftSpan = new El("span");
+  ftSpan.className = "total updated-subtotal";
+  ftSpan.textContent = "0,00 zl";
+  footer.appendChild(ftSpan);
   const actions = new El("div");
   actions.className = "mini-cart__actions";
+  actions.offsetHeight = o.actionsHeight || 0;
   const checkout = new El("a");
   checkout.className = "btn btn--primary btn--hover-alt";
   checkout.setAttribute("href", "/checkout");
+  const ckSpan = new El("span");
+  ckSpan.className = "checkout-subtotal";
+  ckSpan.textContent = "0,00 zl";
+  checkout.appendChild(ckSpan);
   const wrap = new El("div");
   wrap.appendChild(checkout);
   actions.appendChild(wrap);
@@ -139,7 +163,7 @@ function buildDrawer(doc, opts) {
   mini.appendChild(bg);
   mini.appendChild(content);
   doc.body.appendChild(mini);
-  return { mini, bg, content, list, footer, actions, checkout, inputs };
+  return { mini, bg, content, list, footer, actions, checkout, ckSpan, ftSpan, inputs };
 }
 
 function run(opts) {
@@ -166,6 +190,7 @@ function run(opts) {
     JSON,
     // ofixCanLock reads typeof MutationObserver - a bare function suffices.
     ...(o.noMutationObserver ? {} : { MutationObserver: function () {} }),
+    cfg: Object.assign({ currency: "PLN" }, o.mf !== undefined ? { mf: o.mf } : {}),
     EFFECTIVE: o.effective,
     PREVIEW: o.preview,
     state: {
@@ -175,6 +200,13 @@ function run(opts) {
           : o.cart,
     },
     window: {
+      ...(o.noMatchMedia
+        ? {}
+        : { matchMedia: function () { return { matches: o.reducedMotion === true }; } }),
+      ...(o.noFormatMoney
+        ? {}
+        : { formatMoney: function (cents, fmt) { return "FMT[" + cents + "|" + fmt + "]"; } }),
+      ...(o.moneyFormat !== undefined ? { moneyFormat: o.moneyFormat } : {}),
       addEventListener: function (type) {
         listeners.push(type);
       },
@@ -207,6 +239,10 @@ function run(opts) {
     },
     schedule: function () {
       vm.runInContext("ofixSchedule()", sandbox);
+    },
+    moneyHeal: function (cart) {
+      sandbox.__cart = cart;
+      vm.runInContext("ofixMoneyHeal(__cart)", sandbox);
     },
   };
 }
@@ -310,41 +346,187 @@ const has = (el, cls) => el.classList.contains(cls);
   );
 }
 
-// -------------------------------------------------------- C. the scroll cue
+// --------------------------------- C. the scroll-thumb cue (v21.1 report #3)
 {
+  const spo = (t) => t.drawer.mini.style.getPropertyValue("--cx-spo");
+  const spt = (t) => t.drawer.mini.style.getPropertyValue("--cx-spt");
+  const sth = (t) => t.drawer.mini.style.getPropertyValue("--cx-sth");
+
   const t = run({
     effective: { compact: true },
     drawer: { open: true, scrollHeight: 1540, clientHeight: 812, scrollTop: 0 },
   });
   t.sync();
-  ok(has(t.drawer.content, "cx-more-below"), "C1 overflowing content shows the cue");
-  t.drawer.content.scrollTop = 1540 - 812 - 10; // inside the 24px tolerance
+  ok(spo(t) === "1", "C1 overflowing content shows the thumb");
+  // track = 812 - 0 - 16 = 796; th = round(796 * 812 / 1540) = 420; top inset 8
+  ok(sth(t) === "420px", `C1 thumb height mirrors the visible share (got ${sth(t)})`);
+  ok(spt(t) === "8px", "C1 at the top the thumb sits at the top inset");
+  t.drawer.content.scrollTop = 1540 - 812; // the very end
   t.sync();
-  ok(!has(t.drawer.content, "cx-more-below"), "C1 within 24px of the end the cue is gone");
-  t.drawer.content.scrollTop = 1540 - 812 - 25; // just outside
+  ok(spt(t) === "384px", `C1 at the end the thumb sits at the track end (got ${spt(t)})`);
+  t.drawer.content.scrollTop = -40; // iOS rubber-band overshoot
   t.sync();
-  ok(has(t.drawer.content, "cx-more-below"), "C1 25px of content left still cues");
+  ok(spt(t) === "8px", "C1 rubber-band overshoot clamps to the track");
+
+  const pin = run({
+    effective: { compact: true, pinned: true },
+    drawer: { open: true, scrollHeight: 1540, clientHeight: 812, actionsHeight: 96 },
+  });
+  pin.sync();
+  // track = 812 - 96 - 16 = 700; th = round(700 * 812 / 1540) = 369
+  ok(
+    pin.drawer.mini.style.getPropertyValue("--cx-sth") === "369px",
+    `C2 the pinned bar's height comes out of the thumb track (got ${pin.drawer.mini.style.getPropertyValue("--cx-sth")})`,
+  );
 
   const short = run({
     effective: { compact: true },
     drawer: { open: true, scrollHeight: 700, clientHeight: 812 },
   });
   short.sync();
-  ok(!has(short.drawer.content, "cx-more-below"), "C2 a cart that fits shows no cue");
+  ok(spo(short) === "0", "C3 a cart that fits shows no thumb");
 
   const closed = run({
     effective: { compact: true },
     drawer: { open: false, scrollHeight: 1540, clientHeight: 812 },
   });
   closed.sync();
-  ok(!has(closed.drawer.content, "cx-more-below"), "C3 a closed drawer never cues");
+  ok(spo(closed) === "0", "C4 a closed drawer never shows the thumb");
 
   const noCompact = run({
     effective: { ofix: true },
     drawer: { open: true, scrollHeight: 1540, clientHeight: 812 },
   });
   noCompact.sync();
-  ok(!has(noCompact.drawer.content, "cx-more-below"), "C4 the cue rides cart_compact ONLY");
+  ok(spo(noCompact) === "0", "C5 the thumb rides cart_compact ONLY");
+}
+
+// -------------------- N. rangeless-drawer pan guard (v21.1 report #1)
+{
+  const short = run({
+    effective: { ofix: true },
+    drawer: { open: true, scrollHeight: 700, clientHeight: 812 },
+  });
+  short.sync();
+  ok(has(short.drawer.content, "cx-noscroll"), "N1 nothing to scroll -> the pan dies at the panel");
+  short.drawer.content.scrollHeight = 1600; // items added
+  short.sync();
+  ok(!has(short.drawer.content, "cx-noscroll"), "N1 growing past the fold releases the guard");
+
+  const off = run({
+    effective: { compact: true },
+    drawer: { open: true, scrollHeight: 700, clientHeight: 812 },
+  });
+  off.sync();
+  ok(!has(off.drawer.content, "cx-noscroll"), "N2 the guard rides cart_overlay_fix ONLY");
+}
+
+// -------------------- M. checkout-total format heal (v21.1 report #2)
+{
+  const t = run({ effective: { ofix: true }, mf: "{{amount}} zl" });
+  t.moneyHeal({ total_price: 25300 });
+  ok(
+    t.drawer.ckSpan.textContent === "FMT[25300|{{amount}} zl]" &&
+      t.drawer.ftSpan.textContent === "FMT[25300|{{amount}} zl]",
+    `M1 both totals get the theme's shop-format value via the island's mf (got "${t.drawer.ckSpan.textContent}")`,
+  );
+
+  const late = run({ effective: { pinned: true }, moneyFormat: "WMF" });
+  late.moneyHeal({ total_price: 100 });
+  ok(
+    late.drawer.ckSpan.textContent === "FMT[100|WMF]",
+    "M2 without the island member the theme's window.moneyFormat still serves (pinned alone gates too)",
+  );
+
+  const fallback = run({ effective: { ofix: true }, mf: "{{amount}}", noFormatMoney: true });
+  fallback.moneyHeal({ total_price: 25300 });
+  ok(
+    fallback.drawer.ckSpan.textContent !== "0,00 zl" &&
+      fallback.drawer.ckSpan.textContent.indexOf("253") !== -1,
+    `M3 without the theme's formatMoney the app's money() still replaces the flash (got "${fallback.drawer.ckSpan.textContent}")`,
+  );
+
+  const off = run({ effective: { compact: true }, mf: "{{amount}}" });
+  off.moneyHeal({ total_price: 25300 });
+  ok(off.drawer.ckSpan.textContent === "0,00 zl", "M4 the heal rides cart_overlay_fix / pinned ONLY");
+
+  const bad = run({ effective: { ofix: true }, mf: "{{amount}}" });
+  bad.moneyHeal({ total_price: "junk" });
+  ok(bad.drawer.ckSpan.textContent === "0,00 zl", "M5 a malformed cart payload changes nothing");
+}
+
+// ------------------------- P. the peek glide on open (v21.1 report #3)
+{
+  const t = run({
+    effective: { compact: true },
+    drawer: { open: true, scrollHeight: 1540, clientHeight: 812 },
+  });
+  const content = t.drawer.content;
+  let cur = content.scrollTop;
+  let maxSeen = 0;
+  Object.defineProperty(content, "scrollTop", {
+    configurable: true,
+    get: () => cur,
+    set: (v) => { cur = v; if (v > maxSeen) maxSeen = v; },
+  });
+  t.sync(); // open transition -> glide queued
+  ok(t.raf.length === 1, "P1 the open transition queues exactly one glide");
+  t.flushRaf();
+  ok(maxSeen > 20 && maxSeen <= 44, `P1 the glide went out ~44px (max ${maxSeen})`);
+  ok(cur === 0, "P1 and eased back to the top");
+  t.sync();
+  ok(t.raf.length === 0, "P2 a later sync while open never re-glides");
+  // The latch must hold on its own too (defense in depth vs the sync-side
+  // open-edge detector): a DIRECT second call is also a no-op.
+  t.sandbox.__pc = content;
+  vm.runInContext("ofixPeek(__pc)", t.sandbox);
+  ok(t.raf.length === 0, "P2 the once-per-open latch holds even for a direct call");
+  t.drawer.mini.className = "mini-cart";
+  t.sync(); // close re-arms the once-per-open latch
+  t.drawer.mini.className = "mini-cart is-open";
+  maxSeen = 0;
+  t.sync();
+  ok(t.raf.length === 1, "P2 reopening glides again");
+  t.flushRaf();
+  ok(maxSeen > 0 && cur === 0, "P2 and completes again");
+
+  const rm = run({
+    effective: { compact: true },
+    reducedMotion: true,
+    drawer: { open: true, scrollHeight: 1540, clientHeight: 812 },
+  });
+  rm.sync();
+  ok(rm.raf.length === 0, "P3 prefers-reduced-motion skips the glide entirely");
+
+  const ab = run({
+    effective: { compact: true },
+    drawer: { open: true, scrollHeight: 1540, clientHeight: 812 },
+  });
+  const c2 = ab.drawer.content;
+  ab.sync();
+  ab.raf.shift()(); // frame 1
+  ab.raf.shift()(); // frame 2 - mid-glide
+  const at = c2.scrollTop;
+  ok(at > 0, `P4 mid-glide the content moved (${at}px)`);
+  c2._fire("touchstart");
+  while (ab.raf.length) ab.raf.shift()();
+  ok(c2.scrollTop === at, "P4 a shopper touch freezes the glide where their finger took over");
+  ok((c2._listeners.touchstart || []).length === 0, "P4 the abort listeners are cleaned up");
+
+  const sc = run({
+    effective: { compact: true },
+    drawer: { open: true, scrollHeight: 1540, clientHeight: 812, scrollTop: 300 },
+  });
+  sc.sync();
+  ok(sc.raf.length === 0, "P5 a drawer already scrolled never glides");
+
+  const nm = run({
+    effective: { compact: true },
+    noMatchMedia: true,
+    drawer: { open: true, scrollHeight: 1540, clientHeight: 812 },
+  });
+  nm.sync();
+  ok(nm.raf.length === 1, "P6 a browser without matchMedia still glides (guard fails open)");
 }
 
 // ---------------------------------------------------------- D. the qty heal
@@ -487,18 +669,18 @@ const has = (el, cls) => el.classList.contains(cls);
     (content._listeners.scroll || []).length === 1,
     "G1 re-sync never stacks a second listener (ofixBound guard)",
   );
-  // The SHOPPER's scroll (not a sync pass) must re-verdict the cue.
+  // The SHOPPER's scroll (not a sync pass) must re-verdict the thumb.
   content.scrollTop = 1540 - 812; // at the very end
   content._fire("scroll");
   ok(
-    !has(content, "cx-more-below"),
-    "G2 the bound scroll listener alone clears the cue at the end",
+    t.drawer.mini.style.getPropertyValue("--cx-spt") === "384px",
+    "G2 the bound scroll listener alone moves the thumb to the track end",
   );
   content.scrollTop = 0;
   content._fire("scroll");
   ok(
-    has(content, "cx-more-below"),
-    "G2 and restores it when content is above again",
+    t.drawer.mini.style.getPropertyValue("--cx-spt") === "8px",
+    "G2 and back to the top",
   );
   // A late-loading drawer image grows scrollHeight silently: the
   // capture-phase load listener schedules a re-verdict.
@@ -507,13 +689,13 @@ const has = (el, cls) => el.classList.contains(cls);
     drawer: { open: true, scrollHeight: 812, clientHeight: 812 },
   });
   g3.sync();
-  ok(!has(g3.drawer.content, "cx-more-below"), "G3 fits before the image loads");
+  ok(g3.drawer.mini.style.getPropertyValue("--cx-spo") === "0", "G3 fits before the image loads");
   g3.drawer.content.scrollHeight = 1200;
   g3.drawer.content._fire("load");
   g3.flushRaf();
   ok(
-    has(g3.drawer.content, "cx-more-below"),
-    "G3 an image load that grows the content re-verdicts the cue",
+    g3.drawer.mini.style.getPropertyValue("--cx-spo") === "1",
+    "G3 an image load that grows the content re-verdicts the thumb",
   );
 }
 
@@ -531,7 +713,7 @@ const has = (el, cls) => el.classList.contains(cls);
       on.listeners.indexOf("pageshow") !== -1,
     "F2 any feature on: resize/orientationchange/pageshow re-verdict listeners",
   );
-  ok(has(on.drawer.content, "cx-more-below"), "F2 init runs a first sync");
+  ok(on.drawer.mini.style.getPropertyValue("--cx-spo") === "1", "F2 init runs a first sync");
 
   const sched = run({ effective: { ofix: true }, drawer: { open: true } });
   sched.schedule();
@@ -568,8 +750,9 @@ const has = (el, cls) => el.classList.contains(cls);
     "F4 a preview-only session still gets the re-verdict listeners",
   );
   ok(
-    has(prev.html, "cx-compact") && has(prev.drawer.content, "cx-more-below"),
-    "F4 init's first sync plants the previewed gate + cue",
+    has(prev.html, "cx-compact") &&
+      prev.drawer.mini.style.getPropertyValue("--cx-spo") === "1",
+    "F4 init's first sync plants the previewed gate + thumb",
   );
 }
 
@@ -594,10 +777,10 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         replace: "      if (ofix && ofixCanLock) root.classList.add('cx-ofix-lock');",
       },
       {
-        // Without the tolerance the chevron flickers at the scroll end.
-        name: "m2-cue-tolerance-dropped",
-        find: "        more = content.scrollHeight - content.clientHeight - content.scrollTop > 24;",
-        replace: "        more = content.scrollHeight - content.clientHeight - content.scrollTop > -1;",
+        // A thumb on a CLOSED drawer would ghost over the page dim.
+        name: "m2-thumb-shows-when-closed",
+        find: "      if (featureOn('compact') && drawerIsOpen() && scrollable) {",
+        replace: "      if (featureOn('compact') && scrollable) {",
       },
       {
         // Writing .mini-cart's class fires the theme observer's /cart.js
@@ -637,10 +820,11 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         replace: "  function ofixQtyHeal() {\n    if (false) return;",
       },
       {
-        // A closed drawer must never cue (the class would flash on open).
-        name: "m9-cue-when-closed",
-        find: "      if (featureOn('compact') && drawerIsOpen()) {",
-        replace: "      if (featureOn('compact')) {",
+        // Review #1: without the guard a rangeless drawer keeps chaining
+        // the pan to the page on iOS.
+        name: "m9-noscroll-never-set",
+        find: "      if (featureOn('ofix') && !scrollable) content.classList.add('cx-noscroll');",
+        replace: "      if (false) content.classList.add('cx-noscroll');",
       },
       {
         // Review C7: without the scroll binding the cue is set once at open
@@ -670,12 +854,31 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         find: "  var ofixCanLock = typeof MutationObserver === 'function';",
         replace: "  var ofixCanLock = true;",
       },
+      {
+        // Report #2: skipping the shop-format branch leaves the theme's
+        // Intl flash as the healed value.
+        name: "m14-money-heal-ignores-shop-format",
+        find: "    if (typeof window.formatMoney === 'function' && fmt) {\n      txt = window.formatMoney(cart.total_price, fmt);\n    } else {\n      txt = money(cart.total_price);\n    }",
+        replace: "    txt = money(cart.total_price);",
+      },
+      {
+        // Report #3: the glide must respect prefers-reduced-motion.
+        name: "m15-peek-ignores-reduced-motion",
+        find: "      try {\n        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;\n      } catch (e) { /* no preference signal — proceed */ }",
+        replace: "      /* reduced-motion guard removed */",
+      },
+      {
+        // Report #3: a glide on EVERY sync would fight the shopper.
+        name: "m16-peek-every-sync",
+        find: "      if (ofixPeekDone || !featureOn('compact')) return;\n      ofixPeekDone = true; // one attempt per drawer-open, whatever happens",
+        replace: "      if (!featureOn('compact')) return;",
+      },
     ],
   });
   if (bad > 0) {
     console.log(`\n${bad} MUTANT(S) NOT CAUGHT (cart-overlay-fix)`);
     process.exitCode = 1;
   } else {
-    console.log("ALL 13 MUTANTS CAUGHT (cart-overlay-fix)");
+    console.log("ALL 16 MUTANTS CAUGHT (cart-overlay-fix)");
   }
 }

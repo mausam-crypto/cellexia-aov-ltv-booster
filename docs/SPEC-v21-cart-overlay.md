@@ -18,15 +18,18 @@ dead `body.cart-open` class, the `item` vs `line_item` qty template bug, the
 - **CSS-scoped**: every storefront rule lives in `assets/cellexia-booster.css`
   under one of the html gate classes. No gate class on the page ⇒ the drawer
   is byte-identical to the theme's own. OFF = current behavior, always.
-- **The JS surface is class management only** (`cellexia-cart.js`, the
+- **The JS surface is class/var management only** (`cellexia-cart.js`, the
   `ofix*` module): plant/strip the gate classes per `featureOn(...)`, mirror
   `.mini-cart.is-open` onto `html.cx-ofix-lock` (from the EXISTING
   classObserver, first line, unconditional — close must unlock pre-paint),
-  maintain `cx-more-below` on `.mini-cart__content`, heal blank qty inputs.
-  Wired at exactly four points: classObserver head, listObserver,
-  `renderAll()` tail, `init()` (`ofixInit`, listeners only when ≥1 feature
-  on). Everything try/caught; a missing `.mini-cart` strips all classes
-  (fail closed).
+  drive the scroll-thumb custom properties (`--cx-spo/spt/sth`, inline on
+  `.mini-cart`'s STYLE attribute — never its class) and the `cx-noscroll`
+  pan guard on `.mini-cart__content`, heal blank qty inputs, re-write the
+  totals after the theme's Intl flash (`ofixMoneyHeal`, wrapper hook), and
+  glide the drawer once per open (`ofixPeek`). Wired at exactly four points
+  plus the refresh wrapper: classObserver head, listObserver, `renderAll()`
+  tail, `init()` (`ofixInit`, listeners only when ≥1 feature on). Everything
+  try/caught; a missing `.mini-cart` strips all classes (fail closed).
 - **No node is painted, moved or rebuilt.** No `data-cx-feature` marker, no
   beacon (the v20 image_badges precedent); FeatureKey evidence = the gate-key
   strings in `CART_FEATURE_KEYS`.
@@ -70,6 +73,22 @@ dead `body.cart-open` class, the `item` vs `line_item` qty template bug, the
   the cart line's variant id (review C2: equal-count divergence from
   another tab). Blank-only forever: never fights a shopper mid-edit, stays
   a no-op once the theme's `item` → `line_item` typo is fixed.
+- **Rangeless-drawer pan guard** (v21.1, merchant report #1): iOS chains a
+  drag past a scroller with NOTHING to scroll straight to the document, the
+  overflow locks notwithstanding — `ofixCueUpdate` sets `cx-noscroll` on
+  `.mini-cart__content` while `scrollHeight` fits, and
+  `html.cx-ofix .mini-cart__content.cx-noscroll { touch-action: none }`
+  kills the pan at its target (taps/steppers/inputs unaffected).
+- **Checkout-total format heal** (v21.1, merchant report #2, gate
+  `ofix || pinned`): the theme's `refreshMiniCart` writes the checkout and
+  footer totals through its Intl `formatter` (seen live: "253,00 PLN" for a
+  "253,00 zł" cart) and its own corrector rewrites them in shop money
+  format only ~1-2s later — a flash the pinned bar exposed. The v16 wrapper
+  now calls `ofixMoneyHeal(cart)` right after the original: it re-writes
+  `.checkout-subtotal` + `.updated-subtotal` with
+  `window.formatMoney(total_price, cfg.mf || window.moneyFormat)` (the
+  island-emitted `"mf"` member means the very first open needs no theme
+  global), falling back to `money()` when the theme global is absent.
 - **Lock support gate** (review C3): `ofixCanLock = typeof MutationObserver
   === 'function'` — a browser whose close transitions we cannot mirror
   (setupObservers bails there) never locks at all; height/cue/heal still
@@ -88,17 +107,20 @@ dead `body.cart-open` class, the `item` vs `line_item` qty template bug, the
   `.cx-volume__current{display:none}` (merchant-approved), tightened
   paddings/margins per the shipped table. `__actions` compaction excludes
   `cx-pin` (`:not(.cx-pin)`) — the pinned bar owns its own geometry.
-- **Scroll cue**: `cx-more-below` set while
-  `scrollHeight − clientHeight − scrollTop > 24` AND the drawer is open.
-  Re-verdicted on: content scroll, every `renderAll`, list childList,
-  is-open transitions, resize/orientationchange/pageshow (rAF-coalesced),
-  capture-phase image `load` in the drawer. CHEVRON ONLY (review C5: a
-  fade veil would haze white over the theme's solid #f4f4f4 subtotal
-  footer for the last screenfuls). Two anchorings: with `cx-pin`, an
-  `::after` chevron on the actions bar (`bottom:100%`); without, a sticky
-  zero-flow-height `.mini-cart__content::after` with an inline-SVG chevron.
-  Zero text, zero locale bytes, `pointer-events:none`, drift animation only
-  under `prefers-reduced-motion: no-preference`.
+- **Scroll cue v2** (v21.1, merchant report #3 — the chevron above the
+  pinned bar read as "press Check Out Now" and was retired): a mini
+  scrollbar thumb along the drawer's edge (`html.cx-compact .mini-cart
+  ::after`, geometry via `--cx-spo/--cx-spt/--cx-sth` written by
+  `ofixCueUpdate`: 8px insets, pinned-bar height subtracted from the track,
+  thumb ≥44px, position clamped for rubber-band overshoot), visible while
+  the drawer is open and scrollable. Re-verdicted on: content scroll, every
+  `renderAll`, list childList, is-open transitions, resize/orientationchange/
+  pageshow (rAF-coalesced), capture-phase image `load` in the drawer. Plus
+  the one-time **peek glide** on open (`ofixPeek`): the content glides ~44px
+  down and eases back (half sine, 650ms), physically demonstrating the
+  gesture — once per open, only from the top, only when scrollable, skipped
+  under `prefers-reduced-motion: reduce`, aborted the instant the shopper
+  touches or wheels. Zero text, zero locale bytes, `pointer-events:none`.
 
 ## 4. cart_pinned_checkout
 
@@ -120,7 +142,7 @@ cx_ov.compact or cx_ov.pinned`) IN FRONT of the pinned v14 tail; three
 always-emitted `"effective"` members (`ofix`/`compact`/`pinned` —
 `anyEffectiveLive()` boots the runtime on any of them alone). A pre-v21
 metafield has no `cfg.overlayFix` ⇒ every gate nil-false. Byte caps
-unmoved: file 23,356/23,600 B, total 97,972/99,500 B (v21 dieted first).
+unmoved: file 23,394/23,600 B (incl. the v21.1 "mf" member), total ~98,010/99,500 B (v21 dieted first).
 
 ## 6. Enforcement
 
@@ -132,7 +154,7 @@ unmoved: file 23,356/23,600 B, total 97,972/99,500 B (v21 dieted first).
   blank-only heal guard, the four wiring lines), settings pins (LAST keys,
   `overlay` kind, `=== true` sanitize), admin pins (cart page cards, Markets
   matrix read+write, preview keys, hub Configure).
-- `validation/sims/cart-overlay-fix.cjs` (62 checks, 13 mutants): the 2³
+- `validation/sims/cart-overlay-fix.cjs` (86 checks, 16 mutants): the 2³
   gating matrix incl. preview paths, lock both directions + ofix-only,
   cue threshold/tolerance/closed/compact-only + the LIVE listener wiring
   (scroll/image-load re-verdicts through the bound handlers), heal

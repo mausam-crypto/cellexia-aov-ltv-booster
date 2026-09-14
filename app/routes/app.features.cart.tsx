@@ -1112,7 +1112,7 @@ export default function CartFeaturesPage() {
                 />
                 <Checkbox
                   label="Compact cart"
-                  helpText="Tightens spacing on phones so shoppers see more of the cart at once. The product photo keeps its size and no text gets smaller. Also adds a small down arrow while there is more to see below; it disappears at the end."
+                  helpText="Tightens spacing on phones so shoppers see more of the cart at once. The product photo keeps its size and no text gets smaller. When the cart is taller than the screen, a slim scroll line on its edge shows where the shopper is, and on opening the cart glides down a touch and settles back to show it scrolls."
                   checked={state.overlayCompact}
                   onChange={(overlayCompact) =>
                     setState((previous) => ({ ...previous, overlayCompact }))

@@ -363,6 +363,7 @@ endunless
 {%- endif %}
 "threshold": {"cents": {% if cx_fs %}{{ cx_fs.amount | times: 100 | round }}{% else %}{{ threshold | times: 100 }}{% endif %}, "currency": {% if cx_fs %}{{ cx_fs.currencyCode | json }}{% else %}{{ shop.currency | json }}{% endif %}},
 "shopCurrency": {{ shop.currency | json }},
+"mf": {{ shop.money_format | json }},
 "thresholdCents": {{ threshold | times: 100 }},
 "b2b": {% if customer.b2b? %}true{% else %}false{% endif %},
 "currency": {{ cart.currency.iso_code | json }},

@@ -6793,6 +6793,15 @@ html.cx-ofix .mini-cart__bg {
   touch-action: none;
 }
 
+/* v21.1 (merchant report #1): a drawer with NOTHING to scroll — iOS skips
+   the rangeless scroller and chains the drag straight to the document, the
+   overflow locks notwithstanding. cx-noscroll (set by ofixCueUpdate only
+   while scrollHeight fits) kills the pan gesture at its target; taps,
+   steppers and inputs are unaffected. */
+html.cx-ofix .mini-cart__content.cx-noscroll {
+  touch-action: none;
+}
+
 /* 3) PINNED CHECKOUT — cart_pinned_checkout. .mini-cart__actions is the
    LAST child of the scroll container, the textbook sticky footer: pinned to
    the visible bottom while content remains below, settling into flow at the
@@ -6840,74 +6849,31 @@ html.cx-pin .mini-cart__actions .btn--tert {
   text-underline-offset: 3px;
 }
 
-/* 4) SCROLL CUE — cart_compact. Zero text, zero locale bytes, invisible to
-   the accessibility tree (content:"" pseudos), pointer-events none so it
-   can never intercept a tap. Shown only while .cx-more-below (maintained by
-   ofixCueUpdate) says content remains below; its disappearance at the end
-   is itself the "you have seen everything" signal. Chevron ONLY — an
-   earlier white fade veil was cut in review (C5): the veil zone spends the
-   last screenfuls over the theme's solid #f4f4f4 subtotal footer, where a
-   white haze reads as broken UI; the ink chevron is legible on both
-   grounds, and the cut-off content peek carries the rest of the affordance.
-   4a — WITH the pinned bar: chevron anchored ABOVE the bar (bottom: 100%
-   of the sticky, positioned actions element). */
-html.cx-compact.cx-pin .mini-cart__actions::after {
+/* 4) SCROLL CUE v2 — cart_compact (v21.1, merchant report #3: the chevron
+   above the pinned bar read as "press Check Out Now" — retired). The cue is
+   now the one display every phone already uses for "this scrolls": a mini
+   scrollbar thumb along the drawer's edge, persistent while the drawer is
+   open and scrollable, position/height driven by ofixCueUpdate through
+   inline custom properties on .mini-cart (its STYLE attribute — never its
+   class, which the theme section observer watches). A one-time gentle peek
+   glide on open (ofixPeek, JS-driven, reduced-motion aware, aborted by any
+   shopper touch) physically demonstrates the gesture. Zero text, zero
+   locale bytes, pointer-events none, invisible to the accessibility tree.
+   z-index 3: above the panel's children incl. the pinned bar (z-index 2);
+   the panel creates no stacking context (z-index auto). */
+html.cx-compact .mini-cart::after {
   content: "";
   position: absolute;
-  bottom: calc(100% + 10px);
-  left: 50%;
-  width: 11px;
-  height: 11px;
-  border-right: 2px solid #1d1d1b;
-  border-bottom: 2px solid #1d1d1b;
-  transform: translateX(-50%) rotate(45deg);
-  opacity: 0;
-  transition: opacity 0.2s ease;
+  inset-inline-end: 4px;
+  top: var(--cx-spt, 8px);
+  width: 4px;
+  height: var(--cx-sth, 0px);
+  border-radius: 4px;
+  background: rgba(29, 29, 27, 0.3);
+  opacity: var(--cx-spo, 0);
+  transition: opacity 0.25s ease;
   pointer-events: none;
-}
-
-html.cx-compact.cx-pin .mini-cart__content.cx-more-below .mini-cart__actions::after {
-  opacity: 0.9;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  html.cx-compact.cx-pin .mini-cart__content.cx-more-below .mini-cart__actions::after {
-    animation: cx-ofix-nudge 2s ease-in-out infinite alternate;
-  }
-}
-
-@keyframes cx-ofix-nudge {
-  from {
-    transform: translateX(-50%) rotate(45deg) translate(0, 0);
-  }
-  to {
-    /* 45deg-rotated axis: translate(2px,2px) is a net DOWNWARD drift */
-    transform: translateX(-50%) rotate(45deg) translate(2px, 2px);
-  }
-}
-
-/* 4b — WITHOUT the pinned bar: a sticky, zero-flow-height pseudo pinned to
-   the visible bottom of the scroll container (its flow position is after
-   .mini-cart__actions, so sticky bottom:0 holds it at the scrollport edge
-   until the very end). The chevron is an inline-SVG background (ink
-   #1d1d1b, URL-encoded) — no fade layer, see the review-C5 note above. */
-html.cx-compact:not(.cx-pin) .mini-cart__content::after {
-  content: "";
-  position: sticky;
-  bottom: 0;
-  display: block;
-  height: 24px;
-  margin-block-start: -24px;
-  background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='8'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%231d1d1b' stroke-width='2'/%3E%3C/svg%3E")
-      center bottom 8px / 14px 8px no-repeat;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  pointer-events: none;
-}
-
-html.cx-compact:not(.cx-pin) .mini-cart__content.cx-more-below::after {
-  opacity: 0.9;
+  z-index: 3;
 }
 
 /* 5) COMPACTION — cart_compact, phones only (the theme's own 576px

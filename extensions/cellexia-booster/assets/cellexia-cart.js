@@ -5812,7 +5812,8 @@
   // classes, (2) mirrors the drawer's is-open onto html.cx-ofix-lock (the
   // scroll lock — CSS-only, no scrollY juggling: zeroing scrollY would fire
   // the theme's accumulated headerOffset scroll handlers), (3) maintains the
-  // cx-more-below cue class on .mini-cart__content, and (4) heals the qty
+  // scroll-cue state (the cx-noscroll pan guard + the thumb custom
+  // properties on .mini-cart's style attribute), and (4) heals the qty
   // inputs the theme's Liquid path renders with value="" (mini-cart.liquid
   // reads `item.quantity` inside a `for line_item` loop — undefined — while
   // the theme's JS rebuild path fills them correctly, hence "sometimes").
@@ -5824,6 +5825,8 @@
   // missing anchor degrades to the theme's current behavior.
   var ofixBound = null; // the .mini-cart__content the cue listeners bind to
   var ofixRaf = 0;
+  var ofixWasOpen = false; // ofixSync's own open-transition edge detector
+  var ofixPeekDone = false; // one peek attempt per drawer-open
   // The lock's RELEASE depends on the is-open class observer (setupObservers
   // bails without MutationObserver) — a browser that cannot mirror close
   // transitions must never lock at all, or a late renderAll could freeze the
@@ -5859,19 +5862,124 @@
     }
   }
 
+  function ofixMoneyHeal(cart) {
+    // v21.1 (merchant report #2): after any cart change the theme's own
+    // refreshMiniCart writes the checkout/footer totals through its Intl
+    // `formatter` — the wrong style in many locale/currency pairs (seen
+    // live: "253,00 PLN" for a "253,00 zł" cart) — and its delayed
+    // corrector only rewrites them in shop money format ~1-2s later.
+    // Invisible below the fold before v21; the pinned bar exposed it.
+    // Write the FINAL value in the same task, before paint: the theme's
+    // own formatMoney(total, shop money format) when available (cfg.mf is
+    // island-emitted so the very first open needs no theme global), else
+    // our money() (no worse than today's flash).
+    if (!featureOn('ofix') && !featureOn('pinned')) return;
+    if (!cart || typeof cart.total_price !== 'number') return;
+    var fmt = cfg.mf || window.moneyFormat;
+    var txt;
+    if (typeof window.formatMoney === 'function' && fmt) {
+      txt = window.formatMoney(cart.total_price, fmt);
+    } else {
+      txt = money(cart.total_price);
+    }
+    if (typeof txt !== 'string' || !txt) return;
+    var spans = document.querySelectorAll('.checkout-subtotal, .updated-subtotal');
+    for (var i = 0; i < spans.length; i++) spans[i].textContent = txt;
+  }
+
+  function ofixPeek(content) {
+    // v21.1 (merchant report #3): the chevron above the pinned bar read as
+    // "press Check Out Now". The cue is now (a) this one-time gentle peek —
+    // the drawer glides ~44px down and back when it opens, physically
+    // demonstrating that it scrolls — plus (b) the persistent thumb drawn
+    // by ofixCueUpdate. Once per open, only from the top, only when there
+    // is something to scroll, skipped for prefers-reduced-motion, and
+    // aborted the instant the shopper touches or scrolls themselves.
+    try {
+      if (ofixPeekDone || !featureOn('compact')) return;
+      ofixPeekDone = true; // one attempt per drawer-open, whatever happens
+      var maxScroll = content.scrollHeight - content.clientHeight;
+      if (maxScroll <= 1) return;
+      if (content.scrollTop > 1) return; // they already know it scrolls
+      try {
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      } catch (e) { /* no preference signal — proceed */ }
+      var raf = window.requestAnimationFrame || function (fn) { return window.setTimeout(fn, 16); };
+      var dist = maxScroll < 44 ? maxScroll : 44;
+      var DUR = 650;
+      var start = null;
+      var fake = 0;
+      var aborted = false;
+      var stop = function () { aborted = true; };
+      var cleanup = function () {
+        content.removeEventListener('touchstart', stop, false);
+        content.removeEventListener('wheel', stop, false);
+      };
+      content.addEventListener('touchstart', stop, false);
+      content.addEventListener('wheel', stop, false);
+      var step = function (ts) {
+        try {
+          var nowT = typeof ts === 'number' && ts > 0 ? ts : (fake += 16);
+          if (start === null) start = nowT;
+          var t = nowT - start;
+          if (aborted || !drawerIsOpen()) { cleanup(); return; }
+          if (t >= DUR) {
+            content.scrollTop = 0;
+            cleanup();
+            return;
+          }
+          // Half sine: glide out and ease back — one gesture, no bounce.
+          content.scrollTop = Math.round(dist * Math.sin(Math.PI * (t / DUR)));
+          raf(step);
+        } catch (e) { cleanup(); }
+      };
+      raf(step);
+    } catch (e) { /* never break the theme */ }
+  }
+
   function ofixCueUpdate() {
     try {
       var content = ofixBound || document.querySelector('.mini-cart__content');
       if (!content) return;
-      var more = false;
-      if (featureOn('compact') && drawerIsOpen()) {
-        // 24px tolerance: sub-pixel scroll heights, iOS momentum jitter and
-        // the safe-area sliver all count as "at the end" — the cue's
-        // disappearance is itself the "you have seen everything" signal.
-        more = content.scrollHeight - content.clientHeight - content.scrollTop > 24;
+      var mini = document.querySelector('.mini-cart');
+      var maxScroll = content.scrollHeight - content.clientHeight;
+      var scrollable = maxScroll > 1;
+      // v21.1 (merchant report #1): a drawer with NOTHING to scroll — iOS
+      // skips the rangeless scroller and chains the drag straight to the
+      // document, the overflow locks notwithstanding. touch-action:none on
+      // the panel (via cx-noscroll) kills the pan at its target; taps,
+      // steppers and inputs are unaffected.
+      if (featureOn('ofix') && !scrollable) content.classList.add('cx-noscroll');
+      else content.classList.remove('cx-noscroll');
+      // cart_compact cue v2: a mini scrollbar thumb along the drawer's
+      // edge — the one "this scrolls" display every phone already shows.
+      // Geometry rides inline custom properties on .mini-cart: its STYLE
+      // attribute, never its class (the theme section observer watches
+      // class only, so this can never trigger its /cart.js fetch).
+      if (!mini || !mini.style || typeof mini.style.setProperty !== 'function') return;
+      if (featureOn('compact') && drawerIsOpen() && scrollable) {
+        var barH = 0;
+        if (featureOn('pinned')) {
+          var acts = content.querySelector('.mini-cart__actions');
+          barH = (acts && acts.offsetHeight) || 0;
+        }
+        var track = content.clientHeight - barH - 16;
+        if (track < 44) {
+          mini.style.setProperty('--cx-spo', '0');
+          return;
+        }
+        var th = Math.round(track * content.clientHeight / content.scrollHeight);
+        if (th < 44) th = 44;
+        if (th > track) th = track;
+        var pct = content.scrollTop / maxScroll;
+        if (pct < 0) pct = 0;
+        if (pct > 1) pct = 1;
+        mini.style.setProperty('--cx-sth', th + 'px');
+        mini.style.setProperty('--cx-spt', 8 + Math.round((track - th) * pct) + 'px');
+        mini.style.setProperty('--cx-spo', '1');
+      } else {
+        mini.style.setProperty('--cx-spo', '0');
       }
-      if (more) content.classList.add('cx-more-below');
-      else content.classList.remove('cx-more-below');
     } catch (e) { /* never break the theme */ }
   }
 
@@ -5886,7 +5994,7 @@
         root.classList.remove('cx-ofix-lock');
         root.classList.remove('cx-compact');
         root.classList.remove('cx-pin');
-        if (ofixBound) ofixBound.classList.remove('cx-more-below');
+        if (ofixBound) ofixBound.classList.remove('cx-noscroll');
         return;
       }
       var ofix = featureOn('ofix');
@@ -5910,6 +6018,12 @@
       }
       ofixCueUpdate();
       ofixQtyHeal();
+      // Open-transition edge (module-local, independent of setupObservers):
+      // one peek per open; re-armed the first sync that sees it closed.
+      var nowOpen = drawerIsOpen();
+      if (nowOpen && !ofixWasOpen && content) ofixPeek(content);
+      if (!nowOpen) ofixPeekDone = false;
+      ofixWasOpen = nowOpen;
     } catch (e) { /* never break the theme */ }
   }
 
@@ -6964,7 +7078,15 @@
             }).catch(function () { /* noop */ });
           }
         } catch (e) { /* never break the theme */ }
-        return orig.apply(this, arguments);
+        var out = orig.apply(this, arguments);
+        // v21.1: the original just wrote the checkout/footer totals through
+        // the theme's Intl `formatter` (wrong style in many locale/currency
+        // pairs, e.g. "253,00 PLN"); its own corrector only rewrites them in
+        // shop money format ~1-2s later — a flash the pinned bar made
+        // visible. Re-write both spans with the FINAL value now, same task,
+        // before paint.
+        try { ofixMoneyHeal(cart); } catch (e) { /* never break the theme */ }
+        return out;
       };
       wrapped.__cxCartHook = true;
       window.refreshMiniCart = wrapped;
