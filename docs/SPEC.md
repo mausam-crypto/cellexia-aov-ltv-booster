@@ -517,6 +517,23 @@ no node, no copy, no locale key, no beacon. Off by default, previewable, and
 clamped so the row can never outgrow the picture. Full contract:
 `docs/SPEC-v20-image-badges.md`.
 
+## v21 cart overlay features
+
+`cart_overlay_fix`, `cart_compact`, `cart_pinned_checkout` — three independent
+drawer fixes on the theme's own overlay, each with its own flag, market scope
+and gate class on `documentElement`. All three ship OFF. Full contract:
+`docs/SPEC-v21-cart-overlay.md`.
+
+## v22 URL parameter gates
+
+`paramGates` — a reusable way to hide a piece on the normal storefront and
+show it only to visitors who arrived through a link carrying that piece's own
+random parameter, remembered for 90 days. NOT a FeatureKey: per-feature
+metadata, one unique parameter per gate, with the parameter and token kept out
+of page source (the storefront sees digests only) and out of both metafield
+mirrors. First users are the two pieces of the v19 research band. Full
+contract: `docs/SPEC-v22-param-gates.md`.
+
 ## Conventions
 
 - TypeScript strict; no `any` unless unavoidable. Remix v2 flat routes.

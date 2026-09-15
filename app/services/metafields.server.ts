@@ -8,9 +8,13 @@ import {
   sanitizeThresholdsByCountry,
   sanitizeGiftTiers,
   sanitizeSetSavingsTiers,
+  GATE_IDS,
   type BoosterSettings,
+  type GateId,
   type MarketScope,
+  type ParamGate,
 } from "../models/settings.server";
+import { gateDigestPair } from "../models/gate-digest";
 import { marketCountryMap } from "./markets.server";
 
 /**
@@ -565,6 +569,28 @@ export interface SettingsSyncResult {
   warnings: string[];
 }
 
+/**
+ * v22 — project the parameter-gate registry down to what the storefront is
+ * allowed to see: one 32-hex digest pair per ENABLED gate, keyed by gate id.
+ *
+ * The raw `param` and `token` never leave the app database. They are not in
+ * either metafield, so they cannot reach page source through some future
+ * Liquid that prints a whole section, and they are not in the checkout
+ * mirror either. Returns undefined when no gate is on, so an ordinary shop
+ * emits no island at all and pays nothing for the feature.
+ */
+export function projectGates(
+  gates: Record<GateId, ParamGate> | undefined,
+): Record<string, string> | undefined {
+  const out: Record<string, string> = {};
+  for (const id of GATE_IDS) {
+    const gate = gates?.[id];
+    if (!gate || gate.enabled !== true || !gate.param || !gate.token) continue;
+    out[id] = gateDigestPair(gate.param, gate.token);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export async function syncSettingsToMetafields(
   admin: AdminGraphqlClient,
   settings: BoosterSettings,
@@ -599,6 +625,8 @@ export async function syncSettingsToMetafields(
     : {};
   const liquidValue = JSON.stringify({
     ...settings,
+    // v22: digests only — the raw param/token stay in the app database.
+    paramGates: projectGates(settings.paramGates),
     preview: { armed: effectivePreview.armed, draftFlags, draftConfig },
   });
   // draftConfig is tokenless by construction (closed-enum values only —
@@ -607,6 +635,9 @@ export async function syncSettingsToMetafields(
   // it (v6.0) to honor a previewed delivery format, exactly like Liquid does.
   const checkoutValue = JSON.stringify({
     ...settings,
+    // v22: checkout has no gated surface, but the same projection applies so
+    // the raw pair cannot reach Shopify through this mirror either.
+    paramGates: projectGates(settings.paramGates),
     preview: {
       armed: effectivePreview.armed,
       draftFlags,

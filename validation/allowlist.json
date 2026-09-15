@@ -220,6 +220,21 @@
       "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
       "reason": "v21 cart overlay features + v21.1 field fixes: CART_FEATURE_KEYS gains ofix/compact/pinned and the ofix* module (ofixSync/ofixCueUpdate/ofixQtyHeal/ofixMoneyHeal/ofixPeek/ofixSchedule/ofixInit) plants the html gate classes cx-ofix/cx-compact/cx-pin, mirrors .mini-cart.is-open onto html.cx-ofix-lock from the EXISTING class observer, drives the scroll-thumb custom properties on .mini-cart's STYLE attribute (never its class), toggles the cx-noscroll pan guard on a rangeless drawer (v21.1 report #1), fills BLANK unfocused drawer qty inputs from state.cart by data-lineid with a data-varid identity check (the theme's mini-cart.liquid item vs line_item typo), re-writes the checkout/footer totals in shop money format in the same task the theme's Intl flash lands (wrapper hook, v21.1 report #2), recreates the LIVE theme's header count badge verbatim when a page that loaded empty gets its first item (ofixCountHeal, v21.2 - the only node the module ever creates, the theme's own markup), and glides the drawer once per open as the scroll lesson (v21.1 report #3, reduced-motion aware, shopper-touch aborted). Four hook lines: renderAll tail, classObserver first line, listObserver, init; plus the wrapper's ofixMoneyHeal call. Paints no node, no marker, no beacon (v20 precedent); never writes .mini-cart's own classList (theme observer fetch-storm guard). Pinned by harness v21/v21.1 + sims/cart-overlay-fix.cjs (18 mutants).",
       "wave": "v21"
+    },
+    {
+      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+      "reason": "v22 URL parameter gates: the #cx-g digest island beside the always-on session beacon, plus `cfg.paramGates` in the bundle-loader condition so cellexia-cart.js is present on every page type whenever a gate is live. The island carries DIGESTS only \u2014 projectGates() strips the parameter and token before either metafield mirror is written. Emission is gated on the registry alone, never on anything about the request, so the HTML is identical for every visitor. Pinned by sims/param-gates.cjs (100 checks, 5 mutants) and harness section 22.",
+      "wave": "v22"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+      "reason": "v22 URL parameter gates: the cxGate* module (digest / capture / storage / proxy sync), its cxGateBoot(Date.now()) call at the top of boot(), the two render-side guards in bbpSealNode and bbpResearchNode, bbpGateMeta, and the optional third `meta` argument on track(). The module reads the query string and its own first-party storage and nothing else; sims/param-gates.cjs section H pins that it never reads the user agent, referrer or any automation signal.",
+      "wave": "v22"
+    },
+    {
+      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+      "reason": "v22 URL parameter gates: a BYTE-IDENTICAL copy of the cxGate* module (the cx:us_state duplication precedent) plus its cxGateBoot(Date.now()) call at the top of boot(). This bundle is the one that loads on every page type, so it is what captures an unlock for a visitor who lands on the home page or a collection and only reaches a product page later. sims/param-gates.cjs section I pins the two copies byte for byte.",
+      "wave": "v22"
     }
   ]
 }

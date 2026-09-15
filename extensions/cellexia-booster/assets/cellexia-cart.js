@@ -65,6 +65,254 @@
     return '/';
   }
 
+  // --------------------------------------------- v22 URL parameter gates
+  //
+  // docs/SPEC-v22-param-gates.md. A gated piece is hidden on the normal
+  // storefront and shown only to a visitor who arrived through a tagged
+  // link, remembered for 90 days.
+  //
+  // The ONLY inputs are the query string of the URL the visitor followed and
+  // the first-party storage that URL wrote. Nothing here reads the
+  // user agent, the referrer, the IP, the device or any automation signal,
+  // and nothing branches server-side: the HTML Shopify returns is the same
+  // for every visitor, parameter or no parameter, and the difference happens
+  // entirely in this browser after a storage read. validation/sims/
+  // param-gates.cjs pins that.
+  //
+  // The parameter name and token are NEVER in page source. The #cx-g island
+  // carries only digests, and this module hashes each name=value pair it
+  // finds in the query string to look for a match.
+  //
+  // This block is BYTE-IDENTICAL in cellexia-pdp.js and cellexia-cart.js
+  // (the cx:us_state precedent) so whichever bundle a landing page loads
+  // captures the unlock. Keep them in step — the sim compares them.
+
+  var CX_GATE_COOKIE = 'cx_ux';
+  var CX_GATE_STORE = 'cx:ux';
+  var CX_GATE_VERSION = '1';
+  var CX_GATE_TTL = 7776000; // seconds — 90 days, twinned with GATE_TTL_SECONDS
+  var CX_GATE_MAX_PAIRS = 30; // a landing URL never carries more than a handful
+
+  function cxGateDigest(text) {
+    // Dual-lane FNV-1a 32 (two offset bases) as 16 lowercase hex chars.
+    // Twin of app/models/gate-digest.ts — the sim asserts both lanes agree.
+    var s = String(text);
+    var lanes = [2166136261, 2166136269];
+    var out = '';
+    for (var lane = 0; lane < 2; lane++) {
+      var h = lanes[lane] >>> 0;
+      for (var i = 0; i < s.length; i++) {
+        h = (h ^ s.charCodeAt(i)) >>> 0;
+        h = (h + ((h << 1) >>> 0) + ((h << 4) >>> 0) + ((h << 7) >>> 0) + ((h << 8) >>> 0) + ((h << 24) >>> 0)) >>> 0;
+      }
+      out += ('0000000' + (h >>> 0).toString(16)).slice(-8);
+    }
+    return out;
+  }
+
+  function cxGateConf() {
+    // { gateId: "<16-hex open><16-hex clear>" }, emitted by cart-booster
+    // only when at least one gate is live. Absent island -> no gate is on.
+    try {
+      var el = document.getElementById('cx-g');
+      if (!el) return null;
+      var parsed = JSON.parse(el.textContent || 'null');
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (e) { return null; }
+  }
+
+  function cxGateQueryDigests() {
+    // Every name=value pair in the query string, hashed. Position does not
+    // matter and neither do the other parameters, so a tagged link composes
+    // with utm_*, gclid, variant or anything else already on the URL.
+    var out = [];
+    try {
+      var search = window.location.search || '';
+      if (search.charAt(0) === '?') search = search.slice(1);
+      if (!search) return out;
+      var pairs = search.split('&');
+      var limit = pairs.length < CX_GATE_MAX_PAIRS ? pairs.length : CX_GATE_MAX_PAIRS;
+      for (var i = 0; i < limit; i++) {
+        var pair = pairs[i];
+        if (!pair) continue;
+        var eq = pair.indexOf('=');
+        if (eq < 1) continue;
+        var name = pair.slice(0, eq);
+        var value = pair.slice(eq + 1);
+        try {
+          name = decodeURIComponent(name.replace(/\+/g, ' '));
+          value = decodeURIComponent(value.replace(/\+/g, ' '));
+        } catch (e) { /* a malformed escape stays as written */ }
+        out.push(cxGateDigest(name + '=' + value));
+      }
+    } catch (e) { /* noop */ }
+    return out;
+  }
+
+  function cxGateParse(raw, nowSeconds) {
+    // "1.br-1797072000.bs-1797072000" -> { br: 1797072000, ... }, expired
+    // entries dropped. Anything malformed yields {} — fail closed.
+    var out = {};
+    if (typeof raw !== 'string' || !raw) return out;
+    var parts = raw.split('.');
+    if (parts[0] !== CX_GATE_VERSION) return out;
+    for (var i = 1; i < parts.length; i++) {
+      var dash = parts[i].lastIndexOf('-');
+      if (dash < 1) continue;
+      var id = parts[i].slice(0, dash);
+      var expiry = Number(parts[i].slice(dash + 1));
+      if (!/^[a-z0-9]{1,8}$/.test(id)) continue;
+      if (!isFinite(expiry) || expiry <= nowSeconds) continue;
+      if (out[id] === undefined || expiry > out[id]) out[id] = Math.floor(expiry);
+    }
+    return out;
+  }
+
+  function cxGateSerialize(map, nowSeconds) {
+    var ids = [];
+    for (var id in map) {
+      if (!Object.prototype.hasOwnProperty.call(map, id)) continue;
+      if (isFinite(map[id]) && map[id] > nowSeconds) ids.push(id);
+    }
+    if (!ids.length) return '';
+    ids.sort();
+    var parts = [CX_GATE_VERSION];
+    for (var i = 0; i < ids.length; i++) parts.push(ids[i] + '-' + Math.floor(map[ids[i]]));
+    return parts.join('.');
+  }
+
+  function cxGateCookie() {
+    try {
+      var all = document.cookie || '';
+      var chunks = all.split(';');
+      for (var i = 0; i < chunks.length; i++) {
+        var eq = chunks[i].indexOf('=');
+        if (eq < 0) continue;
+        if (cxTrim(chunks[i].slice(0, eq)) !== CX_GATE_COOKIE) continue;
+        return decodeURIComponent(cxTrim(chunks[i].slice(eq + 1)));
+      }
+    } catch (e) { /* noop */ }
+    return '';
+  }
+
+  function cxTrim(s) {
+    return String(s).replace(/^\s+|\s+$/g, '');
+  }
+
+  function cxGateStored(nowSeconds) {
+    // Cookie AND localStorage, merged on the later expiry. The mirror exists
+    // because a cookie written by script is capped at 7 days on Safari; the
+    // union means whichever survived keeps the visitor unlocked.
+    var merged = cxGateParse(cxGateCookie(), nowSeconds);
+    var mirror = {};
+    try {
+      mirror = cxGateParse(window.localStorage ? window.localStorage.getItem(CX_GATE_STORE) : '', nowSeconds);
+    } catch (e) { mirror = {}; }
+    for (var id in mirror) {
+      if (!Object.prototype.hasOwnProperty.call(mirror, id)) continue;
+      if (merged[id] === undefined || mirror[id] > merged[id]) merged[id] = mirror[id];
+    }
+    return merged;
+  }
+
+  function cxGateSave(map, nowSeconds) {
+    var value = cxGateSerialize(map, nowSeconds);
+    try {
+      if (window.localStorage) {
+        if (value) window.localStorage.setItem(CX_GATE_STORE, value);
+        else window.localStorage.removeItem(CX_GATE_STORE);
+      }
+    } catch (e) { /* private mode / quota — the cookie still carries it */ }
+    try {
+      document.cookie = value
+        ? CX_GATE_COOKIE + '=' + value + '; path=/; max-age=' + CX_GATE_TTL + '; samesite=lax; secure'
+        : CX_GATE_COOKIE + '=; path=/; max-age=0; samesite=lax; secure';
+    } catch (e) { /* noop */ }
+    return value;
+  }
+
+  function cxGateBoot(nowMs) {
+    // Runs once per page view, before anything paints. Returns the open
+    // digests that matched, which is exactly what the proxy is asked about.
+    var matched = [];
+    try {
+      var conf = cxGateConf();
+      if (!conf) return matched;
+      var nowSeconds = Math.floor(nowMs / 1000);
+      var stored = cxGateStored(nowSeconds);
+      var before = cxGateSerialize(stored, nowSeconds);
+      var found = cxGateQueryDigests();
+      for (var id in conf) {
+        if (!Object.prototype.hasOwnProperty.call(conf, id)) continue;
+        var pair = String(conf[id] || '');
+        if (pair.length !== 32) continue;
+        var open = pair.slice(0, 16);
+        var clear = pair.slice(16);
+        // The clear digest wins over the open one: a URL carrying both is
+        // nonsense, and refusing to open is the safe reading of it.
+        if (cxIndexOf(found, clear) !== -1) {
+          delete stored[id];
+        } else if (cxIndexOf(found, open) !== -1) {
+          stored[id] = nowSeconds + CX_GATE_TTL;
+          matched.push(open);
+        }
+      }
+      var after = cxGateSerialize(stored, nowSeconds);
+      // Rewrite whenever anything changed AND whenever the value is intact
+      // but the cookie lane is gone — that restores the cookie from the
+      // mirror with no network call, which is the whole Safari story.
+      if (after !== before || (after && cxGateCookie() !== after)) {
+        cxGateSave(stored, nowSeconds);
+      }
+      if (matched.length) cxGateSync(matched);
+    } catch (e) { /* never break the theme */ }
+    return matched;
+  }
+
+  function cxIndexOf(list, value) {
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] === value) return i;
+    }
+    return -1;
+  }
+
+  function cxGateSync(digests) {
+    // Ask the app proxy to re-issue the cookie from a first-party RESPONSE,
+    // which Safari does not cap at 7 days the way it caps a cookie written
+    // by script. Best effort and never awaited: the unlock is already in
+    // storage, so this only ever extends how long it lasts. Digests are sent
+    // rather than gate ids, so the endpoint cannot open a gate for a caller
+    // that does not already know the parameter.
+    try {
+      if (!digests || !digests.length || !window.fetch) return;
+      // On a product page BOTH bundles boot and both capture, so without this
+      // the same unlock would post twice. The flag is per page view, which is
+      // also the only scope the request needs.
+      if (window.__cxGateSynced) return;
+      window.__cxGateSynced = true;
+      window.fetch(routeRoot() + 'apps/cellexia/gate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ d: digests }),
+        credentials: 'same-origin',
+        cache: 'no-store',
+        keepalive: true
+      }).catch(function () { /* fire and forget */ });
+    } catch (e) { /* noop */ }
+  }
+
+  function cxGateOpen(id, nowMs) {
+    // Fail closed: no id, no island, unreadable storage or a lapsed entry
+    // all mean "not open", and the piece simply does not render.
+    try {
+      if (!id) return false;
+      var nowSeconds = Math.floor(nowMs / 1000);
+      var stored = cxGateStored(nowSeconds);
+      return stored[id] !== undefined && stored[id] > nowSeconds;
+    } catch (e) { return false; }
+  }
+
+
   function readConfig() {
     var el = document.getElementById('cx-cart-config');
     if (!el) return null;
@@ -7025,6 +7273,11 @@
   }
 
   function boot() {
+    // v22: capture the parameter gate FIRST. This bundle is the one that
+    // loads on every page type, so it is what catches a visitor who lands
+    // on the home page or a collection through a tagged link and only
+    // reaches a product page later.
+    cxGateBoot(Date.now());
     // Triple gate: sessionStorage token + Liquid-armed + server-verified.
     // Any miss falls straight through to init() — the exact pre-v4 path.
     var token = null;

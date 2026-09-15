@@ -97,6 +97,8 @@ const FNS = [
   "bbpBalanceLogo",
   "bbpResearchNode",
   "bbpBuildRows",
+  // v22: mountBbp tags the impression with which URL-gated pieces painted.
+  "bbpGateMeta",
   "mountBbp",
 ];
 const EXTRACTED = [

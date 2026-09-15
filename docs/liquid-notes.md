@@ -922,6 +922,27 @@ endcomment
 
 
 
+## The `#cx-g` island carries DIGESTS, never the parameter (v22)
+
+`blocks/cart-booster.liquid` emits `{{ cfg.paramGates | json }}` into a
+`<script type="application/json" id="cx-g">` island beside the always-on session beacon.
+
+That value is **already projected**: `projectGates` in `app/services/metafields.server.ts`
+replaces the section in both metafield mirrors with `{ gateId: "<32 hex>" }` before
+anything is written to Shopify, so the gate's `param` and `token` are not in the metafield
+and cannot be printed by any Liquid, present or future. If you ever add a surface that
+needs to know about a gate, emit the gate **id** (features already carry one, e.g.
+`buyBoxProof.research.gate`) — never reach for the registry expecting a parameter.
+
+Two placement constraints on that file, both harness-enforced:
+
+- The island sits beside the session beacon because that is the only always-on surface —
+  no `request.page_type` gate, no feature gate — and being inline it is parsed before any
+  deferred bundle looks for it.
+- `or cfg.paramGates` in the bundle-loader condition must stay **ahead of
+  `cx_ov.scrollFix`**. The v14 and v21 harness pins each assert a contiguous substring of
+  that condition's tail; inserting anything inside either one fails the build.
+
 ## Shopify's REAL parser vs liquidjs (v8.20, deploy-fatal)
 
 A literal brace string as a filter argument inside a `{{ }}` output tag —

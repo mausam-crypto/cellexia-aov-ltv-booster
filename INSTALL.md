@@ -191,6 +191,45 @@ Widget microcopy (headings, "Verified by…", guarantee copy) is already transla
 18 store languages; merchants can override any text per block in the theme editor and
 translate overrides in Translate & Adapt like any theme content.
 
+## 6.5 Showing a piece only to visitors from a tagged link (v22)
+
+Two pieces of the buy-box proof block — the "Based on published research from" band and
+the certification seal — can be hidden on the normal storefront and shown only to visitors
+who arrive through a link you tag. Each gets its own random parameter, and a visitor who
+follows a tagged link keeps seeing the piece for **90 days**, on any product page, even
+after the parameter is gone from the URL.
+
+**Set it up** in App → **Features → Buy-box proof block**. Tick *"Show … only to visitors
+who arrive through a tagged link"* on the Research band card, the Certification seal card,
+or both. Save — the app mints a random parameter for each, something like
+`k7mq3v=9fd2xw41rb`. It never reuses one, and you never type it yourself.
+
+**Put it on the ad's own destination URL, not on a redirect:**
+
+| Platform | Field | What to paste |
+|---|---|---|
+| Google Ads | **Final URL suffix** (account or campaign settings) | `k7mq3v=9fd2xw41rb` |
+| Meta Ads | the ad's **URL parameters** field | `k7mq3v=9fd2xw41rb` |
+| Anywhere else | append to the link | `?k7mq3v=9fd2xw41rb`, or `&k7mq3v=9fd2xw41rb` if the URL already has a `?` |
+
+Both platforms add it to every ad URL for you with the right `?` or `&`, and it composes
+with any parameters you already use (`utm_*`, `gclid`, `variant` and so on) in any order.
+Any page works as the entry point, not only a product page: someone who lands on the home
+page through the link sees the piece once they reach a product page.
+
+**Two rules that matter.** Put the parameter on the ad's own destination URL so that anyone
+following the ad, a reviewer included, lands on exactly the page your customer lands on.
+And keep it to presentation: never use it to show a different price, offer, delivery
+promise or product claim. Both versions of the page must sell the same thing on the same
+terms.
+
+**To turn it off on your own device**, open `?<parameter>=off` — the admin card has the
+link. **Regenerating** a parameter stops every link already running, so update live ads
+first.
+
+**Measuring it:** App → Analytics → *Tagged-link pieces* splits impressions into visitors
+who saw the piece and visitors who did not, over the same period.
+
 ## 7. Verifying the install (smoke test)
 
 1. Dashboard shows the onboarding banner ("not live anywhere yet") → enable

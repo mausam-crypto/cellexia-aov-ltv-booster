@@ -19,7 +19,10 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
-import { getAnalyticsSummary } from "../services/analytics.server";
+import {
+  getAnalyticsSummary,
+  getGateSplits,
+} from "../services/analytics.server";
 
 const PERIODS = [7, 30, 90] as const;
 
@@ -30,8 +33,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const days = (PERIODS as readonly number[]).includes(daysParam)
     ? daysParam
     : 30;
-  const summary = await getAnalyticsSummary(session.shop, days);
-  return { summary };
+  const [summary, gateSplits] = await Promise.all([
+    getAnalyticsSummary(session.shop, days),
+    getGateSplits(session.shop, days),
+  ]);
+  return { summary, gateSplits };
 };
 
 const FEATURE_LABELS: Record<string, string> = {
@@ -74,6 +80,8 @@ const FEATURE_LABELS: Record<string, string> = {
   // v14 rewards (SPEC v14 §3).
   set_savings: "Set savings",
   gift_tiers: "Gift tiers",
+  // v19 shipped without a label here, so this row rendered as the raw key.
+  buy_box_proof: "Buy-box proof block",
 };
 
 function formatMoney(value: number, currency: string | null): string {
@@ -111,7 +119,7 @@ function formatFunnelRevenue(
 }
 
 export default function AnalyticsPage() {
-  const { summary } = useLoaderData<typeof loader>();
+  const { summary, gateSplits } = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigation = useNavigation();
 
@@ -143,6 +151,17 @@ export default function AnalyticsPage() {
       value: formatPercent(summary.upsellAttributionRate),
     },
   ];
+
+  const gateRows: (string | number)[][] = gateSplits.map((split) => {
+    const total = split.treated + split.control;
+    return [
+      FEATURE_LABELS[split.feature] ?? split.feature,
+      split.treated,
+      split.control,
+      total,
+      total > 0 ? `${Math.round((split.treated / total) * 100)}%` : "—",
+    ];
+  });
 
   const rows: (string | number)[][] = summary.funnels.map((funnel) => [
     FEATURE_LABELS[funnel.feature] ?? funnel.feature,
@@ -243,6 +262,30 @@ export default function AnalyticsPage() {
                 </Text>
               </BlockStack>
             </Card>
+          )}
+          {gateSplits.length > 0 && (
+            <Box paddingBlockStart="400">
+              <Card>
+                <BlockStack gap="300">
+                  <Text as="h2" variant="headingMd">
+                    Tagged-link pieces ({summary.days} days)
+                  </Text>
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Some pieces are set to show only to visitors who arrived
+                    through a tagged link. This splits those impressions:
+                    “Saw it” is the visitors the piece rendered for, “Did not”
+                    is everyone else who saw the same feature over the same
+                    period. Compare the two against orders for the period to
+                    judge whether the piece is earning its place.
+                  </Text>
+                  <DataTable
+                    columnContentTypes={["text", "numeric", "numeric", "numeric", "text"]}
+                    headings={["Feature", "Saw it", "Did not", "Total", "Share"]}
+                    rows={gateRows}
+                  />
+                </BlockStack>
+              </Card>
+            </Box>
           )}
         </Layout.Section>
       </Layout>

@@ -1932,6 +1932,41 @@ change (a blank quote stores as an empty string).
 No new locale keys and no Liquid change — the band reuses the existing
 eyebrow/aria strings, so nothing to re-translate.
 
+## 5a. v22 — URL parameter gates (new, ships OFF)
+
+A reusable way to hide a storefront piece from the normal site and show it only to
+visitors who arrived through a link carrying that piece's own random parameter,
+remembered for 90 days. First users: the two pieces of the v19 research band (the
+institution band and the certification seal), each tickable on its own in
+**Features → Buy-box proof block**.
+
+**Ships inert.** Every gate is off, so nothing on the storefront changes until the
+merchant ticks one and saves. `FEATURE_KEYS` is unchanged (42) — `paramGates` is
+per-feature metadata, not a FeatureKey — so no experiment, preview or market picker
+shifts.
+
+**Deploy order matters.** The settings model and the new app-proxy route must be live
+*before* the extension, so the `cellexia.config` metafield already carries `paramGates`
+when the storefront first looks for the `#cx-g` island. A normal
+`npm run deploy` (app first, then `shopify app deploy`) already does this.
+
+**No new app embed** and no theme-editor step: the digest island rides in the existing
+**Cellexia cart booster** embed, which is already enabled.
+
+**One thing to verify on the dev store after deploying** (costs nothing if it fails):
+
+```
+curl -i -X POST 'https://<shop>/apps/cellexia/gate' -H 'Content-Type: application/json' -d '{"d":[]}'
+```
+
+Confirm a `Set-Cookie: cx_ux=...` header survives Shopify's proxy, and record the answer
+in `docs/SPEC-v22-param-gates.md` §5. If it is stripped, the feature still works — the
+extension writes the cookie and a localStorage mirror itself; only the Safari window
+shortens from 90 days to ITP's 7-day cap on script-written cookies.
+
+Merchant-facing setup (which field to paste the parameter into on Google and Meta) is in
+`INSTALL.md` §6.5. Full contract: `docs/SPEC-v22-param-gates.md`.
+
 ## 5b. v15.2 — "Application error / can't reach the app" after deploying: triage in 5 minutes
 
 > Update (v15.4): the root cause of the real incident was the Postgres

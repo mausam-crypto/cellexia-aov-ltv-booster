@@ -215,6 +215,11 @@
       "file": "validation/sims/cart-overlay-fix.cjs",
       "floorBytes": 15000,
       "phase": "required"
+    },
+    {
+      "file": "validation/sims/param-gates.cjs",
+      "floorBytes": 25000,
+      "phase": "required"
     }
   ]
 }

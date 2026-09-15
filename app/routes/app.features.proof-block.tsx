@@ -38,6 +38,7 @@ import {
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import { listMarkets } from "../services/markets.server";
 import { FeaturePageHeader } from "../components/FeaturePageHeader";
+import { ParamGateCard } from "../components/ParamGateCard";
 
 interface AdminGraphqlClient {
   graphql: (
@@ -94,6 +95,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     settings,
     markets,
+    // v22: the origin the parameter-gate example links are built on. The
+    // .myshopify domain always resolves and keeps the query string through
+    // the redirect to a custom domain, so it works without a second query.
+    storeUrl: `https://${session.shop}`,
     headerEnabled: resolveFeatureFlag(settings, "buy_box_proof"),
     // The sanitizer's caps travel through the loader: a route's CLIENT
     // bundle may not reference settings.server VALUES at module scope
@@ -275,6 +280,15 @@ interface ProofBlockFormState {
   sealEnabled: boolean;
   sealImageUrl: string;
   scope: ScopeState;
+  // v22 — the two URL parameter gates. `gate*Param`/`gate*Token` are read
+  // only: minted server-side, shown so the merchant can copy them, and
+  // cleared (never typed) to ask for a fresh pair.
+  gateResearch: boolean;
+  gateResearchParam: string;
+  gateResearchToken: string;
+  gateSeal: boolean;
+  gateSealParam: string;
+  gateSealToken: string;
 }
 
 function initialFormState(settings: BoosterSettings): ProofBlockFormState {
@@ -295,13 +309,19 @@ function initialFormState(settings: BoosterSettings): ProofBlockFormState {
     sealEnabled: block.seal.enabled,
     sealImageUrl: block.seal.imageUrl,
     scope: toScopeState(settings.marketScopes.buy_box_proof),
+    gateResearch: block.research.gate === "br" && settings.paramGates.br.enabled,
+    gateResearchParam: settings.paramGates.br.param,
+    gateResearchToken: settings.paramGates.br.token,
+    gateSeal: block.seal.gate === "bs" && settings.paramGates.bs.enabled,
+    gateSealParam: settings.paramGates.bs.param,
+    gateSealToken: settings.paramGates.bs.token,
   };
 }
 
 const HTTPS_URL = /^https:\/\/[^\s"'<>\\]+$/;
 
 export default function ProofBlockPage() {
-  const { settings, markets, headerEnabled, sources, caps } =
+  const { settings, markets, headerEnabled, sources, caps, storeUrl } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
@@ -408,6 +428,11 @@ export default function ProofBlockPage() {
         showRating: state.showRating,
         research: {
           enabled: state.researchEnabled,
+          // The reference IS the merchant's intent: "" = everyone, "br" =
+          // tagged links only. Unticking must give the piece back to every
+          // visitor, so it clears here. The minted parameter survives in
+          // paramGates, so re-ticking reuses it and old links keep working.
+          gate: state.gateResearch ? "br" : "",
           institutions: state.institutions.map((row) => ({
             name: row.name.trim(),
             imageUrl: row.imageUrl.trim(),
@@ -415,7 +440,22 @@ export default function ProofBlockPage() {
         },
         seal: {
           enabled: state.sealEnabled,
+          gate: state.gateSeal ? "bs" : "",
           imageUrl: state.sealImageUrl.trim(),
+        },
+      },
+      // An empty param/token asks the sanitizer to mint a fresh pair; a kept
+      // one survives the round trip untouched.
+      paramGates: {
+        br: {
+          enabled: state.gateResearch,
+          param: state.gateResearchParam,
+          token: state.gateResearchToken,
+        },
+        bs: {
+          enabled: state.gateSeal,
+          param: state.gateSealParam,
+          token: state.gateSealToken,
         },
       },
       marketScopes: { buy_box_proof: toScopePatch(state.scope) },
@@ -802,6 +842,24 @@ export default function ProofBlockPage() {
                     </Button>
                   </Box>
                 ) : null}
+                <ParamGateCard
+                  pieceLabel="the research band"
+                  enabled={state.gateResearch}
+                  param={state.gateResearchParam}
+                  token={state.gateResearchToken}
+                  featureEnabled={state.enabled && state.researchEnabled}
+                  storeUrl={storeUrl}
+                  onToggle={(gateResearch) =>
+                    setState((previous) => ({ ...previous, gateResearch }))
+                  }
+                  onRegenerate={() =>
+                    setState((previous) => ({
+                      ...previous,
+                      gateResearchParam: "",
+                      gateResearchToken: "",
+                    }))
+                  }
+                />
               </BlockStack>
             </Card>
 
@@ -812,7 +870,7 @@ export default function ProofBlockPage() {
                 </Text>
                 <Checkbox
                   label="Show the certification seal"
-                  helpText="Ships with the DermaCert artwork drawn by the app (sharp at any size, no extra request). The caption beside it is translated in every store language."
+                  helpText="Ships with the DermaCert artwork drawn by the app (sharp at any size, no extra request). The seal is a mark: its wording is part of the artwork and stays as issued in every language, and it carries no caption."
                   checked={state.sealEnabled}
                   onChange={(sealEnabled) =>
                     setState((previous) => ({ ...previous, sealEnabled }))
@@ -828,6 +886,24 @@ export default function ProofBlockPage() {
                   error={sealUrlError}
                   disabled={!state.sealEnabled}
                   autoComplete="off"
+                />
+                <ParamGateCard
+                  pieceLabel="the certification seal"
+                  enabled={state.gateSeal}
+                  param={state.gateSealParam}
+                  token={state.gateSealToken}
+                  featureEnabled={state.enabled && state.sealEnabled}
+                  storeUrl={storeUrl}
+                  onToggle={(gateSeal) =>
+                    setState((previous) => ({ ...previous, gateSeal }))
+                  }
+                  onRegenerate={() =>
+                    setState((previous) => ({
+                      ...previous,
+                      gateSealParam: "",
+                      gateSealToken: "",
+                    }))
+                  }
                 />
               </BlockStack>
             </Card>

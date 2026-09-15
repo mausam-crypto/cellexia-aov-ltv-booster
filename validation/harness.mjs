@@ -1395,6 +1395,7 @@ const EVIDENCE = {
     "cx-tpl-pdp-study": "PROOF_ORDER template id (Liquid mount lookup)",
     "cx-tpl-pdp-batch": "PROOF_ORDER template id (Liquid mount lookup)",
     "cx-tpl-pdp-bottle": "PROOF_ORDER template id (Liquid mount lookup)",
+    "cx-g": "v22 parameter-gate digest island id (getElementById; digests only, never the parameter)",
   };
 
   // ---- emitted tokens, from class-emission contexts -----------------------
@@ -4555,6 +4556,171 @@ const EVIDENCE = {
       read("app/routes/app.features._index.tsx").includes('cart_compact: "/app/features/cart"') &&
       read("app/routes/app.features._index.tsx").includes('cart_pinned_checkout: "/app/features/cart"'),
     "v21: the features hub points Configure at the cart page for all three",
+  );
+}
+
+// =========================================== v22 URL PARAMETER GATES
+//
+// docs/SPEC-v22-param-gates.md. A gated piece is hidden on the normal
+// storefront and revealed only to a visitor who arrived through a tagged
+// link. The behavioural proof lives in sims/param-gates.cjs; what is pinned
+// HERE is the wiring that sim cannot see from inside a sandbox — that the
+// parameter never reaches Shopify, that the registry is a closed allowlist,
+// and that the storefront differentiates on the link and on nothing else.
+{
+  const gateSettings = read("app/models/settings.server.ts");
+  const gateDigestTs = read("app/models/gate-digest.ts");
+  const gateCookieTs = read("app/models/gate-cookie.ts");
+  const gateMeta = read("app/services/metafields.server.ts");
+  const gateProxy = read("app/routes/proxy.gate.tsx");
+  const gateCart = read("extensions/cellexia-booster/blocks/cart-booster.liquid");
+  const gatePdpJs = read("extensions/cellexia-booster/assets/cellexia-pdp.js");
+  const gateCartJs = read("extensions/cellexia-booster/assets/cellexia-cart.js");
+
+  // ---- the registry is CLOSED: gating a feature is a deliberate change ----
+  ok(
+    gateSettings.includes("export const GATE_TARGETS = {") &&
+      gateSettings.includes('br: {') && gateSettings.includes('bs: {'),
+    "v22: GATE_TARGETS is a closed allowlist declaring both proof-block gates",
+  );
+  ok(
+    gateSettings.includes("export type GateId = keyof typeof GATE_TARGETS;"),
+    "v22: a gate reference can only name a registered id (GateId is derived from the registry)",
+  );
+  const gateTargetCount = (gateSettings.match(/\n    feature: "[a-z_]+" as FeatureKey,/g) || []).length;
+  ok(gateTargetCount === 2, `v22: exactly two gate targets ship (got ${gateTargetCount}) — a third needs a spec update`);
+  ok(
+    !FEATURE_KEYS.includes("param_gate") && !FEATURE_KEYS.some((k) => k.startsWith("gate_")),
+    "v22: parameter gates are per-feature metadata, NOT a FeatureKey (FEATURE_KEYS is untouched)",
+  );
+
+  // ---- the parameter never leaves the app database -----------------------
+  ok(
+    (gateMeta.match(/paramGates: projectGates\(settings\.paramGates\),/g) || []).length === 2,
+    "v22: BOTH metafield mirrors project the registry down to digests",
+  );
+  ok(
+    gateMeta.includes("gate.enabled !== true || !gate.param || !gate.token) continue;"),
+    "v22: projectGates emits nothing for a gate that is off or incomplete",
+  );
+  ok(
+    !gateCart.includes("paramGates.param") && !gateCart.includes(".token"),
+    "v22: no Liquid anywhere prints a gate's parameter or token",
+  );
+  ok(
+    gateCart.includes('<script type="application/json" id="cx-g">{{ cfg.paramGates | json }}</script>'),
+    "v22: the storefront sees the projected registry and nothing else",
+  );
+
+  // ---- the same URL means the same thing for everyone --------------------
+  ok(
+    gateCart.includes("{%- if cfg.paramGates -%}\n<script"),
+    "v22: the island is gated on the registry alone, never on anything about the request",
+  );
+  for (const needle of ["request.user_agent", "request.host", "customer.id", "request.referer"]) {
+    ok(!gateCart.includes(needle), `v22: the gate Liquid never branches on ${needle}`);
+  }
+  const gateModule = gatePdpJs.slice(
+    gatePdpJs.indexOf("  // --------------------------------------------- v22 URL parameter gates"),
+    gatePdpJs.indexOf("  function cxGateOpen(id, nowMs) {"),
+  );
+  ok(gateModule.length > 4000, "v22: the gate module was located for inspection");
+  // CODE only: the module's own comment explains that it reads none of
+  // these, and prose saying so must not itself trip the check.
+  const gateCode = gateModule
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//"))
+    .join("\n");
+  ok(gateCode.length > 2500, "v22: stripping comments still leaves the whole module to inspect");
+  for (const needle of ["userAgent", "referrer", "webdriver", "maxTouchPoints", "screen.", "Math.random"]) {
+    ok(!gateCode.includes(needle), `v22: the gate module never reads ${needle}`);
+  }
+
+  // ---- the digest lanes agree across TypeScript and the extension --------
+  ok(
+    gateDigestTs.includes("0x811c9dc5") && gateDigestTs.includes("0x811c9dcd") &&
+      gatePdpJs.includes("var lanes = [2166136261, 2166136269];"),
+    "v22: the TS and extension digest lanes declare the same two FNV offset bases",
+  );
+  ok(
+    gateCookieTs.includes("GATE_TTL_SECONDS = 90 * 24 * 60 * 60") &&
+      gatePdpJs.includes("var CX_GATE_TTL = 7776000;"),
+    "v22: the 90-day window is the same number on both sides",
+  );
+  ok(
+    gateCookieTs.includes('GATE_COOKIE_NAME = "cx_ux"') &&
+      gatePdpJs.includes("var CX_GATE_COOKIE = 'cx_ux';") &&
+      gatePdpJs.includes("var CX_GATE_STORE = 'cx:ux';"),
+    "v22: the cookie and localStorage keys are the same on both sides",
+  );
+
+  // ---- the module is a byte-twin across the two bundles ------------------
+  const slice = (src) => {
+    const a = src.indexOf("  // --------------------------------------------- v22 URL parameter gates");
+    const b = src.indexOf("  function cxGateOpen(id, nowMs) {");
+    return a === -1 || b === -1 ? null : src.slice(a, src.indexOf("\n  }\n", b) + 4);
+  };
+  ok(slice(gatePdpJs) !== null && slice(gatePdpJs) === slice(gateCartJs),
+    "v22: cellexia-pdp.js and cellexia-cart.js carry the same gate module byte for byte");
+  ok(
+    gateCartJs.includes("cxGateBoot(Date.now());") && gatePdpJs.includes("cxGateBoot(Date.now());"),
+    "v22: both bundles capture the gate before anything paints",
+  );
+  ok(
+    gateCart.includes("or cfg.paramGates or cx_ov.scrollFix"),
+    "v22: a live gate alone loads cellexia-cart.js, so a home-page landing is captured",
+  );
+
+  // ---- fail closed -------------------------------------------------------
+  ok(
+    gatePdpJs.includes("if (seal.gate && !PREVIEW && !cxGateOpen(seal.gate, Date.now())) return null;"),
+    "v22: the seal's gate guard is in the shipped builder",
+  );
+  ok(
+    gatePdpJs.includes("var researchGated = !!(research && research.gate) && !PREVIEW && !cxGateOpen(research.gate, Date.now());"),
+    "v22: the research band's gate guard is in the shipped builder",
+  );
+  ok(
+    gateSettings.includes("next.buyBoxProof.research.gate = isGateId(next.buyBoxProof.research.gate)") &&
+      gateSettings.includes("next.buyBoxProof.seal.gate = isGateId(next.buyBoxProof.seal.gate)"),
+    "v22: an unknown gate reference is cleared; a reference to a gate that is OFF is kept so the runtime fails closed",
+  );
+
+  // ---- minted, never merchant-typed --------------------------------------
+  ok(
+    gateSettings.includes("const GATE_PARAM_PATTERN = /^[a-z][a-z0-9]{5}$/;") &&
+      gateSettings.includes("const GATE_TOKEN_PATTERN = /^[a-z0-9]{10}$/;"),
+    "v22: the parameter and token shapes are pinned",
+  );
+  for (const reserved of ["gclid", "fbclid", "variant", "preview_theme_id", "utm_source"]) {
+    ok(gateSettings.includes(`"${reserved}"`), `v22: ${reserved} is reserved and can never be minted`);
+  }
+  ok(
+    gateSettings.includes('param.startsWith("utm_")') && gateSettings.includes('param.startsWith("_")'),
+    "v22: whole reserved families are excluded by prefix, not only the listed names",
+  );
+  ok(
+    gateSettings.includes("takenParams.has(param)"),
+    "v22: one unique parameter per gate — a collider is re-minted",
+  );
+
+  // ---- the durable-cookie endpoint ---------------------------------------
+  ok(
+    gateProxy.includes("authenticate.public.appProxy(request)"),
+    "v22: the gate endpoint is app-proxy authenticated like every other proxy route",
+  );
+  ok(
+    gateProxy.includes('"Cache-Control": "no-store"'),
+    "v22: the gate endpoint is never cached",
+  );
+  ok(
+    gateProxy.includes("SameSite=Lax; Secure") && !gateProxy.includes("Domain="),
+    "v22: the cookie is first-party by default host, SameSite=Lax and Secure",
+  );
+  ok(
+    gateProxy.includes("gateOnDigest(gate.param, gate.token)") &&
+      !gateProxy.includes("body.gates") && !gateProxy.includes("body.id"),
+    "v22: the endpoint maps DIGESTS back through the shop's own gates — it never takes a gate id from the caller",
   );
 }
 

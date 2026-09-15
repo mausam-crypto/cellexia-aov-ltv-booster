@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import prisma from "../db.server";
 
 /**
@@ -414,6 +416,16 @@ export interface MarketScope {
   /** "all" = every market; "selected" = only the listed market handles. */
   mode: "all" | "selected";
   markets: string[];
+}
+
+/** One v22 URL parameter gate. See GATE_TARGETS. */
+export interface ParamGate {
+  /** false = the piece this gate guards is not gated at all. */
+  enabled: boolean;
+  /** Minted by the sanitizer: /^[a-z][a-z0-9]{5}$/, unique across gates. */
+  param: string;
+  /** Minted by the sanitizer: /^[a-z0-9]{10}$/. */
+  token: string;
 }
 
 /** A per-market free-shipping threshold. `currencyCode` tells the storefront
@@ -1172,6 +1184,11 @@ export interface BoosterSettings {
     /** "Based on published research from" band. */
     research: {
       enabled: boolean;
+      /** v22: "" = visible to everyone (when enabled). A GateId names the
+       *  URL parameter gate that hides this band on the normal storefront
+       *  and reveals it only to a visitor who arrived through the tagged
+       *  link. Fail-closed: a gate id whose gate is off paints nothing. */
+      gate: string;
       /** Max BUY_BOX_PROOF_MAX_INSTITUTIONS. `name` is merchant free text
        *  and stays UNTRANSLATED (institution names are proper nouns — the
        *  US_STATE_NAMES precedent); `imageUrl` is an optional https logo
@@ -1181,6 +1198,8 @@ export interface BoosterSettings {
     /** Independent-certification seal beside the research logos. */
     seal: {
       enabled: boolean;
+      /** v22: see research.gate — its own independent gate. */
+      gate: string;
       /** "" = the built-in DermaCert seal artwork drawn by the extension
        *  JS; an https URL replaces it with the merchant's own file. */
       imageUrl: string;
@@ -1441,6 +1460,22 @@ export interface BoosterSettings {
     };
   };
   /**
+   * v22 — one unique random URL parameter per gated piece, keyed by the
+   * STABLE ids in GATE_TARGETS. NOT a FeatureKey: this is per-feature
+   * metadata (the rewards.freeShip.scope precedent), so it carries no
+   * MarketScope and never appears in FEATURE_KEYS. Market scoping still
+   * applies at the owning feature's level, above the gate.
+   *
+   * The piece that a gate hides points AT it by id (e.g.
+   * buyBoxProof.research.gate === "br"), so the secret lives here and the
+   * reference lives in the feature — neither is duplicated or derived.
+   *
+   * `param` and `token` are minted by the sanitizer and NEVER leave this
+   * database: syncSettingsToMetafields projects this section down to
+   * digests before either mirror is written.
+   */
+  paramGates: Record<GateId, ParamGate>;
+  /**
    * Per-feature market targeting. A feature is visible in market M only when
    * its flags are on AND (scope.mode === "all" || scope.markets includes M).
    * Market handles are Shopify Markets handles (e.g. "ireland").
@@ -1448,7 +1483,50 @@ export interface BoosterSettings {
   marketScopes: Record<FeatureKey, MarketScope>;
 }
 
+/**
+ * v22 URL parameter gates (docs/SPEC-v22-param-gates.md).
+ *
+ * A CLOSED allowlist of the pieces that may be hidden on the normal
+ * storefront and revealed only to a visitor who arrived through a tagged
+ * link. Adding a target is a deliberate code change so the rule that gated
+ * content stays ADDITIVE — presentation only, never price, offer, shipping
+ * terms, guarantee terms, claims or availability — is reviewed every time.
+ *
+ * Ids are STABLE and never reused: a live visitor's stored unlock names the
+ * id, so recycling one would hand them somebody else's gate.
+ */
+export const GATE_TARGETS = {
+  br: {
+    label: "Proof block — research band",
+    feature: "buy_box_proof" as FeatureKey,
+  },
+  bs: {
+    label: "Proof block — certification seal",
+    feature: "buy_box_proof" as FeatureKey,
+  },
+} as const;
+
+export type GateId = keyof typeof GATE_TARGETS;
+
+export const GATE_IDS = Object.keys(GATE_TARGETS) as GateId[];
+
+export function isGateId(value: unknown): value is GateId {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(GATE_TARGETS, value);
+}
+
+/** How long an unlock is remembered, in days. Twinned by the extension. */
+export const GATE_TTL_DAYS = 90;
+
 const ALL_MARKETS_SCOPE: MarketScope = { mode: "all", markets: [] };
+
+function defaultParamGates(): Record<GateId, ParamGate> {
+  // Every known id is declared so mergeSettings (which walks the DEFAULTS,
+  // not the stored blob) keeps the section intact. Gate ids are a fixed
+  // registry, never dynamic keys, so this is NOT a DYNAMIC_RECORD_KEYS case.
+  return Object.fromEntries(
+    GATE_IDS.map((id) => [id, { enabled: false, param: "", token: "" }]),
+  ) as Record<GateId, ParamGate>;
+}
 
 function defaultMarketScopes(): Record<FeatureKey, MarketScope> {
   return Object.fromEntries(
@@ -1713,6 +1791,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     showRating: true,
     research: {
       enabled: true,
+      gate: "",
       institutions: [
         { name: "Harvard Medical School", imageUrl: "" },
         { name: "University of Oxford", imageUrl: "" },
@@ -1721,6 +1800,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     },
     seal: {
       enabled: true,
+      gate: "",
       imageUrl: "",
     },
   },
@@ -1797,6 +1877,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
       scope: { mode: "all", markets: [] },
     },
   },
+  paramGates: defaultParamGates(),
   marketScopes: defaultMarketScopes(),
 };
 
@@ -3062,6 +3143,72 @@ export const BUY_BOX_PROOF_MAX_BADGES = 6;
 export const BUY_BOX_PROOF_MAX_INSTITUTIONS = 6;
 const BUY_BOX_PROOF_MAX_NAME = 60;
 
+/**
+ * v22 parameter gates. `param` is minted, never merchant-typed, so it can
+ * never be guessable, collide with another gate, or shadow a parameter the
+ * storefront, an ad platform or an analytics tool already owns.
+ */
+const GATE_PARAM_PATTERN = /^[a-z][a-z0-9]{5}$/;
+const GATE_TOKEN_PATTERN = /^[a-z0-9]{10}$/;
+const GATE_PARAM_ALPHABET = "abcdefghijklmnopqrstuvwxyz";
+const GATE_TOKEN_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
+/**
+ * Names a minted param may never take. Three groups, all load-bearing:
+ * Shopify storefront controls (a collision would break the page), ad-click
+ * and analytics identifiers (a collision would corrupt attribution), and
+ * this app's own app-proxy parameters.
+ */
+const GATE_RESERVED_PARAMS = new Set([
+  // Shopify storefront controls
+  "variant", "view", "section_id", "sections", "preview_theme_id", "pb",
+  "_ab", "_fd", "_sc", "page", "q", "sort_by", "type", "options",
+  "currency", "country", "locale", "discount", "redirect", "return_to",
+  "logged_in", "checkout_url", "step", "key", "customer_id", "customer_email",
+  // ad-click + analytics identifiers
+  "gclid", "gclsrc", "gbraid", "wbraid", "dclid", "fbclid", "msclkid",
+  "ttclid", "twclid", "li_fat_id", "igshid", "epik", "yclid", "ref", "source",
+  "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+  "utm_id", "srsltid",
+  // this app's own proxy parameters
+  "t", "shop", "product", "market", "handles", "concern", "age", "skin",
+  "duration", "per", "feature", "ids", "status", "days",
+]);
+
+function gateReservedParam(param: string): boolean {
+  return (
+    GATE_RESERVED_PARAMS.has(param) ||
+    param.startsWith("utm_") ||
+    param.startsWith("filter") ||
+    param.startsWith("customer_") ||
+    param.startsWith("_")
+  );
+}
+
+function randomFrom(alphabet: string, length: number): string {
+  const bytes = randomBytes(length);
+  let out = "";
+  for (let i = 0; i < length; i += 1) {
+    out += alphabet[bytes[i] % alphabet.length];
+  }
+  return out;
+}
+
+/** A fresh param name that is neither reserved nor already in use. */
+function mintGateParam(taken: Set<string>): string {
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    const candidate =
+      randomFrom(GATE_PARAM_ALPHABET, 1) + randomFrom(GATE_TOKEN_ALPHABET, 5);
+    if (!gateReservedParam(candidate) && !taken.has(candidate)) return candidate;
+  }
+  // 64 misses is statistically impossible against a 60M-name space; falling
+  // back to a longer name is still better than shipping a duplicate.
+  return `z${randomFrom(GATE_TOKEN_ALPHABET, 5)}`;
+}
+
+function mintGateToken(): string {
+  return randomFrom(GATE_TOKEN_ALPHABET, 10);
+}
+
 function clampNumber(
   value: unknown,
   min: number,
@@ -3195,6 +3342,53 @@ export function sanitizeSettings(
   next.buyBoxProof.seal.enabled = next.buyBoxProof.seal.enabled !== false;
   next.buyBoxProof.seal.imageUrl = isSafeHttpsUrl(next.buyBoxProof.seal.imageUrl)
     ? next.buyBoxProof.seal.imageUrl
+    : "";
+
+  // v22 parameter gates. The registry first (so a reference can be checked
+  // against the sanitized gates), then the references that point at it.
+  const sanitizedGates = defaultParamGates();
+  const takenParams = new Set<string>();
+  for (const id of GATE_IDS) {
+    const raw = next.paramGates?.[id];
+    const gate: Record<string, unknown> = isPlainObject(raw) ? raw : {};
+    const enabled = gate.enabled === true;
+    // A param is KEPT only when it still satisfies every rule: shape,
+    // not reserved, and not already used by another gate. Anything else is
+    // re-minted, so a hand-edited blob can never ship a weak or colliding
+    // name. Regenerating in the admin clears the pair and lands here too.
+    let param = typeof gate.param === "string" ? gate.param : "";
+    if (
+      !GATE_PARAM_PATTERN.test(param) ||
+      gateReservedParam(param) ||
+      takenParams.has(param)
+    ) {
+      param = enabled ? mintGateParam(takenParams) : "";
+    }
+    let token = typeof gate.token === "string" ? gate.token : "";
+    if (!GATE_TOKEN_PATTERN.test(token)) {
+      token = enabled ? mintGateToken() : "";
+    }
+    // Turning a gate OFF keeps its pair, so re-ticking it does not silently
+    // invalidate links that are already running in a live campaign.
+    if (!enabled && param === "" && GATE_PARAM_PATTERN.test(String(gate.param))) {
+      param = String(gate.param);
+      token = GATE_TOKEN_PATTERN.test(String(gate.token)) ? String(gate.token) : mintGateToken();
+    }
+    if (param !== "") takenParams.add(param);
+    sanitizedGates[id] = { enabled, param, token };
+  }
+  next.paramGates = sanitizedGates;
+
+  // Gate REFERENCES. An unknown id is cleared (the piece was never gated);
+  // an id naming a gate that is currently off is KEPT, so the runtime fails
+  // CLOSED and paints nothing. Clearing it here would fail open and show
+  // link-only content to every visitor — the one outcome that must never
+  // happen by accident.
+  next.buyBoxProof.research.gate = isGateId(next.buyBoxProof.research.gate)
+    ? next.buyBoxProof.research.gate
+    : "";
+  next.buyBoxProof.seal.gate = isGateId(next.buyBoxProof.seal.gate)
+    ? next.buyBoxProof.seal.gate
     : "";
 
   next.trustpilot.rating = clampNumber(

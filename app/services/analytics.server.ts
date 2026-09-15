@@ -260,6 +260,69 @@ function totalFunnelRevenue(funnel: FeatureFunnel): number {
   );
 }
 
+/**
+ * v22 — the URL parameter gate split (docs/SPEC-v22-param-gates.md §5).
+ *
+ * A gated piece paints only for a visitor who arrived through a tagged link,
+ * so the impression beacon carries a `meta` of "g:" plus the gated pieces
+ * that actually painted. "g:" alone is the control arm (gates are live, this
+ * visitor saw none) and "g:br,bs" is the treated arm. Both are needed, or
+ * there is nothing to compare the treated arm against.
+ *
+ * Shops with no gate configured send no meta at all and produce no rows here.
+ */
+export interface GateSplit {
+  feature: string;
+  /** Impressions where at least one gated piece painted. */
+  treated: number;
+  /** Impressions where gates were live and the visitor saw none of them. */
+  control: number;
+  /** Per-gate impressions, keyed by gate id. */
+  byGate: Record<string, number>;
+}
+
+export async function getGateSplits(
+  shop: string,
+  days = 30,
+): Promise<GateSplit[]> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const groups = await prisma.event.groupBy({
+    by: ["feature", "meta"],
+    where: {
+      shop,
+      type: "impression",
+      meta: { startsWith: "g:" },
+      createdAt: { gte: since },
+    },
+    _count: { _all: true },
+  });
+
+  const byFeature = new Map<string, GateSplit>();
+  for (const group of groups) {
+    const split = byFeature.get(group.feature) ?? {
+      feature: group.feature,
+      treated: 0,
+      control: 0,
+      byGate: {},
+    };
+    const count = group._count._all;
+    const ids = String(group.meta ?? "")
+      .slice(2)
+      .split(",")
+      .filter((id) => id !== "");
+    if (ids.length === 0) {
+      split.control += count;
+    } else {
+      split.treated += count;
+      for (const id of ids) split.byGate[id] = (split.byGate[id] ?? 0) + count;
+    }
+    byFeature.set(group.feature, split);
+  }
+  return [...byFeature.values()].sort((a, b) =>
+    a.feature.localeCompare(b.feature),
+  );
+}
+
 export async function getAnalyticsSummary(
   shop: string,
   days = 30,

@@ -110,6 +110,9 @@ endif
 {%- if cx_draft_volume or cx_draft_shipbar or cx_draft_subscription or cx_draft_trustrow or cx_draft_crosssell or cx_draft_dispatch or cx_draft_delivery or cx_draft_azfree or cx_draft_azcta or cx_draft_azbadge or cx_draft_azbought or cx_draft_rw or cx_draft_ofx or cx_draft_cpt or cx_draft_pin -%}
 {%- assign cx_cart_draft_any = true -%}
 {%- endif -%}
+{%- if cfg.paramGates -%}
+<script type="application/json" id="cx-g">{{ cfg.paramGates | json }}</script>
+{%- endif -%}
 <script>
 (function () {
 try {
@@ -131,7 +134,7 @@ window.fetch(root + 'apps/cellexia/track', { method: 'POST', headers: { 'Content
 } catch (e) {}
 })();
 </script>
-{%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_de.enabled == true or cfg.amazon.cartFreeLine == true or cfg.amazon.ctaCount == true or cfg.amazon.bestsellerBadge == true or cfg.amazon.boughtCount == true or cx_ov.scrollFix or cx_ov.compact or cx_ov.pinned or cx_rw.setSavings.enabled or cx_rw.giftTiers.enabled or cx_cart_draft_any -%}
+{%- if cfg.cartUpsell.enabled == true or cfg.cartCrossSell.enabled == true or cfg.dispatch.enabled == true or cx_de.enabled == true or cfg.amazon.cartFreeLine == true or cfg.amazon.ctaCount == true or cfg.amazon.bestsellerBadge == true or cfg.amazon.boughtCount == true or cfg.paramGates or cx_ov.scrollFix or cx_ov.compact or cx_ov.pinned or cx_rw.setSavings.enabled or cx_rw.giftTiers.enabled or cx_cart_draft_any -%}
 {%- liquid
 assign threshold = cfg.global.freeShippingThreshold | default: 150
 assign cx_fs = cfg.freeShipping.byMarket[cx_market]
