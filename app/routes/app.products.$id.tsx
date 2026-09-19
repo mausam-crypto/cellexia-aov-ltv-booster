@@ -615,11 +615,16 @@ interface StudyResultState {
 interface ClinicalFormState {
   title: string;
   subject: string;
+  eyebrow: string;
   concern: string;
+  publication: string;
   durationWeeks: string;
   sampleSize: string;
+  /** v24: no longer displayed on the PDP and no longer edited here — the
+   *  stored value is passed through untouched so nothing is wiped. */
   labName: string;
   instruments: string;
+  badge: string;
   studyUrl: string;
   footnote: string;
   results: StudyResultState[];
@@ -713,11 +718,14 @@ function clinicalToState(view: ClinicalStudyView | null): ClinicalFormState {
     return {
       title: "",
       subject: "",
+      eyebrow: "",
       concern: "",
+      publication: "",
       durationWeeks: "",
       sampleSize: "",
       labName: "",
       instruments: "",
+      badge: "",
       studyUrl: "",
       footnote: "",
       results: [],
@@ -726,11 +734,14 @@ function clinicalToState(view: ClinicalStudyView | null): ClinicalFormState {
   return {
     title: view.title,
     subject: view.subject,
+    eyebrow: view.eyebrow,
     concern: view.concern,
+    publication: view.publication,
     durationWeeks: view.durationWeeks === null ? "" : String(view.durationWeeks),
     sampleSize: view.sampleSize === null ? "" : String(view.sampleSize),
     labName: view.labName,
     instruments: view.instruments,
+    badge: view.badge,
     studyUrl: view.studyUrl,
     footnote: view.footnote,
     results: view.results.map((result) => ({
@@ -2188,11 +2199,14 @@ export default function ProductBoosterDetailPage() {
     const payload = {
       title: clinicalState.title,
       subject: clinicalState.subject,
+      eyebrow: clinicalState.eyebrow,
       concern: clinicalState.concern,
+      publication: clinicalState.publication,
       durationWeeks,
       sampleSize,
       labName: clinicalState.labName,
       instruments: clinicalState.instruments,
+      badge: clinicalState.badge,
       studyUrl: clinicalState.studyUrl.trim(),
       footnote: clinicalState.footnote,
       results: clinicalState.results.map((result, index) => ({
@@ -2798,28 +2812,20 @@ export default function ProductBoosterDetailPage() {
                   disabled={flagsFetcher.state !== "idle"}
                 />
                 <Divider />
-                <InlineStack gap="300" wrap>
-                  <Box minWidth="280px">
-                    <TextField
-                      label="Study title"
-                      value={clinicalState.title}
-                      onChange={(title) => setClinicalField({ title })}
-                      disabled={savingClinical}
-                      helpText="Internal display name, e.g. “8-week wrinkle depth study”."
-                      autoComplete="off"
-                    />
-                  </Box>
-                  <Box minWidth="240px">
-                    <TextField
-                      label="Concern"
-                      value={clinicalState.concern}
-                      onChange={(concern) => setClinicalField({ concern })}
-                      disabled={savingClinical}
-                      helpText="e.g. “Wrinkle depth”"
-                      autoComplete="off"
-                    />
-                  </Box>
-                </InlineStack>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  The fields follow the widget top to bottom: eyebrow,
+                  subject line, big uppercase headline, two gray credibility
+                  lines, the stat panel, then the fact pills. Empty optional
+                  fields simply do not render.
+                </Text>
+                <TextField
+                  label="Eyebrow"
+                  value={clinicalState.eyebrow}
+                  onChange={(eyebrow) => setClinicalField({ eyebrow })}
+                  disabled={savingClinical}
+                  helpText="Small letterspaced line at the very top, e.g. “Published clinical research”. Empty = the built-in translated line."
+                  autoComplete="off"
+                />
                 <TextField
                   label="Study subject"
                   value={clinicalState.subject}
@@ -2828,11 +2834,43 @@ export default function ProductBoosterDetailPage() {
                   helpText="Replaces the ENTIRE “Tested on … itself — the exact formula on this page.” line under the eyebrow, word for word. Leave empty for the built-in line with the product title. Use {name} to insert the product’s display name (Product names page). Plain language wins with skeptical shoppers."
                   autoComplete="off"
                 />
+                <TextField
+                  label="Headline"
+                  value={clinicalState.title}
+                  onChange={(title) => setClinicalField({ title })}
+                  disabled={savingClinical}
+                  helpText="The big line, rendered in capitals, e.g. “Randomized · Double-blind · Placebo-controlled”. Separate claims with middle dots (·) or commas."
+                  autoComplete="off"
+                />
+                <InlineStack gap="300" wrap>
+                  <Box minWidth="280px">
+                    <TextField
+                      label="Conducted by (line 1)"
+                      value={clinicalState.concern}
+                      onChange={(concern) => setClinicalField({ concern })}
+                      disabled={savingClinical}
+                      helpText="Gray line under the headline, e.g. “Conducted independently by a university dermatology research center”. Put the university or lab name here."
+                      autoComplete="off"
+                    />
+                  </Box>
+                  <Box minWidth="280px">
+                    <TextField
+                      label="Published in (line 2)"
+                      value={clinicalState.publication}
+                      onChange={(publication) =>
+                        setClinicalField({ publication })
+                      }
+                      disabled={savingClinical}
+                      helpText="Second gray line, e.g. “Published in a peer-reviewed dermatology journal”. Empty = hidden."
+                      autoComplete="off"
+                    />
+                  </Box>
+                </InlineStack>
                 <Text as="p" tone="subdued" variant="bodySm">
-                  The four fields below become small fact chips on the
-                  product page (“34 participants · 8-week study · …”). Each
-                  chip only appears when its field is filled — leave any that
-                  don’t apply empty and no chip shows.
+                  Participants and duration become the first two fact pills
+                  (“478 participants · 12-week study”); the extra fact pill
+                  is the optional third one. A pill only appears when its
+                  field is filled.
                 </Text>
                 <InlineStack gap="300" wrap>
                   <Box width="170px">
@@ -2846,7 +2884,7 @@ export default function ProductBoosterDetailPage() {
                       }
                       disabled={savingClinical}
                       error={clinicalDurationError}
-                      helpText="Empty = no chip."
+                      helpText="Empty = no pill."
                       autoComplete="off"
                     />
                   </Box>
@@ -2861,17 +2899,17 @@ export default function ProductBoosterDetailPage() {
                       }
                       disabled={savingClinical}
                       error={clinicalSampleSizeError}
-                      helpText="e.g. 112. Empty = no chip."
+                      helpText="e.g. 478. Empty = no pill."
                       autoComplete="off"
                     />
                   </Box>
                   <Box minWidth="260px">
                     <TextField
-                      label="Lab name"
-                      value={clinicalState.labName}
-                      onChange={(labName) => setClinicalField({ labName })}
+                      label="Extra fact pill"
+                      value={clinicalState.badge}
+                      onChange={(badge) => setClinicalField({ badge })}
                       disabled={savingClinical}
-                      helpText="The independent lab that ran the study. Empty = no chip."
+                      helpText="Third pill, e.g. “Instrumentally measured”. Empty = only two pills."
                       autoComplete="off"
                     />
                   </Box>
@@ -2879,13 +2917,13 @@ export default function ProductBoosterDetailPage() {
                 <InlineStack gap="300" wrap>
                   <Box minWidth="280px">
                     <TextField
-                      label="Instruments"
+                      label="Measurement method"
                       value={clinicalState.instruments}
                       onChange={(instruments) =>
                         setClinicalField({ instruments })
                       }
                       disabled={savingClinical}
-                      helpText="Shown to shoppers as “Measured with …” — plain words beat lab jargon (e.g. “skin-firmness meter” rather than a bare model number). Empty = no chip."
+                      helpText="Shown inside the stat panel under the headline result, exactly as written, e.g. “Measured by 3D skin imaging”. Empty = hidden."
                       autoComplete="off"
                     />
                   </Box>
@@ -2912,8 +2950,9 @@ export default function ProductBoosterDetailPage() {
                     Results
                   </Text>
                   <Text as="p" tone="subdued" variant="bodySm">
-                    The first result renders as the huge headline number;
-                    the rest appear in the results grid. Move a result up or
+                    The first result is the big stat panel (giant number,
+                    divider, label, measurement method); further results
+                    render as smaller panels below it. Move a result up or
                     down to reorder — the first row is the headline stat.
                     Up to {MAX_RESULTS}.
                   </Text>

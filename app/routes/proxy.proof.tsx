@@ -17,6 +17,7 @@ import {
   getProofTranslationOverlay,
 } from "../services/proof-translation.server";
 import { getSettings } from "../models/settings.server";
+import { resultsUiCopy } from "../services/results-ui-copy.server";
 import type { PublicResultsFilters } from "../services/proof.server";
 
 /**
@@ -242,22 +243,54 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         const locale = normalizeLocaleParam(url.searchParams.get("locale"));
         if (locale && payload.items.length > 0) {
           try {
+            // v25: measurement labels/info notes + the attribution role
+            // ride the entry overlay next to the testimonial. Sources are
+            // the PUBLIC values (parsed from the save-time-cleaned column
+            // verbatim), so digests agree with translate-time sources.
             const overlay = await getProofTranslationOverlay(
               shop, "results", payload.items.map((item) => item.id), locale,
-              new Map(payload.items.map((item) => [
-                item.id,
-                { testimonial: item.testimonial ?? "" },
-              ])),
+              new Map(payload.items.map((item) => {
+                const sources: Record<string, string> = {
+                  testimonial: item.testimonial ?? "",
+                  attributionRole: item.attributionRole ?? "",
+                };
+                item.measurements.forEach((m, i) => {
+                  sources[`m${i}l`] = m.label;
+                  sources[`m${i}i`] = m.info ?? "";
+                });
+                return [item.id, sources];
+              })),
             );
             for (const item of payload.items) {
               const fields = overlay.get(item.id);
-              if (fields?.testimonial && item.testimonial) {
+              if (!fields) continue;
+              if (fields.testimonial && item.testimonial) {
                 item.testimonial = fields.testimonial;
               }
+              if (fields.attributionRole && item.attributionRole) {
+                item.attributionRole = fields.attributionRole;
+              }
+              item.measurements.forEach((m, i) => {
+                const label = fields[`m${i}l`];
+                if (label) m.label = label;
+                const info = fields[`m${i}i`];
+                if (info && m.info) m.info = info;
+              });
             }
           } catch {
             // untranslated payload serves
           }
+        }
+        // v25: fixed clinical-UI strings (tagline, panel header, baseline
+        // tag, trust-mark labels) ride every response as payload.copy —
+        // curated server-side per theme language because the el/ar locale
+        // files sit at Shopify's byte cap (results-ui-copy.server.ts).
+        // English serves when the locale is missing or uncovered; the
+        // widget fails soft per element if the member is ever absent.
+        try {
+          (payload as Record<string, unknown>).copy = { ...resultsUiCopy(locale) };
+        } catch {
+          // chrome copy is an enhancement — the gallery itself still serves
         }
         return jsonResponse(payload, true);
       }

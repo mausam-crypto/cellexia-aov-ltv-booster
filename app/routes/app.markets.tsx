@@ -144,6 +144,9 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
       // suppresses trust_badges / trustpilot / guarantee / the PDP delivery
       // widget / az_microcopy / az_ships_from on that page.
       { key: "buy_box_proof", label: "Buy-box proof block" },
+      // v26: replaces the theme's size pills with picture cards (see
+      // docs/SPEC-v26-quantity-selector.md).
+      { key: "quantity_selector", label: "Quantity selector cards" },
       { key: "trust_badges", label: "Trust badges" },
       // v20: not a widget of ours — the SIZE of the theme's own image
       // badges on phones (see docs/SPEC-v20-image-badges.md).
@@ -603,6 +606,7 @@ export default function MarketsPage() {
       ["derm_endorsements", "dermEndorsements"],
       ["buy_box_proof", "buyBoxProof"],
       ["image_badges", "imageBadges"],
+      ["quantity_selector", "quantitySelector"],
     ] as const;
     for (const [key, section] of SIMPLE_SECTIONS) {
       if (state[key].on !== initial[key].on) {

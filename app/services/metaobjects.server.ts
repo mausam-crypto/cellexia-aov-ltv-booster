@@ -428,26 +428,35 @@ export async function ensurePdpDefinitions(
       access: DEFINITION_ACCESS,
       capabilities: DEFINITION_CAPABILITIES,
       fieldDefinitions: [
-        field("title", "Study title", "single_line_text_field"),
+        field("title", "Headline", "single_line_text_field"),
         field("subject", "Subject", "single_line_text_field"),
-        field("concern", "Concern", "single_line_text_field"),
+        field("eyebrow", "Eyebrow", "single_line_text_field"),
+        field("concern", "Conducted-by line", "single_line_text_field"),
+        field("publication", "Publication line", "single_line_text_field"),
         field("duration_weeks", "Duration (weeks)", "number_integer"),
         field("sample_size", "Sample size (n)", "number_integer"),
         field("lab_name", "Lab name", "single_line_text_field"),
-        field("instruments", "Instruments", "single_line_text_field"),
+        field("instruments", "Measurement method", "single_line_text_field"),
+        field("badge", "Extra fact pill", "single_line_text_field"),
         field("study_url", "Study summary URL", "url"),
         listReferenceField("results", "Results", studyResultId),
         field("footnote", "Footnote", "multi_line_text_field"),
       ],
     });
-    // v7 migration: `subject` postdates already-provisioned shops, and the
-    // create branch above never runs for a definition that exists — backfill
-    // any missing fields on it (idempotent no-op once present).
+    // Migrations — the create branch above never runs for a definition that
+    // exists, so fields that postdate already-provisioned shops are
+    // backfilled here (idempotent no-op once present): `subject` (v7), and
+    // the v24 recomposition trio `eyebrow`/`publication`/`badge`.
     if (clinicalStudyExisted) {
       const migration = await ensureDefinitionFields(
         admin,
         PDP_METAOBJECT_TYPES.clinicalStudy,
-        [field("subject", "Subject", "single_line_text_field")],
+        [
+          field("subject", "Subject", "single_line_text_field"),
+          field("eyebrow", "Eyebrow", "single_line_text_field"),
+          field("publication", "Publication line", "single_line_text_field"),
+          field("badge", "Extra fact pill", "single_line_text_field"),
+        ],
       );
       errors.push(...migration.errors);
       created.push(

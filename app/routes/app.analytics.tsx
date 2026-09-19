@@ -82,6 +82,7 @@ const FEATURE_LABELS: Record<string, string> = {
   gift_tiers: "Gift tiers",
   // v19 shipped without a label here, so this row rendered as the raw key.
   buy_box_proof: "Buy-box proof block",
+  quantity_selector: "Quantity selector cards",
 };
 
 function formatMoney(value: number, currency: string | null): string {

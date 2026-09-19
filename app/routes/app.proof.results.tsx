@@ -62,6 +62,7 @@ import { getTargetLocales, getTranslationConfig } from "../services/translation.
 import type { CustomerResult } from "@prisma/client";
 import {
   parseProductGidList,
+  parseResultMeasurementList,
   EMPTY_RESULT_FORM,
   PROOF_MAX_UPLOAD_BYTES,
   FeaturedStarButton,
@@ -378,6 +379,13 @@ export const action = async ({
         country: String(payload.country ?? ""),
         testimonial: String(payload.testimonial ?? ""),
         videoUrl: String(payload.videoUrl ?? ""),
+        // v25: passed through as-is — cleanMeasurements is the validator
+        measurements: payload.measurements,
+        markInstrument: payload.markInstrument === true,
+        markSamePatient: payload.markSamePatient === true,
+        markUnretouched: payload.markUnretouched === true,
+        attributionName: String(payload.attributionName ?? ""),
+        attributionRole: String(payload.attributionRole ?? ""),
         productGids: Array.isArray(payload.productGids)
           ? payload.productGids.filter(
               (entry): entry is string => typeof entry === "string",
@@ -600,6 +608,17 @@ function itemToForm(item: CustomerResult): ResultFormValues {
     country: item.country ?? "",
     testimonial: item.testimonial ?? "",
     videoUrl: item.videoUrl ?? "",
+    measurements: parseResultMeasurementList(item.measurements).map((m) => ({
+      label: m.label,
+      dir: m.dir,
+      pct: String(m.pct),
+      info: m.info ?? "",
+    })),
+    markInstrument: item.markInstrument,
+    markSamePatient: item.markSamePatient,
+    markUnretouched: item.markUnretouched,
+    attributionName: item.attributionName ?? "",
+    attributionRole: item.attributionRole ?? "",
     productGids: parseProductGidList(item.productGids),
     featured: item.featured,
     status: item.status,
@@ -621,6 +640,21 @@ function formToPayload(values: ResultFormValues, id: string | null) {
     country: values.country.trim(),
     testimonial: values.testimonial.trim(),
     videoUrl: values.videoUrl.trim(),
+    // v25: fully-empty editor rows are dropped; anything else goes to the
+    // server validator verbatim so problems surface as save errors.
+    measurements: values.measurements
+      .filter((m) => !(m.label.trim() === "" && m.pct.trim() === "" && m.info.trim() === ""))
+      .map((m) => ({
+        label: m.label.trim(),
+        dir: m.dir,
+        pct: /^\d+$/.test(m.pct.trim()) ? Number(m.pct.trim()) : null,
+        info: m.info.trim(),
+      })),
+    markInstrument: values.markInstrument,
+    markSamePatient: values.markSamePatient,
+    markUnretouched: values.markUnretouched,
+    attributionName: values.attributionName.trim(),
+    attributionRole: values.attributionRole.trim(),
     productGids: values.productGids,
     featured: values.featured,
     status: values.status,
@@ -638,6 +672,12 @@ function metaLine(item: CustomerResult): string {
   if (item.concern) parts.push(item.concern);
   if (item.durationWeeks !== null) parts.push(`${item.durationWeeks} wks`);
   if (item.country) parts.push(item.country);
+  const measurementCount = parseResultMeasurementList(item.measurements).length;
+  if (measurementCount > 0) {
+    parts.push(
+      measurementCount === 1 ? "1 metric" : `${measurementCount} metrics`,
+    );
+  }
   return parts.join(" · ");
 }
 
@@ -1149,6 +1189,13 @@ export default function ProofResultsTab() {
                             <ProofTranslationsSection
                               fields={[
                                 { field: "testimonial", label: "Testimonial", sourceText: item.testimonial ?? "" },
+                                { field: "attributionRole", label: "Attribution role", sourceText: item.attributionRole ?? "" },
+                                ...parseResultMeasurementList(item.measurements).flatMap(
+                                  (m, index) => [
+                                    { field: `m${index}l`, label: `Measurement ${index + 1} label`, sourceText: m.label },
+                                    { field: `m${index}i`, label: `Measurement ${index + 1} info`, sourceText: m.info ?? "" },
+                                  ],
+                                ),
                               ]}
                               targetLocales={targetLocales}
                               translations={itemTranslations[item.id] ?? []}

@@ -102,6 +102,8 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   cart_overlay_fix: "/app/features/cart",
   cart_compact: "/app/features/cart",
   cart_pinned_checkout: "/app/features/cart",
+  // v26 quantity selector cards: own page (SPEC v26).
+  quantity_selector: "/app/features/quantity",
 };
 
 const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
@@ -126,6 +128,7 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
     description:
       "Trust and conversion widgets on product pages — badge rows, social proof, clinical evidence and per-product trust boosters.",
     keys: [
+      "quantity_selector",
       "buy_box_proof",
       "trust_badges",
       "image_badges",

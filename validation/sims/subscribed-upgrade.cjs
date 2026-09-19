@@ -45,6 +45,7 @@ const EXTRACTED = extractAll(SRC, {
     "subscriptionAware",
     "subSavingsPercent",
     "subsAware",
+    "subsLive",
     "ownedPlan",
     "isB2B",
   ],
@@ -300,16 +301,27 @@ function candidates(sandbox, item) {
   ok(vm.runInContext("findPlanForItem(__item)", sb2) === null,
     "no keyword + no live owned context: NO fallback plan (transition guard)");
 
-  // With the v17 context vouching for the plan (sx present + owned), the
-  // fallback works again.
+  // With the v17 context vouching for the plan (sx present + owned + LIVE,
+  // v23), the fallback works again.
   const sb2b = makeSandbox({
     settings: Object.assign({}, SETTINGS, { sellingPlanKeyword: "" }),
     products: { 900: PRODUCT },
-    cfg: { sx: { p: ["777"] } },
+    cfg: { sx: { p: ["777"], live: true } },
   });
   sb2b.__item = LINE_PLAIN;
   const fb = vm.runInContext("findPlanForItem(__item)", sb2b);
   ok(!!fb && String(fb.id) === "777", "no keyword + owned live plan: fallback returns it");
+
+  // v23: same context but the app is in SETUP (island open for previews,
+  // live:false) — the keyword-less fallback must NOT enroll anyone.
+  const sb2c = makeSandbox({
+    settings: Object.assign({}, SETTINGS, { sellingPlanKeyword: "" }),
+    products: { 900: PRODUCT },
+    cfg: { sx: { p: ["777"], live: false } },
+  });
+  sb2c.__item = LINE_PLAIN;
+  ok(vm.runInContext("findPlanForItem(__item)", sb2c) === null,
+    "v23: no keyword + owned plan but app in SETUP: fallback refuses (no proof-less enrollment)");
 
   // Variant without allocations: null.
   const products = { 900: JSON.parse(JSON.stringify(PRODUCT)) };

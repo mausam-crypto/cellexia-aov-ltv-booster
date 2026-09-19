@@ -126,7 +126,7 @@ const FEATURE_KEYS = parseFeatureKeys();
 // v19 (2026-09-09): 37 -> 38 (buy_box_proof appended at the END).
 // v20 (2026-09-11): 38 -> 39 (image_badges appended at the END).
 // v21 (2026-09-14): 39 -> 42 (cart_overlay_fix + cart_compact + cart_pinned_checkout appended at the END).
-ok(FEATURE_KEYS.length === 42, `FEATURE_KEYS parsed live: 42 keys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 43, `FEATURE_KEYS parsed live: 43 keys (got ${FEATURE_KEYS.length})`);
 
 /**
  * Evidence map: every FeatureKey -> at least one verified pattern in a real
@@ -199,6 +199,9 @@ const EVIDENCE = {
   cart_overlay_fix: [{ file: CART_JS, has: "'cart_overlay_fix'", note: "v21 CSS-scoped drawer bug fixes + qty heal (gate key, no own node, no beacon)" }],
   cart_compact: [{ file: CART_JS, has: "'cart_compact'", note: "v21 CSS-scoped drawer compaction + scroll cue (gate key, no own node, no beacon)" }],
   cart_pinned_checkout: [{ file: CART_JS, has: "'cart_pinned_checkout'", note: "v21 CSS-scoped sticky checkout bar (gate key, no own node, no beacon)" }],
+  // v26: the selector root carries the marker; one impression per mount plus
+  // click beacons per tier change (sims/quantity-selector pins the module).
+  quantity_selector: [{ file: PDP_JS, has: MARK("quantity_selector") }],
 };
 
 {
@@ -1250,7 +1253,9 @@ const EVIDENCE = {
   ok(
     ptSvc.includes('press: ["quote"],') &&
       ptSvc.includes('endorsements: ["quote", "credentials"],') &&
-      ptSvc.includes('results: ["testimonial"],'),
+      // v25 documented pin move: the results scope grew its clinical
+      // prose satellites (attribution role + measurement labels/notes).
+      ptSvc.includes('results: ["testimonial", "attributionRole", ...RESULT_MEASUREMENT_FIELDS],'),
     "v8.11: the translatable-fields allowlist is exactly prose (names/publications/URLs never translated)",
   );
   for (const route of ["app.proof.press.tsx", "app.proof.endorsements.tsx", "app.proof.results.tsx"]) {
@@ -1381,6 +1386,7 @@ const EVIDENCE = {
     "cx-results-config": "results config-island id (pfIsland)",
     "cx-gcheck": "guarantee-check modal singleton id",
     "cx-gcheck-title": "guarantee-check modal aria-labelledby id",
+    "cx-qsel-title": "quantity-selector heading id (aria-labelledby, v26)",
     "cx-survey-method": "survey methodology panel id (aria-controls)",
     "cx-survey-outcomes": "survey outcomes list id (aria-controls, v8 compact)",
     "cx-az-returns-panel": "returns disclosure panel id (aria-controls)",
@@ -1921,8 +1927,10 @@ const EVIDENCE = {
     const css = read(CSS);
     const desktopRule = "@media (min-width: 750px) {\n  .cx-study {\n    max-width: 680px;\n    margin-inline: auto;\n  }\n}";
     ok(css.includes(desktopRule), "v6.11: .cx-study desktop centered-measure rule present");
-    const baseIdx = css.indexOf(".cx-study {\n  border-inline-start");
-    ok(baseIdx !== -1, "v6.11: .cx-study base rule still anchored (border-inline-start card)");
+    // v24: the base anchor moved with the recomposition — the blue accent
+    // card (border-inline-start) is retired for the neutral research look.
+    const baseIdx = css.indexOf(".cx-study {\n  color: #1d1d1b");
+    ok(baseIdx !== -1, "v6.11/v24: .cx-study base rule still anchored (neutral ink root)");
     ok(
       baseIdx !== -1 && css.indexOf(desktopRule) > baseIdx,
       "v6.11: desktop rule follows the base rule (cascade-order override)",
@@ -3201,9 +3209,11 @@ const EVIDENCE = {
   // our exports kept reverting it; these pins hold the fix in-tree.
   const NAME_REPLACE = "| replace: cx_name_token, cx_pname";
   const replaceUses = pdpLiquid.split(NAME_REPLACE).length - 1;
+  // v24: 14 -> 16 (study lab-name emission retired = -1; eyebrow/
+  // publication/badge study members = +3).
   ok(
-    replaceUses === 14,
-    `v8.13b/v8.20: exactly 14 cx_name_token replace filters in pdp-booster.liquid (got ${replaceUses})`,
+    replaceUses === 16,
+    `v8.13b/v8.20/v24: exactly 16 cx_name_token replace filters in pdp-booster.liquid (got ${replaceUses})`,
   );
   ok(
     pdpLiquid.includes("assign cx_name_token = '{name}'"),
@@ -3217,9 +3227,10 @@ const EVIDENCE = {
     `{{ cx_study.subject.value ${NAME_REPLACE} | json }}`,
     `{{ cx_svy.question.value ${NAME_REPLACE} | json }}`,
     `"method": {{ cx_svy_method ${NAME_REPLACE} | json }}`,
-    // review v8.13b F0/F1: instruments rides the t: output; the verifier is
-    // substituted ONCE at the variable so both its emissions are covered.
-    `t: methods: cx_study.instruments.value ${NAME_REPLACE} | json }}`,
+    // v24: instruments emit RAW (panel method line) — the v8.13b t: methods
+    // composition is retired; the verifier is still substituted ONCE at the
+    // variable so both its emissions are covered.
+    `{{ cx_study.instruments.value ${NAME_REPLACE} | json }}`,
     `assign survey_verifier = survey_verifier ${NAME_REPLACE}`,
   ]) {
     ok(pdpLiquid.includes(site), `v8.13b: {name} replace at: ${site.slice(0, 60)}`);
@@ -4161,17 +4172,17 @@ const EVIDENCE = {
   // AND decorate time).
   ok(
     cartJs17.includes("'cx_az_cardflags:3:' + locale + ':' + MARKET + ':' + activeCurrency() + ':' +") &&
-      cartJs17.includes("(subsAware() ? 's1' : 's0') + ':' + cardFlagHash("),
-    "v17.2: card cache key v3 carries locale + market + currency + subscription state",
+      cartJs17.includes("(subsLive() ? 's1' : 's0') + ':' + cardFlagHash("),
+    "v17.2/v23: card cache key v3 carries locale + market + currency + LIVE subscription state",
   );
   ok(
-    cartJs17.includes("var sub = subsAware() ? cardSubCents(entry) : null;"),
-    "v17.2: subscription cents resolve into the verdict ONLY under an active context",
+    cartJs17.includes("var sub = subsLive() ? cardSubCents(entry) : null;"),
+    "v17.2/v23: subscription cents resolve into the verdict ONLY under a LIVE context",
   );
   ok(
-    cartJs17.includes("var wantSub = subsAware(); // v17.2: card prices follow the market's subscription state") &&
-      cartJs17.includes("var wantSub = subsAware();\n      if (!wantBadge && !wantBought && !wantSub) return;"),
-    "v17.2: subsAware is both a decorate-time gate and a boot reason for the card pass",
+    cartJs17.includes("var wantSub = subsLive(); // v17.2/v23: card prices follow the market's LIVE subscription state") &&
+      cartJs17.includes("var wantSub = subsLive();\n      if (!wantBadge && !wantBought && !wantSub) return;"),
+    "v17.2/v23: subsLive is both a decorate-time gate and a boot reason for the card pass",
   );
   ok(
     cartJs17.includes("var alloc = ownedCadenceAlloc(entry, variant);\n    return alloc ? Number(alloc.price) : null;"),
@@ -4185,6 +4196,33 @@ const EVIDENCE = {
     read("validation/sims/badge-cards.cjs").includes("v17.2: card price swapped to the CADENCE-matched owned allocation") &&
       read("validation/sims/badge-cards.cjs").includes("v17.2 prepaid: lump-priced allocation never dresses a card"),
     "v17.2: badge-cards sim pins the card-price scenarios",
+  );
+
+  // v23: subscription-price liveness. The v17.1 data gate deliberately opens
+  // in SETUP (previews need it; the cart cross-sell's per-shopper proof is an
+  // owned plan line). Surfaces WITHOUT such a proof leaked the discounted
+  // price to every market while the subscription app was dark — the exact
+  // bug the merchant papered over by syncing 0% policies. The island now
+  // carries sx.live (launch_status == 'live', byte-exact mirror of the buy
+  // box's own launch gate) and every proof-less surface gates on subsLive().
+  ok(
+    cartJs17.includes("function subsLive() {") &&
+      cartJs17.includes("return subsAware() && !!(cfg.sx && cfg.sx.live === true);"),
+    "v23: subsLive = subsAware + sx.live === true, missing member fails closed",
+  );
+  ok(
+    read(`${EXT}/blocks/cart-booster.liquid`).includes(
+      `"live":{% if cx_sl == 'live' %}true{% else %}false{% endif %}`,
+    ),
+    "v23: the sx island carries the launch_status == 'live' mirror",
+  );
+  ok(
+    cartJs17.includes("if (!fallback && subsLive() && ownedPlan(alloc.planId)) fallback = candidate;"),
+    "v23: the switch card's keyword-less fallback needs LIVE, not just the open data gate",
+  );
+  ok(
+    cartJs17.includes("if (!subsAware() || !state.cart || !Array.isArray(state.cart.items)) return null;"),
+    "v23: cart cross-sell keeps subsAware — its per-shopper proof is the owned plan line",
   );
 }
 
@@ -4270,8 +4308,8 @@ const EVIDENCE = {
     "v20: the member is emitted only when the feature is live or drafted",
   );
   ok(
-    /or show_bbp or cx_ibs > 0 or cx_draft_any -%\}/.test(ibLiquid),
-    "v20: the island/CSS/JS emission gate admits this feature ALONE (no other feature needed)",
+    /or show_bbp or cx_ibs > 0 or cx_qs or cx_draft_any -%\}/.test(ibLiquid),
+    "v20/v26: the island/CSS/JS emission gate admits image_badges AND quantity_selector each ALONE (no other feature needed)",
   );
 
   const ibCss = read(CSS);
@@ -4304,7 +4342,7 @@ const EVIDENCE = {
 
   const ibSettings = read("app/models/settings.server.ts");
   ok(
-    ibSettings.includes('"image_badges",\n  // v21 cart overlay features — appended last (39 → 42 keys).\n  "cart_overlay_fix",\n  "cart_compact",\n  "cart_pinned_checkout",\n];'),
+    ibSettings.includes('"image_badges",\n  // v21 cart overlay features — appended last (39 → 42 keys).\n  "cart_overlay_fix",\n  "cart_compact",\n  "cart_pinned_checkout",\n  // v26 quantity selector cards — appended last (42 → 43 keys).\n  "quantity_selector",\n];'),
     "v20/v21: image_badges then the three v21 overlay keys close FEATURE_KEYS (appended, never inserted)",
   );
   ok(
@@ -4721,6 +4759,315 @@ const EVIDENCE = {
     gateProxy.includes("gateOnDigest(gate.param, gate.token)") &&
       !gateProxy.includes("body.gates") && !gateProxy.includes("body.id"),
     "v22: the endpoint maps DIGESTS back through the shop's own gates — it never takes a gate id from the caller",
+  );
+}
+
+// ================= v25: results-gallery clinical redesign (SPEC-v25)
+// Clinical measurements + trust marks + attribution on CustomerResult,
+// proxy-served UI chrome (zero locale-file and zero Liquid bytes — el/ar
+// byte wall + the 99,500 Liquid budget both untouched by design), the
+// storefront panel and the visible lightbox close. Behavior is pinned by
+// sims/proof-gallery.cjs R19–R24 + mutants m32–m36, proof-server SR/UC +
+// m6/m7, proof-translation T7b + m0; these are the wiring pins.
+{
+  // ---- schema: both prisma files carry the six columns -------------------
+  for (const schema of ["prisma/schema.prisma", "prisma/schema.postgres.prisma"]) {
+    const src = read(schema);
+    for (const col of [
+      'measurements    String  @default("[]")',
+      "markInstrument  Boolean @default(false)",
+      "markSamePatient Boolean @default(false)",
+      "markUnretouched Boolean @default(false)",
+      "attributionName String?",
+      "attributionRole String?",
+    ]) {
+      ok(src.includes(col), `v25: ${schema} carries: ${col.trim().slice(0, 40)}`);
+    }
+  }
+  const migration = read(
+    "prisma/migrations/20260918083000_v25_results_clinical/migration.sql",
+  );
+  ok(
+    migration.includes('ADD COLUMN "measurements" TEXT NOT NULL DEFAULT \'[]\'') &&
+      migration.includes('ADD COLUMN "attributionRole" TEXT'),
+    "v25: the sqlite migration adds the clinical columns (Postgres deploys use prisma db push per UPDATE.md)",
+  );
+
+  // ---- server: validation caps + the serve-time lab belt ------------------
+  const proofSrv = read("app/services/proof.server.ts");
+  ok(
+    proofSrv.includes("export const MAX_RESULT_MEASUREMENTS = 6;") &&
+      proofSrv.includes("export const MEASUREMENT_PCT_MAX = 500;"),
+    "v25: measurement caps exported (6 rows, 500%)",
+  );
+  ok(
+    proofSrv.includes("export function parseResultMeasurements(") &&
+      proofSrv.includes("measurements: lab ? parseResultMeasurements(row.measurements) : [],"),
+    "v25: public serving parses measurements through the lab belt",
+  );
+  ok(
+    proofSrv.includes("const measurements = isLab ? cleanMeasurements(input.measurements, errors) : [];"),
+    "v25: saves clear clinical claims on a customer source (lab-only)",
+  );
+
+  // ---- translation: the 14-field results scope ---------------------------
+  const proofTr = read("app/services/proof-translation.server.ts");
+  ok(
+    proofTr.includes('for (let i = 0; i < 6; i++) RESULT_MEASUREMENT_FIELDS.push(`m${i}l`, `m${i}i`);') &&
+      proofTr.includes('results: ["testimonial", "attributionRole", ...RESULT_MEASUREMENT_FIELDS],'),
+    "v25: results translation scope = testimonial + attributionRole + m0..m5 l/i",
+  );
+
+  // ---- proxy: entry overlay + the curated UI-copy member ------------------
+  const proofProxy = read("app/routes/proxy.proof.tsx");
+  ok(
+    proofProxy.includes('from "../services/results-ui-copy.server"') &&
+      proofProxy.includes("(payload as Record<string, unknown>).copy = { ...resultsUiCopy(locale) };"),
+    "v25: every results response carries payload.copy from the curated table",
+  );
+  ok(
+    proofProxy.includes("sources[`m${i}l`] = m.label;") &&
+      proofProxy.includes("if (fields.attributionRole && item.attributionRole)"),
+    "v25: the results overlay translates measurement labels + the attribution role",
+  );
+  const uiCopyBytes = bytesOf("app/services/results-ui-copy.server.ts");
+  ok(
+    uiCopyBytes >= 4000,
+    `v25: results-ui-copy.server.ts holds the 18-locale table (${uiCopyBytes}B >= 4000B; deep validation in proof-server UC cases)`,
+  );
+
+  // ---- storefront: whitelist, raw reads, gates, close ---------------------
+  const proofJs25 = read(PROOF_JS);
+  ok(
+    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu'];"),
+    "v25: resultsApplyCopy whitelist is exactly the six chrome codes",
+  );
+  for (const raw of ["pfStrRaw(s, 'rp')", "pfStrRaw(s, 'ma')", "pfStrRaw(s, 'vsb')", "pfStrRaw(s, 'mi')"]) {
+    ok(proofJs25.includes(raw), `v25: proxy-only code read RAW (v8.22 convention): ${raw}`);
+  }
+  ok(
+    proofJs25.includes("m: lab ? resultsValidMeasurements(it.measurements) : [],") &&
+      proofJs25.includes("if (!item.lab) return null;"),
+    "v25: both storefront lab gates present (valid-items + resultsClinical)",
+  );
+  ok(
+    proofJs25.includes("close.appendChild(resultsIcon('x', 16));") &&
+      !proofJs25.includes("var x = pfEl('span', null, ['aria-hidden', 'true']);"),
+    "v25: the lightbox close is the icon button — its old invisible text glyph is gone (the drawer's × is a different control)",
+  );
+
+  // ---- CSS: the close is actually visible + the panel family styled -------
+  const css25 = read(CSS);
+  const closeIdx = css25.indexOf(".cx-lightbox__close {");
+  ok(closeIdx !== -1, "v25: lightbox close rule present");
+  const closeRule = css25.slice(closeIdx, css25.indexOf("}", closeIdx));
+  ok(
+    closeRule.includes("position: sticky") &&
+      closeRule.includes("background: #fff") &&
+      closeRule.includes("box-shadow:"),
+    "v25: close button is a solid, shadowed, sticky control (the visibility fix)",
+  );
+  for (const cls of [".cx-results__clin {", ".cx-results__clin-val--down", ".cx-results__tagline {", ".cx-results__tag--after {"]) {
+    ok(css25.includes(cls), `v25: CSS styles ${cls.replace(" {", "")}`);
+  }
+
+  // ---- admin: editor caps mirror the server -------------------------------
+  ok(
+    read("app/components/ProofForms.tsx").includes("export const MAX_MEASUREMENT_ROWS = 6;"),
+    "v25: admin measurement editor caps at the server's 6 rows",
+  );
+  ok(
+    read("app/routes/app.proof.results.tsx").includes("field: `m${index}l`"),
+    "v25: the translations reviewer exposes the measurement fields",
+  );
+}
+
+// ================================================= v26 QUANTITY SELECTOR
+// docs/SPEC-v26-quantity-selector.md — picture-card picker that RELAYS
+// every selection to the theme's own hidden pill buttons. The behavioral
+// surface (mapping, math-honesty gates, relay, string table integrity)
+// lives in sims/quantity-selector.cjs; the pins here hold the cross-file
+// wiring and the order-sensitive invariants a refactor could drop while
+// every unit still passes.
+{
+  const qsLiquid = read(`${EXT}/blocks/pdp-booster.liquid`);
+  ok(
+    /assign cx_s = cfg\.marketScopes\.quantity_selector\nif cx_s\.mode != 'selected' or cx_s\.markets contains cx_market\nif cfg\.quantitySelector\.enabled == true\nassign cx_qsl = true\nendif\nendif/.test(
+      qsLiquid,
+    ),
+    "v26: Liquid live gate = market scope + master flag (the ib pattern verbatim)",
+  );
+  ok(
+    qsLiquid.includes("if cx_qsl or cx_prev_flags.quantity_selector == true\nassign cx_qs = true\nendif"),
+    "v26: draft preview flag widens the emission gate (live stays cx_qsl)",
+  );
+  ok(
+    /\{%- if cx_qs %\}\n"qs": \{"live": \{\{ cx_qsl \}\}, "l": \{\{ request\.locale\.iso_code \| json \}\}, "mf": \{\{ shop\.money_format \| json \}\}, "v": \[/.test(
+      qsLiquid,
+    ),
+    "v26: qs member emits live + page locale + shop money format (the v21.1 mf precedent) + the variant array",
+  );
+  ok(
+    qsLiquid.includes('{"id": {{ cx_v.id | json }}, "t": {{ cx_v.title | json }}, "p": {{ cx_v.price | json }}'),
+    "v26: per-variant id/title/presentment-cents all | json (island nil discipline)",
+  );
+  ok(
+    qsLiquid.includes("for cx_v in product.variants limit: 6"),
+    "v26: variant loop capped at 6",
+  );
+
+  const qsJs = read(PDP_JS);
+  ok(
+    qsJs.includes("qselMount();\n      qselDesignBind();"),
+    "v26: init() wires the mount + the design-mode remount, in that order",
+  );
+  ok(
+    qsJs.includes("if (!d || !qselAllowed(d)) return;"),
+    "v26: the live/draft gate vetoes the mount itself (preview honesty)",
+  );
+  ok(
+    qsJs.includes("return !!d && pdpMemberAllowed(d, 'quantity_selector');"),
+    "v26: qselAllowed rides the house pdpMemberAllowed gate",
+  );
+  {
+    const insertAt = qsJs.indexOf("wrap.parentNode.insertBefore(root, wrap);");
+    const hideAt = qsJs.indexOf("wrap.className += ' cx-qsel-src';");
+    ok(
+      insertAt !== -1 && hideAt !== -1 && insertAt < hideAt,
+      "v26: never hide without inserting — the pill group is hidden only AFTER the cards are in the DOM (v6.6 rule, order-pinned)",
+    );
+  }
+  ok(
+    qsJs.includes("try { picked.btn.click(); } catch (e) { /* noop */ }"),
+    "v26: selection RELAYS to the theme's own button (the only control channel)",
+  );
+  ok(
+    qsJs.includes("var pair = byId[String(v.id)];"),
+    "v26: cards map to buttons by variant id, never by index",
+  );
+  ok(
+    qsJs.includes("id = id.replace(/^\\s+|\\s+$/g, '');"),
+    "v26: data-val-id trimmed (the theme leaks a trailing newline on the last button)",
+  );
+  ok(
+    qsJs.includes("track('quantity_selector');") &&
+      qsJs.includes("track('quantity_selector', 'click', 'q' + (picked.q > 0 ? picked.q : idx + 1));"),
+    "v26: one impression per mount + a click beacon with the q<units> meta",
+  );
+  {
+    // The string table: 18 locales x 5 keys, complete, placeholder-carrying
+    // and em-dash-free; b3 must stay the locale files' own volume.best_value
+    // wording VERBATIM (one phrase, two surfaces — the v19 eyebrow rule).
+    const tableMatch = qsJs.match(/var CX_QSEL_STR = (\{.*?\});\n/);
+    ok(!!tableMatch, "v26: CX_QSEL_STR literal present (single line, AZ_SHIPS_FORMS convention)");
+    if (tableMatch) {
+      let table = null;
+      try {
+        table = JSON.parse(tableMatch[1]);
+      } catch (e) {
+        table = null;
+      }
+      ok(!!table, "v26: CX_QSEL_STR parses as strict JSON");
+      if (table) {
+        const locales = listFiles(`${EXT}/locales`, ".json").map((f) =>
+          f.replace(".default", "").replace(".json", ""),
+        );
+        ok(
+          locales.length === 18 && locales.every((l) => !!table[l]),
+          "v26: the table covers exactly the 18 shipped storefront locales",
+        );
+        for (const [loc, pack] of Object.entries(table)) {
+          for (const key of ["title", "each", "save", "b2", "b3"]) {
+            ok(
+              typeof pack[key] === "string" && pack[key].length > 0,
+              `v26: ${loc}.${key} present and non-empty`,
+            );
+          }
+          ok(
+            pack.each.includes("{amount}") && pack.save.includes("{amount}"),
+            `v26: ${loc} each/save carry the {amount} placeholder`,
+          );
+          ok(
+            !JSON.stringify(pack).includes("—"),
+            `v26: ${loc} strings carry no em dash (merchant standing rule)`,
+          );
+        }
+        for (const loc of locales) {
+          const file = loc === "en" ? "en.default.json" : `${loc}.json`;
+          const bundle = JSON.parse(read(`${EXT}/locales/${file}`));
+          const bestValue = bundle.volume && bundle.volume.best_value;
+          ok(
+            typeof bestValue === "string" && table[loc] && table[loc].b3 === bestValue,
+            `v26: ${loc} b3 === volume.best_value verbatim (house wording, one source)`,
+          );
+        }
+      }
+    }
+  }
+  {
+    // documentElement.lang is shop.locale on this theme (primary language,
+    // verified live) — the module must never read it.
+    const qselStart = qsJs.indexOf("v26 quantity selector cards");
+    const qselEnd = qsJs.indexOf("function init()");
+    const region = qsJs.slice(qselStart, qselEnd);
+    ok(
+      qselStart !== -1 && qselEnd > qselStart && !region.includes("documentElement.lang"),
+      "v26: page locale comes from the island only (documentElement.lang banned — it is shop.locale on this theme)",
+    );
+  }
+
+  const qsCss = read(CSS);
+  ok(
+    qsCss.includes(".cx-qsel-src {\n  display: none !important;\n}"),
+    "v26: the replaced pill group is hidden with display:none !important (still the working control surface)",
+  );
+  ok(
+    qsCss.includes(":lang(ar) .cx-qsel__title") && qsCss.includes(":lang(ar) .cx-qsel__badge"),
+    "v26: joining scripts drop the letterspacing (house rule)",
+  );
+
+  const qsSettings = read("app/models/settings.server.ts");
+  ok(
+    qsSettings.includes('quantity_selector: { kind: "section", field: "quantitySelector" }'),
+    "v26: FEATURE_RAW_FIELD routes the key through the generic section arm",
+  );
+  ok(
+    /"imageBadges",\n  "quantitySelector",\n\] as const;/.test(qsSettings),
+    "v26: quantitySelector closes STANDALONE_SECTION_FIELDS (snapshot/restore/flip ride the generic arm)",
+  );
+  ok(
+    qsSettings.includes("next.quantitySelector.enabled = next.quantitySelector.enabled === true;"),
+    "v26: sanitize is the strict-boolean discipline (junk can never switch it on)",
+  );
+
+  ok(
+    read("app/routes/app.features._index.tsx").includes('quantity_selector: "/app/features/quantity"'),
+    "v26: the hub Configure link points at the feature's own page",
+  );
+  ok(
+    exists("app/routes/app.features.quantity.tsx"),
+    "v26: the Configure destination exists (every feature's destination carries its master switch — the v8.12b rule)",
+  );
+  ok(
+    read("app/routes/app.features.quantity.tsx").includes("quantitySelector: { enabled: state.enabled }"),
+    "v26: the admin page saves the master flag",
+  );
+  ok(
+    read("app/routes/app.preview.tsx").includes('"quantity_selector"'),
+    "v26: Preview Center picker lists the key",
+  );
+  ok(
+    read("app/routes/app.markets.tsx").includes('{ key: "quantity_selector", label: "Quantity selector cards" }') &&
+      read("app/routes/app.markets.tsx").includes('["quantity_selector", "quantitySelector"]'),
+    "v26: Markets matrix row + changed-only save mapper",
+  );
+  ok(
+    read("app/services/analytics.server.ts").includes('"quantity_selector"'),
+    "v26: analytics allowlist accepts the beacons (the v6.1/v13.1 silent-drop class)",
+  );
+  ok(
+    read("app/routes/app.analytics.tsx").includes('quantity_selector: "Quantity selector cards"'),
+    "v26: analytics page labels the key",
   );
 }
 

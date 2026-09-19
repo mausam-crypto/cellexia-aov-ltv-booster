@@ -444,6 +444,82 @@ const result1 = db._seed("customerResult", {
   await T.translateProofEntries(SHOP, ADMIN); // heal
 }
 
+// ------------------------- T7b (v25): measurement + attribution satellites
+{
+  const result2 = db._seed("customerResult", {
+    shop: SHOP, status: "approved", source: "lab", verified: false,
+    beforeUrl: "https://cdn/lb.jpg", afterUrl: "https://cdn/la.jpg",
+    ageRange: null, skinType: null, concern: null, durationWeeks: 7,
+    country: null, testimonial: null, videoUrl: null, productGids: "[]",
+    legacyGid: null,
+    measurements: JSON.stringify([
+      { label: "Under-eye wrinkle depth", dir: "down", pct: 18, info: "PRIMOS 3D scan." },
+      { label: "Skin firmness", dir: "up", pct: 14 },
+    ]),
+    attributionRole: "Consultant Dermatologist",
+    attributionName: "Dr. Lauren Bennett",
+  });
+  // unit surface: field pairs are index-addressed and blank-skipped
+  ok(JSON.stringify(T.measurementSourceFields(result2.measurements)) ===
+    JSON.stringify([["m0l", "Under-eye wrinkle depth"], ["m0i", "PRIMOS 3D scan."], ["m1l", "Skin firmness"]]),
+    "T7b: measurementSourceFields emits label+info pairs, blanks skipped");
+  ok(JSON.stringify(T.measurementSourceFields('[{"info":"only note"},{"label":"L2"}]')) ===
+    JSON.stringify([["m0i", "only note"], ["m1l", "L2"]]),
+    "T7b: indices stay POSITIONAL when a row lacks one field (digest alignment)");
+  ok(T.measurementSourceFields("not json").length === 0 &&
+    T.measurementSourceFields(null).length === 0,
+    "T7b: malformed column -> no sources (defensive)");
+  ok(T.TRANSLATABLE_PROOF_FIELDS.results.length === 14 &&
+    T.TRANSLATABLE_PROOF_FIELDS.results.includes("attributionRole") &&
+    T.TRANSLATABLE_PROOF_FIELDS.results.includes("m5i") &&
+    !T.TRANSLATABLE_PROOF_FIELDS.results.includes("m6l"),
+    "T7b: results allowlist = testimonial + attributionRole + m0..m5 l/i");
+
+  const run = await T.translateProofEntries(SHOP, ADMIN, ["results"], [result2.id]);
+  ok(run.ok === true, "T7b: narrowed clinical run completes");
+  const m0l = db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceId === result2.id && r.locale === "fr" && r.field === "m0l");
+  ok(!!m0l && m0l.value === "[FR] Under-eye wrinkle depth",
+    "T7b: measurement labels ride the entry scope");
+  const m0i = db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceId === result2.id && r.locale === "de" && r.field === "m0i");
+  ok(!!m0i && m0i.value === "[DE] PRIMOS 3D scan.",
+    "T7b: info notes translate too");
+  const role = db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceId === result2.id && r.locale === "fr" && r.field === "attributionRole");
+  ok(!!role && role.value === "[FR] Consultant Dermatologist",
+    "T7b: the attribution ROLE translates (the name never becomes a source)");
+  ok(!db._tables.proofTranslation.some(
+    (r: StubRow) => r.resourceId === result2.id && r.field === "attributionName"),
+    "T7b: attribution NAME is a proper noun — never translated");
+  ok(!db._tables.proofTranslation.some(
+    (r: StubRow) => r.resourceId === result2.id && r.field === "m1i"),
+    "T7b: a measurement without an info note emits no m1i source");
+
+  // overlay: the proxy hands the PUBLIC values as sources — digests agree
+  const overlay = await T.getProofTranslationOverlay(
+    SHOP, "results", [result2.id], "fr",
+    new Map([[result2.id, {
+      testimonial: "", attributionRole: "Consultant Dermatologist",
+      m0l: "Under-eye wrinkle depth", m0i: "PRIMOS 3D scan.", m1l: "Skin firmness",
+    }]]),
+  );
+  const fields = overlay.get(result2.id);
+  ok(!!fields && fields.m0l === "[FR] Under-eye wrinkle depth" &&
+    fields.attributionRole === "[FR] Consultant Dermatologist",
+    "T7b: serve-time overlay returns the clinical fields for the page locale");
+
+  // manual review accepts the new field codes and still rejects unknowns
+  const manual = await T.saveManualProofTranslation(
+    SHOP, "results", result2.id, "fr", "m0l", "Profondeur des rides sous les yeux",
+    "Under-eye wrinkle depth");
+  ok(manual.ok === true, "T7b: manual review can pin a measurement label");
+  const unknown = await T.saveManualProofTranslation(
+    SHOP, "results", result2.id, "fr", "m6l", "X", "Y");
+  ok(unknown.ok === false, "T7b: m6l is outside the 0..5 window and rejected");
+  await T.translateProofEntries(SHOP, ADMIN); // heal for later cases
+}
+
 // ------------------------------------------------------------ T8: overlay
 {
   // seed a pt base row + a pt-pt exact row for the same field
@@ -907,6 +983,13 @@ if (!process.env.CX_SIM_SRC) {
     selfPath: shimPath,
     srcPath: REAL_SRC,
     mutants: [
+      {
+        // v25: measurement sources dropped from the results scope — the
+        // clinical labels would silently stop translating (T7b catches).
+        name: "m0-measure-sources-dropped",
+        find: "      for (const [field, text] of measurementSourceFields(row.measurements)) {",
+        replace: "      for (const [field, text] of [] as [string, string][]) {",
+      },
       {
         name: "m1-digest-check-dropped",
         find: "row.sourceDigest === proofSourceDigest(source.text)",

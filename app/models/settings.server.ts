@@ -99,7 +99,10 @@ export type FeatureKey =
   // the END for the same reason.
   | "cart_overlay_fix"
   | "cart_compact"
-  | "cart_pinned_checkout";
+  | "cart_pinned_checkout"
+  // v26 quantity selector cards (docs/SPEC-v26-quantity-selector.md) —
+  // appended at the END for the same reason.
+  | "quantity_selector";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "cart_volume_upsell",
@@ -148,6 +151,8 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "cart_overlay_fix",
   "cart_compact",
   "cart_pinned_checkout",
+  // v26 quantity selector cards — appended last (42 → 43 keys).
+  "quantity_selector",
 ];
 
 /**
@@ -1255,6 +1260,17 @@ export interface BoosterSettings {
     pinned: boolean;
   };
   /**
+   * v26 — quantity selector cards (docs/SPEC-v26-quantity-selector.md).
+   * Replaces the theme's text-pill size picker with picture cards (per-unit
+   * price, struck 1-unit baseline, computed save chip, tier badges). The
+   * layout, badges and math-honesty rules are fixed by the spec — the only
+   * knob is the master switch; card control is RELAYED to the theme's own
+   * hidden buttons, so every theme/subscription behavior stays identical.
+   */
+  quantitySelector: {
+    enabled: boolean;
+  };
+  /**
    * Amazon-pattern features (v6.1; eleven flags since the v6.8
    * stock/ships-from split) — independent flags plus the
    * language-neutral "Ships from" warehouse config. We model Amazon's
@@ -1812,6 +1828,9 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     scrollFix: false,
     compact: false,
     pinned: false,
+  },
+  quantitySelector: {
+    enabled: false,
   },
   amazon: {
     buyBox: false,
@@ -3428,6 +3447,9 @@ export function sanitizeSettings(
   next.overlayFix.compact = next.overlayFix.compact === true;
   next.overlayFix.pinned = next.overlayFix.pinned === true;
 
+  // v26: quantity selector cards — same strict-boolean discipline.
+  next.quantitySelector.enabled = next.quantitySelector.enabled === true;
+
   next.clinicalResults.stats = (next.clinicalResults.stats ?? [])
     .filter(
       (stat) =>
@@ -4323,6 +4345,14 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     },
     siblings: [],
   },
+  quantity_selector: {
+    label: "Quantity selector cards",
+    get: (s) => s.quantitySelector.enabled,
+    set: (s, on) => {
+      s.quantitySelector.enabled = on;
+    },
+    siblings: [],
+  },
   cart_overlay_fix: {
     label: "Cart overlay fix",
     get: (s) => s.overlayFix.scrollFix,
@@ -4680,6 +4710,7 @@ export const STANDALONE_SECTION_FIELDS = [
   "deliveryEstimate",
   "buyBoxProof",
   "imageBadges",
+  "quantitySelector",
 ] as const;
 export type StandaloneSectionField = (typeof STANDALONE_SECTION_FIELDS)[number];
 
@@ -4741,6 +4772,7 @@ export const FEATURE_RAW_FIELD: Record<
   cart_overlay_fix: { kind: "overlay", field: "scrollFix" },
   cart_compact: { kind: "overlay", field: "compact" },
   cart_pinned_checkout: { kind: "overlay", field: "pinned" },
+  quantity_selector: { kind: "section", field: "quantitySelector" },
 };
 
 /**

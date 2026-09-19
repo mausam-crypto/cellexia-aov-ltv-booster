@@ -173,8 +173,8 @@
     "badge_chip": "Dermatologi autorizați"
   },
   "results": {
-    "banner_verified": "Vezi rezultatele obținute de clienți Cellexia verificați — {{ count }} în total.",
-    "banner_all": "Vezi rezultatele obținute de clienți Cellexia — {{ count }} în total.",
+    "banner_verified": "Vezi rezultatele obținute de utilizatori reali Cellexia: {{ count }} în total.",
+    "banner_all": "Vezi rezultatele obținute de utilizatori Cellexia: {{ count }} în total.",
     "filter_concern": "Problema pielii",
     "filter_age": "Vârstă",
     "filter_skin": "Tip de piele",

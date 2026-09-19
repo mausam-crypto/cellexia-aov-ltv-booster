@@ -169,8 +169,8 @@
     "badge_chip": "Dermatólogos colegiados"
   },
   "results": {
-    "banner_verified": "Descubre los resultados de {{ count }} clientes verificados de Cellexia.",
-    "banner_all": "Descubre los resultados de {{ count }} clientes de Cellexia.",
+    "banner_verified": "Descubre los resultados de {{ count }} usuarios reales de Cellexia.",
+    "banner_all": "Descubre los resultados de {{ count }} usuarios de Cellexia.",
     "filter_concern": "Preocupación",
     "filter_age": "Edad",
     "filter_skin": "Tipo de piel",

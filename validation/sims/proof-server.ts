@@ -338,6 +338,12 @@ function seedResult(shop: string, over: StubRow): StubRow {
     country: null,
     testimonial: null,
     videoUrl: null,
+    measurements: "[]",
+    markInstrument: false,
+    markSamePatient: false,
+    markUnretouched: false,
+    attributionName: null,
+    attributionRole: null,
     productGids: "[]",
     marketHandles: undefined,
     legacyGid: null,
@@ -514,8 +520,10 @@ function pubs(res: { items: { publication: string }[] }): string[] {
   ok(!!item, "PR4: the full fixture row is served");
   ok(
     Object.keys(item).sort().join(",") ===
-      "afterUrl,ageRange,beforeUrl,concern,country,durationWeeks,id,skinType,source,testimonial,verified,videoUrl",
-    "PR4: public result items carry EXACTLY the twelve public fields",
+      "afterUrl,ageRange,attributionName,attributionRole,beforeUrl,concern,country," +
+      "durationWeeks,id,markInstrument,markSamePatient,markUnretouched,measurements," +
+      "skinType,source,testimonial,verified,videoUrl",
+    "PR4: public result items carry EXACTLY the eighteen public fields (v25)",
   );
   for (const leak of ["shop", "status", "featured", "sortWeight", "productGids", "marketHandles", "legacyGid", "createdAt"]) {
     ok(!(leak in item), `PR4: result projection never leaks ${leak}`);
@@ -561,6 +569,162 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     afterBulk.facets.concerns.some((f: { value: string }) => f.value === "pendingconcern"),
     "PR11: an approved row (and only then) enters items + facets");
   void pending;
+}
+
+// ===================== SR: v25 clinical fields — save validation + serving
+
+{
+  const shop = "clinical.myshopify.com";
+  const base = {
+    source: "lab",
+    verified: false,
+    beforeUrl: "https://cdn/b.jpg",
+    afterUrl: "https://cdn/a.jpg",
+    ageRange: "",
+    skinType: "",
+    concern: "",
+    durationWeeks: 7,
+    country: "",
+    testimonial: "  I confirm the images are unretouched.  ",
+    videoUrl: "",
+    measurements: [
+      { label: "  Under-eye wrinkle depth  ", dir: "down", pct: 18, info: " PRIMOS scan. " },
+      { label: "Skin firmness", dir: "up", pct: 14, info: "" },
+    ],
+    markInstrument: true,
+    markSamePatient: true,
+    markUnretouched: false,
+    attributionName: "  Dr. Lauren Bennett ",
+    attributionRole: " Consultant Dermatologist ",
+    productGids: [] as string[],
+    featured: false,
+    status: "approved",
+  };
+  const saved = await P.saveResult(shop, base);
+  ok(saved.ok === true, "SR1: a valid lab entry with measurements saves");
+  const served = await P.getPublicResults(shop, null, {}, 1, 12);
+  const it = served.items[0];
+  ok(
+    JSON.stringify(it.measurements) ===
+      JSON.stringify([
+        { label: "Under-eye wrinkle depth", dir: "down", pct: 18, info: "PRIMOS scan." },
+        { label: "Skin firmness", dir: "up", pct: 14 },
+      ]),
+    "SR1: measurements serve trimmed, info omitted when blank",
+  );
+  ok(it.markInstrument === true && it.markSamePatient === true && it.markUnretouched === false,
+    "SR1: trust marks serve exactly as checked");
+  ok(it.attributionName === "Dr. Lauren Bennett" && it.attributionRole === "Consultant Dermatologist",
+    "SR1: attribution serves trimmed");
+
+  const flipped = await P.saveResult(shop, { ...base, source: "customer" }, saved.id);
+  ok(flipped.ok === true, "SR2: flipping a lab entry to customer saves");
+  const servedFlip = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(
+    servedFlip.items[0].measurements.length === 0 &&
+      servedFlip.items[0].markInstrument === false &&
+      servedFlip.items[0].markSamePatient === false,
+    "SR2: the flip CLEARS instrument claims (customer rows can never carry them)",
+  );
+  ok(servedFlip.items[0].attributionName === "Dr. Lauren Bennett",
+    "SR2: attribution survives the flip (it is not a lab claim)");
+
+  // serve-time belt: a drifted CUSTOMER row whose columns somehow hold
+  // clinical data must still serve none of it
+  seedResult(shop, {
+    beforeUrl: "https://cdn/drift.jpg",
+    measurements: '[{"label":"Drift","dir":"down","pct":9}]',
+    markInstrument: true,
+    markUnretouched: true,
+  });
+  const drift = await P.getPublicResults(shop, null, {}, 1, 12);
+  const driftRow = drift.items.find((r: { beforeUrl: string | null }) => r.beforeUrl === "https://cdn/drift.jpg");
+  ok(!!driftRow && driftRow.measurements.length === 0 && driftRow.markInstrument === false &&
+    driftRow.markUnretouched === false,
+    "SR3: serve-time lab belt zeroes drifted customer clinical columns");
+
+  const badPct = await P.saveResult(shop, {
+    ...base,
+    measurements: [{ label: "X", dir: "down", pct: 0 }],
+  });
+  ok(badPct.ok === false && badPct.errors.some((e: string) => e.includes("whole percent")),
+    "SR4: percent outside 1-500 is a save error, never silently dropped");
+  const badDir = await P.saveResult(shop, {
+    ...base,
+    measurements: [{ label: "X", dir: "sideways", pct: 5 }],
+  });
+  ok(badDir.ok === false && badDir.errors.some((e: string) => e.includes("direction")),
+    "SR4: unknown direction is a save error");
+  const malformed = await P.saveResult(shop, {
+    ...base,
+    measurements: ["nope"],
+  });
+  ok(malformed.ok === false && malformed.errors.some((e: string) => e.includes("malformed")),
+    "SR4: a non-object row is a save error");
+  const tooMany = await P.saveResult(shop, {
+    ...base,
+    measurements: Array.from({ length: 7 }, (_, i) => ({ label: `M${i}`, dir: "up", pct: 5 })),
+  });
+  ok(tooMany.ok === false && tooMany.errors.some((e: string) => e.includes("No more than 6")),
+    "SR4: more than 6 measurement rows is a save error");
+  const noDuration = await P.saveResult(shop, {
+    ...base,
+    durationWeeks: null,
+  });
+  ok(noDuration.ok === false && noDuration.errors.some((e: string) => e.includes("Duration")),
+    "SR4: measurements without a duration are refused (the panel states when)");
+  const capPct = await P.saveResult(shop, {
+    ...base,
+    measurements: [{ label: "X", dir: "up", pct: 501 }],
+  });
+  ok(capPct.ok === false, "SR4: percent above 500 is refused");
+}
+
+// ===================== UC: v25 results-ui-copy table (18 native locales)
+
+{
+  // Pure module, no imports — load the REAL file directly.
+  const UC = await import(
+    pathToFileURL(path.join(ROOT, "app", "services", "results-ui-copy.server.ts")).href
+  );
+  const table = UC.RESULTS_UI_COPY as Record<string, Record<string, string>>;
+  const locales = Object.keys(table).sort();
+  // Must cover exactly the extension's published theme languages
+  // (en.default.json -> "en"; pt-PT normalizes to "pt-pt").
+  const catalogs = fs
+    .readdirSync(path.join(ROOT, "extensions", "cellexia-booster", "locales"))
+    .filter((f: string) => f.endsWith(".json"))
+    .map((f: string) => f.replace(".default", "").replace(".json", "").toLowerCase())
+    .sort();
+  ok(locales.join(",") === catalogs.join(","),
+    `UC1: copy table covers EXACTLY the 18 catalog languages (${locales.length})`);
+  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu"];
+  ok(JSON.stringify([...UC.RESULTS_UI_COPY_CODES]) === JSON.stringify(codes),
+    "UC1: exported code list matches the storefront whitelist");
+  for (const locale of locales) {
+    for (const code of codes) {
+      const value = table[locale][code];
+      ok(typeof value === "string" && /\S/.test(value),
+        `UC2: ${locale}.${code} is non-blank`);
+      ok(!value.includes("\u2014"),
+        `UC2: ${locale}.${code} carries no em dash (merchant rule)`);
+    }
+    ok(table[locale].ma.includes("@@N@@"),
+      `UC2: ${locale}.ma carries the @@N@@ weeks sentinel`);
+  }
+  ok(table.nb === table.no, "UC3: nb/no are twins (house convention)");
+  ok(UC.resultsUiCopy("el") === table.el, "UC4: exact locale resolves");
+  ok(UC.resultsUiCopy("de-AT") === table.de, "UC4: regional falls back to base");
+  ok(UC.resultsUiCopy("pt") === table["pt-pt"], "UC4: bare pt aliases to pt-pt");
+  ok(UC.resultsUiCopy("pt-BR") === table["pt-pt"], "UC4: pt-br aliases to pt-pt");
+  ok(UC.resultsUiCopy("xx") === table.en && UC.resultsUiCopy(null) === table.en &&
+    UC.resultsUiCopy("") === table.en,
+    "UC4: unknown/blank locale serves English, never blank chrome");
+  ok(table.en.rp === "Real people. Real results." &&
+    table.en.ma === "Clinically measured at @@N@@ weeks" &&
+    table.en.vsb === "vs. baseline" && table.en.mi === "Instrument measured" &&
+    table.en.mp === "Same patient" && table.en.mu === "Unretouched images",
+    "UC5: the English source strings are the mock's exact wording");
 }
 
 // ==================================== MH: market-handle clean/parse trips
@@ -739,6 +903,20 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m5-endo-total-page-scoped",
         find: "    // ALL approved matching — the storefront scale number.\n    total: scoped.length,",
         replace: "    total: scoped.slice(start, start + per).length,",
+      },
+      {
+        // v25: the serve-time lab belt dropped — drifted customer rows
+        // would serve instrument claims (SR3 catches).
+        name: "m6-serve-lab-belt-dropped",
+        find: "        measurements: lab ? parseResultMeasurements(row.measurements) : [],",
+        replace: "        measurements: parseResultMeasurements(row.measurements),",
+      },
+      {
+        // v25: the measurements-need-duration rule dropped — a panel
+        // could claim measurements with no "at N weeks" (SR4 catches).
+        name: "m7-clin-duration-req-dropped",
+        find: "  if (measurements.length > 0 && (durationWeeks === null || durationWeeks < 1)) {",
+        replace: "  if (false) {",
       },
     ],
   });

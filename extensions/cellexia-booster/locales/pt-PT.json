@@ -169,8 +169,8 @@
     "badge_chip": "Dermatologistas certificados"
   },
   "results": {
-    "banner_verified": "Veja os resultados de {{ count }} clientes Cellexia com compra verificada.",
-    "banner_all": "Veja os resultados de {{ count }} clientes Cellexia.",
+    "banner_verified": "Veja os resultados de {{ count }} utilizadores reais de Cellexia.",
+    "banner_all": "Veja os resultados de {{ count }} utilizadores de Cellexia.",
     "filter_concern": "Preocupação",
     "filter_age": "Idade",
     "filter_skin": "Tipo de pele",

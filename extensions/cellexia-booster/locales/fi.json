@@ -169,8 +169,8 @@
     "badge_chip": "Laillistetut ihotautilääkärit"
   },
   "results": {
-    "banner_verified": "Katso {{ count }} vahvistetun Cellexia-asiakkaan tulokset.",
-    "banner_all": "Katso {{ count }} Cellexia-asiakkaan tulokset.",
+    "banner_verified": "Katso {{ count }} aidon Cellexia-käyttäjän tulokset.",
+    "banner_all": "Katso {{ count }} Cellexia-käyttäjän tulokset.",
     "filter_concern": "Ihohuoli",
     "filter_age": "Ikä",
     "filter_skin": "Ihotyyppi",

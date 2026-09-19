@@ -79,6 +79,10 @@ const ALLOWED_FEATURES = new Set([
   // rewards event types below).
   "set_savings",
   "gift_tiers",
+  // v26 quantity selector cards — one impression per mounted selector plus
+  // a click per tier change (meta "q<units>", the free-text dimension) from
+  // cellexia-pdp.js qselMount/qselBind.
+  "quantity_selector",
   // Site-wide session beacon (one per browser session) — powers the
   // experiment tracker's conversion-rate denominator.
   "site",

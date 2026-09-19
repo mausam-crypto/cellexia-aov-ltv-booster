@@ -68,6 +68,7 @@ const SUITES = [
   { name: "sims/image-badges", dir: "sims", base: "image-badges" },
   { name: "sims/cart-overlay-fix", dir: "sims", base: "cart-overlay-fix" },
   { name: "sims/param-gates", dir: "sims", base: "param-gates" },
+  { name: "sims/quantity-selector", dir: "sims", base: "quantity-selector" },
 ];
 
 const EXT_ORDER = [".mjs", ".js", ".cjs", ".ts", ".tsx"];

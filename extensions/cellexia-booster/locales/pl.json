@@ -177,8 +177,8 @@
     "badge_chip": "Lekarze dermatolodzy"
   },
   "results": {
-    "banner_verified": "Zobacz efekty {{ count }} zweryfikowanych klientów Cellexii.",
-    "banner_all": "Zobacz efekty {{ count }} klientów Cellexii.",
+    "banner_verified": "Zobacz efekty {{ count }} prawdziwych użytkowników Cellexii.",
+    "banner_all": "Zobacz efekty {{ count }} użytkowników Cellexii.",
     "filter_concern": "Problem skóry",
     "filter_age": "Wiek",
     "filter_skin": "Typ skóry",

@@ -122,6 +122,10 @@ v10's **`GeoStateDb`** (one row per shop: build status + the compiled,
 gzipped IP→US-state range tables behind the delivery promise's state
 detection; `db push` creates the empty table, the one-time in-app
 "Download & build" step in the §5 v10 note fills it).
+**v25 columns (2026-09-18):** `CustomerResult` gains `measurements`,
+`markInstrument`, `markSamePatient`, `markUnretouched`, `attributionName`,
+`attributionRole` — the same `db push` adds them with safe defaults; existing
+rows are untouched and render exactly as before until you edit them.
 Earlier additions if you're further behind: `PreviewState` (+ `draftConfig`),
 `TranslationConfig`, `Experiment.startSyncErrors`, `Event.market`,
 `OrderStat.market`, `OrderStat.countryCode` (+ indexes). `db push` adds all of
@@ -231,7 +235,222 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v21 cart overlay features — what this release changes
+## 3a. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
+
+A new 43rd feature, `Quantity selector cards` (`quantity_selector`), for the product
+page. While it is on, the theme's text-pill size picker ("1 Jar / 2 Jars - 15% Off /
+3 Jars - 20% Off") is replaced by compact picture cards, one per tier:
+
+- small product photos, fanned once per unit (a 3-jar tier shows three overlapping
+  shots) — or, if you upload a variant image (a real 2-jar render), that image alone;
+- the tier name with the "- 15% Off" text stripped;
+- the per-unit price, the struck 1-unit per-unit baseline, and a "Save €20.10" chip
+  computed from the LIVE prices in the shopper's own currency (`| money`-grade via the
+  shop money format) — several catalog titles overstate their discount today
+  ("2 Tubes - 15% Off" is priced at −10%); the chip shows the truth;
+- "Clinically recommended" on the second tier and the house "Best value" wording
+  (verbatim `volume.best_value`) on the last, native in all 18 storefront languages
+  (strings ship inside `cellexia-pdp.js`, the v8.16b convention — zero locale-file
+  bytes, el/ar walls untouched);
+- 1 unit stays the pre-selected option; the widget only mirrors the theme's own
+  default.
+
+**How it works (and why it cannot break checkout):** the pill group is hidden, never
+removed. Every card tap is relayed as a native click on the matching original theme
+button, so the theme's own jQuery handler keeps driving the hidden option selects, the
+price line, the per-unit note and the subscription widgets exactly as before. Cards
+map to buttons by variant id only; ANY mismatch (a redesigned theme picker, a
+multi-option product, a single-variant product) makes the module leave the theme's
+picker completely untouched.
+
+### What it does NOT do
+
+- Never auto-selects a higher tier and never adds anything to the cart.
+- No per-unit claims unless they are true: a product whose first variant is not a
+  1-unit baseline, or a tier that does not genuinely discount, shows plain totals.
+- No new locale keys, no new blocks, no new embed step (rides the existing
+  `Cellexia PDP boosters` embed), no DB/scope/webhook changes.
+
+### Try it before it goes live
+
+Ships OFF. Features → Quantity selector has the switch and the per-market targeting;
+the Preview Center can arm it as a draft so only you see it on the live store, exactly
+like every other booster. Analytics land under "Quantity selector cards" (one
+impression per view, one click per tier change tagged q1/q2/q3).
+
+### Liquid budget
+
+Total extension Liquid is now 99,338 B of the project's 99,500 B budget (hard Shopify
+cap 102,400). The next Liquid-heavy wave must diet first — the earmarked lever is
+still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but note the
+deploy-safety island expander does not expand `{% render %}` inside islands, so that
+dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
+
+## 3b. v25 — before/after gallery: clinical trust redesign — what this release changes
+
+Merchant ask (2026-09-18, with two reference designs): redesign the
+before/after results widget and its click-to-enlarge overlay for maximum
+trust and credibility; let a clinical-study entry carry instrument
+measurements ("under-eye wrinkle depth −18%" style); and fix the overlay's
+close button, which was invisible over photos.
+
+**Nothing changes for shoppers until you act.** The before/after feature is
+OFF on the live store (`beforeAfter.enabled` is untouched), and even after
+deploy every clinical element renders only where you add its data.
+
+### What changed
+
+- **Widget redesign** (both halves): the scale banner is now a headline with
+  the customer count as a big serif green numeral on a soft highlight, with a
+  "REAL PEOPLE. REAL RESULTS." tagline under it (translated to all 18 theme
+  languages, see below). Cards got the reference look: white/green
+  Before/After pills on the photos, softer card shadows, the blue
+  "Clinical study result" pill with a flask icon, a large decorative quote
+  mark, and an attribution line ("**Dr. Lauren Bennett**, Consultant
+  Dermatologist") you can now set per entry.
+- **Clinical measurements per entry**: a lab/clinical entry can carry up to 6
+  instrument measurements (label + direction ↓/↑ + whole percent + optional
+  info note behind a ⓘ toggle). They render as the tinted green
+  "CLINICALLY MEASURED AT N WEEKS · VS. BASELINE" panel — N is the entry's
+  Duration (weeks), which is required once measurements exist. Three
+  per-entry trust marks (Instrument measured / Same patient / Unretouched
+  images) render under the metrics ONLY where you check them — check each
+  one only if it is true for that entry.
+- **Overlay redesign**: side-by-side photos with BEFORE/AFTER captions under
+  them, the clinical pill + measurement panel + trust marks, then the
+  testimonial in italics with the attribution on the left and "N weeks of
+  use" on the right.
+- **Close button fixed**: the overlay's close is now a solid white circle
+  with a drawn X and a shadow (visible over any photo), and it stays pinned
+  while the overlay scrolls. This also applies to the enlarged view of
+  ordinary customer entries.
+- **Admin (Proof library → Results)**: the entry editor gains Attribution
+  name/role fields; choosing source "Lab / clinical" reveals the Clinical
+  measurements card (add/reorder/remove rows, the three trust-mark
+  checkboxes). The list rows show a "· 3 metrics" hint. Everything validates
+  on save (percent 1–500, labels required, duration required with
+  measurements); flipping an entry to "Customer submitted" deliberately
+  clears its clinical claims.
+- **Translations**: measurement labels, info notes and the attribution ROLE
+  ride the existing per-entry DeepL system (auto-translate on save when your
+  DeepL key is set, manual review per language in the editor's Translations
+  section). Attribution NAMES are never translated. The six fixed UI strings
+  (tagline, panel header, "vs. baseline", the three trust marks) ship with
+  built-in native translations for all 18 theme languages, served through
+  the proof proxy — **zero bytes added to the locale files (el/ar stay at
+  their byte cap) and zero bytes of Liquid (total unchanged at 98,422 B)**.
+
+### v25.1 (same day)
+
+You chose the reference design's wording: the scale banner now reads
+"See results from {{ count }} real Cellexia users." (and the no-verified
+fallback "… {{ count }} Cellexia users."), reworded natively in all 18
+theme languages. The Romanian pair also lost its em dashes in the same
+pass. This is the deployed extension's locale files only — Translate &
+Adapt overrides, if you ever set any for these two strings, would still
+win and should be cleared.
+
+### Deploy notes
+
+- Database: the six new `CustomerResult` columns ride the standard §2
+  `db push` (Postgres) / are a normal migration on dev SQLite. Run it with
+  the server deploy as usual.
+- Both halves deploy per §3 (server + extension). The extension half carries
+  the new storefront JS/CSS; the widget stays dark until you enable the
+  feature.
+- To see it before enabling: arm a preview (§ preview) with the
+  before/after draft flag, or enable + market-scope it to a test market.
+
+## 3c. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
+
+**The ask (2026-09-17):** restyle the PDP clinical study widget to match the
+reference design (letterspaced "PUBLISHED CLINICAL RESEARCH" eyebrow, big
+uppercase protocol headline, two gray credibility lines, one tinted stat
+panel with a divider, white fact pills, footnote), with every line of text
+editable per product. This build is the zero-new-assets variant: system
+fonts at heavy weights, no bundled font file.
+
+**What changed:**
+
+- **Look (CSS only for existing content):** the blue left-bar card is gone.
+  The widget now renders: eyebrow (letterspaced caps) -> subject line ->
+  HEADLINE (the "Study title" field, now shown huge, bold and uppercase) ->
+  two gray lines -> a rounded light-gray stat panel (giant number, hairline
+  divider, bold label, gray measurement-method line) -> up to three pills ->
+  optional "View study summary" link -> footnote. Extra results render as
+  smaller panels under the big one. Compact mode and RTL kept (Arabic
+  drops the letterspacing; joined script).
+- **Three NEW per-product fields** on the study editor (app -> Products ->
+  product -> Clinical study): **Eyebrow** (empty = the built-in translated
+  line), **Published in (line 2)**, and **Extra fact pill** (the third pill,
+  e.g. "Instrumentally measured"). All three are optional, all three join
+  the auto-translate run, all three accept `{name}`.
+- **Repurposed fields (relabeled in the form, same storage):** "Study
+  title" is now **Headline** (write it as protocol descriptors, e.g.
+  "Randomized · Double-blind · Placebo-controlled" — it renders in
+  capitals); "Concern" is now **Conducted by (line 1)** (write the full
+  sentence; the university or lab name lives here); "Instruments" is now
+  **Measurement method** and renders EXACTLY as written inside the stat
+  panel (the old "Measured with …" prefix composition is retired).
+- **Retired from display:** the lab-name pill. The stored Lab name field is
+  untouched and still saved, but it no longer renders and is no longer in
+  the form — fold the lab into the Conducted-by sentence instead.
+- Zero new locale keys (the Greek/Arabic byte walls are untouched).
+
+**After deploy, re-curate each product's study once** (a few minutes): the
+old "Study title" text now renders as the huge uppercase headline, so
+rewrite it as protocol descriptors; fill the three new fields; move the lab
+name into the Conducted-by line; reword Measurement method to a full line
+("Measured by 3D skin imaging"). Nothing breaks if you don't — the widget
+just shows the old text in the new clothes.
+
+**Deploy:** BOTH halves per §3 (the server half carries the new metaobject
+fields, form and translation keys; the extension half carries the new
+look). The metaobject definition migrates itself the first time the
+Products page loads after the server deploy — open a product's editor once
+BEFORE saving study content. Spec: `docs/SPEC-v24-study-redesign.md`.
+Pinned by `sims/survey-methodology.cjs` T2-T8 + mutants m13-m15 and the
+harness v24 pin updates.
+
+## 3d. v23 — subscription card prices now require the app to be LIVE — what this release changes
+
+**The bug this fixes (reported by the merchant):** while the NEW subscription
+app is still in setup (or live in only some markets), theme product cards on
+the home page and collection pages showed the subscription-discounted price —
+in every market. Root cause: the v17.1 `sx` data island deliberately opens in
+`setup` so the subscription app's own previews work end-to-end, and the v17.2
+card-price decorator rode that open gate. The cart cross-sell is safe (its
+per-shopper proof is an owned plan line in the cart, which a real shopper
+cannot hold while the widget is dark) — but a product card has no such proof.
+The merchant currently papers over this by keeping the subscription app's
+discounts at 0%; after this deploy they can configure real discounts.
+
+**What changed (extension only — no server change, no config change, no new
+settings, no embed toggles):**
+
+- `cart-booster.liquid`: the `sx` island carries a third member,
+  `"live"` — a byte-exact mirror of the subscription buy box's own launch
+  gate (`cellexia.launch_status == 'live'`).
+- `cellexia-cart.js`: new `subsLive()` (= `subsAware()` + `sx.live === true`,
+  missing member fails closed). Every subscription surface WITHOUT a
+  per-shopper proof now gates on it: the v17.2 card-price decorator (boot,
+  verdict resolution, decorate pass, and the `s1`/`s0` cache-key side) and
+  the switch card's keyword-less fallback plan. Cart cross-sell keeps
+  `subsAware()` + its owned-line proof, so subscription-app previews in
+  setup still work end-to-end.
+
+**Behavior matrix after deploy:** app in SETUP → cards always keep the
+one-time price everywhere (the leak is closed) and the switch card never
+falls back to an unlaunched plan; app LIVE with selected markets → cards swap
+only inside enabled markets (island is market-gated as before); app LIVE
+unrestricted → exactly the v17.2 behavior.
+
+**Deploy:** extension half only (`npm run deploy` after the §4d validation
+run). Spec: `docs/SPEC-v23-subs-live-gate.md`. Pinned by the harness (v23
+tripwires) and by `sims/badge-cards` (setup-mode and missing-member
+scenarios) + `sims/subscribed-upgrade` (setup fallback refusal).
+
+## 3e. v21 cart overlay features — what this release changes
 
 ### v21.2 (2026-09-14, after your field test) — five fixes in this build
 
@@ -367,7 +586,7 @@ collapsed into two loops that mirror the file's own `bought_count` loop
 precedent (identical keys and values; JSON member order is parser-neutral).
 The release leaves 244 B of per-file headroom where it found 87 B.
 
-## 3b. v20 image badges on mobile — what this release changes
+## 3f. v20 image badges on mobile — what this release changes
 
 **No database migration. No new API scopes. No webhook changes. No new
 translated strings.** Deploy the app server and the extensions exactly as §3
@@ -409,7 +628,7 @@ mechanically and proved byte-identical for every icon before it landed, so the
 five legacy blocks that render those icons are unchanged on the page. The
 release LEAVES 1,371 B of headroom where it found 207 B.
 
-## 3c. v18 free gifts V2 — what this release changes
+## 3g. v18 free gifts V2 — what this release changes
 
 **No database migration. No new API scopes. No webhook changes.** Deploy the
 app server and the extensions exactly as §3 describes; nothing extra is needed
@@ -617,6 +836,21 @@ Run it after `npm ci` and before deploying; a red scoreboard means stop.
 strengthened inside `validation/`, see the v6.11 notes below.)
 
 ## 5. What's in this update (context for the diff you'll see)
+
+v26 — QUANTITY SELECTOR CARDS (2026-09-18):
+
+- New FeatureKey `quantity_selector` (42 -> 43, appended at the end), settings
+  section `quantitySelector` {enabled false}, own admin page
+  `/app/features/quantity`, previewable, market-scoped, analytics-labeled.
+  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3a above.
+- Storefront: gated `qs` member in the #cx-pdp-config island (live flag, page
+  locale, shop money format, per-variant id/title/cents/image) + the `qsel*`
+  module and `CX_QSEL_STR` 18-locale table in `cellexia-pdp.js` + the
+  `cx-qsel*` styles in `cellexia-booster.css`. The theme's own pill buttons
+  stay the only control channel (native-click relay, id-mapped, fail-closed).
+- ZERO new locale keys (el/ar byte walls untouched); Liquid total
+  99,338/99,500. New suite `validation/sims/quantity-selector.cjs` (64 checks,
+  8 mutants); suite total now 34 suites / 10,222 checks.
 
 v20 — IMAGE BADGES ON MOBILE (2026-09-11):
 

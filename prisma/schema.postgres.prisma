@@ -192,6 +192,16 @@ model CustomerResult {
   country       String?  // ISO2
   testimonial   String?
   videoUrl      String?
+  // v25 clinical redesign: JSON [{"label","dir","pct","info"?}] — instrument
+  // measurements for source=lab entries ("" and "[]" both mean none); the
+  // three trust marks are per-entry claims the merchant checks explicitly;
+  // attribution names the person behind the testimonial quote.
+  measurements    String  @default("[]")
+  markInstrument  Boolean @default(false)
+  markSamePatient Boolean @default(false)
+  markUnretouched Boolean @default(false)
+  attributionName String?
+  attributionRole String?
   productGids   String   @default("[]")
   // Source cellexia_before_after metaobject GID when this row was created by
   // the legacy import — the unique constraint makes the import exactly-once.

@@ -120,6 +120,8 @@
  *                               zero-button + PL3 static-span asserts)
  *   m15-press-first-quote-lost  rotation initialized at item 0 instead
  *                               of the first quoteful item (PL3)
+ *   m32–m36 (v25 clinical)      lab gates ×2, copy whitelist, percent
+ *                               cap, attribution textContent sink
  */
 "use strict";
 const fs = require("fs");
@@ -145,7 +147,7 @@ function ok(cond, label) {
 
 // ---------------------------------------------------------------- sandbox
 const EXTRACTED = extractAll(SRC, {
-  vars: ["RESULTS_SKIN_KEYS", "RESULTS_DURATION_KEYS"],
+  vars: ["RESULTS_SKIN_KEYS", "RESULTS_DURATION_KEYS", "RESULTS_ICON_PATHS"],
   functions: [
     "pfEl", "pfSp", "pfSvg", "pfDecode", "pfStr", "pfHttps", "pfVideoFile",
     "pfPosInt", "pfPageLocale", "pfRegionName", "pfQuery", "pfProductParams",
@@ -165,6 +167,9 @@ const EXTRACTED = extractAll(SRC, {
     "resultsValidItems", "resultsMetaLine", "resultsBadges",
     "resultsBuildFrame", "resultsBuildCard", "resultsBuildLightbox",
     "resultsFacetGroups", "resultsBuildSection",
+    // v25 clinical redesign
+    "resultsIcon", "resultsApplyCopy", "resultsValidMeasurements",
+    "resultsAttr", "resultsClinical",
   ],
 });
 
@@ -210,8 +215,8 @@ function click(el) {
 
 // Island str maps as the Liquid t|json emission ships them.
 const STR = {
-  bv: "See results from @@N@@ verified Cellexia customers.",
-  ba: "See results from @@N@@ Cellexia customers.",
+  bv: "See results from @@N@@ real Cellexia users.",
+  ba: "See results from @@N@@ Cellexia users.",
   fc: "Concern", fa: "Age", fs: "Skin type", fd: "Duration",
   sd: "Dry", so: "Oily", sc: "Combination", ss: "Sensitive", sn: "Normal",
   d1: "Under 8 weeks", d2: "8–12 weeks", d3: "Over 12 weeks",
@@ -288,6 +293,37 @@ function resultsFixture() {
     },
   };
 }
+
+// v25 clinical fixtures — the proxy-carried UI copy + a lab entry with
+// the full clinical panel data (docs/SPEC-v25-results-redesign.md).
+const CLIN_COPY = {
+  rp: "Real people. Real results.",
+  ma: "Clinically measured at @@N@@ weeks",
+  vsb: "vs. baseline",
+  mi: "Instrument measured",
+  mp: "Same patient",
+  mu: "Unretouched images",
+};
+const STR_CLIN = Object.assign({}, STR, CLIN_COPY);
+const RES_LAB = {
+  id: "rl1",
+  beforeUrl: "https://cdn/lb.jpg",
+  afterUrl: "https://cdn/la.jpg",
+  durationWeeks: 7,
+  source: "lab",
+  verified: false,
+  testimonial: "I confirm these images are unretouched and from the same patient.",
+  attributionName: "Dr. Lauren Bennett",
+  attributionRole: "Consultant Dermatologist",
+  measurements: [
+    { label: "Under-eye wrinkle depth", dir: "down", pct: 18, info: "PRIMOS 3D scan." },
+    { label: "Skin firmness", dir: "up", pct: 14, info: "Cutometer reading." },
+    { label: "Puffiness", dir: "down", pct: 21 },
+  ],
+  markInstrument: true,
+  markSamePatient: true,
+  markUnretouched: true,
+};
 
 function pressFixture() {
   return {
@@ -791,7 +827,7 @@ ok(SRC.indexOf("endoInitials") === -1 && SRC.indexOf("cx-endo__monogram") === -1
     "R8: verified_before_after marker on the root (the moved EVIDENCE marker)");
   ok(section.querySelector(".cx-results__count").textContent === "25",
     "R8: the number rides its own <strong>");
-  ok(section.querySelector(".cx-results__banner").textContent === "See results from 25 verified Cellexia customers.",
+  ok(section.querySelector(".cx-results__banner").textContent === "See results from 25 real Cellexia users.",
     "R8: verified wording with verifiedTotal");
 }
 
@@ -800,7 +836,7 @@ ok(SRC.indexOf("endoInitials") === -1 && SRC.indexOf("cx-endo__monogram") === -1
   const fx = resultsFixture();
   fx.verifiedTotal = 0;
   const section = S.resultsBuildSection({ ctx: "brand", pid: 0, str: STR }, fx);
-  ok(section.querySelector(".cx-results__banner").textContent === "See results from 40 Cellexia customers.",
+  ok(section.querySelector(".cx-results__banner").textContent === "See results from 40 Cellexia users.",
     "R9: honest non-verified wording with the total");
 }
 
@@ -926,6 +962,165 @@ ok(S.resultsFacetLabel("durations", "8to12", STR) === "8–12 weeks", "R18: dura
 ok(S.resultsFacetLabel("ages", "25-34", STR) === "25-34 years", "R18: age range composes with the years label");
 ok(S.resultsFacetLabel("ages", "25-34", {}) === "25-34", "R18: missing years label -> raw range");
 ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concerns are merchant slugs shown as data");
+
+// ============================== v25 clinical redesign (R19–R24 + pins)
+
+// --- R19: full clinical card — panel, tiles, marks, badge, attribution ---------------
+{
+  const items = S.resultsValidItems({ items: [RES_LAB] });
+  ok(items.length === 1 && items[0].m.length === 3 && items[0].mk.mi && items[0].mk.mp && items[0].mk.mu,
+    "R19: lab row surfaces measurements + all three trust marks");
+  const card = S.resultsBuildCard(items[0], STR_CLIN);
+  const panel = card.querySelector(".cx-results__clin");
+  ok(!!panel, "R19: clinical panel renders on the card");
+  ok(card.children[1] === panel, "R19: panel sits directly under the media (mock order)");
+  ok(panel.querySelector(".cx-results__clin-title").textContent === "Clinically measured at 7 weeks",
+    "R19: measured-at header composes @@N@@ with durationWeeks");
+  ok(panel.querySelector(".cx-results__clin-base").textContent === "vs. baseline",
+    "R19: vs-baseline tag renders");
+  const tiles = panel.querySelectorAll(".cx-results__clin-tile");
+  ok(tiles.length === 3, "R19: one tile per measurement");
+  ok(tiles[0].querySelector(".cx-results__clin-label").textContent === "Under-eye wrinkle depth",
+    "R19: tile label is the merchant text");
+  const val0 = tiles[0].querySelector(".cx-results__clin-val");
+  ok(val0.className === "cx-results__clin-val cx-results__clin-val--down" && val0.textContent === "18%",
+    "R19: down metric carries the --down modifier and the bare percent");
+  const val1 = tiles[1].querySelector(".cx-results__clin-val");
+  ok(val1.className === "cx-results__clin-val cx-results__clin-val--up" && val1.textContent === "14%",
+    "R19: up metric carries the --up modifier");
+  const marks = panel.querySelectorAll(".cx-results__clin-mark");
+  ok(marks.length === 3 && marks[0].textContent === "Instrument measured" &&
+    marks[1].textContent === "Same patient" && marks[2].textContent === "Unretouched images",
+    "R19: the three checked trust marks render with their proxy labels");
+  const lab = card.querySelector(".cx-results__badge--lab");
+  ok(!!lab && lab.textContent === "Clinical study result" && !!lab.querySelector(".cx-results__badge-ic"),
+    "R19: lab pill keeps its translated label and gains the flask icon");
+  const attr = card.querySelector(".cx-results__attr");
+  ok(!!attr && attr.textContent === "Dr. Lauren Bennett, Consultant Dermatologist",
+    "R19: attribution renders name + role");
+  const nameEl = card.querySelector(".cx-results__attr-name");
+  ok(nameEl._innerHTML === null && nameEl.textContent === "Dr. Lauren Bennett",
+    "R19: attribution name is a textContent sink");
+  ok(card.querySelector(".cx-results__meta").textContent === "7 weeks of use",
+    "R19: meta microline still composes for a lab row");
+}
+
+// --- R20: fail-closed gates + fail-soft chrome ---------------------------------------
+{
+  const customer = S.resultsValidItems({
+    items: [Object.assign({}, RES_LAB, { source: "customer" })],
+  });
+  ok(customer[0].m.length === 0 && !customer[0].mk.mi && !customer[0].mk.mp && !customer[0].mk.mu,
+    "R20: a customer row NEVER surfaces measurements or trust marks");
+  ok(!S.resultsBuildCard(customer[0], STR_CLIN).querySelector(".cx-results__clin"),
+    "R20: customer card ships no clinical panel");
+  // second-defense pin (DIRECT call — the two lab gates are mutually
+  // redundant through the public path, the v21.1 latch-pin precedent):
+  ok(S.resultsClinical({ lab: false, m: [{ l: "X", d: "down", p: 9, i: "" }],
+    mk: { mi: true, mp: false, mu: false }, weeks: 7 }, STR_CLIN) === null,
+    "R20: resultsClinical itself refuses non-lab items");
+  ok(S.resultsClinical({ lab: true, m: [], mk: { mi: false, mp: false, mu: false }, weeks: 7 }, STR_CLIN) === null,
+    "R20: nothing to say -> no panel");
+  // proxy copy absent (stale CDN): grid still renders, chrome fails soft
+  const bare = S.resultsBuildCard(S.resultsValidItems({ items: [RES_LAB] })[0], STR);
+  const barePanel = bare.querySelector(".cx-results__clin");
+  ok(!!barePanel && barePanel.querySelectorAll(".cx-results__clin-tile").length === 3,
+    "R20: missing copy strings never block the measured numbers");
+  ok(!barePanel.querySelector(".cx-results__clin-head") && !barePanel.querySelector(".cx-results__clin-marks"),
+    "R20: header and trust-mark row fail soft without their labels");
+  // no weeks -> header keeps only the baseline tag
+  const noWeeks = S.resultsValidItems({ items: [Object.assign({}, RES_LAB, { durationWeeks: null })] });
+  const nwPanel = S.resultsBuildCard(noWeeks[0], STR_CLIN).querySelector(".cx-results__clin");
+  ok(!nwPanel.querySelector(".cx-results__clin-title") && !!nwPanel.querySelector(".cx-results__clin-base"),
+    "R20: weekless entry drops the measured-at line, keeps vs-baseline");
+  // row validation: label/dir/pct all required, pct capped, cap at 6 rows
+  ok(S.resultsValidMeasurements([
+    { label: "ok", dir: "down", pct: 18 },
+    { label: "", dir: "down", pct: 5 },
+    { label: "x", dir: "sideways", pct: 5 },
+    { label: "y", dir: "up", pct: 0 },
+    { label: "z", dir: "up", pct: 9999 },
+    { label: "w", dir: "up", pct: "12" },
+  ]).length === 1, "R20: invalid measurement rows are dropped");
+  const eight = [];
+  for (let i = 0; i < 8; i++) eight.push({ label: "m" + i, dir: "up", pct: 10 + i });
+  ok(S.resultsValidMeasurements(eight).length === 6, "R20: measurement rows cap at 6");
+}
+
+// --- R21: info toggle — one shared note line, aria-expanded sync ---------------------
+{
+  const items = S.resultsValidItems({ items: [RES_LAB] });
+  const panel = S.resultsBuildCard(items[0], STR_CLIN).querySelector(".cx-results__clin");
+  const note = panel.querySelector(".cx-results__clin-note");
+  const btns = panel.querySelectorAll(".cx-results__clin-info");
+  ok(btns.length === 2, "R21: only rows WITH an info note get the toggle");
+  ok(note.hasAttribute("hidden"), "R21: note starts hidden");
+  click(btns[0]);
+  ok(!note.hasAttribute("hidden") && note.textContent === "PRIMOS 3D scan." &&
+    btns[0].getAttribute("aria-expanded") === "true",
+    "R21: toggle reveals the tile's note");
+  click(btns[1]);
+  ok(note.textContent === "Cutometer reading." && btns[0].getAttribute("aria-expanded") === "false" &&
+    btns[1].getAttribute("aria-expanded") === "true",
+    "R21: second toggle swaps the note in place");
+  click(btns[1]);
+  ok(note.hasAttribute("hidden") && btns[1].getAttribute("aria-expanded") === "false",
+    "R21: re-tap collapses");
+}
+
+// --- R22: resultsApplyCopy — whitelist, non-strings, blanks --------------------------
+{
+  const conf = { str: Object.assign({}, STR) };
+  S.resultsApplyCopy(conf, { copy: { rp: "Tag", bv: "HACK", ma: 7, vsb: "   " } });
+  ok(conf.str.rp === "Tag", "R22: whitelisted code merges");
+  ok(conf.str.bv === STR.bv, "R22: island strings can never be overwritten (whitelist)");
+  ok(!("ma" in conf.str) && !("vsb" in conf.str), "R22: non-strings and blanks are ignored");
+  S.resultsApplyCopy(conf, null);
+  S.resultsApplyCopy(null, { copy: { rp: "x" } });
+  S.resultsApplyCopy(conf, { copy: "nope" });
+  ok(conf.str.rp === "Tag", "R22: malformed payloads are inert");
+}
+
+// --- R23: section tagline + copy merge feeds later card builds -----------------------
+{
+  const fx = resultsFixture();
+  fx.items = [RES_ITEM, RES_LAB];
+  fx.copy = Object.assign({}, CLIN_COPY);
+  const conf = { ctx: "brand", pid: 0, str: Object.assign({}, STR) };
+  const section = S.resultsBuildSection(conf, fx);
+  const tag = section.querySelector(".cx-results__tagline");
+  ok(!!tag && tag.textContent === "Real people. Real results.",
+    "R23: proxy copy renders the tagline under the banner");
+  ok(section.querySelector(".cx-results__clin-title").textContent === "Clinically measured at 7 weeks",
+    "R23: the merged copy feeds the clinical panels of the cards");
+  const plain = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR) }, resultsFixture());
+  ok(!plain.querySelector(".cx-results__tagline"), "R23: no copy member -> no tagline (fail soft)");
+}
+
+// --- R24: lightbox composition — svg close, clinical panel, foot row -----------------
+{
+  const items = S.resultsValidItems({ items: [RES_LAB] });
+  const lb = S.resultsBuildLightbox(items[0], STR_CLIN);
+  const close = lb.querySelector(".cx-lightbox__close");
+  ok(close.getAttribute("aria-label") === "Close" && close.textContent === "" &&
+    close.children.length === 1,
+    "R24: close is the labeled icon button (no text glyph)");
+  ok(!!lb.querySelector(".cx-results__clin") &&
+    lb.querySelectorAll(".cx-results__clin-mark").length === 3,
+    "R24: lightbox carries the same clinical panel + marks");
+  const foot = lb.querySelector(".cx-lightbox__foot");
+  ok(!!foot && !!foot.querySelector(".cx-lightbox__quote") &&
+    foot.querySelector(".cx-results__attr").textContent === "Dr. Lauren Bennett, Consultant Dermatologist" &&
+    !!foot.querySelector(".cx-lightbox__meta"),
+    "R24: foot rows quote + attribution with the meta line");
+  // quote-less, unattributed item: meta renders alone on the card
+  const bareItem = S.resultsValidItems({ items: [Object.assign({}, RES_LAB, {
+    testimonial: null, attributionName: null, attributionRole: null,
+  })] })[0];
+  const lb2 = S.resultsBuildLightbox(bareItem, STR_CLIN);
+  ok(!lb2.querySelector(".cx-lightbox__foot") && !!lb2.querySelector(".cx-lightbox__meta"),
+    "R24: no quote and no attribution -> no foot wrapper, meta stands alone");
+}
 
 // ================================== ultra (U, v8.2 look — v8.3 "cm": 2)
 
@@ -1055,7 +1250,7 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   ok(section.querySelectorAll(".cx-results__card").length === 2, "U7: same card rail");
   ok(!!section.querySelector(".cx-results__drawer"), "U7: filter drawer intact in ultra");
   ok(section.querySelector(".cx-results__banner").textContent ===
-    "See results from 25 verified Cellexia customers.",
+    "See results from 25 real Cellexia users.",
     "U7: scale banner text unchanged (ultra is CSS-only shrink)");
   const twin = S.resultsBuildSection({ ctx: "product", pid: 42, str: STR }, resultsFixture());
   ok(twin.className === "cx-proof cx-results", "U7: no cm -> no modifier (twin)");
@@ -1161,7 +1356,7 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   ok(!!section && section.className === "cx-proof cx-results cx-results--compact",
     "C5: cm:1 -> cx-results--compact root modifier");
   ok(section.querySelector(".cx-results__banner").textContent ===
-    "See results from 25 verified Cellexia customers.",
+    "See results from 25 real Cellexia users.",
     "C5: FULL scale banner untouched (compact keeps the full look up top)");
   ok(section.querySelectorAll(".cx-results__chip").length === 5,
     "C5: full wrapping chip row — four group chips + clear (zero new strings)");
@@ -2206,6 +2401,43 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m31-panel-cta-opens-explainer",
         find: "        endoOverlayOpen(conf, data, cta, true);",
         replace: "        endoOverlayOpen(conf, data, cta);",
+      },
+      {
+        // v25: resultsClinical's own lab gate dropped — redundant with
+        // the resultsValidItems gate through the public path, so it is
+        // pinned by R20's DIRECT call (the v21.1 latch-pin precedent).
+        name: "m32-clin-secondgate-dropped",
+        find: "    if (!item.lab) return null;\n    var rows = item.m;",
+        replace: "    var rows = item.m;",
+      },
+      {
+        // v25: the valid-items lab gate dropped — a customer submission
+        // carrying a measurements payload would render instrument claims
+        // (R20's customer case catches).
+        name: "m33-validitems-lab-gate-dropped",
+        find: "        m: lab ? resultsValidMeasurements(it.measurements) : [],",
+        replace: "        m: resultsValidMeasurements(it.measurements),",
+      },
+      {
+        // v25: the copy whitelist dropped — any proxy field could then
+        // overwrite island strings like the banner (R22's HACK catches).
+        name: "m34-copy-whitelist-dropped",
+        find: "    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu'];",
+        replace: "    var keys = []; for (var ck in data.copy) keys.push(ck);",
+      },
+      {
+        // v25: the percent cap dropped — a fat-fingered 9999% would render
+        // as clinical proof (R20's row-validation case catches).
+        name: "m35-pct-cap-dropped",
+        find: "      var pct = pfPosInt(m.pct) && m.pct <= 500 ? m.pct : 0;",
+        replace: "      var pct = pfPosInt(m.pct) ? m.pct : 0;",
+      },
+      {
+        // v25: attribution name regressed to a markup sink (R19's
+        // _innerHTML pin catches).
+        name: "m36-attr-html-sink",
+        find: "    name.textContent = item.an;",
+        replace: "    name.innerHTML = item.an;",
       },
       {
         name: "m9-preview-always-verified",

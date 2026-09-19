@@ -169,8 +169,8 @@
     "badge_chip": "Erkende dermatologen"
   },
   "results": {
-    "banner_verified": "Bekijk resultaten van {{ count }} geverifieerde Cellexia-klanten.",
-    "banner_all": "Bekijk resultaten van {{ count }} Cellexia-klanten.",
+    "banner_verified": "Bekijk resultaten van {{ count }} echte Cellexia-gebruikers.",
+    "banner_all": "Bekijk resultaten van {{ count }} Cellexia-gebruikers.",
     "filter_concern": "Huidprobleem",
     "filter_age": "Leeftijd",
     "filter_skin": "Huidtype",

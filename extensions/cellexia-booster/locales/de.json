@@ -169,8 +169,8 @@
     "badge_chip": "Approbierte Dermatologen"
   },
   "results": {
-    "banner_verified": "Sehen Sie die Ergebnisse von {{ count }} verifizierten Cellexia-Kunden.",
-    "banner_all": "Sehen Sie die Ergebnisse von {{ count }} Cellexia-Kunden.",
+    "banner_verified": "Sehen Sie die Ergebnisse von {{ count }} echten Cellexia-Anwendern.",
+    "banner_all": "Sehen Sie die Ergebnisse von {{ count }} Cellexia-Anwendern.",
     "filter_concern": "Hautanliegen",
     "filter_age": "Alter",
     "filter_skin": "Hauttyp",

@@ -1171,100 +1171,176 @@ body.customer--b2b .cx-sub-remove {
 
 /* ----------------------------------------------------- clinical study */
 
+/* v24 — "published research" recomposition (merchant reference design,
+   2026-09-17): the blue-bar brand card becomes a neutral editorial layout
+   so the study reads as research, not marketing — letterspaced eyebrow,
+   heavy uppercase protocol headline (system grotesque at 900: the
+   zero-new-assets stack, no bundled font), two quiet credibility lines,
+   ONE tinted stat panel (giant numeral | hairline divider | label +
+   method), white hairline fact pills, footnote. Every visible line is
+   per-product merchant text (island members, see studyBuildSection). */
+
 .cx-study {
-  border-inline-start: 4px solid #b1cded;
-  padding-inline-start: 25px;
+  color: #1d1d1b;
+}
+
+.cx-study .cx-proof__eyebrow {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #55554f;
+}
+
+/* Arabic is a joining script — tracking breaks letter connections (the
+   survey designs' review catch); text-transform is a no-op there. */
+:lang(ar) .cx-study .cx-proof__eyebrow,
+:lang(ar) .cx-study__heading {
+  letter-spacing: 0;
 }
 
 /* v7 — the product-binding line: this study, this formula. Sits between
-   the eyebrow and the heading; quiet ink, never shouting. */
+   the eyebrow and the headline; quiet ink, never shouting. */
 .cx-study__subject {
-  margin: 0 0 6px;
-  font-size: 14px;
+  margin: 0 0 10px;
+  font-size: 16px;
   line-height: 1.5;
 }
 
 .cx-study__heading {
-  margin: 0 0 4px;
+  margin: 0 0 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 900;
+  font-size: clamp(24px, 4.6vw, 34px);
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  overflow-wrap: break-word;
 }
 
 .cx-study__concern {
-  font-size: 13px;
-  color: #808080;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #6d6d69;
   margin: 0;
 }
 
+.cx-study__journal {
+  font-size: 16px;
+  line-height: 1.5;
+  color: #6d6d69;
+  margin: 2px 0 0;
+}
+
+/* The stat panel: giant numeral | hairline divider | label + method. The
+   divider rides the right column's border so it only exists when that
+   column does (no label AND no method = no wrapper, see the builder). */
 .cx-study__hero {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-block: 20px;
+  align-items: center;
+  gap: 22px;
+  margin-block: 22px;
+  padding: 24px 26px;
+  border-radius: 12px;
+  background: #f4f4f2;
 }
 
 .cx-study__hero-value {
-  font-family: "Gobold", sans-serif;
-  font-weight: 700;
-  font-size: clamp(44px, 8vw, 68px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 900;
+  font-size: clamp(48px, 9vw, 72px);
   line-height: 1;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
 }
 
 .cx-study__hero-suffix {
-  font-size: 0.5em;
-  margin-inline-start: 4px;
+  font-size: 0.45em;
+  font-weight: 800;
+  margin-inline-start: 3px;
+}
+
+.cx-study__hero-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-inline-start: 22px;
+  border-inline-start: 1px solid #dcdcd8;
 }
 
 .cx-study__hero-label {
-  font-size: 14px;
-  max-width: 420px;
+  font-size: clamp(16px, 2.6vw, 19px);
+  font-weight: 600;
+  line-height: 1.35;
+  max-width: 26ch;
 }
 
+.cx-study__hero-method {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: #80807b;
+}
+
+/* Extra results (beyond the headline stat): the same panel at mini scale.
+   Own list reset (the survey designs' lesson): never depend on the theme's
+   list-reset utility. */
 .cx-study__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 20px 30px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
   margin: 0 0 20px;
   padding: 0;
+  list-style: none;
 }
 
 .cx-study__stat {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #f4f4f2;
 }
 
 .cx-study__stat-value {
-  font-family: "Gobold", sans-serif;
-  font-weight: 700;
-  font-size: 30px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 800;
+  font-size: 26px;
   line-height: 1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .cx-study__stat-suffix {
-  font-size: 16px;
+  font-size: 15px;
   margin-inline-start: 2px;
 }
 
 .cx-study__stat-label {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
+  color: #55554f;
 }
 
-/* v7 — protocol fact chips (participants · duration · lab · instruments):
-   hairline pills on the panel tint, built only from present members. */
+/* v7 — protocol fact pills (participants · duration · free-text badge):
+   white hairline pills, built only from present members. */
 .cx-study__facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 14px;
+  gap: 10px;
+  margin: 0 0 16px;
   padding: 0;
+  list-style: none;
 }
 
 .cx-study__fact {
-  padding: 5px 12px;
+  padding: 8px 16px;
   border: 1px solid #e5e5e3;
   border-radius: 999px;
-  background: #fafaf9;
-  font-size: 12px;
+  background: #fff;
+  font-size: 14px;
   line-height: 1.4;
 }
 
@@ -1275,9 +1351,24 @@ body.customer--b2b .cx-sub-remove {
 }
 
 .cx-study__footnote {
-  font-size: 11px;
-  color: #808080;
+  font-size: 13px;
+  color: #80807b;
   margin: 12px 0 0;
+}
+
+@media (max-width: 480px) {
+  .cx-study__hero {
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .cx-study__hero-body {
+    padding-inline-start: 16px;
+  }
+
+  .cx-study__hero-method {
+    font-size: 13px;
+  }
 }
 
 /* v6.11 — desktop alignment (merchant request): the card used to span the
@@ -1494,10 +1585,6 @@ body.customer--b2b .cx-sub-remove {
   .cx-proof {
     margin-block: 40px;
   }
-
-  .cx-study {
-    padding-inline-start: 18px;
-  }
 }
 
 /* ------------------ v8 compact display modes (survey / study / bottle) */
@@ -1571,49 +1658,71 @@ body.customer--b2b .cx-sub-remove {
   margin-block-start: 10px;
 }
 
-/* Study --compact: subject and heading read as one block, the hero value
-   sits inline with its label on a baseline row (32px numeral, not 68),
-   the stat grid collapses to a single wrapping mini-stat row and the
-   protocol chips tighten into the same flow. Footnote kept. */
+/* Study --compact: subject and headline read as one block, the stat panel
+   shrinks (30px numeral, tight padding), the extra-results grid becomes a
+   single wrapping row of mini panels and the protocol pills tighten into
+   the same flow. Footnote kept. Same DOM as full (pure CSS recomposition). */
 
 .cx-study--compact .cx-study__subject {
   margin-block-end: 2px;
   font-size: 13px;
 }
 
+.cx-study--compact .cx-study__heading {
+  font-size: clamp(18px, 3.4vw, 22px);
+}
+
+.cx-study--compact .cx-study__concern,
+.cx-study--compact .cx-study__journal {
+  font-size: 13px;
+}
+
 .cx-study--compact .cx-study__hero {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
-  margin-block: 10px;
+  gap: 14px;
+  margin-block: 12px;
+  padding: 12px 16px;
 }
 
 .cx-study--compact .cx-study__hero-value {
-  font-size: 32px;
+  font-size: 30px;
+}
+
+.cx-study--compact .cx-study__hero-body {
+  gap: 2px;
+  padding-inline-start: 14px;
+}
+
+.cx-study--compact .cx-study__hero-label {
+  font-size: 14px;
+}
+
+.cx-study--compact .cx-study__hero-method {
+  font-size: 12px;
 }
 
 .cx-study--compact .cx-study__grid {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 18px;
+  gap: 8px;
   margin: 0 0 10px;
 }
 
 .cx-study--compact .cx-study__stat {
-  flex-direction: row;
-  align-items: baseline;
-  gap: 5px;
+  padding: 8px 12px;
+  gap: 6px;
 }
 
 .cx-study--compact .cx-study__stat-value {
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .cx-study--compact .cx-study__stat-suffix {
   font-size: 12px;
   margin-inline-start: 1px;
+}
+
+.cx-study--compact .cx-study__stat-label {
+  font-size: 12px;
 }
 
 .cx-study--compact .cx-study__facts {
@@ -1622,8 +1731,8 @@ body.customer--b2b .cx-sub-remove {
 }
 
 .cx-study--compact .cx-study__fact {
-  padding: 3px 10px;
-  font-size: 11px;
+  padding: 4px 12px;
+  font-size: 12px;
 }
 
 .cx-study--compact .cx-study__footnote {
@@ -4359,18 +4468,39 @@ body.customer--b2b .cx-sub-remove {
   text-align: start;
 }
 
+/* v25 redesign: headline-weight banner, serif green count on a soft
+   highlight, "REAL PEOPLE. REAL RESULTS." tagline underneath. Zero new
+   webfonts (the v24 rule): system stack for the sentence, Georgia for
+   the numeral. */
 .cx-results__banner {
-  margin: 0 0 14px;
-  font-size: 15px;
-  line-height: 1.4;
+  margin: 0 0 8px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: clamp(21px, 3.4vw, 27px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
   color: #1d1d1b;
+  max-inline-size: 560px;
 }
 
 .cx-results__count {
-  font-family: "Gobold", sans-serif;
+  font-family: Georgia, "Times New Roman", serif;
   font-weight: 700;
-  font-size: 22px;
-  padding-inline: 2px;
+  font-size: 1.4em;
+  line-height: 1;
+  color: #1b6a4d;
+  background: linear-gradient(transparent 60%, #d8ecdf 60%);
+  border-radius: 4px;
+  padding-inline: 4px;
+}
+
+.cx-results__tagline {
+  margin: 0 0 18px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #6f6f6c;
 }
 
 .cx-results__filters {
@@ -4518,14 +4648,15 @@ body.customer--b2b .cx-sub-remove {
 }
 
 .cx-results__card {
-  flex: 0 0 78%;
-  max-inline-size: 320px;
+  flex: 0 0 82%;
+  max-inline-size: 340px;
   scroll-snap-align: start;
   border: 1px solid #e5e5e3;
-  border-radius: 12px;
+  border-radius: 16px;
   background: #fff;
   overflow: hidden;
-  padding-block-end: 12px;
+  padding-block-end: 14px;
+  box-shadow: 0 10px 24px rgba(29, 29, 27, 0.05);
 }
 
 .cx-results__media {
@@ -4556,16 +4687,22 @@ body.customer--b2b .cx-sub-remove {
 
 .cx-results__tag {
   position: absolute;
-  inset-block-start: 8px;
-  inset-inline-start: 8px;
-  background: rgba(255, 255, 255, 0.92);
+  inset-block-start: 10px;
+  inset-inline-start: 10px;
+  background: rgba(255, 255, 255, 0.94);
   color: #1d1d1b;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   border-radius: 999px;
-  padding: 3px 8px;
+  padding: 4px 10px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.14);
+}
+
+.cx-results__tag--after {
+  background: #d8ecdf;
+  color: #14532f;
 }
 
 .cx-results__play {
@@ -4590,21 +4727,31 @@ body.customer--b2b .cx-sub-remove {
 }
 
 .cx-results__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   border-radius: 999px;
-  padding: 3px 8px;
+  padding: 5px 10px;
   color: #1d1d1b;
+}
+
+.cx-results__badge-ic {
+  display: inline-flex;
+  flex: 0 0 auto;
 }
 
 .cx-results__badge--verified {
   background: #b1cded;
 }
 
+/* v25: the clinical pill reads as a credential — soft blue, flask icon */
 .cx-results__badge--lab {
-  border: 1px solid #e5e5e3;
+  background: #e1ecf9;
+  color: #274a70;
 }
 
 .cx-results__meta {
@@ -4616,15 +4763,206 @@ body.customer--b2b .cx-sub-remove {
 }
 
 .cx-results__quote {
-  margin: 6px 0 0;
-  padding-inline: 12px;
+  position: relative;
+  margin: 10px 0 0;
+  padding-inline: 36px 14px;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: #1d1d1b;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   overflow: hidden;
+}
+
+/* the big decorative opening quote — absolutely positioned so the
+   line-clamp box never counts it as a line */
+.cx-results__quote::before {
+  content: "\201C";
+  position: absolute;
+  inset-inline-start: 12px;
+  inset-block-start: -3px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 32px;
+  line-height: 1;
+  color: #bfd6c9;
+}
+
+.cx-results__attr {
+  margin: 6px 0 0;
+  padding-inline: 36px 14px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #808080;
+}
+
+.cx-results__attr-name {
+  font-weight: 700;
+  color: #1d1d1b;
+}
+
+.cx-results__attr-role {
+  color: #808080;
+}
+
+/* ------------------- v25 clinical panel (card + lightbox contexts) --
+   Tinted "clinically measured" block: header row (bar icon + measured-at
+   + vs-baseline), white metric tiles (label over serif green percent,
+   optional info toggle feeding ONE shared note line), then the trust-mark
+   row with hairline separators. Green = the clinical accent family;
+   brand blue stays on the badges. */
+.cx-results__clin {
+  margin: 12px 12px 0;
+  background: #e9f3ee;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.cx-results__clin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-block-end: 8px;
+}
+
+.cx-results__clin-ic {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: #1b6a4d;
+}
+
+.cx-results__clin-title {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1d1d1b;
+}
+
+.cx-results__clin-base {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6f6f6c;
+}
+
+.cx-results__clin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+  gap: 6px;
+}
+
+.cx-results__clin-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 10px 9px;
+}
+
+.cx-results__clin-label {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #1d1d1b;
+  padding-inline-end: 14px;
+}
+
+.cx-results__clin-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-block-start: auto;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  font-size: 21px;
+  line-height: 1;
+  color: #1b6a4d;
+}
+
+/* both directions the merchant publishes are improvements — one green
+   family; the split selectors keep the modifier pair independently
+   tunable */
+.cx-results__clin-val--down,
+.cx-results__clin-val--up {
+  color: #1b6a4d;
+}
+
+.cx-results__clin-info {
+  position: absolute;
+  inset-block-start: 5px;
+  inset-inline-end: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 24px;
+  block-size: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: #9a9a97;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cx-results__clin-info:hover,
+.cx-results__clin-info:focus-visible,
+.cx-results__clin-info[aria-expanded="true"] {
+  background: #eef4f0;
+  color: #1b6a4d;
+}
+
+.cx-results__clin-note {
+  margin: 8px 2px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #4b4b48;
+}
+
+.cx-results__clin-note[hidden] {
+  display: none !important;
+}
+
+.cx-results__clin-marks {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 6px;
+  margin-block-start: 10px;
+  border-block-start: 1px solid rgba(27, 106, 77, 0.16);
+  padding-block-start: 9px;
+}
+
+.cx-results__clin-mark {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 6px;
+  font-size: 10px;
+  line-height: 1.25;
+  color: #3f3f3c;
+}
+
+.cx-results__clin-mark + .cx-results__clin-mark {
+  border-inline-start: 1px solid rgba(27, 106, 77, 0.16);
+}
+
+.cx-results__clin-mark-ic {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: #1b6a4d;
+}
+
+.cx-results__clin-mark-t {
+  min-inline-size: 0;
 }
 
 .cx-results__empty {
@@ -4712,24 +5050,33 @@ body.customer--b2b .cx-sub-remove {
   outline: none;
 }
 
+/* v25: solid white circle + stroked X — the old borderless text glyph
+   vanished over photos. Sticky (with the negative-margin flow collapse)
+   keeps it reachable while the card scrolls; the flex display makes the
+   button block-level so margin-inline-start:auto pins it to the corner. */
 .cx-lightbox__close {
-  position: absolute;
+  position: sticky;
   inset-block-start: 10px;
-  inset-inline-end: 10px;
-  inline-size: 34px;
-  block-size: 34px;
-  border: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-inline-start: auto;
+  margin-block-end: -40px;
+  inline-size: 40px;
+  block-size: 40px;
+  border: 1px solid #e5e5e3;
   border-radius: 50%;
-  background: none;
-  font-size: 22px;
-  line-height: 1;
+  background: #fff;
   color: #1d1d1b;
   cursor: pointer;
+  padding: 0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
 }
 
 .cx-lightbox__close:hover,
 .cx-lightbox__close:focus-visible {
-  background: #fafaf9;
+  background: #f4f4f2;
 }
 
 /* side-by-side before/after; a lone image spans the row */
@@ -4756,12 +5103,12 @@ body.customer--b2b .cx-sub-remove {
 }
 
 .cx-lightbox__cap {
-  margin-block-start: 6px;
+  margin-block-start: 8px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #808080;
+  color: #6f6f6c;
 }
 
 .cx-lightbox__video {
@@ -4776,20 +5123,94 @@ body.customer--b2b .cx-sub-remove {
 }
 
 .cx-lightbox__quote {
-  margin: 14px 0 0;
-  font-size: 14px;
+  margin: 0;
+  font-size: 15px;
   line-height: 1.6;
+  font-style: italic;
   color: #1d1d1b;
 }
 
 .cx-lightbox__meta {
-  margin: 10px 0 0;
+  margin: 14px 0 0;
   font-size: 12px;
   color: #808080;
 }
 
+/* v25 closing row: quote + attribution start-side, meta end-side */
+.cx-lightbox__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 24px;
+  margin-block-start: 16px;
+}
+
+.cx-lightbox__foot-main {
+  flex: 1 1 320px;
+  min-inline-size: 0;
+}
+
+.cx-lightbox__foot .cx-lightbox__meta {
+  margin: 0 0 2px;
+  flex: 0 0 auto;
+}
+
 .cx-lightbox .cx-results__badges {
-  padding: 12px 0 0;
+  padding: 14px 0 0;
+}
+
+/* v25: the clinical panel inside the lightbox — same DOM, roomier,
+   centered tiles (the mock's desktop composition) */
+.cx-lightbox .cx-results__clin {
+  margin: 14px 0 0;
+  padding: 14px;
+}
+
+.cx-lightbox .cx-results__clin-title {
+  font-size: 11px;
+}
+
+.cx-lightbox .cx-results__clin-base {
+  font-size: 10px;
+}
+
+.cx-lightbox .cx-results__clin-grid {
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.cx-lightbox .cx-results__clin-tile {
+  align-items: center;
+  text-align: center;
+  padding: 14px 12px 13px;
+}
+
+.cx-lightbox .cx-results__clin-label {
+  font-size: 13px;
+  padding-inline-end: 0;
+}
+
+.cx-lightbox .cx-results__clin-val {
+  font-size: 26px;
+  gap: 4px;
+}
+
+.cx-lightbox .cx-results__clin-note {
+  font-size: 12px;
+  text-align: center;
+}
+
+.cx-lightbox .cx-results__clin-mark {
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.cx-lightbox .cx-results__attr {
+  margin: 8px 0 0;
+  padding-inline: 0;
+  font-size: 13px;
 }
 
 @media (max-width: 640px) {
@@ -5100,6 +5521,49 @@ body.customer--b2b .cx-sub-remove {
 .cx-results--ultra .cx-results__more {
   margin-block-start: 8px;
   padding: 8px 18px;
+}
+
+/* v25 additions under ultra: the slim band drops the tagline, the
+   clinical panel compresses (same DOM, pure CSS — the density rule) */
+.cx-results--ultra .cx-results__tagline {
+  display: none;
+}
+
+.cx-results--ultra .cx-results__clin {
+  margin: 10px 10px 0;
+  padding: 8px;
+}
+
+.cx-results--ultra .cx-results__clin-grid {
+  gap: 4px;
+}
+
+.cx-results--ultra .cx-results__clin-tile {
+  padding: 7px 7px 6px;
+}
+
+.cx-results--ultra .cx-results__clin-label {
+  font-size: 10px;
+}
+
+.cx-results--ultra .cx-results__clin-val {
+  font-size: 16px;
+}
+
+.cx-results--ultra .cx-results__clin-mark {
+  font-size: 9px;
+  gap: 4px;
+}
+
+/* v25: Arabic joins letters — letterspaced uppercase chrome must not
+   track (the v24 :lang(ar) catch, applied to the new pieces) */
+:lang(ar) .cx-results__tagline,
+:lang(ar) .cx-results__tag,
+:lang(ar) .cx-results__badge,
+:lang(ar) .cx-results__clin-title,
+:lang(ar) .cx-results__clin-base,
+:lang(ar) .cx-lightbox__cap {
+  letter-spacing: 0;
 }
 
 @media (min-width: 900px) {
@@ -7034,5 +7498,246 @@ html.cx-compact .mini-cart::after {
 
   html.cx-compact .cx-trust-row {
     padding-block: 8px;
+  }
+}
+
+/* ==========================================================================
+   v26 QUANTITY SELECTOR CARDS (docs/SPEC-v26-quantity-selector.md)
+
+   Replaces the theme's text-pill size picker inside .pdp__options with
+   picture cards. The hidden pill group (.cx-qsel-src) stays in the DOM as
+   the working control surface — cards relay native clicks to it. Layout is
+   deliberately compact (≈64px per row on phones) because the block sits
+   between the description and the buy area; every inline offset uses
+   logical properties so Arabic mirrors for free. Palette: ink #1d1d1b on
+   white with the brand's pastel-blue wash (#e7effa, from #b2ceed) for the
+   badge and save chips; the struck baseline is #6b6b68 (5.3:1 on white,
+   AA). The card radius mirrors the theme's own pill buttons (this is the
+   one PDP area where the theme itself rounds corners).
+   ========================================================================== */
+
+.cx-qsel {
+  margin: 2px 0 16px;
+}
+
+.cx-qsel__title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1d1d1b;
+}
+
+/* Joining scripts never letterspace (house rule, v8.8). */
+:lang(ar) .cx-qsel__title {
+  letter-spacing: 0;
+}
+
+.cx-qsel__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cx-qsel__card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #d9d9d6;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: start;
+  font: inherit;
+  color: #1d1d1b;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Border grows 1px on selection — padding gives it back so nothing shifts. */
+.cx-qsel__card--on {
+  border: 2px solid #1d1d1b;
+  padding: 7px 11px;
+  background: #f4f8fd;
+}
+
+@media (hover: hover) {
+  .cx-qsel__card:hover {
+    border-color: #9a9a97;
+  }
+
+  .cx-qsel__card--on:hover {
+    border-color: #1d1d1b;
+  }
+}
+
+.cx-qsel__card:focus-visible {
+  outline: 2px solid #1d1d1b;
+  outline-offset: 2px;
+}
+
+.cx-qsel__radio {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #c9c9c6;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* Ink dot inside a white ring — the inset shadow IS the ring. */
+.cx-qsel__card--on .cx-qsel__radio {
+  border-color: #1d1d1b;
+  background: #1d1d1b;
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.cx-qsel__imgs {
+  position: relative;
+  flex: 0 0 auto;
+  width: 58px;
+  height: 52px;
+}
+
+/* No usable image at all: collapse the cell, the row still reads fine. */
+.cx-qsel__imgs--n0 {
+  display: none;
+}
+
+.cx-qsel__img {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #e3e3e0;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(29, 29, 27, 0.12);
+  inset-block-start: 4px;
+  inset-inline-start: 0;
+}
+
+.cx-qsel__imgs--n1 .cx-qsel__img {
+  inset-inline-start: 6px;
+}
+
+/* 2- and 3-unit tiers fan the product shot so the count reads at a glance;
+   DOM order stacks later copies on top. */
+.cx-qsel__imgs--n2 .cx-qsel__img {
+  width: 40px;
+  height: 40px;
+}
+
+.cx-qsel__imgs--n2 .cx-qsel__img:nth-child(1) {
+  inset-block-start: 2px;
+  inset-inline-start: 0;
+}
+
+.cx-qsel__imgs--n2 .cx-qsel__img:nth-child(2) {
+  inset-block-start: 9px;
+  inset-inline-start: 15px;
+}
+
+.cx-qsel__imgs--n3 .cx-qsel__img {
+  width: 36px;
+  height: 36px;
+}
+
+.cx-qsel__imgs--n3 .cx-qsel__img:nth-child(1) {
+  inset-block-start: 1px;
+  inset-inline-start: 0;
+}
+
+.cx-qsel__imgs--n3 .cx-qsel__img:nth-child(2) {
+  inset-block-start: 7px;
+  inset-inline-start: 11px;
+}
+
+.cx-qsel__imgs--n3 .cx-qsel__img:nth-child(3) {
+  inset-block-start: 13px;
+  inset-inline-start: 22px;
+}
+
+.cx-qsel__mid {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.cx-qsel__badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e7effa;
+  color: #1d1d1b;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+}
+
+:lang(ar) .cx-qsel__badge {
+  letter-spacing: 0;
+}
+
+.cx-qsel__name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.cx-qsel__price {
+  /* Never shrinks: the nowrap price lines define its width, and the name
+     column (min-width 0) absorbs all the squeeze — otherwise the save chip
+     wraps while the column sits at min-content. */
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: end;
+  max-width: 55%;
+}
+
+.cx-qsel__now {
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cx-qsel__was {
+  font-size: 11.5px;
+  color: #6b6b68;
+  text-decoration: line-through;
+  white-space: nowrap;
+}
+
+.cx-qsel__save {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #e7effa;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* The replaced pill group: hidden, never removed — it keeps working as the
+   control surface the cards relay into (native .click() fires its jQuery
+   handler regardless of display). */
+.cx-qsel-src {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cx-qsel__card {
+    transition: none;
   }
 }

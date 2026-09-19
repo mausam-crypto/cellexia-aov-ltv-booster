@@ -181,8 +181,8 @@
     "badge_chip": "Licensed dermatologists"
   },
   "results": {
-    "banner_verified": "See results from {{ count }} verified Cellexia customers.",
-    "banner_all": "See results from {{ count }} Cellexia customers.",
+    "banner_verified": "See results from {{ count }} real Cellexia users.",
+    "banner_all": "See results from {{ count }} Cellexia users.",
     "filter_concern": "Concern",
     "filter_age": "Age",
     "filter_skin": "Skin type",

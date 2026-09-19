@@ -556,52 +556,97 @@ const STUDY_BASE = {
     "T1: whitespace-only override falls back to the built-in line");
 }
 
-// --- T2: all four protocol chips, in order -------------------------------------------
+// --- T2: all three protocol pills, in order (v24: pn/pw + free-text badge) -----------
 {
   const node = buildStudy(Object.assign({}, STUDY_BASE, {
-    pn: 34, pw: "8-week study", pl: "Derma Consult GmbH",
-    pi: "Measured with Cutometer MPA 580",
+    pn: 34, pw: "8-week study", b: "Instrumentally measured",
   }));
   const chips = node.querySelectorAll("li.cx-study__fact");
-  ok(chips.length === 4, "T2: four filled fields -> four chips");
-  ok(chips.length === 4 &&
+  ok(chips.length === 3, "T2: three filled fields -> three pills");
+  ok(chips.length === 3 &&
     chips[0].textContent === "34 participants" &&
     chips[1].textContent === "8-week study" &&
-    chips[2].textContent === "Derma Consult GmbH" &&
-    chips[3].textContent === "Measured with Cutometer MPA 580",
-    "T2: chip order is participants, duration, lab, instruments");
+    chips[2].textContent === "Instrumentally measured",
+    "T2: pill order is participants, duration, badge");
 }
 
-// --- T3: any chip can be left empty individually -------------------------------------
+// --- T3: any pill can be left empty individually -------------------------------------
 {
   const cases = [
-    [{ pw: "8-week study", pl: "Lab", pi: "Measured with X" }, "participants"],
-    [{ pn: 34, pl: "Lab", pi: "Measured with X" }, "duration"],
-    [{ pn: 34, pw: "8-week study", pi: "Measured with X" }, "lab"],
-    [{ pn: 34, pw: "8-week study", pl: "Lab" }, "instruments"],
+    [{ pw: "8-week study", b: "Instrumentally measured" }, "participants"],
+    [{ pn: 34, b: "Instrumentally measured" }, "duration"],
+    [{ pn: 34, pw: "8-week study" }, "badge"],
   ];
   for (const [members, label] of cases) {
     const node = buildStudy(Object.assign({}, STUDY_BASE, members));
-    ok(node.querySelectorAll("li.cx-study__fact").length === 3,
-      `T3: empty ${label} field -> that chip absent, the rest render`);
+    ok(node.querySelectorAll("li.cx-study__fact").length === 2,
+      `T3: empty ${label} field -> that pill absent, the rest render`);
   }
 }
 
-// --- T4: zero chips -> no list at all ------------------------------------------------
+// --- T4: zero pills -> no list at all ------------------------------------------------
 {
   const node = buildStudy(Object.assign({}, STUDY_BASE));
   ok(!node.querySelector(".cx-study__facts"),
-    "T4: no protocol fields filled -> no chips list in the DOM");
+    "T4: no protocol fields filled -> no pills list in the DOM");
 }
 
-// --- T5: zero/invalid participants never chip ----------------------------------------
+// --- T5: zero/invalid participants never pill ----------------------------------------
 {
   for (const pn of [0, -3, "34", undefined]) {
-    const node = buildStudy(Object.assign({}, STUDY_BASE, { pn: pn, pl: "Lab" }));
+    const node = buildStudy(Object.assign({}, STUDY_BASE, { pn: pn, b: "Instrumentally measured" }));
     const chips = node.querySelectorAll("li.cx-study__fact");
-    ok(chips.length === 1 && chips[0].textContent === "Lab",
-      `T5: participants=${JSON.stringify(pn)} -> no participants chip`);
+    ok(chips.length === 1 && chips[0].textContent === "Instrumentally measured",
+      `T5: participants=${JSON.stringify(pn)} -> no participants pill`);
   }
+}
+
+// --- T6: v24 eyebrow override --------------------------------------------------------
+{
+  const node = buildStudy(Object.assign({}, STUDY_BASE, { e: "Published clinical research" }));
+  const eb = node.querySelector(".cx-proof__eyebrow");
+  ok(!!eb && eb.textContent === "Published clinical research",
+    "T6: per-product eyebrow replaces the translated default verbatim");
+  const node2 = buildStudy(Object.assign({}, STUDY_BASE));
+  ok(node2.querySelector(".cx-proof__eyebrow").textContent === STUDY_STR.eyebrow,
+    "T6: no override -> the translated default eyebrow renders");
+  const node3 = buildStudy(Object.assign({}, STUDY_BASE, { e: "   " }));
+  ok(node3.querySelector(".cx-proof__eyebrow").textContent === STUDY_STR.eyebrow,
+    "T6: whitespace-only eyebrow override falls back to the default");
+}
+
+// --- T7: v24 publication line only when set ------------------------------------------
+{
+  const node = buildStudy(Object.assign({}, STUDY_BASE, {
+    c: "Conducted independently by a university dermatology research center",
+    j: "Published in a peer-reviewed dermatology journal",
+  }));
+  const jour = node.querySelector(".cx-study__journal");
+  ok(!!jour && jour.textContent === "Published in a peer-reviewed dermatology journal",
+    "T7: publication line renders under the conducted-by line");
+  ok(!buildStudy(Object.assign({}, STUDY_BASE)).querySelector(".cx-study__journal"),
+    "T7: no publication member -> no line in the DOM");
+}
+
+// --- T8: v24 stat panel right column (label + RAW method behind one divider) ---------
+{
+  const node = buildStudy(Object.assign({}, STUDY_BASE, { pi: "Measured by 3D skin imaging" }));
+  const body = node.querySelector(".cx-study__hero-body");
+  ok(!!body, "T8: label or method present -> the hero-body column exists");
+  const label = body && body.querySelector(".cx-study__hero-label");
+  const method = body && body.querySelector(".cx-study__hero-method");
+  ok(!!label && label.textContent === "firmer skin",
+    "T8: result label lives INSIDE the hero-body column");
+  ok(!!method && method.textContent === "Measured by 3D skin imaging",
+    "T8: instruments render RAW inside the panel (no locale composition)");
+  ok(!node.querySelector(".cx-study__facts"),
+    "T8: instruments no longer render as a pill");
+  const bare = buildStudy(Object.assign({}, STUDY_BASE, { r: [{ v: 31.2, s: "%" }] }));
+  ok(!bare.querySelector(".cx-study__hero-body"),
+    "T8: no label AND no method -> no hero-body (no orphan divider)");
+  const bareVal = bare.querySelector(".cx-study__hero-value");
+  ok(!!bareVal && bareVal.textContent === "31.2%",
+    "T8: the numeral (with suffix) still renders on a bare result");
 }
 
 // ================================================== v8 compact modes (C1-C7)
@@ -711,8 +756,14 @@ const STUDY_BASE = {
       .filter((c) => c.nodeType === 1)
       .map((c) => `${c.tagName}[${c.attrs.class || ""}](${treeShape(c)})`)
       .join(",");
-  const fullNode = buildStudy(Object.assign({}, STUDY_BASE, { pn: 34, pl: "Derma Consult GmbH" }));
-  const compactNode = buildStudy(Object.assign({}, STUDY_BASE, { pn: 34, pl: "Derma Consult GmbH", cm: 1 }));
+  const fullNode = buildStudy(Object.assign({}, STUDY_BASE, {
+    e: "Published clinical research", j: "Published in a peer-reviewed journal",
+    pn: 34, b: "Instrumentally measured", pi: "Measured by 3D skin imaging",
+  }));
+  const compactNode = buildStudy(Object.assign({}, STUDY_BASE, {
+    e: "Published clinical research", j: "Published in a peer-reviewed journal",
+    pn: 34, b: "Instrumentally measured", pi: "Measured by 3D skin imaging", cm: 1,
+  }));
   ok((fullNode.attrs.class || "") === "cx-proof cx-study",
     "C6: full study root carries NO compact modifier");
   ok((compactNode.attrs.class || "") === "cx-proof cx-study cx-study--compact",
@@ -984,6 +1035,22 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m12-more-toggle-broken",
         find: "        var open = btn.getAttribute('aria-expanded') === 'true';\n        btn.setAttribute('aria-expanded', open ? 'false' : 'true');\n        if (open) list.setAttribute('hidden', '');\n        else list.removeAttribute('hidden');",
         replace: "        var open = btn.getAttribute('aria-expanded') === 'true';\n        btn.setAttribute('aria-expanded', open ? 'false' : 'true');",
+      },
+      // v24 study recomposition (T6/T8 catch these)
+      {
+        name: "m13-eyebrow-override-ignored",
+        find: "    eb.textContent = typeof data.e === 'string' && /\\S/.test(data.e) ? bottleStr(data, 'e') : bottleStr(s, 'eyebrow');",
+        replace: "    eb.textContent = bottleStr(s, 'eyebrow');",
+      },
+      {
+        name: "m14-badge-pill-dropped",
+        find: "    if (typeof data.b === 'string' && /\\S/.test(data.b)) facts.push(bottleStr(data, 'b'));",
+        replace: "    if (false) facts.push(bottleStr(data, 'b'));",
+      },
+      {
+        name: "m15-herobody-always-built",
+        find: "      if (hasLabel || hasMethod) {",
+        replace: "      if (true) {",
       },
     ],
   });

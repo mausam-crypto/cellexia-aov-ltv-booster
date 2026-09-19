@@ -2949,9 +2949,18 @@
   // after the eyebrow (per-product "sub" override, else str.sub composed
   // server-side with the localized product title), and the composed m1/m2
   // methodology paragraphs are retired in favor of protocol fact chips
-  // built from whichever lean members the island carries: pn (sample
-  // size, gates the str.fn "N participants" chip), pw (precomposed weeks
-  // label), pl (lab name) and pi (pre-interpolated instruments line).
+  // built from whichever lean members the island carries.
+  //
+  // v24 "published research" recomposition (merchant reference design,
+  // 2026-09-17): every visible line is per-product merchant text. The
+  // eyebrow gains an "e" override (else str.eyebrow), the title renders
+  // as the big uppercase protocol headline, "j" is the publication line
+  // under the concern, the first result becomes the tinted stat panel
+  // whose right column carries the label plus the RAW instruments line
+  // ("pi", no longer a locale-composed chip), and the chips reduce to
+  // pn/pw plus the free-text "b" badge. The lab-name chip ("pl") is
+  // retired from display — the lab now reads inside the merchant's
+  // concern sentence ("Conducted independently by …").
 
   function studyData() {
     try {
@@ -2995,13 +3004,14 @@
     var s = data.str || {};
     var results = Array.isArray(data.r) ? data.r : [];
     // v8: cfg.clinicalStudy.compact (island "cm": 1) is a pure CSS
-    // recomposition — same DOM, the --compact modifier inlines the hero
-    // with its label (32px numeral), collapses the stat grid to one
-    // wrapping mini-stat row and tightens the chips into the same flow.
+    // recomposition — same DOM, the --compact modifier shrinks the stat
+    // panel (30px numeral), collapses the extra-results grid to one
+    // wrapping mini-panel row and tightens the chips into the same flow.
     var root = cxEl('section', 'cx-proof cx-study' + (data.cm === 1 ? ' cx-study--compact' : ''), ['data-cx-feature', 'clinical_study']);
     cxSp(root);
+    // v24: per-product eyebrow override, else the translated default.
     var eb = cxEl('p', 'cx-proof__eyebrow eyebrow eyebrow--sm');
-    eb.textContent = bottleStr(s, 'eyebrow');
+    eb.textContent = typeof data.e === 'string' && /\S/.test(data.e) ? bottleStr(data, 'e') : bottleStr(s, 'eyebrow');
     root.appendChild(eb);
     // v7: the product-binding line — the study reads as conducted on THIS
     // product. Per-product override wins, else the server-composed default
@@ -3011,7 +3021,7 @@
     subj.textContent = typeof data.sub === 'string' && /\S/.test(data.sub) ? bottleStr(data, 'sub') : bottleStr(s, 'sub');
     root.appendChild(subj);
     if (typeof data.t === 'string' && /\S/.test(data.t)) {
-      var h2 = cxEl('h2', 'cx-study__heading heading--two');
+      var h2 = cxEl('h2', 'cx-study__heading');
       h2.textContent = bottleStr(data, 't');
       root.appendChild(h2);
     }
@@ -3020,15 +3030,35 @@
       concern.textContent = bottleStr(data, 'c');
       root.appendChild(concern);
     }
+    // v24: publication line ("Published in a peer-reviewed …"), only when set.
+    if (typeof data.j === 'string' && /\S/.test(data.j)) {
+      var jour = cxEl('p', 'cx-study__journal');
+      jour.textContent = bottleStr(data, 'j');
+      root.appendChild(jour);
+    }
     if (results.length > 0) {
       var e0 = results[0] && typeof results[0] === 'object' ? results[0] : {};
       var hero = cxEl('div', 'cx-study__hero');
       cxSp(hero);
       hero.appendChild(studyValSpan('cx-study__hero-value', 'cx-study__hero-suffix', e0));
-      if (typeof e0.l === 'string' && /\S/.test(e0.l)) {
-        var hl = cxEl('span', 'cx-study__hero-label');
-        hl.textContent = bottleStr(e0, 'l');
-        hero.appendChild(hl);
+      // v24: the panel's right column — result label over the raw
+      // instruments line — carries the hairline divider, so it only
+      // exists when at least one of the two has content.
+      var hasLabel = typeof e0.l === 'string' && /\S/.test(e0.l);
+      var hasMethod = typeof data.pi === 'string' && /\S/.test(data.pi);
+      if (hasLabel || hasMethod) {
+        var hb = cxEl('div', 'cx-study__hero-body');
+        if (hasLabel) {
+          var hl = cxEl('span', 'cx-study__hero-label');
+          hl.textContent = bottleStr(e0, 'l');
+          hb.appendChild(hl);
+        }
+        if (hasMethod) {
+          var hm = cxEl('p', 'cx-study__hero-method');
+          hm.textContent = bottleStr(data, 'pi');
+          hb.appendChild(hm);
+        }
+        hero.appendChild(hb);
       }
       root.appendChild(hero);
       if (results.length > 1) {
@@ -3050,11 +3080,12 @@
     }
     // v7: protocol facts as quiet chips, built only from present members —
     // absent members simply skip, zero facts renders no list at all.
+    // v24: participants and duration keep their localized templates; the
+    // third chip is the free-text per-product badge ("b").
     var facts = [];
     if (typeof data.pn === 'number' && isFinite(data.pn) && data.pn > 0 && typeof s.fn === 'string' && /\S/.test(s.fn)) facts.push(bottleStr(s, 'fn'));
     if (typeof data.pw === 'string' && /\S/.test(data.pw)) facts.push(bottleStr(data, 'pw'));
-    if (typeof data.pl === 'string' && /\S/.test(data.pl)) facts.push(bottleStr(data, 'pl'));
-    if (typeof data.pi === 'string' && /\S/.test(data.pi)) facts.push(bottleStr(data, 'pi'));
+    if (typeof data.b === 'string' && /\S/.test(data.b)) facts.push(bottleStr(data, 'b'));
     if (facts.length > 0) {
       var factList = cxEl('ul', 'cx-study__facts list-reset');
       for (var fi = 0; fi < facts.length; fi++) {
@@ -6824,6 +6855,367 @@
     ibBind();
   }
 
+  // ------------------------------------------- v26 quantity selector cards
+  //
+  // Replaces the theme's text-pill size picker with picture cards (per-unit
+  // price, struck 1-unit baseline, computed save chip, tier badges) — see
+  // docs/SPEC-v26-quantity-selector.md. The theme's own hidden buttons stay
+  // the ONLY control channel: every card tap is relayed as a native .click()
+  // on the matching original button, so the theme's jQuery handler keeps
+  // driving the hidden selects, price line and subscription widgets exactly
+  // as a pill tap always did. Cards map to buttons by variant id only
+  // (data-val-id, trimmed — the theme leaks a trailing newline on the last
+  // button); ANY mismatch bails before anything is hidden (never hide
+  // without inserting, the v6.6 rule).
+  //
+  // The five UI strings ship in this asset (the v8.16b AZ_SHIPS_FORMS
+  // precedent — fixed UI chrome, zero locale-file bytes; el/ar sit at the
+  // per-file byte wall). b3 is the locale files' own volume.best_value
+  // wording verbatim; save/title follow the volume-tile register. The page
+  // locale comes from the island ("l") ONLY: the <html> lang attribute is
+  // BANNED as a source here — this theme stamps shop.locale there (always
+  // the primary language, verified live), never the page language.
+  var CX_QSEL_STR = {"en":{"title":"Choose quantity","each":"{amount} each","save":"Save {amount}","b2":"Clinically recommended","b3":"Best value"},"fr":{"title":"Choisissez la quantité","each":"{amount} l'unité","save":"Économisez {amount}","b2":"Recommandation clinique","b3":"Meilleure offre"},"de":{"title":"Menge wählen","each":"je {amount}","save":"{amount} sparen","b2":"Klinisch empfohlen","b3":"Größte Ersparnis"},"es":{"title":"Elige la cantidad","each":"{amount}/ud.","save":"Ahorra {amount}","b2":"Recomendación clínica","b3":"Mejor oferta"},"it":{"title":"Scegli la quantità","each":"{amount} l'uno","save":"Risparmia {amount}","b2":"Raccomandazione clinica","b3":"Più conveniente"},"nl":{"title":"Kies je aantal","each":"{amount} per stuk","save":"Bespaar {amount}","b2":"Klinisch aanbevolen","b3":"Voordeligste keuze"},"pt-PT":{"title":"Escolha a quantidade","each":"{amount}/un.","save":"Poupe {amount}","b2":"Recomendação clínica","b3":"Mais vantajoso"},"da":{"title":"Vælg antal","each":"{amount} pr. stk.","save":"Spar {amount}","b2":"Klinisk anbefalet","b3":"Bedste værdi"},"sv":{"title":"Välj antal","each":"{amount}/st","save":"Spara {amount}","b2":"Kliniskt rekommenderad","b3":"Bästa värdet"},"nb":{"title":"Velg antall","each":"{amount} per stk.","save":"Spar {amount}","b2":"Klinisk anbefalt","b3":"Best verdi"},"no":{"title":"Velg antall","each":"{amount} per stk.","save":"Spar {amount}","b2":"Klinisk anbefalt","b3":"Best verdi"},"fi":{"title":"Valitse määrä","each":"{amount}/kpl","save":"Säästä {amount}","b2":"Kliinisesti suositeltu","b3":"Paras arvo"},"pl":{"title":"Wybierz ilość","each":"{amount}/szt.","save":"Oszczędź {amount}","b2":"Zalecany klinicznie","b3":"Najbardziej opłacalny"},"ro":{"title":"Alege cantitatea","each":"{amount}/buc.","save":"Economisește {amount}","b2":"Recomandat clinic","b3":"Cel mai avantajos"},"hu":{"title":"Válassz mennyiséget","each":"{amount}/db","save":"Megtakarítás: {amount}","b2":"Klinikailag ajánlott","b3":"Legjobb ár-érték arány"},"el":{"title":"Επίλεξε ποσότητα","each":"{amount}/τεμ.","save":"Εξοικονόμησε {amount}","b2":"Κλινικά συνιστώμενο","b3":"Το πιο συμφέρον"},"ja":{"title":"数量を選択","each":"各{amount}","save":"{amount}お得","b2":"臨床推奨","b3":"一番お得"},"ar":{"title":"اختر الكمية","each":"{amount} للقطعة","save":"وفّر {amount}","b2":"موصى به سريريًا","b3":"أفضل قيمة"}};
+
+  var qselMounted = false;
+
+  function qselData() {
+    return pdpMember('qs');
+  }
+
+  function qselAllowed(d) {
+    // The house live/draft gate — the Preview Center shows exactly what
+    // going live will show.
+    return !!d && pdpMemberAllowed(d, 'quantity_selector');
+  }
+
+  function qselLocale(d) {
+    var l = d && typeof d.l === 'string' ? d.l : '';
+    if (CX_QSEL_STR[l]) return l;
+    var base = l.split('-')[0].toLowerCase();
+    if (CX_QSEL_STR[base]) return base;
+    for (var k in CX_QSEL_STR) {
+      if (CX_QSEL_STR.hasOwnProperty(k) && k.split('-')[0].toLowerCase() === base) return k;
+    }
+    return 'en';
+  }
+
+  function qselStr(d, key) {
+    var pack = CX_QSEL_STR[qselLocale(d)];
+    var s = pack && typeof pack[key] === 'string' ? pack[key] : '';
+    if (!s) s = CX_QSEL_STR.en[key] || '';
+    return s;
+  }
+
+  function qselTpl(d, key, amount) {
+    // Global substitution via split/join — string .replace is first-match
+    // only (the v8.17 lesson); a sentinel-less merchant-facing template
+    // degrades to "text amount" instead of dropping the figure.
+    var s = qselStr(d, key);
+    if (s.indexOf('{amount}') === -1) return s ? s + ' ' + amount : amount;
+    return s.split('{amount}').join(amount);
+  }
+
+  function qselFormatMoney(cents, format) {
+    // Twin of Shopify's canonical formatMoney (the same placeholder set the
+    // theme's own helper implements), tags stripped from the format so the
+    // result is always textContent-safe.
+    var fmt = String(format || '').replace(/<[^>]*>/g, '');
+    var m = /\{\{\s*(\w+)\s*\}\}/.exec(fmt);
+    if (!m) return '';
+    function delim(number, precision, thousands, decimal) {
+      var fixed = ((Number(number) || 0) / 100).toFixed(precision);
+      var parts = fixed.split('.');
+      var whole = parts[0].replace(/(\d)(?=(\d\d\d)+(?!\d))/g, '$1' + thousands);
+      return whole + (parts[1] ? decimal + parts[1] : '');
+    }
+    var value = '';
+    switch (m[1]) {
+      case 'amount': value = delim(cents, 2, ',', '.'); break;
+      case 'amount_no_decimals': value = delim(cents, 0, ',', '.'); break;
+      case 'amount_with_comma_separator': value = delim(cents, 2, '.', ','); break;
+      case 'amount_no_decimals_with_comma_separator': value = delim(cents, 0, '.', ','); break;
+      case 'amount_with_apostrophe_separator': value = delim(cents, 2, "'", '.'); break;
+      case 'amount_no_decimals_with_space_separator': value = delim(cents, 0, ' ', '.'); break;
+      case 'amount_with_space_separator': value = delim(cents, 2, ' ', ','); break;
+      case 'amount_with_period_and_space_separator': value = delim(cents, 2, ' ', '.'); break;
+      default: return '';
+    }
+    return fmt.replace(/\{\{\s*\w+\s*\}\}/, value);
+  }
+
+  function qselMoney(cents, d) {
+    // Precedence: the TWIN first — it implements the real placeholder
+    // semantics, i.e. exactly what the page's Liquid `| money` prices show.
+    // The live theme's own window.formatMoney is NOT that: verified live
+    // 2026-09-18, it replaces ANY placeholder with a dot-decimal
+    // comma-thousands figure ("216.00 zł" on a page whose Liquid prices say
+    // "216,00 zł"), so it only serves as a fallback for a placeholder the
+    // twin does not know, ahead of bare Intl. Arithmetic NEVER happens on
+    // formatted strings — every caller passes presentment cents.
+    var mf = d && typeof d.mf === 'string' ? d.mf : '';
+    var twin = mf ? qselFormatMoney(cents, mf) : '';
+    if (twin) return twin;
+    try {
+      if (typeof window.formatMoney === 'function' && mf) {
+        var out = window.formatMoney(cents, mf);
+        if (typeof out === 'string' && out) return out.replace(/<[^>]*>/g, '');
+      }
+    } catch (e) { /* fall through */ }
+    try {
+      var cur = (window.Shopify && window.Shopify.currency && window.Shopify.currency.active) || cfg.currency;
+      if (cur) return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }).format(cents / 100);
+    } catch (e) { /* fall through */ }
+    return ((Number(cents) || 0) / 100).toFixed(2);
+  }
+
+  function qselQty(title) {
+    // Unit count = the leading integer of the variant's own (localized)
+    // title, 1..24 — NO positional fallback, so a "30ml/50ml"-shaped
+    // product can never get fabricated per-unit math (SPEC v26 §1.4).
+    var m = /^\s*(\d{1,2})(?!\d)/.exec(typeof title === 'string' ? title : '');
+    if (!m) return 0;
+    var n = parseInt(m[1], 10);
+    return n >= 1 && n <= 24 ? n : 0;
+  }
+
+  function qselLabel(title) {
+    // Strip the merchant's " - 15% Off"-style suffix: several of those
+    // percentages are factually wrong vs the live prices — the computed
+    // save chip is the truth this design shows instead.
+    var t = typeof title === 'string' ? title : '';
+    var cut = t.search(/\s+[-–—]\s+/);
+    return cut > 0 ? t.slice(0, cut) : t;
+  }
+
+  function qselImgs(v, q) {
+    var box = cxEl('span', 'cx-qsel__imgs');
+    var im = v && typeof v.im === 'string' && /^(?:https:)?\/\//.test(v.im) ? v.im : '';
+    if (!im) {
+      box.className += ' cx-qsel__imgs--n0';
+      return box;
+    }
+    // A variant-specific image (vi:1 — the merchant uploaded a real
+    // multi-jar render) shows alone; the product fallback is fanned once
+    // per unit, capped at 3, so the count reads at a glance. Literal class
+    // names (no concat) so the CSS coverage sweep sees every token.
+    var copies = v.vi === 1 ? 1 : Math.min(q > 0 ? q : 1, 3);
+    box.className += copies === 3 ? ' cx-qsel__imgs--n3' : copies === 2 ? ' cx-qsel__imgs--n2' : ' cx-qsel__imgs--n1';
+    for (var i = 0; i < copies; i++) {
+      var img = document.createElement('img');
+      img.className = 'cx-qsel__img';
+      img.src = im;
+      img.alt = '';
+      img.loading = 'lazy';
+      img.width = 48;
+      img.height = 48;
+      box.appendChild(img);
+    }
+    return box;
+  }
+
+  function qselPriceBlock(d, v, base) {
+    var box = cxEl('span', 'cx-qsel__price');
+    var q = qselQty(v.t);
+    var each = 0;
+    if (base > 0 && q >= 2 && typeof v.p === 'number') {
+      each = Math.floor(v.p / q);
+      // Honesty gate: per-unit framing only when it is a real discount.
+      if (!(each < base)) each = 0;
+    }
+    var now = cxEl('span', 'cx-qsel__now');
+    if (each > 0) {
+      now.textContent = qselTpl(d, 'each', qselMoney(each, d));
+      box.appendChild(now);
+      var was = cxEl('span', 'cx-qsel__was');
+      was.textContent = qselTpl(d, 'each', qselMoney(base, d));
+      box.appendChild(was);
+      var save = q * base - v.p;
+      if (save > 0) {
+        var chip = cxEl('span', 'cx-qsel__save');
+        chip.textContent = qselTpl(d, 'save', qselMoney(save, d));
+        box.appendChild(chip);
+      }
+    } else {
+      now.textContent = qselMoney(v.p, d);
+      box.appendChild(now);
+    }
+    return box;
+  }
+
+  function qselCard(d, v, base, badge) {
+    var card = cxEl('button', 'cx-qsel__card');
+    card.type = 'button';
+    card.setAttribute('role', 'radio');
+    card.setAttribute('aria-checked', 'false');
+    card.setAttribute('tabindex', '-1');
+    card.appendChild(cxEl('span', 'cx-qsel__radio'));
+    card.appendChild(qselImgs(v, qselQty(v.t)));
+    var mid = cxEl('span', 'cx-qsel__mid');
+    if (badge) {
+      var chip = cxEl('span', 'cx-qsel__badge');
+      chip.textContent = badge;
+      mid.appendChild(chip);
+    }
+    var name = cxEl('span', 'cx-qsel__name');
+    name.textContent = qselLabel(v.t);
+    mid.appendChild(name);
+    card.appendChild(mid);
+    card.appendChild(qselPriceBlock(d, v, base));
+    return card;
+  }
+
+  function qselWrap() {
+    var opts = document.querySelector('.pdp__options');
+    if (!opts) return null;
+    var wraps = opts.querySelectorAll('.option__wrap');
+    // Exactly ONE option group (this store's shape) — a multi-option
+    // product keeps the theme's own picker untouched.
+    if (wraps.length !== 1) return null;
+    var wrap = wraps[0];
+    var cls = ' ' + (wrap.className || '') + ' ';
+    if (cls.indexOf(' option__wrap--buttons ') === -1) return null;
+    return wrap;
+  }
+
+  function qselButtons(wrap) {
+    var out = [];
+    var btns = wrap.querySelectorAll('.btn__wrap button');
+    for (var i = 0; i < btns.length; i++) {
+      var id = btns[i].getAttribute('data-val-id');
+      if (typeof id !== 'string') return null;
+      // pdp-options.liquid leaks a trailing newline into the LAST button's
+      // data-val-id (capture artifact) — trim before matching.
+      id = id.replace(/^\s+|\s+$/g, '');
+      if (!id) return null;
+      out.push({ id: id, el: btns[i] });
+    }
+    return out.length ? out : null;
+  }
+
+  function qselPaint(cards, idx) {
+    for (var i = 0; i < cards.length; i++) {
+      var on = i === idx;
+      var el = cards[i].card;
+      el.setAttribute('aria-checked', on ? 'true' : 'false');
+      el.setAttribute('tabindex', on ? '0' : '-1');
+      var cls = (' ' + el.className + ' ').replace(' cx-qsel__card--on ', ' ');
+      cls = cls.replace(/^\s+|\s+$/g, '');
+      el.className = on ? cls + ' cx-qsel__card--on' : cls;
+    }
+  }
+
+  function qselBind(cards, group) {
+    function choose(idx, focus) {
+      var picked = cards[idx];
+      if (!picked) return;
+      var already = picked.card.getAttribute('aria-checked') === 'true';
+      qselPaint(cards, idx);
+      if (focus) { try { picked.card.focus(); } catch (e) { /* noop */ } }
+      if (already) return;
+      // Relay to the THEME's own button: its jQuery handler keeps driving
+      // the hidden selects, price and per-unit line exactly as a pill tap
+      // always did (SPEC v26 §1.1). Native .click() fires jQuery listeners
+      // even while the pill group is display:none.
+      try { picked.btn.click(); } catch (e) { /* noop */ }
+      track('quantity_selector', 'click', 'q' + (picked.q > 0 ? picked.q : idx + 1));
+    }
+    for (var i = 0; i < cards.length; i++) {
+      (function (idx) {
+        cards[idx].card.addEventListener('click', function () { choose(idx, false); });
+      })(i);
+    }
+    group.addEventListener('keydown', function (ev) {
+      var key = ev.key;
+      var cur = 0;
+      for (var i = 0; i < cards.length; i++) {
+        if (cards[i].card.getAttribute('aria-checked') === 'true') { cur = i; break; }
+      }
+      var next = -1;
+      if (key === 'ArrowDown' || key === 'ArrowRight') next = (cur + 1) % cards.length;
+      else if (key === 'ArrowUp' || key === 'ArrowLeft') next = (cur - 1 + cards.length) % cards.length;
+      else if (key === 'Home') next = 0;
+      else if (key === 'End') next = cards.length - 1;
+      if (next === -1) return;
+      ev.preventDefault();
+      choose(next, true);
+    });
+  }
+
+  function qselMount() {
+    try {
+      if (qselMounted) return;
+      var d = qselData();
+      if (!d || !qselAllowed(d)) return;
+      var list = d.v;
+      if (!list || list.length < 2 || list.length > 6) return;
+      var wrap = qselWrap();
+      if (!wrap || wrap.getAttribute('data-cx-qsel') === '1') return;
+      var btns = qselButtons(wrap);
+      if (!btns || btns.length !== list.length) return;
+      var byId = {};
+      for (var b = 0; b < btns.length; b++) byId[btns[b].id] = btns[b];
+      var base = 0;
+      if (list[0] && qselQty(list[0].t) === 1 && typeof list[0].p === 'number' && list[0].p > 0) {
+        base = list[0].p;
+      }
+      var root = cxEl('div', 'cx-qsel', ['data-cx-feature', 'quantity_selector']);
+      var title = cxEl('p', 'cx-qsel__title');
+      title.id = 'cx-qsel-title';
+      title.textContent = qselStr(d, 'title');
+      root.appendChild(title);
+      var group = cxEl('div', 'cx-qsel__list');
+      group.setAttribute('role', 'radiogroup');
+      group.setAttribute('aria-labelledby', 'cx-qsel-title');
+      var cards = [];
+      for (var i = 0; i < list.length; i++) {
+        var v = list[i];
+        if (!v || (typeof v.id !== 'number' && typeof v.id !== 'string')) return;
+        if (!(typeof v.p === 'number' && isFinite(v.p) && v.p >= 0)) return;
+        var pair = byId[String(v.id)];
+        // Id mismatch = theme drift: leave the theme's picker alone.
+        if (!pair) return;
+        var badge = '';
+        if (i === list.length - 1) badge = qselStr(d, 'b3');
+        else if (i === 1 && list.length >= 3) badge = qselStr(d, 'b2');
+        var card = qselCard(d, v, base, badge);
+        cards.push({ card: card, btn: pair.el, q: qselQty(v.t) });
+        group.appendChild(card);
+      }
+      root.appendChild(group);
+      // The theme marks its own active pill (the first by default) — mirror
+      // it; the cards never choose on their own, preview included.
+      var selected = 0;
+      for (var s = 0; s < cards.length; s++) {
+        if ((' ' + cards[s].btn.className + ' ').indexOf(' active ') !== -1) { selected = s; break; }
+      }
+      qselBind(cards, group);
+      if (!wrap.parentNode || !wrap.parentNode.insertBefore) return;
+      wrap.parentNode.insertBefore(root, wrap);
+      // Never hide without inserting (the v6.6 rule): only AFTER the cards
+      // are in the DOM does the pill group go visually away. It stays in
+      // the document as the working control surface.
+      wrap.setAttribute('data-cx-qsel', '1');
+      wrap.className += ' cx-qsel-src';
+      wrap.setAttribute('aria-hidden', 'true');
+      qselPaint(cards, selected);
+      qselMounted = true;
+      track('quantity_selector');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function qselDesignBind() {
+    // Theme-editor section reloads replace the picker DOM (design mode
+    // only) — remount so the merchant's editor view stays truthful.
+    try {
+      if (!(window.Shopify && window.Shopify.designMode)) return;
+      document.addEventListener('shopify:section:load', function () {
+        qselMounted = false;
+        qselMount();
+      });
+    } catch (e) { /* noop */ }
+  }
+
   function init() {
     try {
       cfg = readConfig();
@@ -6831,6 +7223,12 @@
       // --- v20 image badges: a width on the theme's own badges, ahead of
       // every mount below (it paints nothing and beacons nothing) ---
       mountImageBadges();
+
+      // --- v26 quantity selector cards: replaces the theme's size pills
+      // inside .pdp__options (own anchors, independent of the .pdp__grey
+      // mounts below) ---
+      qselMount();
+      qselDesignBind();
 
       // v10: the synchronous state half (stored choice + fresh geo
       // cache) must be resolved BEFORE any mount below decides to paint

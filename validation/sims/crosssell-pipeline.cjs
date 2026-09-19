@@ -158,6 +158,7 @@ const EXTRACTED = extractAll(SRC, {
     "subscriptionAware",
     "subSavingsPercent",
     "subsAware",
+    "subsLive",
     "ownedPlan",
     "subXsPlanLine",
     "variantDefaultCadence",

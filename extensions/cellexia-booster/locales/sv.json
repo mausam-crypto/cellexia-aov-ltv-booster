@@ -169,8 +169,8 @@
     "badge_chip": "Legitimerade dermatologer"
   },
   "results": {
-    "banner_verified": "Se resultat från {{ count }} verifierade Cellexia-kunder.",
-    "banner_all": "Se resultat från {{ count }} Cellexia-kunder.",
+    "banner_verified": "Se resultat från {{ count }} riktiga Cellexia-användare.",
+    "banner_all": "Se resultat från {{ count }} Cellexia-användare.",
     "filter_concern": "Hudproblem",
     "filter_age": "Ålder",
     "filter_skin": "Hudtyp",

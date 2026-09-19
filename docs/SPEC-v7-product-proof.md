@@ -1,5 +1,11 @@
 # SPEC v7 — Per-product proof widgets (clinical study · dermatologist survey · risk-free guarantee)
 
+> v24 note: the clinical study widget's VISUAL composition, island members
+> and fact-chip set were recomposed — `docs/SPEC-v24-study-redesign.md` is
+> the current contract for that widget's DOM/island/CSS. The v7 gates,
+> feature keys, subject-line semantics and metaobject plumbing below still
+> hold.
+
 Binding contract for the v7 wave. Read `docs/SPEC.md` first (architecture, i18n doctrine,
 metafield mirroring). Merchant ask (2026-08-01): (1) the clinical study must read as a study
 conducted on THIS product and be deeply customisable; (2) the dermatologist survey becomes

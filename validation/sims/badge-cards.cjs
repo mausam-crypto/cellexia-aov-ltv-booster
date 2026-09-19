@@ -59,6 +59,7 @@ const EXTRACTED = extractAll(SRC, {
     "money",
     "subscriptionAware",
     "subsAware",
+    "subsLive",
     "ownedPlan",
     "planMetaById",
     "variantPlanAlloc",
@@ -488,7 +489,9 @@ async function main() {
   }
 
   // --- v17.2 subscription card prices (collections / home) ----------------------
-  const SX = { p: ["700", "701"], d: { default: { unit: "MONTH", count: 3 } } };
+  // v23: live:true — card prices are a proof-less surface, so the sims'
+  // "active context" is now explicitly the LIVE one.
+  const SX = { p: ["700", "701"], d: { default: { unit: "MONTH", count: 3 } }, live: true };
   const SUB_ENTRY = {
     variants: [{ id: 11, price: 6700, available: true, planAllocations: [
       { planId: "700", price: 6231 },  // 'Every 3 weeks' (first owned)
@@ -538,6 +541,37 @@ async function main() {
       "v17.2: verdicts resolved without context never carry cents");
     ok(vm.runInContext("cardFlagCacheKey(['alpha'])", sim.sandbox).indexOf(":s0:") !== -1,
       "v17.2: inactive context caches under the s0 key side");
+  }
+
+  {
+    // v23 — THE leak this version fixes: the island is present because the
+    // v17.1 data gate opens in SETUP (previews need it), but the app is not
+    // live. Cards have no per-shopper proof, so the price must stay
+    // one-time and the cache must stay on the s0 side, in every market.
+    const sim = makeSim({
+      cfg: { sx: { p: SX.p, d: SX.d, live: false } },
+      responders: { proxy: () => ({ productsByHandle: { alpha: SUB_ENTRY } }) },
+    });
+    const { price } = addThemeCard(sim.doc, "alpha");
+    vm.runInContext("initCardFlags()", sim.sandbox);
+    await flush();
+    ok(price.textContent === "€67.00",
+      "v23: sx island open in SETUP (live:false): card price untouched");
+    const map = await vm.runInContext("cardFlagFetch(['alpha'])", sim.sandbox);
+    ok(map.alpha === null || map.alpha.sub == null,
+      "v23: setup-mode verdicts never carry cents");
+    ok(vm.runInContext("cardFlagCacheKey(['alpha'])", sim.sandbox).indexOf(":s0:") !== -1,
+      "v23: setup mode caches under the s0 key side");
+    // An old island without the member behaves like setup (fail closed).
+    const simOld = makeSim({
+      cfg: { sx: { p: SX.p, d: SX.d } },
+      responders: { proxy: () => ({ productsByHandle: { alpha: SUB_ENTRY } }) },
+    });
+    const old = addThemeCard(simOld.doc, "alpha");
+    vm.runInContext("initCardFlags()", simOld.sandbox);
+    await flush();
+    ok(old.price.textContent === "€67.00",
+      "v23: island without a live member fails closed (price untouched)");
   }
 
   {

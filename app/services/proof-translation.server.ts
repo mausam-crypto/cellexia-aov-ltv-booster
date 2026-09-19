@@ -53,13 +53,23 @@ export type ProofScope = ProofType | "copy";
 /** The single resourceId of the "copy" scope (one settings section). */
 export const COPY_RESOURCE_ID = "dermEndorsements";
 
+/** v25: per-measurement prose fields of a result entry — `m{i}l` is the
+ *  measurement label, `m{i}i` its optional info note, index-addressed
+ *  into the entry's `measurements` JSON column (0..5 mirrors
+ *  MAX_RESULT_MEASUREMENTS in proof.server.ts). Reordering rows shifts
+ *  indices: old rows digest-mismatch, are skipped at serve time and
+ *  re-translate on the next run — never applied to the wrong row. */
+export const RESULT_MEASUREMENT_FIELDS: string[] = [];
+for (let i = 0; i < 6; i++) RESULT_MEASUREMENT_FIELDS.push(`m${i}l`, `m${i}i`);
+
 /** Which entry fields are prose (translatable). Everything else — names,
  *  publication wordmarks, URLs, ISO codes, concern slugs — never leaves
- *  the shop's primary language. */
+ *  the shop's primary language (attribution NAMES are proper nouns and
+ *  stay; the attribution ROLE is prose). */
 export const TRANSLATABLE_PROOF_FIELDS: Record<ProofScope, string[]> = {
   press: ["quote"],
   endorsements: ["quote", "credentials"],
-  results: ["testimonial"],
+  results: ["testimonial", "attributionRole", ...RESULT_MEASUREMENT_FIELDS],
   copy: [
     "copyEyebrow",
     "copyHeadline",
@@ -174,7 +184,50 @@ async function loadSourceFields(
       if (row.testimonial && /\S/.test(row.testimonial)) {
         out.push({ resourceType: "result", resourceId: row.id, field: "testimonial", text: row.testimonial });
       }
+      // v25 prose satellites of a result entry. Field values here MUST
+      // byte-match what the proxy hands getProofTranslationOverlay as
+      // sources (digests are the version key): both sides read the
+      // save-time-cleaned column verbatim, so they always agree.
+      if (row.attributionRole && /\S/.test(row.attributionRole)) {
+        out.push({ resourceType: "result", resourceId: row.id, field: "attributionRole", text: row.attributionRole });
+      }
+      for (const [field, text] of measurementSourceFields(row.measurements)) {
+        out.push({ resourceType: "result", resourceId: row.id, field, text });
+      }
     }
+  }
+  return out;
+}
+
+/**
+ * v25: `[field, text]` pairs for a result entry's measurement prose —
+ * `m{i}l` labels and `m{i}i` info notes, blanks skipped. A deliberate
+ * tolerant mirror of proof.server.ts parseResultMeasurements' string
+ * handling (the column is written by cleanMeasurements, so values are
+ * already trimmed/capped — both readers surface them verbatim); local so
+ * this module never gains a runtime import of proof.server (which
+ * imports this file: the ProofType import above is type-only on
+ * purpose).
+ */
+export function measurementSourceFields(
+  raw: string | null | undefined,
+): [string, string][] {
+  if (typeof raw !== "string" || raw.trim() === "") return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: [string, string][] = [];
+  for (let i = 0; i < parsed.length && i < 6; i++) {
+    const row = parsed[i];
+    if (typeof row !== "object" || row === null) continue;
+    const label = (row as Record<string, unknown>).label;
+    const info = (row as Record<string, unknown>).info;
+    if (typeof label === "string" && /\S/.test(label)) out.push([`m${i}l`, label]);
+    if (typeof info === "string" && /\S/.test(info)) out.push([`m${i}i`, info]);
   }
   return out;
 }

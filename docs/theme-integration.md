@@ -75,6 +75,14 @@ Products sell 1/2/3-unit tiers as **variants of one option** (discounts baked in
 `snippets/pdp-options.liquid` renders tier buttons with `data-units="{{ forloop.index }}"` — i.e. **variant position = unit count**.
 An in-cart "upgrade to 2/3 units" therefore means **swapping the cart line to the higher-tier variant** (`/cart/change.js` qty 0 on the old line + `/cart/add.js` with the new variant id, preserving `selling_plan`), NOT bumping quantity.
 
+## PDP variant picker anatomy (v26 facts, verified LIVE 2026-09-18)
+The picker the v26 quantity-selector cards replace lives in `.pdp__info > .pdp__options`:
+- `snippets/pdp-options.liquid` renders ONE `div.option__wrap.option__wrap--buttons[data-option="sm-rc-option{{ i }}-selector"]` per product option, holding a `<label>` ("Select Size") and `div.btn__wrap` of `<button>` pills.
+- Each pill carries `data-units` (= forloop.index), `data-cans` / `data-rc_cans` (theme-computed per-unit money strings), `data-val` (the option value) and `data-val-id` (the variant id). **The LAST button's `data-val-id` leaks a trailing newline** (the snippet's capture keeps the final variant row's newline) — always trim before comparing. Stray `}` text nodes between pills come from the snippet's `{% assign variantId = varSplit[3] %}}` typo; harmless, but never parse the group positionally.
+- The pills' inline jQuery handler is the ONLY selection machinery: it moves `.active`, writes `.pdp__price .per-unit`, and drives the HIDDEN `select[sm-rc-option1-selector]` (sm-rc-widget.liquid) whose jQuery `change` handlers update the form/price/subscription state. A native `.click()` on a pill triggers all of it — even while the group is `display:none` — which is exactly how the v26 cards stay behavior-identical.
+- **`<html lang>` is `{{ shop.locale }}`** (layout/theme.liquid line 3): it is the shop's PRIMARY language on every localized page. Never derive the page language from it — use `request.locale.iso_code` island members.
+- Deep links (`?variant=`) do NOT move the theme's `.active` pill (the snippet marks `forloop.first` active unconditionally); the v26 cards mirror the `.active` pill, so they inherit exactly this behavior.
+
 ## Subscriptions = Joy (Avada) via NATIVE selling plans
 - Joy Subscription app embed is enabled (`joy-subscription` in settings_data.json). Plans are native Shopify selling plans, fully visible to Liquid (`product.selling_plan_groups`) and the AJAX cart API (`selling_plan` param on `/cart/add.js`, `/cart/change.js`).
 - Discount is dynamic: `selling_plan.price_adjustments[0].value` (percentage). Do not hardcode 5 % — read it from the plan; 5 % is only the default.

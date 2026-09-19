@@ -165,8 +165,8 @@
     "badge_chip": "認定皮膚科医"
   },
   "results": {
-    "banner_verified": "Cellexiaのお客様{{ count }}名（購入確認済み）の結果をご覧ください。",
-    "banner_all": "Cellexiaのお客様{{ count }}名の結果をご覧ください。",
+    "banner_verified": "Cellexiaの実際のユーザー{{ count }}名の結果をご覧ください。",
+    "banner_all": "Cellexiaユーザー{{ count }}名の結果をご覧ください。",
     "filter_concern": "肌悩み",
     "filter_age": "年齢",
     "filter_skin": "肌タイプ",

@@ -169,8 +169,8 @@
     "badge_chip": "Bőrgyógyász szakorvosok"
   },
   "results": {
-    "banner_verified": "Nézd meg {{ count }} igazolt Cellexia-vásárló eredményeit.",
-    "banner_all": "Nézd meg {{ count }} Cellexia-vásárló eredményeit.",
+    "banner_verified": "Nézd meg {{ count }} valódi Cellexia-felhasználó eredményeit.",
+    "banner_all": "Nézd meg {{ count }} Cellexia-felhasználó eredményeit.",
     "filter_concern": "Bőrprobléma",
     "filter_age": "Életkor",
     "filter_skin": "Bőrtípus",

@@ -169,8 +169,8 @@
     "badge_chip": "Autoriserte hudleger"
   },
   "results": {
-    "banner_verified": "Se resultater fra {{ count }} verifiserte Cellexia-kunder.",
-    "banner_all": "Se resultater fra {{ count }} Cellexia-kunder.",
+    "banner_verified": "Se resultater fra {{ count }} ekte Cellexia-brukere.",
+    "banner_all": "Se resultater fra {{ count }} Cellexia-brukere.",
     "filter_concern": "Hudproblem",
     "filter_age": "Alder",
     "filter_skin": "Hudtype",

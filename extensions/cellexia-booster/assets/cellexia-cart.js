@@ -1028,8 +1028,10 @@
       // switch card must never enroll a shopper into an unlaunched app or a
       // market it is off in. A plan the merchant's keyword did not name is
       // therefore only fallback-eligible when the v17 context vouches for it
-      // (live + market + kill switch + ownership).
-      if (!fallback && subsAware() && ownedPlan(alloc.planId)) fallback = candidate;
+      // (live + market + kill switch + ownership). v23: "live" here is now
+      // literal — subsLive(), not subsAware(): the switch card has no
+      // per-shopper proof, so the setup-open data gate must not enroll.
+      if (!fallback && subsLive() && ownedPlan(alloc.planId)) fallback = candidate;
       if (!keyword || !m) continue;
       var groupName = m.groupName.toLowerCase();
       var planName = String(m.plan.name || '').toLowerCase();
@@ -1082,10 +1084,25 @@
   // closed. planIds never contains another app's plan ids (a Joy line can
   // never activate this) but may carry dead ones — safe for membership
   // tests, never a list to render plans from.
+  //
+  // v23: the island additionally carries sx.live (cellexia.launch_status ==
+  // 'live', byte-exact mirror of the buy box's own launch gate). Surfaces
+  // WITHOUT a per-shopper proof — the v17.2 card price decorator, and the
+  // switch card's keyword-less fallback plan — must use subsLive(), never
+  // subsAware(): in SETUP the data gate is open (v17.1, so previews work),
+  // but nothing shopper-visible may present subscription pricing or enroll
+  // anyone while the app is dark. Cart cross-sell keeps subsAware() because
+  // its trigger IS the per-shopper proof (an owned plan line in the cart).
 
   function subsAware() {
     return subscriptionAware() && !isB2B() &&
       !!(cfg.sx && Array.isArray(cfg.sx.p) && cfg.sx.p.length);
+  }
+
+  function subsLive() {
+    // subsAware() + the app is actually LIVE. Missing/false live member
+    // fails closed (an old island without the field behaves like setup).
+    return subsAware() && !!(cfg.sx && cfg.sx.live === true);
   }
 
   function ownedPlan(planId) {
@@ -6700,7 +6717,7 @@
     // badges never varied with them, presentment prices do, and a
     // go-live/market/currency switch must never serve cached cents.
     return 'cx_az_cardflags:3:' + locale + ':' + MARKET + ':' + activeCurrency() + ':' +
-      (subsAware() ? 's1' : 's0') + ':' + cardFlagHash(handles.slice().sort().join(','));
+      (subsLive() ? 's1' : 's0') + ':' + cardFlagHash(handles.slice().sort().join(','));
   }
 
   function cardFlagCacheGet(key) {
@@ -6747,9 +6764,10 @@
             : 0;
           // v17.2: the card's subscription price (the default owned plan
           // on the card's shown variant) rides the same verdict — resolved
-          // only while the market's subscription context is on, so cached
+          // only while the market's subscription context is LIVE (v23:
+          // subsLive, cards carry no per-shopper proof), so cached
           // verdicts under an s0 key never carry cents.
-          var sub = subsAware() ? cardSubCents(entry) : null;
+          var sub = subsLive() ? cardSubCents(entry) : null;
           map[handle] = badge || bought > 0 || sub != null ? { badge: badge, bought: bought, sub: sub } : null;
         });
         return map;
@@ -6949,7 +6967,7 @@
     // exactly when our flag re-renders on the fresh node.
     var wantBadge = badgeCardsOn() && !!azStr('amazon.bestseller');
     var wantBought = boughtCardsOn() && !!azStr('amazon.bought_count.other');
-    var wantSub = subsAware(); // v17.2: card prices follow the market's subscription state
+    var wantSub = subsLive(); // v17.2/v23: card prices follow the market's LIVE subscription state
     if (!wantBadge && !wantBought && !wantSub) return;
     for (var i = 0; i < anchors.length; i++) {
       var anchor = anchors[i];
@@ -6981,8 +6999,8 @@
           if (line && insertCardBought(anchor.box, line)) did = true;
         }
         // v17.2: subscription card price — verdict.sub only exists when it
-        // was resolved under an active context (the cache key's s1 side),
-        // and the live gate re-checks at decorate time (B2B, kill switch).
+        // was resolved under a LIVE context (the cache key's s1 side, v23),
+        // and subsLive() re-checks at decorate time (B2B, kill switch, live).
         if (wantSub && verdict.sub != null) {
           if (cardSubSwapPrice(anchor.box, verdict.sub)) did = true;
         }
@@ -7103,11 +7121,13 @@
       // usable strings per element (an element whose gate or strings
       // fail simply never renders; both failing = zero DOM writes).
       // v17.2: the subscription card price is the third boot reason —
-      // subsAware() bundles the kill switch, B2B and the sx island
-      // (installed + market + ownership), all fail closed.
+      // v23: subsLive() bundles the kill switch, B2B, the sx island
+      // (installed + market + ownership) AND launch_status == 'live',
+      // all fail closed. Cards have no per-shopper liveness proof, so
+      // setup mode must never boot the sub-price path.
       var wantBadge = badgeCardsOn() && !!azStr('amazon.bestseller');
       var wantBought = boughtCardsOn() && !!azStr('amazon.bought_count.other');
-      var wantSub = subsAware();
+      var wantSub = subsLive();
       if (!wantBadge && !wantBought && !wantSub) return;
       if (!window.fetch || typeof Promise === 'undefined') return;
       cardFlagMap = {};

@@ -1695,6 +1695,77 @@
   var RESULTS_SKIN_KEYS = { dry: 'sd', oily: 'so', combination: 'sc', sensitive: 'ss', normal: 'sn' };
   var RESULTS_DURATION_KEYS = { lt8: 'd1', '8to12': 'd2', gt12: 'd3' };
 
+  // v25 clinical redesign — stroke icon set (createElementNS only, the
+  // no-innerHTML discipline). Keys: chart (panel header), down/up (metric
+  // arrows), flask (clinical badge), scope/person/camera (trust marks),
+  // info (tile toggle), x (lightbox close).
+  var RESULTS_ICON_PATHS = {
+    chart: ['M4.5 16.5v-7', 'M10 16.5v-11', 'M15.5 16.5v-6'],
+    down: ['M10 4.5v11', 'M5.8 11.3 10 15.5l4.2-4.2'],
+    up: ['M10 15.5v-11', 'M5.8 8.7 10 4.5l4.2 4.2'],
+    flask: ['M8.2 2.8h3.6', 'M9 2.8v4.4l-4.4 7a2.4 2.4 0 0 0 2 3.7h6.8a2.4 2.4 0 0 0 2-3.7l-4.4-7V2.8'],
+    scope: ['M10 3v3', 'M10 14v3', 'M3 10h3', 'M14 10h3'],
+    person: ['M4.5 16.5c0-2.8 2.5-4.5 5.5-4.5s5.5 1.7 5.5 4.5'],
+    camera: ['M7.2 6 8.4 4.2h3.2L12.8 6'],
+    info: ['M10 9.2v4.3'],
+    x: ['M5.5 5.5l9 9', 'M14.5 5.5l-9 9']
+  };
+
+  function resultsIcon(kind, size) {
+    var svg = pfSvg('svg', null, ['viewBox', '0 0 20 20', 'width', String(size), 'height', String(size), 'fill', 'none', 'stroke', 'currentColor', 'stroke-width', '1.6', 'stroke-linecap', 'round', 'stroke-linejoin', 'round', 'focusable', 'false', 'aria-hidden', 'true']);
+    var paths = RESULTS_ICON_PATHS[kind] || [];
+    for (var i = 0; i < paths.length; i++) svg.appendChild(pfSvg('path', null, ['d', paths[i]]));
+    if (kind === 'scope') svg.appendChild(pfSvg('circle', null, ['cx', '10', 'cy', '10', 'r', '4']));
+    if (kind === 'person') svg.appendChild(pfSvg('circle', null, ['cx', '10', 'cy', '7', 'r', '3']));
+    if (kind === 'camera') {
+      svg.appendChild(pfSvg('rect', null, ['x', '3', 'y', '6', 'width', '14', 'height', '10', 'rx', '2']));
+      svg.appendChild(pfSvg('circle', null, ['cx', '10', 'cy', '11', 'r', '3']));
+    }
+    if (kind === 'info') {
+      svg.appendChild(pfSvg('circle', null, ['cx', '10', 'cy', '10', 'r', '7.2']));
+      svg.appendChild(pfSvg('circle', null, ['cx', '10', 'cy', '6.6', 'r', '0.5']));
+    }
+    return svg;
+  }
+
+  function resultsApplyCopy(conf, data) {
+    // v25: the proxy serves the clinical-UI chrome strings (tagline,
+    // panel header, baseline tag, trust-mark labels) as payload.copy —
+    // curated server-side per theme language because the el/ar locale
+    // files sit at Shopify's per-file byte cap. Whitelisted codes only;
+    // island strings and entry text are untouched. Raw-read convention:
+    // these never pass Liquid's t-filter escaping (v8.22 precedent).
+    if (!conf || !conf.str || !data || !data.copy || typeof data.copy !== 'object') return;
+    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu'];
+    for (var i = 0; i < keys.length; i++) {
+      var value = data.copy[keys[i]];
+      if (typeof value === 'string' && /\S/.test(value)) conf.str[keys[i]] = value;
+    }
+  }
+
+  function resultsValidMeasurements(list) {
+    // Instrument-measurement rows for the clinical panel: label + a
+    // direction the metric moved + a whole percent; optional info note
+    // behind the tile's toggle. Invalid rows are DROPPED (fail closed
+    // per row — a broken number must never render as proof).
+    if (!Array.isArray(list)) return [];
+    var out = [];
+    for (var i = 0; i < list.length && out.length < 6; i++) {
+      var m = list[i] && typeof list[i] === 'object' ? list[i] : {};
+      var label = typeof m.label === 'string' && /\S/.test(m.label) ? m.label : '';
+      var dir = m.dir === 'up' ? 'up' : m.dir === 'down' ? 'down' : '';
+      var pct = pfPosInt(m.pct) && m.pct <= 500 ? m.pct : 0;
+      if (!label || !dir || !pct) continue;
+      out.push({
+        l: label,
+        d: dir,
+        p: pct,
+        i: typeof m.info === 'string' && /\S/.test(m.info) ? m.info : ''
+      });
+    }
+    return out;
+  }
+
   function resultsFacetLabel(group, value, s) {
     // Facet value → display label. Skin types and duration buckets map to
     // locale strings (raw value fallback keeps unknown data honest);
@@ -1732,6 +1803,7 @@
       var before = pfHttps(it.beforeUrl);
       var after = pfHttps(it.afterUrl);
       if (!before && !after) continue; // a visual gallery card needs at least one image
+      var lab = it.source === 'lab';
       out.push({
         b: before,
         a: after,
@@ -1743,7 +1815,17 @@
         country: typeof it.country === 'string' ? it.country : '',
         text: typeof it.testimonial === 'string' && /\S/.test(it.testimonial) ? it.testimonial : '',
         verified: it.verified === true,
-        lab: it.source === 'lab'
+        lab: lab,
+        // v25 clinical panel data — LAB ROWS ONLY (a customer submission
+        // can never carry instrument claims, whatever the payload says).
+        m: lab ? resultsValidMeasurements(it.measurements) : [],
+        mk: {
+          mi: lab && it.markInstrument === true,
+          mp: lab && it.markSamePatient === true,
+          mu: lab && it.markUnretouched === true
+        },
+        an: typeof it.attributionName === 'string' && /\S/.test(it.attributionName) ? it.attributionName : '',
+        ar: typeof it.attributionRole === 'string' && /\S/.test(it.attributionRole) ? it.attributionRole : ''
       });
     }
     return out;
@@ -1768,28 +1850,162 @@
 
   function resultsBadges(item, s) {
     // Verified-purchase / lab badges — shared by card and lightbox; null
-    // when the item earns none.
+    // when the item earns none. v25: the lab badge carries the flask
+    // icon (the mock's "clinical study result" pill).
     var wrap = null;
-    function add(mod, label) {
+    function add(mod, label, icon) {
       if (!/\S/.test(label)) return;
       if (!wrap) wrap = pfEl('div', 'cx-results__badges');
       var b = pfEl('span', 'cx-results__badge ' + mod);
-      b.textContent = label;
+      if (icon) {
+        var ic = pfEl('span', 'cx-results__badge-ic', ['aria-hidden', 'true']);
+        ic.appendChild(resultsIcon(icon, 12));
+        b.appendChild(ic);
+      }
+      b.appendChild(document.createTextNode(label));
       wrap.appendChild(b);
       pfSp(wrap);
     }
-    if (item.verified) add('cx-results__badge--verified', pfStr(s, 'vb'));
-    if (item.lab) add('cx-results__badge--lab', pfStr(s, 'lb'));
+    if (item.verified) add('cx-results__badge--verified', pfStr(s, 'vb'), null);
+    if (item.lab) add('cx-results__badge--lab', pfStr(s, 'lb'), 'flask');
     return wrap;
   }
 
-  function resultsBuildFrame(url, tag) {
+  function resultsAttr(item) {
+    // v25: testimonial attribution — "Dr. Lauren Bennett, Consultant
+    // Dermatologist". Name is the anchor; a role without a name never
+    // renders (an unattributed title is not credibility).
+    if (!item.an) return null;
+    var p = pfEl('p', 'cx-results__attr');
+    var name = pfEl('strong', 'cx-results__attr-name');
+    name.textContent = item.an;
+    p.appendChild(name);
+    if (item.ar) {
+      var role = pfEl('span', 'cx-results__attr-role');
+      role.textContent = ', ' + item.ar;
+      p.appendChild(role);
+    }
+    return p;
+  }
+
+  function resultsClinical(item, s) {
+    // v25 clinical panel — the tinted "clinically measured" block shared
+    // by card and lightbox: header (measured-at + vs-baseline), metric
+    // tiles (arrow + percent, optional info toggle feeding ONE shared
+    // note line), then the trust-mark row. Lab entries only; every
+    // element fails soft when its data or proxy-carried label is absent,
+    // and a panel with nothing to say returns null.
+    if (!item.lab) return null;
+    var rows = item.m;
+    var marks = [];
+    if (item.mk.mi) marks.push(['scope', pfStrRaw(s, 'mi')]);
+    if (item.mk.mp) marks.push(['person', pfStrRaw(s, 'mp')]);
+    if (item.mk.mu) marks.push(['camera', pfStrRaw(s, 'mu')]);
+    var labeled = [];
+    for (var i = 0; i < marks.length; i++) {
+      if (/\S/.test(marks[i][1])) labeled.push(marks[i]);
+    }
+    if (rows.length === 0 && labeled.length === 0) return null;
+    var panel = pfEl('div', 'cx-results__clin');
+    pfSp(panel);
+    if (rows.length > 0) {
+      var title = '';
+      var ma = pfStrRaw(s, 'ma');
+      if (item.weeks && /\S/.test(ma) && ma.indexOf('@@N@@') !== -1) {
+        title = ma.replace('@@N@@', String(item.weeks));
+      }
+      var vsb = pfStrRaw(s, 'vsb');
+      if (/\S/.test(title) || /\S/.test(vsb)) {
+        var head = pfEl('div', 'cx-results__clin-head');
+        if (/\S/.test(title)) {
+          var hic = pfEl('span', 'cx-results__clin-ic', ['aria-hidden', 'true']);
+          hic.appendChild(resultsIcon('chart', 14));
+          head.appendChild(hic);
+          var ht = pfEl('span', 'cx-results__clin-title');
+          ht.textContent = title;
+          head.appendChild(ht);
+        }
+        if (/\S/.test(vsb)) {
+          var hb = pfEl('span', 'cx-results__clin-base');
+          hb.textContent = vsb;
+          head.appendChild(hb);
+        }
+        panel.appendChild(head);
+        pfSp(panel);
+      }
+      var note = pfEl('p', 'cx-results__clin-note', ['hidden', '', 'aria-live', 'polite']);
+      var noteFor = -1;
+      var infoBtns = [];
+      var syncNote = function () {
+        if (noteFor === -1) note.setAttribute('hidden', '');
+        else note.removeAttribute('hidden');
+        for (var b = 0; b < infoBtns.length; b++) {
+          infoBtns[b].btn.setAttribute('aria-expanded', infoBtns[b].idx === noteFor ? 'true' : 'false');
+        }
+      };
+      var grid = pfEl('div', 'cx-results__clin-grid');
+      for (var r = 0; r < rows.length; r++) {
+        (function (row, idx) {
+          var tile = pfEl('div', 'cx-results__clin-tile');
+          var label = pfEl('span', 'cx-results__clin-label');
+          label.textContent = row.l;
+          tile.appendChild(label);
+          pfSp(tile);
+          var val = pfEl('span', 'cx-results__clin-val cx-results__clin-val--' + row.d);
+          val.appendChild(resultsIcon(row.d, 15));
+          val.appendChild(document.createTextNode(row.p + '%'));
+          tile.appendChild(val);
+          if (row.i) {
+            var btn = pfEl('button', 'cx-results__clin-info', ['type', 'button', 'aria-expanded', 'false', 'aria-label', row.l]);
+            btn.appendChild(resultsIcon('info', 14));
+            btn.addEventListener('click', function () {
+              if (noteFor === idx) {
+                noteFor = -1;
+              } else {
+                noteFor = idx;
+                note.textContent = row.i;
+              }
+              syncNote();
+            });
+            infoBtns.push({ btn: btn, idx: idx });
+            tile.appendChild(btn);
+          }
+          grid.appendChild(tile);
+          pfSp(grid);
+        })(rows[r], r);
+      }
+      panel.appendChild(grid);
+      pfSp(panel);
+      panel.appendChild(note);
+      pfSp(panel);
+    }
+    if (labeled.length > 0) {
+      var mrow = pfEl('div', 'cx-results__clin-marks');
+      for (var k = 0; k < labeled.length; k++) {
+        var mark = pfEl('span', 'cx-results__clin-mark');
+        var mic = pfEl('span', 'cx-results__clin-mark-ic', ['aria-hidden', 'true']);
+        mic.appendChild(resultsIcon(labeled[k][0], 16));
+        mark.appendChild(mic);
+        var mt = pfEl('span', 'cx-results__clin-mark-t');
+        mt.textContent = labeled[k][1];
+        mark.appendChild(mt);
+        mrow.appendChild(mark);
+        pfSp(mrow);
+      }
+      panel.appendChild(mrow);
+      pfSp(panel);
+    }
+    return panel;
+  }
+
+  function resultsBuildFrame(url, tag, after) {
     var frame = pfEl('div', 'cx-results__frame');
     var img = pfEl('img', 'cx-results__thumb', ['alt', '', 'loading', 'lazy']);
     img.src = url;
     frame.appendChild(img);
     if (/\S/.test(tag)) {
-      var t = pfEl('span', 'cx-results__tag');
+      // v25: the After pill is green-tinted (the mock's tag pair).
+      var t = pfEl('span', after ? 'cx-results__tag cx-results__tag--after' : 'cx-results__tag');
       t.textContent = tag;
       frame.appendChild(t);
     }
@@ -1800,8 +2016,8 @@
     var card = pfEl('div', 'cx-results__card');
     pfSp(card);
     var media = pfEl('button', 'cx-results__media', ['type', 'button']);
-    if (item.b) media.appendChild(resultsBuildFrame(item.b, pfStr(s, 'bef')));
-    if (item.a) media.appendChild(resultsBuildFrame(item.a, pfStr(s, 'aft')));
+    if (item.b) media.appendChild(resultsBuildFrame(item.b, pfStr(s, 'bef'), false));
+    if (item.a) media.appendChild(resultsBuildFrame(item.a, pfStr(s, 'aft'), true));
     if (item.video) {
       var play = pfEl('span', 'cx-results__play', ['aria-hidden', 'true']);
       var svg = pfSvg('svg', null, ['viewBox', '0 0 20 20', 'width', '12', 'height', '12', 'fill', 'currentColor', 'focusable', 'false', 'aria-hidden', 'true']);
@@ -1821,6 +2037,11 @@
     });
     card.appendChild(media);
     pfSp(card);
+    var clin = resultsClinical(item, s);
+    if (clin) {
+      card.appendChild(clin);
+      pfSp(card);
+    }
     var badges = resultsBadges(item, s);
     if (badges) {
       card.appendChild(badges);
@@ -1839,6 +2060,11 @@
       card.appendChild(q);
       pfSp(card);
     }
+    var attr = resultsAttr(item);
+    if (attr) {
+      card.appendChild(attr);
+      pfSp(card);
+    }
     return card;
   }
 
@@ -1849,10 +2075,11 @@
     pfSp(root);
     var card = pfEl('div', 'cx-lightbox__card', ['role', 'dialog', 'aria-modal', 'true', 'tabindex', '-1']);
     pfSp(card);
+    // v25: the close control is a solid white circle with a stroked X —
+    // the old borderless text glyph disappeared over photos (merchant
+    // catch); sticky CSS keeps it reachable while the card scrolls.
     var close = pfEl('button', 'cx-lightbox__close', ['type', 'button', 'data-cx-lb-close', '', 'aria-label', pfStr(s, 'close')]);
-    var x = pfEl('span', null, ['aria-hidden', 'true']);
-    x.textContent = '×';
-    close.appendChild(x);
+    close.appendChild(resultsIcon('x', 16));
     card.appendChild(close);
     pfSp(card);
     var imgs = pfEl('div', 'cx-lightbox__imgs');
@@ -1893,17 +2120,44 @@
       card.appendChild(badges);
       pfSp(card);
     }
-    if (item.text) {
-      var q = pfEl('p', 'cx-lightbox__quote');
-      q.textContent = item.text;
-      card.appendChild(q);
+    var clin = resultsClinical(item, s);
+    if (clin) {
+      card.appendChild(clin);
       pfSp(card);
+    }
+    // v25 foot: quote + attribution on the inline-start side, the meta
+    // microline (weeks of use etc.) on the inline-end side — the mock's
+    // closing row. Any part may be absent; an empty foot is skipped.
+    var foot = null;
+    if (item.text || item.an) {
+      foot = pfEl('div', 'cx-lightbox__foot');
+      var main = pfEl('div', 'cx-lightbox__foot-main');
+      if (item.text) {
+        var q = pfEl('p', 'cx-lightbox__quote');
+        q.textContent = item.text;
+        main.appendChild(q);
+        pfSp(main);
+      }
+      var attr = resultsAttr(item);
+      if (attr) {
+        main.appendChild(attr);
+        pfSp(main);
+      }
+      foot.appendChild(main);
+      pfSp(foot);
     }
     var meta = resultsMetaLine(item, s);
     if (meta) {
       var m = pfEl('p', 'cx-lightbox__meta');
       m.textContent = meta;
-      card.appendChild(m);
+      if (foot) foot.appendChild(m);
+      else {
+        card.appendChild(m);
+        pfSp(card);
+      }
+    }
+    if (foot) {
+      card.appendChild(foot);
       pfSp(card);
     }
     root.appendChild(card);
@@ -2038,6 +2292,9 @@
   }
 
   function resultsBuildSection(conf, data) {
+    // v25: merge the proxy-carried clinical-UI strings FIRST — cards
+    // built later (filters, Show more) read the same conf.str object.
+    resultsApplyCopy(conf, data);
     var s = conf.str || {};
     var banner = resultsBannerData(s, data ? data.total : 0, data ? data.verifiedTotal : 0);
     if (!banner) return null; // 0 total → the whole module fails closed
@@ -2072,6 +2329,16 @@
     bannerP.appendChild(document.createTextNode(parts.length > 1 ? parts[1] : ''));
     root.appendChild(bannerP);
     pfSp(root);
+
+    // v25: "Real people. Real results." tagline under the banner —
+    // proxy-carried copy, so its absence simply skips the line.
+    var tagline = pfStrRaw(s, 'rp');
+    if (/\S/.test(tagline)) {
+      var tagP = pfEl('p', 'cx-results__tagline');
+      tagP.textContent = tagline;
+      root.appendChild(tagP);
+      pfSp(root);
+    }
 
     var rail = pfEl('div', 'cx-results__rail');
     var emptyP = pfEl('p', 'cx-results__empty', ['hidden', '']);

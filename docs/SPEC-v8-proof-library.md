@@ -1,5 +1,12 @@
 # SPEC v8 — Proof library (press · dermatologist endorsements · results gallery · compact modes)
 
+> v25 note: the results gallery's card/lightbox VISUAL composition, the
+> clinical-measurement data model (CustomerResult columns), the proxy
+> `payload.copy` chrome member and the results translation-field set were
+> extended — `docs/SPEC-v25-results-redesign.md` is the current contract
+> for those. The v8 architecture below (proxy, densities, fail-closed
+> rules, ProofTranslation) still holds.
+
 Binding contract for the v8 wave. Read `docs/SPEC.md` and `docs/SPEC-v7-product-proof.md`
 first — every v7 invariant (byte budget, ES5, textContent-only, class coverage, prover
 allowlist, knownIds, honest fail-closed rendering) carries over. Merchant ask (2026-08-01):

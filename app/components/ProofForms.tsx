@@ -862,6 +862,64 @@ export function EndorsementForm({
   );
 }
 
+/** v25 client twin of proof.server's parseResultMeasurements (the
+ *  parseProductGidList precedent — .server modules must never reach the
+ *  client bundle). Tolerant: malformed rows are skipped, caps mirrored. */
+export interface ParsedMeasurement {
+  label: string;
+  dir: string;
+  pct: number;
+  info?: string;
+}
+
+export function parseResultMeasurementList(
+  raw: string | null | undefined,
+): ParsedMeasurement[] {
+  if (typeof raw !== "string" || raw.trim() === "") return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: ParsedMeasurement[] = [];
+  for (const entry of parsed) {
+    if (out.length >= 6) break;
+    if (typeof entry !== "object" || entry === null) continue;
+    const row = entry as Record<string, unknown>;
+    const label = typeof row.label === "string" ? row.label : "";
+    const dir = row.dir === "up" ? "up" : row.dir === "down" ? "down" : "";
+    const pct =
+      typeof row.pct === "number" && Number.isInteger(row.pct) && row.pct >= 1
+        ? row.pct
+        : 0;
+    if (label === "" || dir === "" || pct === 0) continue;
+    const info = typeof row.info === "string" ? row.info : "";
+    out.push(info === "" ? { label, dir, pct } : { label, dir, pct, info });
+  }
+  return out;
+}
+
+/** v25: one clinical-measurement editor row (pct held as string while
+ *  typing; formToPayload numbers it). */
+export interface ResultMeasurementForm {
+  label: string;
+  dir: string;
+  pct: string;
+  info: string;
+}
+
+export const EMPTY_MEASUREMENT: ResultMeasurementForm = {
+  label: "",
+  dir: "down",
+  pct: "",
+  info: "",
+};
+
+/** Client mirror of MAX_RESULT_MEASUREMENTS (proof.server.ts). */
+export const MAX_MEASUREMENT_ROWS = 6;
+
 export interface ResultFormValues {
   source: string;
   verified: boolean;
@@ -874,6 +932,12 @@ export interface ResultFormValues {
   country: string;
   testimonial: string;
   videoUrl: string;
+  measurements: ResultMeasurementForm[];
+  markInstrument: boolean;
+  markSamePatient: boolean;
+  markUnretouched: boolean;
+  attributionName: string;
+  attributionRole: string;
   productGids: string[];
   featured: boolean;
   status: string;
@@ -891,6 +955,12 @@ export const EMPTY_RESULT_FORM: ResultFormValues = {
   country: "",
   testimonial: "",
   videoUrl: "",
+  measurements: [],
+  markInstrument: false,
+  markSamePatient: false,
+  markUnretouched: false,
+  attributionName: "",
+  attributionRole: "",
   productGids: [],
   featured: false,
   status: "pending",
@@ -935,6 +1005,20 @@ export function durationWeeksError(value: string): string | undefined {
   return undefined;
 }
 
+/** v25: percent field of a measurement row — required once the row exists. */
+export function measurementPctError(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed) || Number(trimmed) < 1 || Number(trimmed) > 500) {
+    return "Whole percent, 1–500";
+  }
+  return undefined;
+}
+
+const MEASUREMENT_DIR_OPTIONS = [
+  { label: "Decreased (↓)", value: "down" },
+  { label: "Increased (↑)", value: "up" },
+];
+
 interface ResultFormProps {
   initial: ResultFormValues;
   busy: boolean;
@@ -964,8 +1048,61 @@ export function ResultForm({
     values.afterUrl !== "" ||
     values.testimonial.trim() !== "" ||
     values.videoUrl.trim() !== "";
-  const valid = hasContent && !videoError && !countryError && !durationError;
+  // v25 clinical editor state (lab entries only — the section is hidden
+  // otherwise and the server clears clinical fields on a source flip).
+  const isLab = values.source === "lab";
+  const measurementErrors = values.measurements.map((m) => ({
+    label: m.label.trim() === "" ? "Label is required" : undefined,
+    pct: measurementPctError(m.pct),
+  }));
+  const measurementsInvalid =
+    isLab && measurementErrors.some((e) => e.label || e.pct);
+  const measurementsNeedDuration =
+    isLab &&
+    values.measurements.length > 0 &&
+    !/^[1-9]\d*$/.test(values.durationWeeks.trim());
+  const valid =
+    hasContent &&
+    !videoError &&
+    !countryError &&
+    !durationError &&
+    !measurementsInvalid &&
+    !measurementsNeedDuration;
   const dirty = JSON.stringify(values) !== JSON.stringify(initial);
+
+  const setMeasurement = (
+    index: number,
+    patch: Partial<ResultMeasurementForm>,
+  ) =>
+    setValues((prev) => ({
+      ...prev,
+      measurements: prev.measurements.map((m, i) =>
+        i === index ? { ...m, ...patch } : m,
+      ),
+    }));
+  const addMeasurement = () =>
+    setValues((prev) =>
+      prev.measurements.length >= MAX_MEASUREMENT_ROWS
+        ? prev
+        : {
+            ...prev,
+            measurements: [...prev.measurements, { ...EMPTY_MEASUREMENT }],
+          },
+    );
+  const removeMeasurement = (index: number) =>
+    setValues((prev) => ({
+      ...prev,
+      measurements: prev.measurements.filter((_, i) => i !== index),
+    }));
+  const moveMeasurement = (index: number, delta: number) =>
+    setValues((prev) => {
+      const next = [...prev.measurements];
+      const target = index + delta;
+      if (target < 0 || target >= next.length) return prev;
+      const [row] = next.splice(index, 1);
+      next.splice(target, 0, row);
+      return { ...prev, measurements: next };
+    });
 
   return (
     <BlockStack gap="300">
@@ -998,6 +1135,32 @@ export function ResultForm({
         autoComplete="off"
         disabled={busy}
       />
+      <InlineStack gap="300" wrap blockAlign="start">
+        <Box minWidth="220px">
+          <TextField
+            label="Attribution name (optional)"
+            value={values.attributionName}
+            maxLength={80}
+            onChange={(attributionName) => set("attributionName", attributionName)}
+            placeholder="Dr. Lauren Bennett"
+            helpText="Who the quote is from. Names are never translated."
+            autoComplete="off"
+            disabled={busy}
+          />
+        </Box>
+        <Box minWidth="220px">
+          <TextField
+            label="Attribution role (optional)"
+            value={values.attributionRole}
+            maxLength={120}
+            onChange={(attributionRole) => set("attributionRole", attributionRole)}
+            placeholder="Consultant Dermatologist"
+            helpText="Shown after the name; auto-translated like the testimonial."
+            autoComplete="off"
+            disabled={busy}
+          />
+        </Box>
+      </InlineStack>
       <TextField
         label="Video URL (optional)"
         value={values.videoUrl}
@@ -1072,6 +1235,133 @@ export function ResultForm({
           />
         </Box>
       </InlineStack>
+      {isLab ? (
+        <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+          <BlockStack gap="300">
+            <Text as="h4" variant="headingSm">
+              Clinical measurements
+            </Text>
+            <Text as="p" tone="subdued" variant="bodySm">
+              Renders the tinted “Clinically measured at N weeks · vs.
+              baseline” panel on the card and in the enlarged view (N =
+              Duration above). Labels and info notes are auto-translated
+              like the testimonial; the info note appears behind the
+              tile&rsquo;s ⓘ toggle.
+            </Text>
+            {values.measurements.map((m, index) => (
+              <InlineStack key={index} gap="200" wrap blockAlign="start">
+                <Box minWidth="200px">
+                  <TextField
+                    label={`Measurement ${index + 1}`}
+                    value={m.label}
+                    maxLength={80}
+                    onChange={(label) => setMeasurement(index, { label })}
+                    error={measurementErrors[index]?.label}
+                    placeholder="Under-eye wrinkle depth"
+                    autoComplete="off"
+                    disabled={busy}
+                  />
+                </Box>
+                <Box minWidth="150px">
+                  <Select
+                    label="Direction"
+                    options={MEASUREMENT_DIR_OPTIONS}
+                    value={m.dir}
+                    onChange={(dir) => setMeasurement(index, { dir })}
+                    disabled={busy}
+                  />
+                </Box>
+                <Box minWidth="100px" maxWidth="120px">
+                  <TextField
+                    label="Percent"
+                    value={m.pct}
+                    onChange={(pct) => setMeasurement(index, { pct })}
+                    error={measurementErrors[index]?.pct}
+                    suffix="%"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    disabled={busy}
+                  />
+                </Box>
+                <Box minWidth="220px">
+                  <TextField
+                    label="Info note (optional)"
+                    value={m.info}
+                    maxLength={240}
+                    onChange={(info) => setMeasurement(index, { info })}
+                    placeholder="Measured with a 3D skin scanner…"
+                    autoComplete="off"
+                    disabled={busy}
+                  />
+                </Box>
+                <Box paddingBlockStart="600">
+                  <InlineStack gap="100">
+                    <Button
+                      icon={ArrowUpIcon}
+                      accessibilityLabel={`Move measurement ${index + 1} up`}
+                      size="slim"
+                      disabled={busy || index === 0}
+                      onClick={() => moveMeasurement(index, -1)}
+                    />
+                    <Button
+                      icon={ArrowDownIcon}
+                      accessibilityLabel={`Move measurement ${index + 1} down`}
+                      size="slim"
+                      disabled={busy || index === values.measurements.length - 1}
+                      onClick={() => moveMeasurement(index, 1)}
+                    />
+                    <Button
+                      size="slim"
+                      tone="critical"
+                      disabled={busy}
+                      onClick={() => removeMeasurement(index)}
+                    >
+                      Remove
+                    </Button>
+                  </InlineStack>
+                </Box>
+              </InlineStack>
+            ))}
+            {values.measurements.length < MAX_MEASUREMENT_ROWS ? (
+              <InlineStack>
+                <Button onClick={addMeasurement} disabled={busy}>
+                  Add measurement
+                </Button>
+              </InlineStack>
+            ) : null}
+            {measurementsNeedDuration ? (
+              <Text as="p" tone="critical" variant="bodySm">
+                Set Duration (weeks) above — the panel header states when
+                the measurements were taken.
+              </Text>
+            ) : null}
+            <InlineStack gap="300" blockAlign="center" wrap>
+              <Checkbox
+                label="Instrument measured"
+                checked={values.markInstrument}
+                onChange={(markInstrument) => set("markInstrument", markInstrument)}
+                disabled={busy}
+              />
+              <Checkbox
+                label="Same patient"
+                checked={values.markSamePatient}
+                onChange={(markSamePatient) => set("markSamePatient", markSamePatient)}
+                disabled={busy}
+              />
+              <Checkbox
+                label="Unretouched images"
+                checked={values.markUnretouched}
+                onChange={(markUnretouched) => set("markUnretouched", markUnretouched)}
+                disabled={busy}
+              />
+            </InlineStack>
+            <Text as="p" tone="subdued" variant="bodySm">
+              The three trust marks render under the measurements only where
+              checked — tick each one only if it is true for THIS entry.
+            </Text>
+          </BlockStack>
+        </Box>
+      ) : null}
       <ProductTagPicker
         value={values.productGids}
         disabled={busy}
@@ -1080,7 +1370,7 @@ export function ResultForm({
       <InlineStack gap="300" blockAlign="center" wrap>
         <Checkbox
           label="Verified purchase"
-          helpText="Counts toward the “verified customers” scale banner."
+          helpText="Counts toward the “real Cellexia users” scale banner (its count is verified entries only)."
           checked={values.verified}
           onChange={(verified) => set("verified", verified)}
           disabled={busy}

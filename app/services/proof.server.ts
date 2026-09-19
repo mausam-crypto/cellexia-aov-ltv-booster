@@ -95,6 +95,72 @@ export const SKIN_TYPES = [
 export const DURATION_BUCKETS = ["lt8", "8to12", "gt12"] as const;
 export type DurationBucket = (typeof DURATION_BUCKETS)[number];
 
+/** v25 clinical measurements — "dir" is the direction the metric MOVED
+ *  (both directions are improvements the merchant chose to publish:
+ *  "down" = reduction, e.g. wrinkle depth; "up" = increase, e.g.
+ *  firmness). */
+export const MEASUREMENT_DIRECTIONS = ["down", "up"] as const;
+export type MeasurementDirection = (typeof MEASUREMENT_DIRECTIONS)[number];
+export const MAX_RESULT_MEASUREMENTS = 6;
+export const MEASUREMENT_LABEL_MAX = 80;
+export const MEASUREMENT_INFO_MAX = 240;
+export const MEASUREMENT_PCT_MAX = 500;
+
+export interface ResultMeasurement {
+  /** What was measured, e.g. "Under-eye wrinkle depth". Merchant text —
+   *  DeepL-translatable per entry (field codes m0l…m5l). */
+  label: string;
+  dir: MeasurementDirection;
+  /** Whole percent, 1–500 (sign carried by dir, never typed). */
+  pct: number;
+  /** Optional methodology note behind the tile's ⓘ toggle (m0i…m5i). */
+  info?: string;
+}
+
+/**
+ * Tolerant parse of the stored `measurements` column for SERVING and admin
+ * display: malformed JSON or rows are dropped, never surfaced — the column
+ * is only ever written by cleanMeasurements, so a bad row means a migration
+ * artifact, and the storefront must fail closed per row, not per entry.
+ */
+export function parseResultMeasurements(
+  raw: string | null | undefined,
+): ResultMeasurement[] {
+  if (typeof raw !== "string" || raw.trim() === "") return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: ResultMeasurement[] = [];
+  for (const entry of parsed) {
+    if (out.length >= MAX_RESULT_MEASUREMENTS) break;
+    if (typeof entry !== "object" || entry === null) continue;
+    const row = entry as Record<string, unknown>;
+    const label =
+      typeof row.label === "string"
+        ? row.label.trim().slice(0, MEASUREMENT_LABEL_MAX)
+        : "";
+    const dir = row.dir === "up" ? "up" : row.dir === "down" ? "down" : null;
+    const pct =
+      typeof row.pct === "number" &&
+      Number.isInteger(row.pct) &&
+      row.pct >= 1 &&
+      row.pct <= MEASUREMENT_PCT_MAX
+        ? row.pct
+        : null;
+    if (label === "" || dir === null || pct === null) continue;
+    const info =
+      typeof row.info === "string"
+        ? row.info.trim().slice(0, MEASUREMENT_INFO_MAX)
+        : "";
+    out.push(info === "" ? { label, dir, pct } : { label, dir, pct, info });
+  }
+  return out;
+}
+
 export interface PressItemInput {
   publication: string;
   logoUrl: string;
@@ -134,6 +200,14 @@ export interface ResultInput {
   country: string;
   testimonial: string;
   videoUrl: string;
+  /** v25: clinical measurements (lab entries only — silently cleared for
+   *  customer entries, the admin never shows the editor there). */
+  measurements: unknown;
+  markInstrument: boolean;
+  markSamePatient: boolean;
+  markUnretouched: boolean;
+  attributionName: string;
+  attributionRole: string;
   productGids: string[];
   featured: boolean;
   status: string;
@@ -305,6 +379,55 @@ export function parseProductGids(raw: string | null | undefined): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * STRICT measurement validation for saves (the tolerant twin above serves).
+ * Every problem is reported — an admin typo must never silently vanish a
+ * row the merchant thinks is published.
+ */
+function cleanMeasurements(value: unknown, errors: string[]): ResultMeasurement[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    errors.push("Clinical measurements must be a list");
+    return [];
+  }
+  if (value.length > MAX_RESULT_MEASUREMENTS) {
+    errors.push(`No more than ${MAX_RESULT_MEASUREMENTS} clinical measurements`);
+    return [];
+  }
+  const out: ResultMeasurement[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const nth = `Measurement ${i + 1}`;
+    if (typeof value[i] !== "object" || value[i] === null) {
+      errors.push(`${nth} is malformed`);
+      continue;
+    }
+    const row = value[i] as Record<string, unknown>;
+    const label = cleanText(row.label, MEASUREMENT_LABEL_MAX);
+    if (label === "") errors.push(`${nth} needs a label`);
+    const dir = row.dir;
+    if (dir !== "down" && dir !== "up") {
+      errors.push(`${nth} needs a direction (down or up)`);
+    }
+    const pct = row.pct;
+    const pctOk =
+      typeof pct === "number" &&
+      Number.isInteger(pct) &&
+      pct >= 1 &&
+      pct <= MEASUREMENT_PCT_MAX;
+    if (!pctOk) {
+      errors.push(`${nth} needs a whole percent between 1 and ${MEASUREMENT_PCT_MAX}`);
+    }
+    if (label === "" || (dir !== "down" && dir !== "up") || !pctOk) continue;
+    const info = cleanText(row.info, MEASUREMENT_INFO_MAX);
+    out.push(
+      info === ""
+        ? { label, dir, pct: pct as number }
+        : { label, dir, pct: pct as number, info },
+    );
+  }
+  return out;
 }
 
 export function durationBucketOf(
@@ -753,6 +876,18 @@ export async function saveResult(
   const country = cleanCountry(input.country, errors);
   const productGids = cleanProductGids(input.productGids, errors);
   const status = cleanEnum(input.status, RESULT_STATUSES, "pending");
+  // v25 clinical fields. Measurements and trust marks are LAB-ONLY claims:
+  // switching an entry to customer-submitted clears them (the admin hides
+  // the editor for customer entries, so nothing user-visible is lost).
+  const isLab = source === "lab";
+  const measurements = isLab ? cleanMeasurements(input.measurements, errors) : [];
+  if (measurements.length > 0 && (durationWeeks === null || durationWeeks < 1)) {
+    errors.push(
+      "Clinical measurements need Duration (weeks) — the panel states when they were taken",
+    );
+  }
+  const attributionName = cleanText(input.attributionName, 80);
+  const attributionRole = cleanText(input.attributionRole, 120);
   if (errors.length > 0) return { ok: false, id: id ?? null, errors };
 
   const data = {
@@ -767,6 +902,12 @@ export async function saveResult(
     country: country === "" ? null : country,
     testimonial: testimonial === "" ? null : testimonial,
     videoUrl: videoUrl === "" ? null : videoUrl,
+    measurements: JSON.stringify(measurements),
+    markInstrument: isLab && input.markInstrument === true,
+    markSamePatient: isLab && input.markSamePatient === true,
+    markUnretouched: isLab && input.markUnretouched === true,
+    attributionName: attributionName === "" ? null : attributionName,
+    attributionRole: attributionRole === "" ? null : attributionRole,
     productGids,
     featured: Boolean(input.featured),
     status,
@@ -1005,6 +1146,15 @@ export interface PublicResult {
   country: string | null;
   testimonial: string | null;
   videoUrl: string | null;
+  /** v25 — clinical panel data. Lab rows only: a customer row ALWAYS
+   *  serves [] and false marks, whatever the columns hold (belt over the
+   *  save-time normalization). */
+  measurements: ResultMeasurement[];
+  markInstrument: boolean;
+  markSamePatient: boolean;
+  markUnretouched: boolean;
+  attributionName: string | null;
+  attributionRole: string | null;
 }
 
 export interface FacetCount {
@@ -1204,20 +1354,29 @@ export async function getPublicResults(
     // Rows matching the current filters (no filters = the full scoped set).
     total: filtered.length,
     verifiedTotal,
-    items: filtered.slice(start, start + per).map((row) => ({
-      id: row.id,
-      source: row.source,
-      verified: row.verified,
-      beforeUrl: row.beforeUrl,
-      afterUrl: row.afterUrl,
-      ageRange: row.ageRange,
-      skinType: row.skinType,
-      concern: row.concern,
-      durationWeeks: row.durationWeeks,
-      country: row.country,
-      testimonial: row.testimonial,
-      videoUrl: row.videoUrl,
-    })),
+    items: filtered.slice(start, start + per).map((row) => {
+      const lab = row.source === "lab";
+      return {
+        id: row.id,
+        source: row.source,
+        verified: row.verified,
+        beforeUrl: row.beforeUrl,
+        afterUrl: row.afterUrl,
+        ageRange: row.ageRange,
+        skinType: row.skinType,
+        concern: row.concern,
+        durationWeeks: row.durationWeeks,
+        country: row.country,
+        testimonial: row.testimonial,
+        videoUrl: row.videoUrl,
+        measurements: lab ? parseResultMeasurements(row.measurements) : [],
+        markInstrument: lab && row.markInstrument === true,
+        markSamePatient: lab && row.markSamePatient === true,
+        markUnretouched: lab && row.markUnretouched === true,
+        attributionName: row.attributionName,
+        attributionRole: row.attributionRole,
+      };
+    }),
     facets,
   };
 }

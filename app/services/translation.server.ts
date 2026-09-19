@@ -373,9 +373,12 @@ export async function verifyDeeplKey(apiKey: string): Promise<DeeplUsage> {
  */
 export const TRANSLATABLE_FIELD_KEYS = new Set([
   "title", // clinical study title + survey headline override
-  "concern", // clinical study concern
+  "concern", // clinical study conducted-by line
   "subject", // clinical study "conducted on this product" line (v7)
-  "instruments", // clinical study instruments description
+  "eyebrow", // clinical study eyebrow override (v24)
+  "publication", // clinical study "Published in ..." line (v24)
+  "instruments", // clinical study measurement-method line
+  "badge", // clinical study free-text fact pill (v24)
   "footnote", // clinical study footnote
   "label", // study result label
   "suffix", // study result suffix (letter-less ones are skipped anyway)

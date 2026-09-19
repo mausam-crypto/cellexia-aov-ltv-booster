@@ -166,11 +166,17 @@ export interface ClinicalStudyView {
   title: string;
   /** v7: optional "conducted on this product" line override. */
   subject: string;
+  /** v24: optional eyebrow override (empty = translated default). */
+  eyebrow: string;
   concern: string;
+  /** v24: optional "Published in …" line under the conducted-by line. */
+  publication: string;
   durationWeeks: number | null;
   sampleSize: number | null;
   labName: string;
   instruments: string;
+  /** v24: optional free-text third fact pill. */
+  badge: string;
   studyUrl: string;
   footnote: string;
   results: StudyResultView[];
@@ -270,11 +276,17 @@ export interface ClinicalStudyInput {
   title: string;
   /** v7: optional "conducted on this product" line override. */
   subject: string;
+  /** v24: optional eyebrow override (empty = translated default). */
+  eyebrow: string;
   concern: string;
+  /** v24: optional "Published in …" line under the conducted-by line. */
+  publication: string;
   durationWeeks: number;
   sampleSize: number;
   labName: string;
   instruments: string;
+  /** v24: optional free-text third fact pill. */
+  badge: string;
   studyUrl: string;
   footnote: string;
   /** Ordered — becomes the metaobject's `results` list order. */
@@ -1127,11 +1139,14 @@ export async function getProductBoosters(
       id: studyNode.id,
       title: map.title ?? "",
       subject: map.subject ?? "",
+      eyebrow: map.eyebrow ?? "",
       concern: map.concern ?? "",
+      publication: map.publication ?? "",
       durationWeeks: toNumber(map.duration_weeks),
       sampleSize: toNumber(map.sample_size),
       labName: map.lab_name ?? "",
       instruments: map.instruments ?? "",
+      badge: map.badge ?? "",
       studyUrl: map.study_url ?? "",
       footnote: map.footnote ?? "",
       results: toStudyResultViews(studyNode.resultsField?.references?.nodes),
@@ -1290,11 +1305,14 @@ interface ClinicalStudyStateData {
 interface CleanClinicalStudy {
   title: string;
   subject: string;
+  eyebrow: string;
   concern: string;
+  publication: string;
   durationWeeks: number;
   sampleSize: number;
   labName: string;
   instruments: string;
+  badge: string;
   studyUrl: string;
   footnote: string;
   results: { id: string | null; value: number; suffix: string; label: string }[];
@@ -1312,7 +1330,9 @@ function validateClinicalStudy(data: ClinicalStudyInput): {
   const clean: CleanClinicalStudy = {
     title: cleanText(data.title, SINGLE_LINE_MAX),
     subject: cleanText(data.subject, SINGLE_LINE_MAX),
+    eyebrow: cleanText(data.eyebrow, SINGLE_LINE_MAX),
     concern: cleanText(data.concern, SINGLE_LINE_MAX),
+    publication: cleanText(data.publication, SINGLE_LINE_MAX),
     durationWeeks: requireNonNegativeInt(
       data.durationWeeks,
       "Study duration (weeks)",
@@ -1321,6 +1341,7 @@ function validateClinicalStudy(data: ClinicalStudyInput): {
     sampleSize: requireNonNegativeInt(data.sampleSize, "Sample size", errors),
     labName: cleanText(data.labName, SINGLE_LINE_MAX),
     instruments: cleanText(data.instruments, SINGLE_LINE_MAX),
+    badge: cleanText(data.badge, SINGLE_LINE_MAX),
     studyUrl: cleanUrl(data.studyUrl, "Study URL", errors),
     footnote: cleanText(data.footnote, MULTI_LINE_MAX),
     results: results.slice(0, MAX_STUDY_RESULTS).map((entry, index) => ({
@@ -1410,11 +1431,14 @@ export async function saveClinicalStudy(
   const parentFields: MetaobjectFieldInput[] = [
     { key: "title", value: clean.title },
     { key: "subject", value: clean.subject },
+    { key: "eyebrow", value: clean.eyebrow },
     { key: "concern", value: clean.concern },
+    { key: "publication", value: clean.publication },
     { key: "duration_weeks", value: String(clean.durationWeeks) },
     { key: "sample_size", value: String(clean.sampleSize) },
     { key: "lab_name", value: clean.labName },
     { key: "instruments", value: clean.instruments },
+    { key: "badge", value: clean.badge },
     { key: "study_url", value: clean.studyUrl },
     { key: "results", value: JSON.stringify(sync.ids) },
     { key: "footnote", value: clean.footnote },

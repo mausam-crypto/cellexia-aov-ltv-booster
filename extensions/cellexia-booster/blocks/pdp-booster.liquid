@@ -332,12 +332,23 @@ endif
 if cx_ibl or cx_prev_flags.image_badges == true
 assign cx_ibs = cfg.imageBadges.scale
 endif
+assign cx_qsl = false
+assign cx_s = cfg.marketScopes.quantity_selector
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
+if cfg.quantitySelector.enabled == true
+assign cx_qsl = true
+endif
+endif
+assign cx_qs = false
+if cx_qsl or cx_prev_flags.quantity_selector == true
+assign cx_qs = true
+endif
 assign cx_draft_any = false
 if cx_draft_badges or cx_draft_guarantee or cx_draft_trustpilot or cx_draft_nudge or cx_draft_survey or cx_draft_study or cx_draft_batch or cx_draft_bottle or cx_draft_dispatch or cx_draft_delivery or cx_draft_bbp
 assign cx_draft_any = true
 endif
 -%}
-{%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_batch or show_bottle or show_dispatch or show_delivery or show_bbp or cx_ibs > 0 or cx_draft_any -%}
+{%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_batch or show_bottle or show_dispatch or show_delivery or show_bbp or cx_ibs > 0 or cx_qs or cx_draft_any -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
 {%- if cx_eff_gt %}
 {%- assign cx_gp = app.metafields.cellexia.gift_plan.value -%}
@@ -413,6 +424,16 @@ assign tp_stars_label = tp_stars | round: 1
 {%- if cx_ibs > 0 %}
 "ib": {"live": {{ cx_ibl }}, "s": {{ cx_ibs }}},
 {%- endif %}
+{%- if cx_qs %}
+"qs": {"live": {{ cx_qsl }}, "l": {{ request.locale.iso_code | json }}, "mf": {{ shop.money_format | json }}, "v": [{%- for cx_v in product.variants limit: 6 -%}{%- liquid
+assign cx_qi = cx_v.featured_image
+assign cx_vi = 1
+if cx_qi == blank
+assign cx_qi = product.featured_image
+assign cx_vi = 0
+endif
+-%}{%- unless forloop.first -%},{%- endunless -%}{"id": {{ cx_v.id | json }}, "t": {{ cx_v.title | json }}, "p": {{ cx_v.price | json }}{% if cx_qi %}, "im": {{ cx_qi | image_url: width: 168 | json }}{% if cx_vi == 1 %}, "vi": 1{% endif %}{% endif %}}{%- endfor -%}]},
+{%- endif %}
 "placement": {{ block.settings.proof_placement | default: 'above_tabs' | json }}
 {%- if cx_prev_armed -%}
 , "preview": {"armed": true, "flags": {% if cx_prev.draftFlags %}{{ cx_prev.draftFlags | json }}{% else %}{}{% endif %}, "deliveryFormat": {{ cx_prev.draftConfig.deliveryFormat | json }}}
@@ -430,10 +451,18 @@ assign tp_stars_label = tp_stars | round: 1
 {%- liquid
 assign cx_study_n = cx_study.sample_size.value
 assign cx_study_weeks = cx_study.duration_weeks.value
-assign cx_study_lab = cx_study.lab_name.value
 -%}
 {%- if cx_study.subject.value != blank -%}
 , "sub": {{ cx_study.subject.value | replace: cx_name_token, cx_pname | json }}
+{%- endif -%}
+{%- if cx_study.eyebrow.value != blank -%}
+, "e": {{ cx_study.eyebrow.value | replace: cx_name_token, cx_pname | json }}
+{%- endif -%}
+{%- if cx_study.publication.value != blank -%}
+, "j": {{ cx_study.publication.value | replace: cx_name_token, cx_pname | json }}
+{%- endif -%}
+{%- if cx_study.badge.value != blank -%}
+, "b": {{ cx_study.badge.value | replace: cx_name_token, cx_pname | json }}
 {%- endif -%}
 {%- if cx_study_n != blank and cx_study_n > 0 -%}
 , "pn": {{ cx_study_n | json }}
@@ -442,11 +471,8 @@ assign cx_study_lab = cx_study.lab_name.value
 {%- assign cx_weeks_label = 'study.weeks_count' | t: count: cx_study_weeks -%}
 , "pw": {{ cx_weeks_label | json }}
 {%- endif -%}
-{%- if cx_study_lab != blank -%}
-, "pl": {{ cx_study_lab | replace: cx_name_token, cx_pname | json }}
-{%- endif -%}
 {%- if cx_study.instruments.value != blank -%}
-, "pi": {{ 'study.instruments' | t: methods: cx_study.instruments.value | replace: cx_name_token, cx_pname | json }}
+, "pi": {{ cx_study.instruments.value | replace: cx_name_token, cx_pname | json }}
 {%- endif -%}
 {%- if cx_study.footnote.value != blank -%}
 , "f": {{ cx_study.footnote.value | replace: cx_name_token, cx_pname | json }}

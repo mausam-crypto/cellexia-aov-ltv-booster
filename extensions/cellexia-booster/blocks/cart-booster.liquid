@@ -423,7 +423,7 @@ assign tp_stars_label = tp_stars | round: 1
 "dc": 1,
 {%- endif %}
 {%- if cx_sx %}
-"sx":{"p":{{ cx_sxp | json }},"d":{{ shop.metafields.cellexia.variant_defaults.value | json }}},
+"sx":{"p":{{ cx_sxp | json }},"d":{{ shop.metafields.cellexia.variant_defaults.value | json }},"live":{% if cx_sl == 'live' %}true{% else %}false{% endif %}},
 {%- endif %}
 {%- if cx_exc_d or cx_exc_e %}
 "exc": {"d": {{ cx_exc_d | json }}, "e": {{ cx_exc_e | json }}},
