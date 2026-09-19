@@ -644,12 +644,16 @@ function formToPayload(values: ResultFormValues, id: string | null) {
     // server validator verbatim so problems surface as save errors.
     measurements: values.measurements
       .filter((m) => !(m.label.trim() === "" && m.pct.trim() === "" && m.info.trim() === ""))
-      .map((m) => ({
-        label: m.label.trim(),
-        dir: m.dir,
-        pct: /^\d+$/.test(m.pct.trim()) ? Number(m.pct.trim()) : null,
-        info: m.info.trim(),
-      })),
+      .map((m) => {
+        // v26.2: one decimal allowed; a typed comma is the decimal mark
+        const pct = m.pct.trim().replace(",", ".");
+        return {
+          label: m.label.trim(),
+          dir: m.dir,
+          pct: /^\d+(\.\d)?$/.test(pct) ? Number(pct) : null,
+          info: m.info.trim(),
+        };
+      }),
     markInstrument: values.markInstrument,
     markSamePatient: values.markSamePatient,
     markUnretouched: values.markUnretouched,

@@ -194,7 +194,6 @@ assign guarantee_days = cfg.guarantee.days | default: 60
 assign tp_rating = cfg.trustpilot.rating | default: 4.8
 assign tp_sep = 'trustpilot.decimal_separator' | t
 assign tp_count = cfg.trustpilot.reviewCount | default: 1000
-assign tp_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
 assign nudge_pct = cfg.subscriptionNudge.discountPct | default: 5
 assign bottle_days = cfg.emptyBottleGuarantee.days | default: 60
 assign cx_draft_badges = false
@@ -414,7 +413,7 @@ assign tp_stars = 0.0
 endif
 assign tp_stars_label = tp_stars | round: 1
 -%}
-"tp": {"live": {{ show_trustpilot }}, "aria": {{ 'a11y.rating_out_of_5' | t: rating: tp_stars_label | json }}, "label": {{ tp_rating | round: 1 | append: '' | replace: '.', tp_sep | append: '/5' | json }}, "r": {{ tp_stars | json }}, "cnt": {{ 'trustpilot.reviews_count' | t: count: tp_count | json }}, "view": {{ 'trustpilot.view' | t | json }}, "url": {{ tp_url | json }}, "link": {% if cfg.trustpilot.showLink == false %}false{% else %}true{% endif %}},
+"tp": {"live": {{ show_trustpilot }}, "aria": {{ 'a11y.rating_out_of_5' | t: rating: tp_stars_label | json }}, "label": {{ tp_rating | round: 1 | append: '' | replace: '.', tp_sep | append: '/5' | json }}, "r": {{ tp_stars | json }}, "cnt": {{ 'trustpilot.reviews_count' | t: count: tp_count | json }}, "view": {{ 'trustpilot.view' | t | json }}, "url": {{ cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com' | json }}, "link": {% if cfg.trustpilot.showLink == false %}false{% else %}true{% endif %}},
 {%- endif %}
 {%- if show_nudge or cx_draft_nudge %}
 "n": {"live": {{ show_nudge }}, "t": {{ 'subscription.nudge_title' | t | json }}, "b": {{ 'subscription.nudge_body' | t: percent: nudge_pct | json }}},
@@ -426,7 +425,7 @@ assign tp_stars_label = tp_stars | round: 1
 "ib": {"live": {{ cx_ibl }}, "s": {{ cx_ibs }}},
 {%- endif %}
 {%- if cx_qs %}
-"qs": {"live": {{ cx_qsl }}, "l": {{ request.locale.iso_code | json }}, "mf": {{ shop.money_format | json }}, {% if cx_fs_cents > 0 and cfg.quantitySelector.freeShipTag != false %}"fst": {{ cx_fs_cents }}, {% endif %}"v": [{%- for cx_v in product.variants limit: 6 -%}{%- liquid
+"qs": {"live": {{ cx_qsl }}, "l": {{ request.locale.iso_code | json }}, "mf": {{ shop.money_format | json }}, "u": {{ cx_pdp_flags.unitType | json }}, {% if cx_fs_cents > 0 and cfg.quantitySelector.freeShipTag != false %}"fst": {{ cx_fs_cents }}, {% endif %}"v": [{%- for cx_v in product.variants limit: 6 -%}{%- liquid
 assign cx_qi = cx_v.featured_image
 assign cx_vi = 1
 if cx_qi == blank

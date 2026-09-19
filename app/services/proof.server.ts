@@ -106,12 +106,27 @@ export const MEASUREMENT_LABEL_MAX = 80;
 export const MEASUREMENT_INFO_MAX = 240;
 export const MEASUREMENT_PCT_MAX = 500;
 
+/** v26.2: percents may carry ONE decimal ("34.2" — instrument readings
+ *  rarely land on integers, and the exact figure reads more credible).
+ *  The String round-trip sidesteps float traps (34.2 * 10 !== 342 in
+ *  IEEE 754); integers stay bare (34 prints "34%", never "34.0%"). */
+export function validMeasurementPct(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value <= MEASUREMENT_PCT_MAX &&
+    /^\d+(\.\d)?$/.test(String(value))
+  );
+}
+
 export interface ResultMeasurement {
   /** What was measured, e.g. "Under-eye wrinkle depth". Merchant text —
    *  DeepL-translatable per entry (field codes m0l…m5l). */
   label: string;
   dir: MeasurementDirection;
-  /** Whole percent, 1–500 (sign carried by dir, never typed). */
+  /** Percent, 0.1–500, one decimal at most (v26.2); the sign is carried
+   *  by dir, never typed. */
   pct: number;
   /** Optional methodology note behind the tile's ⓘ toggle (m0i…m5i). */
   info?: string;
@@ -144,13 +159,7 @@ export function parseResultMeasurements(
         ? row.label.trim().slice(0, MEASUREMENT_LABEL_MAX)
         : "";
     const dir = row.dir === "up" ? "up" : row.dir === "down" ? "down" : null;
-    const pct =
-      typeof row.pct === "number" &&
-      Number.isInteger(row.pct) &&
-      row.pct >= 1 &&
-      row.pct <= MEASUREMENT_PCT_MAX
-        ? row.pct
-        : null;
+    const pct = validMeasurementPct(row.pct) ? row.pct : null;
     if (label === "" || dir === null || pct === null) continue;
     const info =
       typeof row.info === "string"
@@ -411,13 +420,11 @@ function cleanMeasurements(value: unknown, errors: string[]): ResultMeasurement[
       errors.push(`${nth} needs a direction (down or up)`);
     }
     const pct = row.pct;
-    const pctOk =
-      typeof pct === "number" &&
-      Number.isInteger(pct) &&
-      pct >= 1 &&
-      pct <= MEASUREMENT_PCT_MAX;
+    const pctOk = validMeasurementPct(pct);
     if (!pctOk) {
-      errors.push(`${nth} needs a whole percent between 1 and ${MEASUREMENT_PCT_MAX}`);
+      errors.push(
+        `${nth} needs a percent between 0.1 and ${MEASUREMENT_PCT_MAX} (one decimal at most)`,
+      );
     }
     if (label === "" || (dir !== "down" && dir !== "up") || !pctOk) continue;
     const info = cleanText(row.info, MEASUREMENT_INFO_MAX);

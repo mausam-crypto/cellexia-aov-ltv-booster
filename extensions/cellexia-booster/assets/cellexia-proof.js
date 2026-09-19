@@ -1743,6 +1743,27 @@
     }
   }
 
+  // v26.2: decimal percents ("34.2") print with the page language's
+  // decimal mark. Base languages that read a COMMA decimal among the 18
+  // shipped locales; everything else (en/ja/ar) keeps the dot. Digits
+  // stay Western everywhere (the widget-wide convention — weeks, counts).
+  var RESULTS_COMMA_DECIMAL = { da: 1, de: 1, el: 1, es: 1, fi: 1, fr: 1, hu: 1, it: 1, nb: 1, nl: 1, no: 1, pl: 1, pt: 1, ro: 1, sv: 1 };
+
+  function resultsValidPct(v) {
+    // ONE decimal at most; the String round-trip sidesteps float traps
+    // (34.2 * 10 !== 342 in IEEE 754). Integers stay bare ("34").
+    return typeof v === 'number' && isFinite(v) && v > 0 && v <= 500 && /^\d+(\.\d)?$/.test(String(v));
+  }
+
+  function resultsFmtPct(p) {
+    var text = String(p);
+    try {
+      var base = pfPageLocale().toLowerCase().split('-')[0];
+      if (RESULTS_COMMA_DECIMAL[base] === 1) text = text.replace('.', ',');
+    } catch (e) { /* the dot serves */ }
+    return text + '%';
+  }
+
   function resultsValidMeasurements(list) {
     // Instrument-measurement rows for the clinical panel: label + a
     // direction the metric moved + a whole percent; optional info note
@@ -1754,7 +1775,7 @@
       var m = list[i] && typeof list[i] === 'object' ? list[i] : {};
       var label = typeof m.label === 'string' && /\S/.test(m.label) ? m.label : '';
       var dir = m.dir === 'up' ? 'up' : m.dir === 'down' ? 'down' : '';
-      var pct = pfPosInt(m.pct) && m.pct <= 500 ? m.pct : 0;
+      var pct = resultsValidPct(m.pct) ? m.pct : 0;
       if (!label || !dir || !pct) continue;
       out.push({
         l: label,
@@ -1953,7 +1974,7 @@
           pfSp(tile);
           var val = pfEl('span', 'cx-results__clin-val cx-results__clin-val--' + row.d);
           val.appendChild(resultsIcon(row.d, 15));
-          val.appendChild(document.createTextNode(row.p + '%'));
+          val.appendChild(document.createTextNode(resultsFmtPct(row.p)));
           tile.appendChild(val);
           if (row.i) {
             var btn = pfEl('button', 'cx-results__clin-info', ['type', 'button', 'aria-expanded', 'false', 'aria-label', row.l]);

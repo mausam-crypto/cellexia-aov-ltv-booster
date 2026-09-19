@@ -44,7 +44,7 @@ const SRC_PATH = process.env.CX_SIM_SRC || REAL_SRC;
 const SRC = fs.readFileSync(SRC_PATH, "utf8");
 
 const EXTRACTED = extractAll(SRC, {
-  vars: ["PREVIEW", "CX_QSEL_STR", "CX_AZ_ICONS", "qselMounted"],
+  vars: ["PREVIEW", "CX_QSEL_STR", "CX_QSEL_UNITS", "CX_AZ_ICONS", "qselMounted"],
   functions: [
     "pdpMember",
     "pdpMemberAllowed",
@@ -60,6 +60,8 @@ const EXTRACTED = extractAll(SRC, {
     "qselMoney",
     "qselQty",
     "qselLabel",
+    "qselPlural",
+    "qselUnitLabel",
     "qselImgs",
     "qselPriceBlock",
     "qselCard",
@@ -200,8 +202,8 @@ function mountLive(opts) {
     return b ? b.textContent : "";
   });
   ok(
-    badges[0] === "" && badges[1] === "Clinically recommended" && badges[2] === "Best value",
-    "Q1: badges = none / b2 on the middle tier / b3 (volume.best_value) on the last",
+    badges[0] === "" && badges[1] === "Most popular" && badges[2] === "Best value",
+    "Q1: badges = none / b2 (volume.most_popular, v27) on the middle tier / b3 (volume.best_value) on the last",
   );
   ok(
     cards[0].getAttribute("aria-checked") === "true" &&
@@ -561,6 +563,91 @@ function mountLive(opts) {
   );
 }
 
+// -------------------------------- U: v27 unit-type mapping + plural forms
+
+{
+  // A mapped product composes its labels from the catalog, overriding the
+  // variant titles entirely (this fixture's titles still say "Jars").
+  const ctx = makeContext();
+  makePicker(ctx, IDS);
+  const d = euro(LIVE_VARIANTS);
+  d.u = "syringe";
+  ctx.sandbox.cfg = { qs: d };
+  call(ctx, "qselMount");
+  const names = [].map.call(
+    ctx.doc.querySelectorAll(".cx-qsel__name"),
+    (n) => n.textContent,
+  );
+  ok(
+    names[0] === "1 Syringe" && names[1] === "2 Syringes" && names[2] === "3 Syringes",
+    "U: mapped unit overrides the variant-title labels (got: " + names.join(" | ") + ")",
+  );
+}
+{
+  const ctx = makeContext();
+  const label = (l, u, n) =>
+    call(ctx, "qselUnitLabel", { u, l }, { t: n + " x", p: 1 });
+  ok(label("pl", "syringe", 1) === "1 Strzykawka", "U: pl one");
+  ok(label("pl", "syringe", 2) === "2 Strzykawki", "U: pl few (2-4)");
+  ok(label("pl", "syringe", 5) === "5 Strzykawek", "U: pl many (5+)");
+  ok(label("ar", "jar", 1) === "عبوة واحدة", "U: ar one (word form, no digit)");
+  ok(label("ar", "jar", 2) === "عبوتان", "U: ar dual (no digit)");
+  ok(label("ar", "jar", 3) === "3 عبوات", "U: ar few");
+  ok(label("fi", "tube", 1) === "1 Tuubi", "U: fi nominative");
+  ok(label("fi", "tube", 2) === "2 Tuubia", "U: fi numeral partitive");
+  ok(label("hu", "syringe", 3) === "3 fecskendő", "U: hu numeral takes the singular");
+  ok(label("ja", "stick", 2) === "スティック2本", "U: ja counter form");
+  ok(label("ro", "syringe", 2) === "2 Seringi", "U: ro few");
+  ok(label("pt-PT", "jar", 3) === "3 Boiões", "U: pt-PT plural");
+  ok(label("de", "jar", 2) === "2 Tiegel", "U: de invariant plural");
+  // Fallbacks: unresolvable = null, the card keeps the title label.
+  ok(call(ctx, "qselUnitLabel", { l: "en" }, { t: "2 Jars", p: 1 }) === null, "U: no mapping = null");
+  ok(
+    call(ctx, "qselUnitLabel", { u: "vial", l: "en" }, { t: "2 Jars", p: 1 }) === null,
+    "U: unknown unit = null (never a broken string)",
+  );
+  ok(
+    call(ctx, "qselUnitLabel", { u: "jar", l: "en" }, { t: "Jar", p: 1 }) === null,
+    "U: unparseable count = null",
+  );
+}
+{
+  // Catalog integrity: 18 locales x 7 units, category sets per plural rule,
+  // {n} in every digit-bearing form, no em/en dashes anywhere.
+  const ctx = makeContext();
+  const units = vm.runInContext("CX_QSEL_UNITS", ctx.sandbox);
+  const locales = Object.keys(units);
+  ok(locales.length === 18, "U: catalog covers 18 locales (got " + locales.length + ")");
+  const UNIT_KEYS = ["jar", "syringe", "tube", "dropper", "stick", "pump", "bottle"];
+  const CATS = {
+    pl: ["one", "few", "many"],
+    ro: ["one", "few"],
+    ar: ["one", "two", "few"],
+    hu: ["other"],
+    ja: ["other"],
+  };
+  for (const loc of locales) {
+    const expected = CATS[loc] || ["one", "other"];
+    for (const unit of UNIT_KEYS) {
+      const forms = units[loc] && units[loc][unit];
+      ok(!!forms, "U: " + loc + "." + unit + " present");
+      if (!forms) continue;
+      ok(
+        Object.keys(forms).sort().join(",") === expected.slice().sort().join(","),
+        "U: " + loc + "." + unit + " carries exactly the " + expected.join("/") + " forms",
+      );
+      for (const [cat, form] of Object.entries(forms)) {
+        const digitless = loc === "ar" && (cat === "one" || cat === "two");
+        ok(
+          digitless ? form.indexOf("{n}") === -1 : form.indexOf("{n}") !== -1,
+          "U: " + loc + "." + unit + "." + cat + " {n} rule",
+        );
+        ok(!/[—–]/.test(form), "U: " + loc + "." + unit + "." + cat + " dash-free");
+      }
+    }
+  }
+}
+
 // ------------------------------------------------------------- Q7: images
 
 {
@@ -660,6 +747,19 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m8-impression-dropped",
         find: "      qselMounted = true;\n      track('quantity_selector');",
         replace: "      qselMounted = true;",
+      },
+      {
+        // Dropping the Polish branch degrades 2-6 to a bare singular
+        // ("2 Strzykawka") through the one-form fallback.
+        name: "m11-plural-map-flattened",
+        find: "    if (base === 'pl') return n === 1 ? 'one' : n >= 2 && n <= 4 ? 'few' : 'many';",
+        replace: "    if (base === 'pl') return n === 1 ? 'one' : 'one';",
+      },
+      {
+        // The mapping must actually override the title labels.
+        name: "m12-unit-mapping-ignored",
+        find: "    name.textContent = qselUnitLabel(d, v) || qselLabel(v.t);",
+        replace: "    name.textContent = qselLabel(v.t);",
       },
       {
         // Dropping the per-tier price comparison would tag EVERY tier the

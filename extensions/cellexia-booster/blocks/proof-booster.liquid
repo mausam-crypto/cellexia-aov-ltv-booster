@@ -5,7 +5,7 @@ assign cx_page_ok = true
 endif
 assign cfg = app.metafields.cellexia.config.value
 comment
-same parser rule as pdp-booster's cx_name_token
+brace-literal rule, see pdp-booster
 endcomment
 assign cx_n_token = '{n}'
 assign cx_market = localization.market.handle | default: ''

@@ -4850,6 +4850,14 @@ const EVIDENCE = {
       proofJs25.includes("if (!item.lab) return null;"),
     "v25: both storefront lab gates present (valid-items + resultsClinical)",
   );
+  // v26.2: one-decimal percents — the same string-round-trip validator on
+  // both sides (float traps), comma decimal mark for the comma languages.
+  ok(
+    read("app/services/proof.server.ts").includes("export function validMeasurementPct(") &&
+      proofJs25.includes("/^\\d+(\\.\\d)?$/.test(String(v))") &&
+      proofJs25.includes("var RESULTS_COMMA_DECIMAL = { da: 1, de: 1, el: 1, es: 1, fi: 1, fr: 1, hu: 1, it: 1, nb: 1, nl: 1, no: 1, pl: 1, pt: 1, ro: 1, sv: 1 };"),
+    "v26.2: decimal-percent validator twins + the comma-locale map (behavior pinned by proof-gallery R19/R20/R21b + m37, proof-server SR1/SR4)",
+  );
   ok(
     proofJs25.includes("close.appendChild(resultsIcon('x', 16));") &&
       !proofJs25.includes("var x = pfEl('span', null, ['aria-hidden', 'true']);"),
@@ -4902,10 +4910,10 @@ const EVIDENCE = {
     "v26: draft preview flag widens the emission gate (live stays cx_qsl)",
   );
   ok(
-    /\{%- if cx_qs %\}\n"qs": \{"live": \{\{ cx_qsl \}\}, "l": \{\{ request\.locale\.iso_code \| json \}\}, "mf": \{\{ shop\.money_format \| json \}\}, \{% if cx_fs_cents > 0 and cfg\.quantitySelector\.freeShipTag != false %\}"fst": \{\{ cx_fs_cents \}\}, \{% endif %\}"v": \[/.test(
+    /\{%- if cx_qs %\}\n"qs": \{"live": \{\{ cx_qsl \}\}, "l": \{\{ request\.locale\.iso_code \| json \}\}, "mf": \{\{ shop\.money_format \| json \}\}, "u": \{\{ cx_pdp_flags\.unitType \| json \}\}, \{% if cx_fs_cents > 0 and cfg\.quantitySelector\.freeShipTag != false %\}"fst": \{\{ cx_fs_cents \}\}, \{% endif %\}"v": \[/.test(
       qsLiquid,
     ),
-    "v26/v26.1: qs member emits live + page locale + shop money format + the gated fst threshold + the variant array",
+    "v26/v26.1/v27: qs member emits live + page locale + shop money format + the per-product unit type (null when unmapped) + the gated fst threshold + the variant array",
   );
   ok(
     /assign cx_fs_cents = cx_fs\.amount \| times: 100 \| round\n/.test(qsLiquid) &&
@@ -5006,6 +5014,14 @@ const EVIDENCE = {
             typeof bestValue === "string" && table[loc] && table[loc].b3 === bestValue,
             `v26: ${loc} b3 === volume.best_value verbatim (house wording, one source)`,
           );
+          // v27: the middle-tier badge is the cart tiles' own "Most popular"
+          // wording, verbatim — one phrase, two surfaces (merchant swap from
+          // the v26 "Clinically recommended" copy).
+          const mostPopular = bundle.volume && bundle.volume.most_popular;
+          ok(
+            typeof mostPopular === "string" && table[loc] && table[loc].b2 === mostPopular,
+            `v27: ${loc} b2 === volume.most_popular verbatim (house wording, one source)`,
+          );
         }
       }
     }
@@ -5095,6 +5111,65 @@ const EVIDENCE = {
     read("app/routes/app.analytics.tsx").includes('quantity_selector: "Quantity selector cards"'),
     "v26: analytics page labels the key",
   );
+
+  // ------------------------------------------- v27 unit-type mapping pins
+  {
+    const pdpContent = read("app/services/pdp-content.server.ts");
+    ok(
+      pdpContent.includes('export const QSEL_UNIT_TYPES = [\n  "jar",\n  "syringe",\n  "tube",\n  "dropper",\n  "stick",\n  "pump",\n  "bottle",\n] as const;'),
+      "v27: the unit catalog enum (server source of truth)",
+    );
+    ok(
+      pdpContent.includes("if (isQselUnitType(source.unitType)) {\n    flags.unitType = source.unitType;\n  }"),
+      "v27: parseFlags admits unitType — the WHITELIST would otherwise erase it on any other field's save",
+    );
+    ok(
+      pdpContent.includes('if (flags && "unitType" in flags) {\n    if (isQselUnitType(flags.unitType)) {\n      next.unitType = flags.unitType;\n    } else if (flags.unitType === null) {\n      delete next.unitType;\n    }'),
+      "v27: savePdpFlags unitType arm (set / null-clears / junk-ignored, the container discipline)",
+    );
+    const tableMatch = qsJs.match(/var CX_QSEL_UNITS = (\{.*?\});\n/);
+    ok(!!tableMatch, "v27: CX_QSEL_UNITS literal present (single line)");
+    if (tableMatch) {
+      let units = null;
+      try {
+        units = JSON.parse(tableMatch[1]);
+      } catch (e) {
+        units = null;
+      }
+      ok(!!units, "v27: CX_QSEL_UNITS parses as strict JSON");
+      if (units) {
+        const locales = listFiles(`${EXT}/locales`, ".json").map((f) =>
+          f.replace(".default", "").replace(".json", ""),
+        );
+        ok(
+          locales.length === 18 && locales.every((l) => !!units[l]),
+          "v27: the unit catalog covers exactly the 18 shipped locales",
+        );
+        const unitEnum = ["jar", "syringe", "tube", "dropper", "stick", "pump", "bottle"];
+        for (const [loc, pack] of Object.entries(units)) {
+          ok(
+            Object.keys(pack).sort().join(",") === unitEnum.slice().sort().join(","),
+            `v27: ${loc} carries exactly the 7 enum units (two-way with QSEL_UNIT_TYPES)`,
+          );
+          ok(!JSON.stringify(pack).match(/[—–]/), `v27: ${loc} unit forms dash-free`);
+        }
+      }
+    }
+    ok(
+      qsJs.includes("name.textContent = qselUnitLabel(d, v) || qselLabel(v.t);"),
+      "v27: mapped products compose the label, unmapped keep the (T&A-localized) variant title",
+    );
+    const quantityRoute = read("app/routes/app.features.quantity.tsx");
+    ok(
+      quantityRoute.includes('intent === "save_unit_type"') &&
+        quantityRoute.includes("unitType: rawUnit === \"\" ? null : rawUnit,"),
+      "v27: the feature page saves per-product unit types through savePdpFlags (empty = clear)",
+    );
+    ok(
+      quantityRoute.includes("unitTypes: [...QSEL_UNIT_TYPES],"),
+      "v27: the enum rides the loader into the client (the v8.3 .server-value rule)",
+    );
+  }
 }
 
 finish();

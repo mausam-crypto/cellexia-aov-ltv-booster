@@ -1,15 +1,23 @@
 import { useMemo, useState } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useActionData, useLoaderData, useSubmit } from "@remix-run/react";
 import {
+  useActionData,
+  useFetcher,
+  useLoaderData,
+  useSubmit,
+} from "@remix-run/react";
+import {
+  Badge,
   Banner,
   BlockStack,
   Card,
   Checkbox,
   ChoiceList,
+  InlineStack,
   Layout,
   List,
   Page,
+  Select,
   Text,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
@@ -23,6 +31,12 @@ import {
 } from "../models/settings.server";
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import { listMarkets } from "../services/markets.server";
+import {
+  QSEL_UNIT_TYPES,
+  isQselUnitType,
+  listProductsWithBoosterStatus,
+  savePdpFlags,
+} from "../services/pdp-content.server";
 import { FeaturePageHeader } from "../components/FeaturePageHeader";
 
 /**
@@ -30,10 +44,14 @@ import { FeaturePageHeader } from "../components/FeaturePageHeader";
  *
  * One master switch: the design, badges and math-honesty rules are fixed by
  * the spec (picture cards, per-unit price, struck 1-unit baseline, computed
- * save chip; the second tier carries "Clinically recommended", the last one
+ * save chip; the second tier carries the house "Most popular", the last one
  * the house "Best value"). The storefront relays every card tap to the
  * theme's own hidden pill buttons, so pricing, subscriptions and
  * add-to-cart behave exactly as before — only the picker's face changes.
+ * v27 adds the per-product unit-type mapping (pdp_flags.unitType): the card
+ * labels compose as "{n} {unit}" with curated native plural forms in all 18
+ * languages once a product is mapped; unmapped products keep their variant
+ * titles (already localized via Translate & Adapt).
  */
 
 interface AdminGraphqlClient {
@@ -84,21 +102,62 @@ async function applySettingsPatch(
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
-  const [settings, markets] = await Promise.all([
+  const [settings, markets, productList] = await Promise.all([
     getSettings(session.shop),
     listMarkets(admin),
+    // The amazon bulk-table convention: the picker query with an empty
+    // search covers this catalog (11 products, cap 25); the card says so
+    // if the store ever outgrows it.
+    listProductsWithBoosterStatus(admin, ""),
   ]);
   return {
     settings,
     markets,
     headerEnabled: resolveFeatureFlag(settings, "quantity_selector"),
+    products: productList.products.map((product) => ({
+      id: product.id,
+      title: product.title,
+      status: product.status,
+      unitType: product.boosters.flags.unitType ?? "",
+    })),
+    productErrors: productList.ok ? [] : productList.errors,
+    productListCapped: productList.products.length >= 25,
+    // v8.3 rule: server VALUES ride the loader, never a client-bundle import.
+    unitTypes: [...QSEL_UNIT_TYPES],
   };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
-  return applySettingsPatch(session.shop, admin, formData.get("patch"));
+  const intent = String(formData.get("intent") ?? "");
+  if (intent === "save_unit_type") {
+    const productId = String(formData.get("productId") ?? "");
+    const rawUnit = String(formData.get("unitType") ?? "");
+    // "" = back to the product's own variant titles (clears the override);
+    // anything else must be a catalog unit — fail loud, never coerce.
+    if (rawUnit !== "" && !isQselUnitType(rawUnit)) {
+      return {
+        intent: "save_unit_type" as const,
+        ok: false,
+        errors: ["Unknown unit type"],
+        productId,
+      };
+    }
+    const saved = await savePdpFlags(admin, productId, {
+      unitType: rawUnit === "" ? null : rawUnit,
+    });
+    return {
+      intent: "save_unit_type" as const,
+      ok: saved.ok,
+      errors: saved.errors,
+      productId,
+    };
+  }
+  return {
+    intent: "save_settings" as const,
+    ...(await applySettingsPatch(session.shop, admin, formData.get("patch"))),
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -248,9 +307,44 @@ function initialFormState(settings: BoosterSettings): QuantityFormState {
 }
 
 export default function QuantityFeaturePage() {
-  const { settings, markets, headerEnabled } = useLoaderData<typeof loader>();
+  const {
+    settings,
+    markets,
+    headerEnabled,
+    products,
+    productErrors,
+    productListCapped,
+    unitTypes,
+  } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
+  // Per-row unit saves ride their own fetcher so a row change never
+  // interferes with the page's Save button (the v8.11 dedicated-fetcher
+  // rule). Optimistic value = the in-flight submission for that row.
+  const unitFetcher = useFetcher<typeof action>();
+  const unitLabel = (unit: string) =>
+    unit.charAt(0).toUpperCase() + unit.slice(1);
+  const unitOptions = [
+    { label: "Default (variant titles)", value: "" },
+    ...unitTypes.map((unit) => ({
+      label: unitLabel(unit) + (unit === "jar" ? " (recommended default)" : ""),
+      value: unit,
+    })),
+  ];
+  const pendingUnit =
+    unitFetcher.state !== "idle" && unitFetcher.formData
+      ? {
+          productId: String(unitFetcher.formData.get("productId") ?? ""),
+          unitType: String(unitFetcher.formData.get("unitType") ?? ""),
+        }
+      : null;
+  const saveUnit = (productId: string, unitType: string) => {
+    const formData = new FormData();
+    formData.set("intent", "save_unit_type");
+    formData.set("productId", productId);
+    formData.set("unitType", unitType);
+    unitFetcher.submit(formData, { method: "post" });
+  };
   const initial = useMemo(() => initialFormState(settings), [settings]);
   const [state, setState] = useState<QuantityFormState>(initial);
   const [savedKey, setSavedKey] = useState("");
@@ -304,7 +398,9 @@ export default function QuantityFeaturePage() {
           </Card>
         </Layout.Section>
 
-        {actionData && actionData.syncErrors.length > 0 ? (
+        {actionData &&
+        actionData.intent === "save_settings" &&
+        actionData.syncErrors.length > 0 ? (
           <Layout.Section>
             <Banner
               tone={actionData.ok ? "warning" : "critical"}
@@ -347,8 +443,8 @@ export default function QuantityFeaturePage() {
                   saved — computed from the live prices in the shopper’s
                   currency, so it stays truthful even where a variant title
                   overstates its discount. The second tier carries a
-                  “Clinically recommended” badge and the last one “Best
-                  value”, in all 18 storefront languages.
+                  “Most popular” badge and the last one “Best value” (the
+                  cart tiles’ own wording), in all 18 storefront languages.
                 </Text>
                 <Checkbox
                   label="Show a green “Free shipping” line on qualifying tiers"
@@ -374,6 +470,92 @@ export default function QuantityFeaturePage() {
                     fanned copies.
                   </List.Item>
                 </List>
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Unit type per product
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  “Default” keeps the product’s own variant titles on the
+                  cards (already translated per language). Picking a unit
+                  switches that product’s cards to clean “2 Syringes”-style
+                  labels with correct native plural forms in all 18
+                  languages — use it where the variant titles say the wrong
+                  container (the wrinkle filler gel sells syringes, not
+                  tubes). Saves immediately.
+                </Text>
+                {unitFetcher.data &&
+                unitFetcher.data.intent === "save_unit_type" &&
+                !unitFetcher.data.ok ? (
+                  <Banner tone="critical" title="The unit type could not be saved">
+                    <BlockStack gap="100">
+                      {unitFetcher.data.errors.map((error) => (
+                        <Text as="p" key={error}>
+                          {error}
+                        </Text>
+                      ))}
+                    </BlockStack>
+                  </Banner>
+                ) : null}
+                {productErrors.length > 0 ? (
+                  <Banner tone="warning" title="Some products could not be loaded">
+                    <BlockStack gap="100">
+                      {productErrors.map((error) => (
+                        <Text as="p" key={error}>
+                          {error}
+                        </Text>
+                      ))}
+                    </BlockStack>
+                  </Banner>
+                ) : null}
+                <BlockStack gap="200">
+                  {products.map((product) => (
+                    <InlineStack
+                      key={product.id}
+                      align="space-between"
+                      blockAlign="center"
+                      gap="300"
+                      wrap={false}
+                    >
+                      <InlineStack gap="200" blockAlign="center">
+                        <Text as="span" variant="bodyMd" fontWeight="semibold">
+                          {product.title}
+                        </Text>
+                        {product.status !== "ACTIVE" ? (
+                          <Badge tone="info">{product.status.toLowerCase()}</Badge>
+                        ) : null}
+                      </InlineStack>
+                      <div style={{ minWidth: 220 }}>
+                        <Select
+                          label={`Unit type for ${product.title}`}
+                          labelHidden
+                          options={unitOptions}
+                          value={
+                            pendingUnit && pendingUnit.productId === product.id
+                              ? pendingUnit.unitType
+                              : product.unitType
+                          }
+                          disabled={unitFetcher.state !== "idle"}
+                          onChange={(unitType) => saveUnit(product.id, unitType)}
+                        />
+                      </div>
+                    </InlineStack>
+                  ))}
+                  {products.length === 0 ? (
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      No products could be loaded.
+                    </Text>
+                  ) : null}
+                  {productListCapped ? (
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      Showing the first 25 products. Ask us to add search here
+                      if the catalog grows past that.
+                    </Text>
+                  ) : null}
+                </BlockStack>
               </BlockStack>
             </Card>
 

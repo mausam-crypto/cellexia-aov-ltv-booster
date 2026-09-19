@@ -122,6 +122,7 @@
  *                               of the first quoteful item (PL3)
  *   m32–m36 (v25 clinical)      lab gates ×2, copy whitelist, percent
  *                               cap, attribution textContent sink
+ *   m37 (v26.2)                 one-decimal percent bound dropped
  */
 "use strict";
 const fs = require("fs");
@@ -147,7 +148,7 @@ function ok(cond, label) {
 
 // ---------------------------------------------------------------- sandbox
 const EXTRACTED = extractAll(SRC, {
-  vars: ["RESULTS_SKIN_KEYS", "RESULTS_DURATION_KEYS", "RESULTS_ICON_PATHS"],
+  vars: ["RESULTS_SKIN_KEYS", "RESULTS_DURATION_KEYS", "RESULTS_ICON_PATHS", "RESULTS_COMMA_DECIMAL"],
   functions: [
     "pfEl", "pfSp", "pfSvg", "pfDecode", "pfStr", "pfHttps", "pfVideoFile",
     "pfPosInt", "pfPageLocale", "pfRegionName", "pfQuery", "pfProductParams",
@@ -170,6 +171,8 @@ const EXTRACTED = extractAll(SRC, {
     // v25 clinical redesign
     "resultsIcon", "resultsApplyCopy", "resultsValidMeasurements",
     "resultsAttr", "resultsClinical",
+    // v26.2 decimal percents
+    "resultsValidPct", "resultsFmtPct",
   ],
 });
 
@@ -318,7 +321,7 @@ const RES_LAB = {
   measurements: [
     { label: "Under-eye wrinkle depth", dir: "down", pct: 18, info: "PRIMOS 3D scan." },
     { label: "Skin firmness", dir: "up", pct: 14, info: "Cutometer reading." },
-    { label: "Puffiness", dir: "down", pct: 21 },
+    { label: "Puffiness", dir: "down", pct: 21.4 },
   ],
   markInstrument: true,
   markSamePatient: true,
@@ -988,6 +991,8 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   const val1 = tiles[1].querySelector(".cx-results__clin-val");
   ok(val1.className === "cx-results__clin-val cx-results__clin-val--up" && val1.textContent === "14%",
     "R19: up metric carries the --up modifier");
+  ok(tiles[2].querySelector(".cx-results__clin-val").textContent === "21.4%",
+    "R19: decimal percents render (dot on an en page, integers stay bare)");
   const marks = panel.querySelectorAll(".cx-results__clin-mark");
   ok(marks.length === 3 && marks[0].textContent === "Instrument measured" &&
     marks[1].textContent === "Same patient" && marks[2].textContent === "Unretouched images",
@@ -1036,12 +1041,15 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   // row validation: label/dir/pct all required, pct capped, cap at 6 rows
   ok(S.resultsValidMeasurements([
     { label: "ok", dir: "down", pct: 18 },
+    { label: "ok2", dir: "down", pct: 34.2 },
+    { label: "ok3", dir: "up", pct: 0.1 },
     { label: "", dir: "down", pct: 5 },
     { label: "x", dir: "sideways", pct: 5 },
     { label: "y", dir: "up", pct: 0 },
     { label: "z", dir: "up", pct: 9999 },
     { label: "w", dir: "up", pct: "12" },
-  ]).length === 1, "R20: invalid measurement rows are dropped");
+    { label: "v", dir: "up", pct: 34.25 },
+  ]).length === 3, "R20: invalid rows dropped (one-decimal 34.2/0.1 valid; 34.25, 0, 9999, strings not)");
   const eight = [];
   for (let i = 0; i < 8; i++) eight.push({ label: "m" + i, dir: "up", pct: 10 + i });
   ok(S.resultsValidMeasurements(eight).length === 6, "R20: measurement rows cap at 6");
@@ -1066,6 +1074,22 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   click(btns[1]);
   ok(note.hasAttribute("hidden") && btns[1].getAttribute("aria-expanded") === "false",
     "R21: re-tap collapses");
+}
+
+// --- R21b (v26.2): decimal mark follows the page language --------------------------
+{
+  ok(S.resultsFmtPct(34.2) === "34.2%" && S.resultsFmtPct(34) === "34%",
+    "R21b: no page language -> dot, integers bare");
+  S.document.documentElement = { lang: "de-DE" };
+  ok(S.resultsFmtPct(21.4) === "21,4%", "R21b: comma-decimal language renders the comma");
+  ok(S.resultsFmtPct(21) === "21%", "R21b: integers carry no mark in any language");
+  const items = S.resultsValidItems({ items: [RES_LAB] });
+  const card = S.resultsBuildCard(items[0], STR_CLIN);
+  const vals = card.querySelectorAll(".cx-results__clin-val");
+  ok(vals[2].textContent === "21,4%", "R21b: the tile itself renders the localized mark");
+  S.document.documentElement = { lang: "ja" };
+  ok(S.resultsFmtPct(21.4) === "21.4%", "R21b: ja keeps the dot");
+  S.document.documentElement = undefined;
 }
 
 // --- R22: resultsApplyCopy — whitelist, non-strings, blanks --------------------------
@@ -2426,11 +2450,18 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         replace: "    var keys = []; for (var ck in data.copy) keys.push(ck);",
       },
       {
-        // v25: the percent cap dropped — a fat-fingered 9999% would render
-        // as clinical proof (R20's row-validation case catches).
+        // v25/v26.2: the percent validator bypassed — a fat-fingered
+        // 9999% would render as clinical proof (R20's case catches).
         name: "m35-pct-cap-dropped",
-        find: "      var pct = pfPosInt(m.pct) && m.pct <= 500 ? m.pct : 0;",
-        replace: "      var pct = pfPosInt(m.pct) ? m.pct : 0;",
+        find: "      var pct = resultsValidPct(m.pct) ? m.pct : 0;",
+        replace: "      var pct = typeof m.pct === 'number' && m.pct > 0 ? m.pct : 0;",
+      },
+      {
+        // v26.2: the one-decimal bound dropped — 34.25 would render as
+        // over-precise fake rigor (R20's 34.25 row catches).
+        name: "m37-decimal-unbounded",
+        find: "    return typeof v === 'number' && isFinite(v) && v > 0 && v <= 500 && /^\\d+(\\.\\d)?$/.test(String(v));",
+        replace: "    return typeof v === 'number' && isFinite(v) && v > 0 && v <= 500;",
       },
       {
         // v25: attribution name regressed to a markup sink (R19's

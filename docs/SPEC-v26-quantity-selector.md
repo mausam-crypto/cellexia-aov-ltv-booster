@@ -6,9 +6,10 @@
 
 Replaces the theme's text-pill size picker ("1 Jar / 2 Jars - 15% Off / 3 Jars - 20% Off")
 with picture cards: product thumbnails (fanned per unit count), the cleaned tier name, a
-per-unit price, the struck 1-unit baseline and a computed "Save {amount}" chip, plus a
-"Clinically recommended" badge on the second tier and the house "Best value" badge on the
-last. Ships OFF; previewable through the standard Preview Center draft flags; market-scoped
+per-unit price, the struck 1-unit baseline and a computed "Save {amount}" chip, plus the
+house "Most popular" badge on the second tier (v27; verbatim `volume.most_popular` —
+launched as "Clinically recommended", swapped on merchant request) and the house
+"Best value" badge on the last. Ships OFF; previewable through the standard Preview Center draft flags; market-scoped
 like every FeatureKey. Works on every product of the store's shape (single option,
 "N <container>" tiers) and fails closed into the theme's own picker everywhere else.
 
@@ -49,7 +50,8 @@ Binding. Each is enforced by the harness v26 block and/or sims/quantity-selector
    percentages are factually wrong vs the live prices; the computed chip is the truth).
 5. **All five UI strings ship in the JS asset** (`CX_QSEL_STR`, 18 locales — the v8.16b
    AZ_SHIPS_FORMS precedent: fixed UI chrome, zero locale-file bytes; el/ar are at the
-   byte wall). `badge3` is the locale files' own `volume.best_value` wording verbatim;
+   byte wall). `badge2`/`badge3` are the locale files' own `volume.most_popular` /
+   `volume.best_value` wording verbatim (v27);
    `save`/`title` follow the volume-tile register per language. `{amount}` placeholders
    are substituted with split/join (never first-match `.replace`). No em dashes.
    Locale resolution: exact `l` (island `request.locale.iso_code`) → base language →
@@ -120,6 +122,27 @@ insert before the wrap → hide the wrap (`cx-qsel-src`) → impression. Card cl
 to the original button, restyle selection, `click` beacon. Theme-editor
 `shopify:section:load` re-mounts (design mode only). Everything try/caught: any throw
 leaves the theme picker untouched.
+
+## 4b. v27 — per-product unit types (2026-09-19)
+
+`pdp_flags.unitType` (enum `QSEL_UNIT_TYPES`: jar, syringe, tube, dropper, stick,
+pump, bottle — the server source of truth in pdp-content.server.ts) maps each product
+to the unit its tiers sell. The island emits it as `qs.u` (null when unmapped); a
+mapped product's cards compose their labels as "{n} {unit}" from `CX_QSEL_UNITS` in
+cellexia-pdp.js — CURATED native plural forms per language (Polish one/few/many,
+Romanian few, Arabic one/dual/few word-forms, Finnish numeral partitive, Hungarian
+numeral-singular, Japanese counters), resolved by `qselPlural` (exact for counts 1-6,
+the variant cap) with the fallback chain category → other → one → variant-title label.
+Machine translation is deliberately NOT used: plural tables are grammar, not prose.
+An UNMAPPED product keeps its own variant titles, which are already localized via
+Translate & Adapt (verified live 2026-09-19: fr "2 Tubes – 15% de réduction", pl
+"2 Słoiczki – 15% taniej" — note the translations use an EN DASH, which the suffix
+stripper's `[-–—]` class covers). The admin mapping lives on the feature page (per-row
+Select, saves immediately through savePdpFlags; "" clears back to variant titles);
+`parseFlags` must keep admitting `unitType` — it is a whitelist, and dropping the arm
+would silently erase every mapping on the next save of any other pdp_flags field.
+The middle-tier badge is `volume.most_popular` verbatim since v27 (launched as
+"Clinically recommended").
 
 ## 5. What this feature deliberately does NOT do
 

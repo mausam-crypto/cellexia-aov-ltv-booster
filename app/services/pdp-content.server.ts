@@ -86,6 +86,37 @@ export function isPdpContainer(value: unknown): value is PdpContainer {
   );
 }
 
+/**
+ * v27 — unit types the quantity-selector cards can compose their tier
+ * labels from ("2 Syringes", "3 Boiões", "2 Strzykawki"…). The nouns and
+ * their per-language plural forms are CURATED in the storefront asset
+ * (CX_QSEL_UNITS in cellexia-pdp.js, the AZ_SHIPS_FORMS convention) — a
+ * machine translation cannot produce plural tables, so the catalog is the
+ * translation. A product WITHOUT an override keeps its own variant titles
+ * (already localized via Translate & Adapt); the admin presents "Jar" as
+ * the default choice per the merchant's framing. Kept SEPARATE from the
+ * empty-bottle guarantee's `container` field: that one feeds
+ * agreement-safe flowing sentences and has its own enum, and widening it
+ * would break those translations.
+ */
+export const QSEL_UNIT_TYPES = [
+  "jar",
+  "syringe",
+  "tube",
+  "dropper",
+  "stick",
+  "pump",
+  "bottle",
+] as const;
+export type QselUnitType = (typeof QSEL_UNIT_TYPES)[number];
+
+export function isQselUnitType(value: unknown): value is QselUnitType {
+  return (
+    typeof value === "string" &&
+    (QSEL_UNIT_TYPES as readonly string[]).includes(value)
+  );
+}
+
 /** Merchant-entered "#{rank} Bestseller · {category}" data (az_bestseller_badge).
  *  The badge NEVER renders without both fields — no fabricated claims.
  *
@@ -138,6 +169,9 @@ const BOUGHT_COUNT_MAX = 10_000_000;
  */
 export type PdpFlags = Record<PdpFlagKey, boolean> & {
   container?: PdpContainer;
+  /** v27 — quantity-selector unit type override; absent = the cards keep
+   *  the product's own (T&A-localized) variant titles. */
+  unitType?: QselUnitType;
   boughtCount?: number;
   /** YYYY-MM-DD (UTC) date the count was last saved. */
   boughtCountSetAt?: string;
@@ -395,6 +429,9 @@ export interface SaveBeforeAftersResult {
  */
 export type PdpFlagsPatch = Partial<Record<PdpFlagKey, boolean>> & {
   container?: PdpContainer | null;
+  /** v27: a valid unit type sets the quantity-selector override, `null`
+   *  clears it (back to variant titles), anything else is ignored. */
+  unitType?: QselUnitType | null;
   boughtCount?: number | null;
   bestsellerLabel?: BestsellerLabel | null;
   fbtManual?: FbtManualItem[] | null;
@@ -689,6 +726,12 @@ function parseFlags(value: string | null | undefined): PdpFlags {
   // as absent (inherit the global default).
   if (isPdpContainer(source.container)) {
     flags.container = source.container;
+  }
+  // v27 quantity-selector unit type — same discipline (parseFlags is a
+  // WHITELIST: a field missing here would be silently erased by the next
+  // save of any other pdp_flags field).
+  if (isQselUnitType(source.unitType)) {
+    flags.unitType = source.unitType;
   }
   // v6.1 Amazon-pattern per-product data — every field is optional and any
   // malformed value is treated as absent (the storefront then renders
@@ -2286,6 +2329,15 @@ export async function savePdpFlags(
       next.container = flags.container;
     } else if (flags.container === null) {
       delete next.container;
+    }
+    // Any other value: ignored, current override (if any) is kept.
+  }
+  // v27 quantity-selector unit type — the container discipline verbatim.
+  if (flags && "unitType" in flags) {
+    if (isQselUnitType(flags.unitType)) {
+      next.unitType = flags.unitType;
+    } else if (flags.unitType === null) {
+      delete next.unitType;
     }
     // Any other value: ignored, current override (if any) is kept.
   }

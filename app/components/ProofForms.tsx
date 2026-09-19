@@ -891,7 +891,11 @@ export function parseResultMeasurementList(
     const label = typeof row.label === "string" ? row.label : "";
     const dir = row.dir === "up" ? "up" : row.dir === "down" ? "down" : "";
     const pct =
-      typeof row.pct === "number" && Number.isInteger(row.pct) && row.pct >= 1
+      typeof row.pct === "number" &&
+      Number.isFinite(row.pct) &&
+      row.pct > 0 &&
+      row.pct <= 500 &&
+      /^\d+(\.\d)?$/.test(String(row.pct))
         ? row.pct
         : 0;
     if (label === "" || dir === "" || pct === 0) continue;
@@ -1005,11 +1009,17 @@ export function durationWeeksError(value: string): string | undefined {
   return undefined;
 }
 
-/** v25: percent field of a measurement row — required once the row exists. */
+/** v25: percent field of a measurement row — required once the row exists.
+ *  v26.2: one decimal allowed ("34.2"); a typed comma counts as the
+ *  decimal mark and is normalized to a dot on save. */
 export function measurementPctError(value: string): string | undefined {
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed) || Number(trimmed) < 1 || Number(trimmed) > 500) {
-    return "Whole percent, 1–500";
+  const trimmed = value.trim().replace(",", ".");
+  if (
+    !/^\d+(\.\d)?$/.test(trimmed) ||
+    Number(trimmed) <= 0 ||
+    Number(trimmed) > 500
+  ) {
+    return "Percent 0.1–500, one decimal at most";
   }
   return undefined;
 }
@@ -1278,7 +1288,8 @@ export function ResultForm({
                     onChange={(pct) => setMeasurement(index, { pct })}
                     error={measurementErrors[index]?.pct}
                     suffix="%"
-                    inputMode="numeric"
+                    placeholder="34.2"
+                    inputMode="decimal"
                     autoComplete="off"
                     disabled={busy}
                   />

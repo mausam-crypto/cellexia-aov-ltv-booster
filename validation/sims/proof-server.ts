@@ -589,7 +589,7 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     videoUrl: "",
     measurements: [
       { label: "  Under-eye wrinkle depth  ", dir: "down", pct: 18, info: " PRIMOS scan. " },
-      { label: "Skin firmness", dir: "up", pct: 14, info: "" },
+      { label: "Skin firmness", dir: "up", pct: 14.3, info: "" },
     ],
     markInstrument: true,
     markSamePatient: true,
@@ -608,9 +608,9 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     JSON.stringify(it.measurements) ===
       JSON.stringify([
         { label: "Under-eye wrinkle depth", dir: "down", pct: 18, info: "PRIMOS scan." },
-        { label: "Skin firmness", dir: "up", pct: 14 },
+        { label: "Skin firmness", dir: "up", pct: 14.3 },
       ]),
-    "SR1: measurements serve trimmed, info omitted when blank",
+    "SR1: measurements serve trimmed, one-decimal percents exact, info omitted when blank",
   );
   ok(it.markInstrument === true && it.markSamePatient === true && it.markUnretouched === false,
     "SR1: trust marks serve exactly as checked");
@@ -647,8 +647,14 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     ...base,
     measurements: [{ label: "X", dir: "down", pct: 0 }],
   });
-  ok(badPct.ok === false && badPct.errors.some((e: string) => e.includes("whole percent")),
-    "SR4: percent outside 1-500 is a save error, never silently dropped");
+  ok(badPct.ok === false && badPct.errors.some((e: string) => e.includes("between 0.1 and 500")),
+    "SR4: percent outside 0.1-500 is a save error, never silently dropped");
+  const twoDecimals = await P.saveResult(shop, {
+    ...base,
+    measurements: [{ label: "X", dir: "down", pct: 34.25 }],
+  });
+  ok(twoDecimals.ok === false && twoDecimals.errors.some((e: string) => e.includes("one decimal")),
+    "SR4: more than one decimal place is a save error (34.25 is fake rigor)");
   const badDir = await P.saveResult(shop, {
     ...base,
     measurements: [{ label: "X", dir: "sideways", pct: 5 }],

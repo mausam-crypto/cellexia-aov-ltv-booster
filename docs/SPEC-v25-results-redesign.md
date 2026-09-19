@@ -37,9 +37,18 @@ tiers, fail-closed rules) all carries over. Inherited non-negotiables:
 
 Caps (proof.server.ts, exported): `MAX_RESULT_MEASUREMENTS = 6`,
 `MEASUREMENT_LABEL_MAX = 80`, `MEASUREMENT_INFO_MAX = 240`,
-`MEASUREMENT_PCT_MAX = 500`. Both `dir` values are IMPROVEMENTS the
-merchant chose to publish (down = reduction, up = increase) — one green
-family, the sign carried by the arrow, never typed.
+`MEASUREMENT_PCT_MAX = 500`. v26.2: `pct` is 0.1–500 with AT MOST ONE
+decimal — `validMeasurementPct` (server) / `resultsValidPct` (JS twin)
+validate via the String round-trip `/^\d+(\.\d)?$/` (34.2 × 10 !== 342
+in IEEE 754, so never numeric decimal-place math); integers print bare
+("34%", never "34.0%"), 34.25 is a SAVE ERROR (fake precision). Display:
+`resultsFmtPct` swaps the dot for a comma when the page language (base
+of `pfPageLocale()`) is in `RESULTS_COMMA_DECIMAL` (the 15 comma-decimal
+theme languages; en/ja/ar keep the dot, digits stay Western — the
+widget-wide convention). Admin accepts a typed comma and normalizes to a
+dot on save. Both `dir` values are IMPROVEMENTS the merchant chose to
+publish (down = reduction, up = increase) — one green family, the sign
+carried by the arrow, never typed.
 
 LAB-ONLY RULE (three layers): `saveResult` clears measurements + marks
 whenever `source != "lab"` (the admin hides the editor there — flipping an
@@ -199,6 +208,10 @@ green.
   both under the 15,200 pin; the {{ count }} harness pin holds. Sim
   fixture strings + R8/R9/U/C banner asserts updated; the admin
   verified-checkbox helpText now quotes the new banner.
+- v26.2 (2026-09-19, merchant ask): decimal percentages — see the §1
+  caps paragraph. Proofed by proof-gallery R19/R20/R21b + mutants
+  m35 (re-anchored)/m37, proof-server SR1/SR4, and the harness v26.2
+  wiring pin.
 - The endorsements overlay's own × (a different control) keeps its look.
 - No merchant editing of the six chrome strings (fixed curated table; the
   v8.22 settings+DeepL machinery can be added later if asked).

@@ -248,8 +248,9 @@ page. While it is on, the theme's text-pill size picker ("1 Jar / 2 Jars - 15% O
   computed from the LIVE prices in the shopper's own currency (`| money`-grade via the
   shop money format) — several catalog titles overstate their discount today
   ("2 Tubes - 15% Off" is priced at −10%); the chip shows the truth;
-- "Clinically recommended" on the second tier and the house "Best value" wording
-  (verbatim `volume.best_value`) on the last, native in all 18 storefront languages
+- "Most popular" on the second tier and "Best value" on the last (both verbatim
+  from your cart tiles' own `volume.*` wording; v27 swapped the middle badge from
+  the launch copy "Clinically recommended"), native in all 18 storefront languages
   (strings ship inside `cellexia-pdp.js`, the v8.16b convention — zero locale-file
   bytes, el/ar walls untouched);
 - 1 unit stays the pre-selected option; the widget only mirrors the theme's own
@@ -292,11 +293,28 @@ shares a row with the tier name, so it adds ~5 px to the whole block on a 375 px
 phone. **Toggle**: "Show a green 'Free shipping' line on qualifying tiers" on
 Features → Quantity selector — ON by default, untick to remove.
 
+### v27 (2026-09-19) — "Most popular" badge + per-product unit types
+
+- The middle-tier badge now says "Most popular" (your cart tiles' own
+  `volume.most_popular` wording, native in all 18 languages) instead of the launch
+  copy "Clinically recommended".
+- New on the feature page: **Unit type per product** — a per-product dropdown (Jar,
+  Syringe, Tube, Dropper, Stick, Pump, Bottle; saves immediately). "Default" keeps the
+  product's own variant titles on the cards (already translated via Translate &
+  Adapt); picking a unit switches that product's cards to clean "2 Syringes"-style
+  labels with CORRECT native plural forms in all 18 languages (Polish 2/5 forms,
+  Arabic duals, Finnish partitives, Hungarian numeral-singular, Japanese counters) —
+  curated in the storefront asset, deliberately not machine-translated, because
+  plural grammar is not something DeepL can produce. Use it where a product's variant
+  titles say the wrong container (the wrinkle filler gel sells syringes, not tubes).
+- Stored in the product's `cellexia.pdp_flags` metafield (`unitType`); no new
+  metafields, locale keys, scopes or DB steps.
+
 ### Liquid budget
 
-Total extension Liquid is now 99,424 B of the project's 99,500 B budget (hard Shopify
-cap 102,400; v26.1 paid for its bytes by inlining two single-use assigns and
-shortening a comment). The next Liquid-heavy wave must diet first — the earmarked
+Total extension Liquid is now 99,430 B of the project's 99,500 B budget (hard Shopify cap
+102,400; v26.1/v27 paid for their bytes by inlining three single-use assigns and
+shortening two comments). The next Liquid-heavy wave must diet first — the earmarked
 lever is still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but note
 the deploy-safety island expander does not expand `{% render %}` inside islands, so
 that dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
@@ -354,6 +372,17 @@ deploy every clinical element renders only where you add its data.
   built-in native translations for all 18 theme languages, served through
   the proof proxy — **zero bytes added to the locale files (el/ar stay at
   their byte cap) and zero bytes of Liquid (total unchanged at 98,422 B)**.
+
+### v26.2 (2026-09-19) — decimal percentages
+
+Clinical measurements now take one decimal place: enter 34.2 in the
+Percent field (a typed comma also works — 34,2 saves as 34.2) and the
+widget renders "↓ 34.2%". Storefronts in comma-decimal languages (French,
+German, Polish and the other twelve) render "34,2 %"-style automatically;
+whole numbers keep printing bare ("34%", never "34.0%"). More than one
+decimal is refused at save with a clear error — 34.25 reads as fake
+precision. Nothing to migrate: existing whole-number entries are
+untouched.
 
 ### v25.1 (same day)
 
@@ -864,8 +893,11 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
   `cx-qsel*` styles in `cellexia-booster.css`. The theme's own pill buttons
   stay the only control channel (native-click relay, id-mapped, fail-closed).
 - ZERO new locale keys (el/ar byte walls untouched); Liquid total
-  99,424/99,500 incl. v26.1. New suite `validation/sims/quantity-selector.cjs`
-  (70 checks, 10 mutants); suite total now 34 suites / 10,258 checks.
+  99,430/99,500 incl. v26.1+v27. New suite `validation/sims/quantity-selector.cjs`
+  (844 checks, 12 mutants); suite total now 34 suites / 11,103 checks.
+- v27 (2026-09-19): middle badge -> `volume.most_popular` verbatim; per-product
+  unit-type mapping (`pdp_flags.unitType`, enum QSEL_UNIT_TYPES, admin table on
+  the feature page, island `qs.u`, curated CX_QSEL_UNITS plural catalog x18).
 - v26.1 (2026-09-19): free-shipping micro-line on qualifying tiers —
   `quantitySelector.freeShipTag` (default ON, tick box on the feature page),
   island `fst` = the trust badges' per-market safe threshold as presentment
