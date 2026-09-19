@@ -509,10 +509,22 @@ rating row, research + certification band). It borrows every fact from the
 feature that already owns it and SUPPRESSES the widgets it would duplicate
 in the buy box. Full contract: `docs/SPEC-v19-buy-box-proof.md`.
 
-v28 adds a third under-the-panel piece, `buyBoxProof.award` — the "Rated #1"
-award strip (default OFF, own v22 gate `ba`, curated 18-locale copy in the
-JS asset, always FIRST above the research band). Full contract:
-`docs/SPEC-v28-award-strip.md`.
+v28 added a third under-the-panel piece — the "Rated #1" award strip
+(default OFF, own v22 gate `ba`, curated 18-locale copy in the JS asset,
+always FIRST above the research band): `docs/SPEC-v28-award-strip.md`.
+
+## v29 proof-block split
+
+`research_band` + `award_strip` — the band (institutions + seal) and the
+strip are their OWN features since v29: own sections (`researchBand`,
+`awardStrip`), flags, market scopes, Preview Center draft flags, island
+members (`rb`/`aw`), markers and beacons; `buy_box_proof` keeps the
+in-panel rows and the replacement rule only. A pre-v29 blob is migrated on
+read (`coerceLegacyProofSplit` — enabled = old master AND the piece's
+switch, scope inherited), and the storefront keeps a legacy render path
+for pre-migration metafields. Also fixes the beacon allowlist, which had
+been dropping every `buy_box_proof` impression since v19. Full contract:
+`docs/SPEC-v29-proof-split.md`.
 
 ## v20 image badges on mobile
 

@@ -104,6 +104,9 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   cart_pinned_checkout: "/app/features/cart",
   // v26 quantity selector cards: own page (SPEC v26).
   quantity_selector: "/app/features/quantity",
+  // v29 proof-block split: each piece has its own page (SPEC v29).
+  research_band: "/app/features/research-band",
+  award_strip: "/app/features/award-strip",
 };
 
 const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
@@ -130,6 +133,8 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
     keys: [
       "quantity_selector",
       "buy_box_proof",
+      "award_strip",
+      "research_band",
       "trust_badges",
       "image_badges",
       "trustpilot",

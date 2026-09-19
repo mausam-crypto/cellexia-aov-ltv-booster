@@ -113,6 +113,8 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
     keys: [
       "quantity_selector",
       "buy_box_proof",
+      "award_strip",
+      "research_band",
       "trust_badges",
       "image_badges",
       "trustpilot",

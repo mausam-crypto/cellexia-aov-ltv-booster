@@ -235,52 +235,66 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v28 — "Rated #1" award strip under the buy box (ships OFF) — what this release changes
+## 3a. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
 
-A third piece of the **Buy-box proof block**: your reference card, replicated
-exactly — the navy "#1" medallion, "Rated #1 of 100+ wrinkle treatments" over
-"in independent lab testing", the little red-over-yellow colour bar beside the
-publication name (built in; an uploaded logo file replaces that lockup), and
-the year in its own cell, all on **one row at every width** (on narrow phones
-the whole card scales down proportionally instead of wrapping). It renders as
-its own card **directly under the Add-to-cart panel, always FIRST — the
-"Based on published research from" band moves down one place** when both are
-enabled.
+Two things landed together in this build:
 
-- **Ships OFF.** Turn it on at *App → Buy-box proof block → Award strip*.
-  The proof block itself must be enabled (it already is on the live store);
-  everything the card needs is on that one page: rank, the "of 100+" field
-  size, the product category, the publication name, an optional logo file,
-  and the year.
-- **Every store language, automatically.** The sentence is app-translated in
-  all 18 storefront languages with real grammar (Polish/Finnish/Arabic case
-  forms, Japanese word order, RTL layout). The **category is a fixed list**
-  (wrinkle treatments, cellulite treatments, dark spot correctors, …) for
-  exactly that reason — free text cannot be made grammatical in 18
-  languages. Need a category that is missing? Ask; it is a small code
-  addition. The publication name stays as you type it in every language
-  (proper nouns are not translated).
-- **Preview it before anyone sees it.** The Preview Center shows the strip
-  exactly as it will go live (use the block's draft flag if the block is
-  off; the saved card settings otherwise) — gated or not, the preview
-  always renders it.
-- **Link-only mode, like the research band.** The card has its own "Who sees
-  it" control: tick it and the strip disappears from the normal storefront
-  and shows only to visitors arriving through its own generated
-  `param=token` link suffix (90-day memory, `?param=off` escape hatch, the
-  same rules as v22). Impressions are tagged so Analytics → "Tagged-link
-  pieces" can compare the arms.
-- **Honesty note (shown in the admin too):** show only a rating or award
-  that was actually published, name the publication exactly, and upload its
-  logo only if you are licensed to use it. The claim is yours, not the
-  app's.
-- **Zero cost where it matters:** no Liquid bytes (the config rides the
-  existing island), no locale-file bytes (el/ar stay at their wall), no new
-  FeatureKey, no schema change, no new scopes.
+### The new "Rated #1" award strip (ships OFF)
 
-Deploy BOTH halves exactly as §3 describes (server carries the settings +
-admin card + gate; the extension carries the renderer, styles and the
-18-language copy). Full contract: `docs/SPEC-v28-award-strip.md`.
+Your reference card, replicated exactly — the navy "#1" medallion, "Rated #1
+of 100+ wrinkle treatments" over "in independent lab testing", the little
+red-over-yellow colour bar beside the publication name (built in; an uploaded
+logo file replaces that lockup), and the year in its own cell, all on **one
+row at every width** (on narrow phones the whole card scales down
+proportionally instead of wrapping).
+
+- **Every store language, automatically.** Real grammar per language
+  (Polish/Finnish/Arabic case forms, Japanese word order, RTL layout). The
+  **category is a fixed list** (wrinkle treatments, cellulite treatments,
+  dark spot correctors, …) for exactly that reason — free text cannot be
+  made grammatical in 18 languages; ask if one is missing. The publication
+  name stays as you type it (proper nouns are not translated).
+- **Honesty note (shown in the admin too):** show only a rating that was
+  actually published, name the publication exactly, and upload its logo only
+  if you are licensed to use it. The claim is yours, not the app's.
+
+### The split: three independent features (your request)
+
+**"Based on published research from" (with the certification seal) and the
+award strip are now their OWN features, outside the Buy-box proof block** —
+each with its own on/off switch, its own market targeting, its own
+Preview-Center draft flag (so each can be previewed on its own), its own
+tagged-link controls and its own analytics row:
+
+- *App → Features → Award strip* — the new card, first under the buy box.
+- *App → Features → Research band* — the institutions band + the seal.
+- *App → Features → Buy-box proof block* — now only the in-panel rows
+  (ships-from, delivery date, icon strip, money-back card, rating row) and
+  its take-over rule.
+
+Neither piece needs the proof block to be on any more. When several are on,
+the order under the Add-to-cart panel is unchanged: award strip first, then
+the research band.
+
+**Nothing changes for shoppers by itself.** Your current settings migrate
+automatically the first time the new app server reads them (a piece comes
+up ON exactly if the proof block was on AND the piece's switch was on; each
+piece inherits the block's market targeting). Existing tagged links (`br`,
+`bs`) keep working — the parameters did not change, only which feature owns
+them. Until the first save (or preview arm) rewrites the storefront config,
+the storefront renders through a built-in legacy path that looks exactly
+like before.
+
+**Also fixed:** the proof block's impressions had been silently dropped
+from Analytics since v19 (its key was missing from the beacon allowlist) —
+that is repaired, and the two new features report under their own names,
+tagged-link splits included.
+
+**After deploying BOTH halves (§3): open the app and press Save once** on
+any of the three pages above (or arm a preview). That completes the split
+on the storefront config; until then the legacy path keeps today's look.
+
+Full contracts: `docs/SPEC-v28-award-strip.md`, `docs/SPEC-v29-proof-split.md`.
 
 ## 3b. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
 

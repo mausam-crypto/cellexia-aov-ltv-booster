@@ -6592,6 +6592,20 @@
     return s.split('{r}').join(String(aw.rank)).split('{n}').join(String(aw.count)).split('{c}').join(cat);
   }
 
+  function bbpAwardWatch(award) {
+    // Fit BEFORE first paint (same task as insertion), then keep fit
+    // across rotations/resizes — the v20 ibApply re-measure pattern. The
+    // load + delayed refits cover the theme's webfont swap, which changes
+    // text metrics after mount.
+    bbpAwardFit(award);
+    var refit = function () { bbpAwardFit(award); };
+    if (window.addEventListener) {
+      window.addEventListener('resize', refit);
+      window.addEventListener('load', refit);
+    }
+    if (window.setTimeout) window.setTimeout(refit, 800);
+  }
+
   function bbpAwardFit(root) {
     // ONE-ROW GUARANTEE (the merchant's requirement: the reference lockup
     // is a single row at every width). Every strip metric is authored as
@@ -6811,27 +6825,97 @@
       var painted = false;
       var rows = bbpBuildRows(d, conf);
       if (rows && insertAfter(rows, anchor)) painted = true;
-      var research = bbpResearchNode(d, conf);
-      if (research && insertAfter(research, grey)) painted = true;
-      // v28: the award strip is inserted LAST but also directly after
-      // .pdp__grey, which unshifts it ahead of the research band — the
-      // design order under the panel is: award strip first, band second.
-      var award = bbpAwardNode(conf);
-      if (award && insertAfter(award, grey)) painted = true;
-      if (award && award.parentNode) {
-        // Fit BEFORE first paint (same task as insertion), then keep fit
-        // across rotations/resizes — the v20 ibApply re-measure pattern.
-        // The load + delayed refits cover the theme's webfont swap, which
-        // changes text metrics after mount.
-        bbpAwardFit(award);
-        var refit = function () { bbpAwardFit(award); };
-        if (window.addEventListener) {
-          window.addEventListener('resize', refit);
-          window.addEventListener('load', refit);
-        }
-        if (window.setTimeout) window.setTimeout(refit, 800);
+      // v29: with a SPLIT metafield the band and the strip are their own
+      // features (mountResearchBand / mountAwardStrip below). A pre-v29
+      // mirror has no "rb"/"aw" member — this legacy branch then renders
+      // both from the old nested config exactly as v28 shipped, so the
+      // deploy gap (new bundle over an old metafield, until the first
+      // save or preview-arm rewrites it) changes nothing for shoppers.
+      if (!rbData() && !awData()) {
+        var research = bbpResearchNode(d, conf);
+        if (research && insertAfter(research, grey)) painted = true;
+        // The strip is inserted LAST but also directly after .pdp__grey,
+        // which unshifts it ahead of the band — strip first, band second.
+        var award = bbpAwardNode(conf);
+        if (award && insertAfter(award, grey)) painted = true;
+        if (award && award.parentNode) bbpAwardWatch(award);
+        if (painted) track('buy_box_proof', 'impression', bbpGateMeta(conf, research, award));
+        return;
       }
-      if (painted) track('buy_box_proof', 'impression', bbpGateMeta(conf, research, award));
+      if (painted) track('buy_box_proof', 'impression');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function rbData() {
+    return pdpMember('rb');
+  }
+
+  function awData() {
+    return pdpMember('aw');
+  }
+
+  function rbBandConf(c) {
+    // The v29 researchBand section, reshaped to the {research, seal} pair
+    // the band builders have always taken. showResearch is the pre-v29
+    // research.enabled (the piece switch); the band MASTER is the feature
+    // flag itself, already decided by pdpMemberAllowed before this runs.
+    return {
+      research: { enabled: c.showResearch !== false, gate: c.gate, institutions: c.institutions },
+      seal: c.seal
+    };
+  }
+
+  function awBuildConf(c) {
+    // Shallow copy with enabled forced true: in the split model the
+    // enabled flag IS the feature flag, already decided by the live/draft
+    // gate — a draft preview of a not-yet-enabled strip must still render.
+    var o = {};
+    for (var k in c) {
+      if (Object.prototype.hasOwnProperty.call(c, k)) o[k] = c[k];
+    }
+    o.enabled = true;
+    return o;
+  }
+
+  function mountResearchBand() {
+    // v29: the band is its OWN feature — own island member, own live and
+    // draft flags, own market scope, own impression beacon. Renders in
+    // the same spot it always did, whatever the proof block's flag says.
+    try {
+      if (document.querySelector('.cx-bbp-research')) return; // idempotent (the legacy path may own it)
+      var d = rbData();
+      if (!d || !pdpMemberAllowed(d, 'research_band')) return;
+      var c = d.c && typeof d.c === 'object' ? d.c : null;
+      if (!c) return;
+      var grey = document.querySelector('.pdp__grey');
+      if (!grey) return;
+      var conf = rbBandConf(c);
+      var band = bbpResearchNode(d, conf);
+      if (!band) return;
+      band.setAttribute('data-cx-feature', 'research_band');
+      if (!insertAfter(band, grey)) return;
+      track('research_band', 'impression', bbpGateMeta(conf, band, null));
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function mountAwardStrip() {
+    // v29: the strip is its OWN feature. Mounted AFTER the band (init
+    // order) and also inserted directly after .pdp__grey, so it unshifts
+    // ahead: strip first, band second — the v28 design order, kept.
+    try {
+      if (document.querySelector('.cx-bbp-award')) return; // idempotent (the legacy path may own it)
+      var d = awData();
+      if (!d || !pdpMemberAllowed(d, 'award_strip')) return;
+      var c = d.c && typeof d.c === 'object' ? d.c : null;
+      if (!c) return;
+      var grey = document.querySelector('.pdp__grey');
+      if (!grey) return;
+      var award = bbpAwardNode({ award: awBuildConf(c) });
+      if (!award) return;
+      award.setAttribute('data-cx-feature', 'award_strip');
+      if (!insertAfter(award, grey)) return;
+      bbpAwardWatch(award);
+      track('award_strip', 'impression', bbpGateMeta({ award: c }, null, award));
     } catch (e) { /* never break the theme */ }
   }
 
@@ -7484,6 +7568,8 @@
       // --- v19 buy-box proof block, after the countdown/delivery pair so
       // it sits under the whole stock-message rhythm ---
       mountBbp();
+      mountResearchBand();
+      mountAwardStrip();
 
       // --- SPEC v3 proof stack (has its own anchors + fallbacks) ---
       buildProofStack();

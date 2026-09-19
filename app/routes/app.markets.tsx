@@ -144,6 +144,9 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
       // suppresses trust_badges / trustpilot / guarantee / the PDP delivery
       // widget / az_microcopy / az_ships_from on that page.
       { key: "buy_box_proof", label: "Buy-box proof block" },
+      // v29: split out of the proof block — each its own feature/scope.
+      { key: "award_strip", label: "Award strip" },
+      { key: "research_band", label: "Research band" },
       // v26: replaces the theme's size pills with picture cards (see
       // docs/SPEC-v26-quantity-selector.md).
       { key: "quantity_selector", label: "Quantity selector cards" },
@@ -605,6 +608,8 @@ export default function MarketsPage() {
       ["press", "press"],
       ["derm_endorsements", "dermEndorsements"],
       ["buy_box_proof", "buyBoxProof"],
+      ["research_band", "researchBand"],
+      ["award_strip", "awardStrip"],
       ["image_badges", "imageBadges"],
       ["quantity_selector", "quantitySelector"],
     ] as const;

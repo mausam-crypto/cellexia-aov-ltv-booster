@@ -1,16 +1,18 @@
 # SPEC v28 — "Rated #1" award strip
 
-**Settings piece** `buyBoxProof.award` · **gate id** `ba` · **admin page**
-`/app/features/proof-block` ("Award strip" card) · **CSS prefix**
-`cx-bbp-award` · **marker** `data-cx-feature="buy_box_proof"` (the block's) ·
-built 2026-09-19.
+**Settings section** `awardStrip` (its own feature `award_strip` since v29 —
+docs/SPEC-v29-proof-split.md; born v28 as `buyBoxProof.award`) · **gate id**
+`ba` · **admin page** `/app/features/award-strip` · **CSS prefix**
+`cx-bbp-award` · **marker** `data-cx-feature="award_strip"`
+(`"buy_box_proof"` on the pre-migration legacy path) · built 2026-09-19.
 
 The merchant's reference mock: a compact endorsement card — the navy rank
 medallion ("#1"), "Rated #1 of 100+ wrinkle treatments" over "in independent
 lab testing", the red-over-yellow colour bar beside the publication name
 ("Verbraucher Berichte"), and the year, four cells behind three vertical
-rules on ONE row at every width. It is the THIRD piece of the v19 buy-box
-proof block and the third v22 parameter-gate target.
+rules on ONE row at every width. Born as the third piece of the v19
+buy-box proof block; its OWN feature since v29 (the design contract here is
+unchanged). Third v22 parameter-gate target.
 
 ## 1. Placement and order
 

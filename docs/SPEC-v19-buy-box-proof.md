@@ -30,6 +30,11 @@ own card, above `.pdp__accordions`), in this order:
 2. `div.cx-bbp-research` — the translated "Based on published research
    from" eyebrow, the institution logos, and the certification seal.
 
+**v29 (docs/SPEC-v29-proof-split.md):** both siblings are their OWN features
+now (`award_strip`, `research_band`) — own flags, scopes, previews, beacons —
+and render whatever this block's flag says. This feature keeps the in-panel
+rows and the replacement rule only. The sibling order above still holds.
+
 ## 2. One source of truth per fact
 
 The block stores **no** second copy of a label, a day count, a rating or a

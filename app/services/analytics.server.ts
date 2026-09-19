@@ -83,6 +83,14 @@ const ALLOWED_FEATURES = new Set([
   // a click per tier change (meta "q<units>", the free-text dimension) from
   // cellexia-pdp.js qselMount/qselBind.
   "quantity_selector",
+  // v29: buy_box_proof was MISSING here since v19 — the block's mountBbp
+  // impression (and with it the whole v22 "Tagged-link pieces" split) was
+  // silently dropped, the v6.1/v13.1 failure mode a third time. Fixed with
+  // the proof-block split, which also adds the two pieces' own beacons
+  // (each may carry the "g:" gate meta).
+  "buy_box_proof",
+  "research_band",
+  "award_strip",
   // Site-wide session beacon (one per browser session) — powers the
   // experiment tracker's conversion-rate denominator.
   "site",

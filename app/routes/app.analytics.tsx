@@ -82,6 +82,9 @@ const FEATURE_LABELS: Record<string, string> = {
   gift_tiers: "Gift tiers",
   // v19 shipped without a label here, so this row rendered as the raw key.
   buy_box_proof: "Buy-box proof block",
+  // v29 proof-block split.
+  research_band: "Research band",
+  award_strip: "Award strip",
   quantity_selector: "Quantity selector cards",
 };
 

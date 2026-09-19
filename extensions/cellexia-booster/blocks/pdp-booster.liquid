@@ -196,17 +196,6 @@ assign tp_sep = 'trustpilot.decimal_separator' | t
 assign tp_count = cfg.trustpilot.reviewCount | default: 1000
 assign nudge_pct = cfg.subscriptionNudge.discountPct | default: 5
 assign bottle_days = cfg.emptyBottleGuarantee.days | default: 60
-assign cx_draft_badges = false
-assign cx_draft_guarantee = false
-assign cx_draft_trustpilot = false
-assign cx_draft_nudge = false
-assign cx_draft_survey = false
-assign cx_draft_study = false
-assign cx_draft_batch = false
-assign cx_draft_bottle = false
-assign cx_draft_dispatch = false
-assign cx_draft_delivery = false
-assign cx_draft_bbp = false
 if cx_prev_armed
 assign cx_prev_flags = cx_prev.draftFlags
 if cx_prev_flags.buy_box_proof == true or cfg.buyBoxProof.enabled == true
@@ -343,12 +332,34 @@ assign cx_qs = false
 if cx_qsl or cx_prev_flags.quantity_selector == true
 assign cx_qs = true
 endif
+assign cx_awl = false
+assign cx_s = cfg.marketScopes.award_strip
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
+if cfg.awardStrip.enabled == true
+assign cx_awl = true
+endif
+endif
+assign cx_aw = false
+if cx_awl or cx_prev_flags.award_strip == true
+assign cx_aw = true
+endif
+assign cx_rbl = false
+assign cx_s = cfg.marketScopes.research_band
+if cx_s.mode != 'selected' or cx_s.markets contains cx_market
+if cfg.researchBand.enabled == true
+assign cx_rbl = true
+endif
+endif
+assign cx_rb = false
+if cx_rbl or cx_prev_flags.research_band == true
+assign cx_rb = true
+endif
 assign cx_draft_any = false
 if cx_draft_badges or cx_draft_guarantee or cx_draft_trustpilot or cx_draft_nudge or cx_draft_survey or cx_draft_study or cx_draft_batch or cx_draft_bottle or cx_draft_dispatch or cx_draft_delivery or cx_draft_bbp
 assign cx_draft_any = true
 endif
 -%}
-{%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_batch or show_bottle or show_dispatch or show_delivery or show_bbp or cx_ibs > 0 or cx_qs or cx_draft_any -%}
+{%- if show_badges or show_guarantee or show_trustpilot or show_nudge or show_survey or show_study or show_batch or show_bottle or show_dispatch or show_delivery or show_bbp or cx_ibs > 0 or cx_qs or cx_rb or cx_aw or cx_draft_any -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
 {%- if cx_eff_gt %}
 {%- assign cx_gp = app.metafields.cellexia.gift_plan.value -%}
@@ -420,6 +431,12 @@ assign tp_stars_label = tp_stars | round: 1
 {%- endif %}
 {%- if cx_bbp_on %}
 "bbp": {"live": {{ show_bbp }}, "c": {{ cfg.buyBoxProof | json }}, "dl": {{ cx_bbp_del }}, "sf": {{ cx_bbp_sf | json }}, "sfs": {{ 'amazon.ships_from' | t: country: '@@C@@' | json }}, "rs": {{ 'badges.research' | t | json }}},
+{%- endif %}
+{%- if cx_rb %}
+"rb": {"live": {{ cx_rbl }}, "c": {{ cfg.researchBand | json }}, "rs": {{ 'badges.research' | t | json }}},
+{%- endif %}
+{%- if cx_aw %}
+"aw": {"live": {{ cx_awl }}, "c": {{ cfg.awardStrip | json }}},
 {%- endif %}
 {%- if cx_ibs > 0 %}
 "ib": {"live": {{ cx_ibl }}, "s": {{ cx_ibs }}},

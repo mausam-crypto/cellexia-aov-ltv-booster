@@ -126,7 +126,8 @@ const FEATURE_KEYS = parseFeatureKeys();
 // v19 (2026-09-09): 37 -> 38 (buy_box_proof appended at the END).
 // v20 (2026-09-11): 38 -> 39 (image_badges appended at the END).
 // v21 (2026-09-14): 39 -> 42 (cart_overlay_fix + cart_compact + cart_pinned_checkout appended at the END).
-ok(FEATURE_KEYS.length === 43, `FEATURE_KEYS parsed live: 43 keys (got ${FEATURE_KEYS.length})`);
+// v29 (2026-09-19): 43 -> 45 (research_band + award_strip appended at the END).
+ok(FEATURE_KEYS.length === 45, `FEATURE_KEYS parsed live: 45 keys (got ${FEATURE_KEYS.length})`);
 
 /**
  * Evidence map: every FeatureKey -> at least one verified pattern in a real
@@ -191,6 +192,11 @@ const EVIDENCE = {
   // v19: the buy-box proof block builds two nodes (the in-panel rows and the
   // research band) — BOTH carry the marker, and one beacon covers the block.
   buy_box_proof: [{ file: PDP_JS, has: MARK("buy_box_proof") }],
+  // v29: the band and the strip are their own features. Their builders are
+  // shared with the legacy proof-block path, so the marker is re-stamped at
+  // the new mounts' call sites (setAttribute carries the same literal pair).
+  research_band: [{ file: PDP_JS, has: MARK("research_band"), note: "stamped by mountResearchBand over the shared builder" }],
+  award_strip: [{ file: PDP_JS, has: MARK("award_strip"), note: "stamped by mountAwardStrip over the shared builder" }],
   // v20: this feature paints NOTHING of its own — it widens the theme's own
   // image badges on phones. No node means no marker and no beacon (the
   // cart_trust_row / az_bought_count precedent): the gate key is the
@@ -2254,9 +2260,9 @@ const EVIDENCE = {
     );
     ok(
       settingsFlat.includes(
-        "return upgradeRetiredEndorsementCopy( coerceLegacyGiftClusters( coerceLegacyProofDensities( mergeSettings(structuredClone(DEFAULT_SETTINGS), raw), raw, ), raw, ), );",
+        "return upgradeRetiredEndorsementCopy( coerceLegacyGiftClusters( coerceLegacyProofDensities( coerceLegacyProofSplit( mergeSettings(structuredClone(DEFAULT_SETTINGS), raw), raw, ), raw, ), raw, ), );",
       ),
-      "v8.3/v18: getSettings wraps mergeSettings with every load-path coercion, each fed the RAW stored JSON (density, then the v14->v18 gift cluster lift, then the retired-copy upgrade outermost)",
+      "v8.3/v18/v29: getSettings wraps mergeSettings with every load-path coercion, each fed the RAW stored JSON (the v29 proof split innermost, then density, the v14->v18 gift cluster lift, and the retired-copy upgrade outermost)",
     );
     ok(
       settingsSrc8.includes("if (PROOF_DENSITIES.includes(stored as ProofDensity)) continue;") &&
@@ -4308,8 +4314,8 @@ const EVIDENCE = {
     "v20: the member is emitted only when the feature is live or drafted",
   );
   ok(
-    /or show_bbp or cx_ibs > 0 or cx_qs or cx_draft_any -%\}/.test(ibLiquid),
-    "v20/v26: the island/CSS/JS emission gate admits image_badges AND quantity_selector each ALONE (no other feature needed)",
+    /or show_bbp or cx_ibs > 0 or cx_qs or cx_rb or cx_aw or cx_draft_any -%\}/.test(ibLiquid),
+    "v20/v26/v29: the island/CSS/JS emission gate admits image_badges, quantity_selector, the research band and the award strip each ALONE (no other feature needed)",
   );
 
   const ibCss = read(CSS);
@@ -4342,8 +4348,8 @@ const EVIDENCE = {
 
   const ibSettings = read("app/models/settings.server.ts");
   ok(
-    ibSettings.includes('"image_badges",\n  // v21 cart overlay features — appended last (39 → 42 keys).\n  "cart_overlay_fix",\n  "cart_compact",\n  "cart_pinned_checkout",\n  // v26 quantity selector cards — appended last (42 → 43 keys).\n  "quantity_selector",\n];'),
-    "v20/v21: image_badges then the three v21 overlay keys close FEATURE_KEYS (appended, never inserted)",
+    ibSettings.includes('"image_badges",\n  // v21 cart overlay features — appended last (39 → 42 keys).\n  "cart_overlay_fix",\n  "cart_compact",\n  "cart_pinned_checkout",\n  // v26 quantity selector cards — appended last (42 → 43 keys).\n  "quantity_selector",\n  // v29 proof-block split — appended last (43 → 45 keys).\n  "research_band",\n  "award_strip",\n];'),
+    "v20/v21/v29: the post-v20 keys close FEATURE_KEYS in append order (never inserted)",
   );
   ok(
     ibSettings.includes("image_badges: { kind: \"section\", field: \"imageBadges\" }"),
@@ -4721,9 +4727,9 @@ const EVIDENCE = {
     "v22: the research band's gate guard is in the shipped builder",
   );
   ok(
-    gateSettings.includes("next.buyBoxProof.research.gate = isGateId(next.buyBoxProof.research.gate)") &&
-      gateSettings.includes("next.buyBoxProof.seal.gate = isGateId(next.buyBoxProof.seal.gate)") &&
-      gateSettings.includes("next.buyBoxProof.award.gate = isGateId(next.buyBoxProof.award.gate)"),
+    gateSettings.includes("next.researchBand.gate = isGateId(next.researchBand.gate)") &&
+      gateSettings.includes("next.researchBand.seal.gate = isGateId(next.researchBand.seal.gate)") &&
+      gateSettings.includes("next.awardStrip.gate = isGateId(next.awardStrip.gate)"),
     "v22: an unknown gate reference is cleared; a reference to a gate that is OFF is kept so the runtime fails closed",
   );
 
@@ -5057,8 +5063,8 @@ const EVIDENCE = {
     "v26: FEATURE_RAW_FIELD routes the key through the generic section arm",
   );
   ok(
-    /"imageBadges",\n  "quantitySelector",\n\] as const;/.test(qsSettings),
-    "v26: quantitySelector closes STANDALONE_SECTION_FIELDS (snapshot/restore/flip ride the generic arm)",
+    /"imageBadges",\n  "quantitySelector",\n  \/\/ v29 proof-block split\.\n  "researchBand",\n  "awardStrip",\n\] as const;/.test(qsSettings),
+    "v26/v29: quantitySelector then the two v29 sections close STANDALONE_SECTION_FIELDS (snapshot/restore/flip ride the generic arm)",
   );
   ok(
     qsSettings.includes("next.quantitySelector.enabled = next.quantitySelector.enabled === true;"),
@@ -5185,15 +5191,16 @@ const EVIDENCE = {
 {
   const awSettings = read("app/models/settings.server.ts");
   const awPdpJs = read(PDP_JS);
-  const awRoute = read("app/routes/app.features.proof-block.tsx");
+  // v29: the strip's admin moved to its own feature page.
+  const awRoute = read("app/routes/app.features.award-strip.tsx");
 
   // ---- default OFF, strict boolean (the v21 convention) ------------------
   ok(
-    awSettings.includes("next.buyBoxProof.award.enabled = next.buyBoxProof.award.enabled === true;"),
+    awSettings.includes("next.awardStrip.enabled = next.awardStrip.enabled === true;"),
     "v28: the strip is default-OFF strict — junk or a pre-v28 blob lands on false, never on",
   );
   ok(
-    /award: \{\n      enabled: false,\n      gate: "",\n      rank: 1,\n      count: 100,\n      category: "wrinkle",\n      publication: "Verbraucher Berichte",\n      imageUrl: "",\n      year: 2026,\n    \},/.test(awSettings),
+    /awardStrip: \{\n    enabled: false,\n    gate: "",\n    rank: 1,\n    count: 100,\n    category: "wrinkle",\n    publication: "Verbraucher Berichte",\n    imageUrl: "",\n    year: 2026,\n  \},/.test(awSettings),
     "v28: DEFAULT_SETTINGS award block verbatim (off, gateless, the reference-mock content)",
   );
   ok(
@@ -5288,10 +5295,143 @@ const EVIDENCE = {
     "v28: the admin page gates the strip through the shared ParamGateCard and saves the ba pair",
   );
 
-  // ---- budgets: this feature ships ZERO Liquid and ZERO locale bytes ----
+  // ---- budgets: the strip still ships ZERO locale bytes; since v29 its
+  // config rides its OWN island member ("aw"), gated on its own flags ----
   ok(
-    !read(`${EXT}/blocks/pdp-booster.liquid`).includes("award"),
-    "v28: pdp-booster.liquid is untouched — the config rides the existing whole-section island member",
+    read(`${EXT}/blocks/pdp-booster.liquid`).includes('"aw": {"live": {{ cx_awl }}, "c": {{ cfg.awardStrip | json }}},'),
+    "v28/v29: the strip's config rides its own island member",
+  );
+}
+
+// ================================================= v29 PROOF-BLOCK SPLIT
+// docs/SPEC-v29-proof-split.md — the research band and the award strip
+// become their OWN features (own flag, market scope, Preview Center draft
+// flag, island member, marker and beacon). Behavior is pinned by
+// sims/buy-box-proof.cjs V1-V8 + mutants m11-m13; what is pinned HERE is
+// the cross-file wiring a sandbox cannot see.
+{
+  const spSettings = read("app/models/settings.server.ts");
+  const spPdpJs = read(PDP_JS);
+  const spLiquid = read(`${EXT}/blocks/pdp-booster.liquid`);
+  const spAnalytics = read("app/services/analytics.server.ts");
+
+  // ---- the gates moved WITH their pieces (ids stable, owners changed) ----
+  ok(
+    /br: \{\n    label: "Research band — institutions",\n    feature: "research_band" as FeatureKey,\n  \},/.test(spSettings) &&
+      /bs: \{\n    label: "Research band — certification seal",\n    feature: "research_band" as FeatureKey,\n  \},/.test(spSettings) &&
+      /ba: \{\n    label: "Award strip",\n    feature: "award_strip" as FeatureKey,\n  \},/.test(spSettings),
+    "v29: the three gate targets belong to the features that own the pieces now",
+  );
+
+  // ---- migration: a pre-v29 blob keeps showing exactly what it showed ----
+  ok(
+    spSettings.includes("export function coerceLegacyProofSplit(") &&
+      spSettings.includes("band.enabled = masterOn && (researchOn || sealOn);") &&
+      spSettings.includes("strip.enabled = masterOn && award.enabled === true;"),
+    "v29: coerceLegacyProofSplit lifts the nested pieces with enabled = old master AND the piece switch",
+  );
+  ok(
+    spSettings.includes('inheritScope("research_band");') &&
+      spSettings.includes('inheritScope("award_strip");'),
+    "v29: a migrated piece inherits the proof block's market scope (which used to govern it)",
+  );
+
+  // ---- island: own members, own flags, the v26 idiom ---------------------
+  ok(
+    spLiquid.includes('"rb": {"live": {{ cx_rbl }}, "c": {{ cfg.researchBand | json }}, "rs": {{ \'badges.research\' | t | json }}},'),
+    "v29: the band's config + eyebrow ride its own island member",
+  );
+  ok(
+    spLiquid.includes("if cx_rbl or cx_prev_flags.research_band == true") &&
+      spLiquid.includes("if cx_awl or cx_prev_flags.award_strip == true") &&
+      spLiquid.includes("assign cx_s = cfg.marketScopes.research_band") &&
+      spLiquid.includes("assign cx_s = cfg.marketScopes.award_strip"),
+    "v29: both features use the v26 live+scope / draft-flag idiom",
+  );
+  // bbp keeps "rs" so a NEW bundle over an OLD (pre-first-save) metafield
+  // still renders the band's eyebrow through the legacy path.
+  ok(
+    spLiquid.includes('"sfs": {{ \'amazon.ships_from\' | t: country: \'@@C@@\' | json }}, "rs": {{ \'badges.research\' | t | json }}},'),
+    "v29: the bbp member keeps the eyebrow string for the deploy-gap legacy path",
+  );
+  // The diet that paid for the members: the 11 draft pre-inits are gone
+  // (nil is falsy in every use), and the one RE-CLEAR that is not an init
+  // (the armed-branch B2B nudge clear) survives.
+  ok(
+    !spLiquid.includes("assign cx_draft_bbp = false") &&
+      !spLiquid.includes("assign cx_draft_badges = false") &&
+      spLiquid.includes("if customer.b2b?\nassign cx_draft_nudge = false\nendif"),
+    "v29: the draft pre-inits are dieted away; the B2B nudge re-clear stays",
+  );
+
+  // ---- storefront: three mounts, design order, legacy branch -------------
+  ok(
+    spPdpJs.includes("      mountBbp();\n      mountResearchBand();\n      mountAwardStrip();\n"),
+    "v29: init mounts rows, then the band, then the strip (the strip unshifts ahead — design order)",
+  );
+  ok(
+    spPdpJs.includes("      if (!rbData() && !awData()) {"),
+    "v29: mountBbp keeps the legacy branch for a pre-migration metafield",
+  );
+  ok(
+    spPdpJs.includes("if (!d || !pdpMemberAllowed(d, 'research_band')) return;") &&
+      spPdpJs.includes("if (!d || !pdpMemberAllowed(d, 'award_strip')) return;"),
+    "v29: each mount gates on ITS OWN feature's live/draft verdict",
+  );
+  ok(
+    spPdpJs.includes("track('research_band', 'impression', bbpGateMeta(conf, band, null));") &&
+      spPdpJs.includes("track('award_strip', 'impression', bbpGateMeta({ award: c }, null, award));"),
+    "v29: each feature beacons under its own name, gate meta included",
+  );
+
+  // ---- the beacons are ACCEPTED (the v6.1/v13.1 silent-drop class; the
+  // proof block's own key had been missing since v19) ----------------------
+  for (const key of ["buy_box_proof", "research_band", "award_strip"]) {
+    ok(spAnalytics.includes(`"${key}",`), `v29: analytics allowlist accepts ${key} beacons`);
+  }
+  ok(
+    read("app/routes/app.analytics.tsx").includes('research_band: "Research band",') &&
+      read("app/routes/app.analytics.tsx").includes('award_strip: "Award strip",'),
+    "v29: the analytics page labels both keys",
+  );
+
+  // ---- every per-feature surface knows the two new keys ------------------
+  const spMarkets = read("app/routes/app.markets.tsx");
+  ok(
+    spMarkets.includes('{ key: "award_strip", label: "Award strip" }') &&
+      spMarkets.includes('{ key: "research_band", label: "Research band" }') &&
+      spMarkets.includes('["research_band", "researchBand"],') &&
+      spMarkets.includes('["award_strip", "awardStrip"],'),
+    "v29: Markets matrix rows + changed-only save mappers",
+  );
+  ok(
+    read("app/routes/app.preview.tsx").includes('"award_strip",\n      "research_band",'),
+    "v29: the Preview Center offers both draft flags on the product-page group",
+  );
+  const spHub = read("app/routes/app.features._index.tsx");
+  ok(
+    spHub.includes('research_band: "/app/features/research-band"') &&
+      spHub.includes('award_strip: "/app/features/award-strip"'),
+    "v29: the features hub links each piece to its own page",
+  );
+
+  // ---- admin: the band page owns br/bs; the proof-block page saves no
+  // gates and no band/strip fields any more --------------------------------
+  const spBandRoute = read("app/routes/app.features.research-band.tsx");
+  ok(
+    spBandRoute.includes('gate: state.gateResearch ? "br" : ""') &&
+      spBandRoute.includes('gate: state.gateSeal ? "bs" : ""') &&
+      spBandRoute.includes("marketScopes: { research_band: toScopePatch(state.scope) },"),
+    "v29: the research-band page saves its own gates and scope",
+  );
+  const spBlockRoute = read("app/routes/app.features.proof-block.tsx");
+  ok(
+    !spBlockRoute.includes("paramGates") &&
+      !spBlockRoute.includes("researchBand") &&
+      !spBlockRoute.includes("awardStrip") &&
+      spBlockRoute.includes('url="/app/features/award-strip"') &&
+      spBlockRoute.includes('url="/app/features/research-band"'),
+    "v29: the proof-block page is rows-only and points at the two new pages",
   );
 }
 

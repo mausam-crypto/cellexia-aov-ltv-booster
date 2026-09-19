@@ -12,10 +12,15 @@ at it, and everything below applies unchanged.
 own. The buy-box rows themselves are never gated, so the proof block's suppression of the
 classic badge / guarantee / Trustpilot / delivery widgets is unaffected by any of this.
 
-**Third target (v28, documented spec update):** the award strip —
-`buyBoxProof.award` (gate `ba`), docs/SPEC-v28-award-strip.md. Same rules, same
-`ParamGateCard`, same digests-only projection; the harness pin moved from "exactly two"
-to "exactly three" gate targets.
+**Third target (v28, documented spec update):** the award strip (gate `ba`),
+docs/SPEC-v28-award-strip.md. Same rules, same `ParamGateCard`, same digests-only
+projection; the harness pin moved from "exactly two" to "exactly three" gate targets.
+
+**v29 (docs/SPEC-v29-proof-split.md):** the band and the strip became their own
+features, and the three targets moved to the features that own the pieces
+(`research_band` for `br`/`bs`, `award_strip` for `ba`). The IDS never change — a
+live visitor's stored unlock names them. The gate references now live at
+`researchBand.gate`, `researchBand.seal.gate` and `awardStrip.gate`.
 
 ---
 
@@ -59,9 +64,10 @@ case of a forced collision is that somebody sees an extra trust band.
 
 ```ts
 export const GATE_TARGETS = {
-  br: { label: "Proof block — research band",      feature: "buy_box_proof" },
-  bs: { label: "Proof block — certification seal", feature: "buy_box_proof" },
-  ba: { label: "Proof block — award strip",        feature: "buy_box_proof" }, // v28
+  // v29: ids are STABLE; ownership moved with the proof-block split.
+  br: { label: "Research band — institutions",        feature: "research_band" },
+  bs: { label: "Research band — certification seal",  feature: "research_band" },
+  ba: { label: "Award strip",                         feature: "award_strip" }, // v28
 } as const;
 
 paramGates: Record<GateId, { enabled: boolean; param: string; token: string }>;
@@ -79,15 +85,16 @@ a fixed registry, not a `DYNAMIC_RECORD_KEYS` case.
 
 ### The reference — one source of truth each
 
-| Field | Meaning |
+| Field (v29 paths) | Meaning |
 | --- | --- |
-| `buyBoxProof.research.gate` | `""` = everyone, `"br"` = tagged links only |
-| `buyBoxProof.seal.gate` | `""` = everyone, `"bs"` = tagged links only |
+| `researchBand.gate` | `""` = everyone, `"br"` = tagged links only |
+| `researchBand.seal.gate` | `""` = everyone, `"bs"` = tagged links only |
+| `awardStrip.gate` | `""` = everyone, `"ba"` = tagged links only |
 
 The secret lives in `paramGates`; the intent lives in the feature. Neither is duplicated or
-derived, and because `buyBoxProof` already ships to the PDP island whole
-(`"c": {{ cfg.buyBoxProof | json }}`) the reference rides along for free — **`pdp-booster.liquid`
-is not touched by this feature at all.**
+derived, and because each owning section ships to the PDP island whole (`"c": {{ cfg.researchBand
+| json }}` / `cfg.awardStrip`) the reference rides along for free. (In v22 the references lived
+at `buyBoxProof.research.gate` / `buyBoxProof.seal.gate` and rode the `bbp` member the same way.)
 
 ### Minting
 

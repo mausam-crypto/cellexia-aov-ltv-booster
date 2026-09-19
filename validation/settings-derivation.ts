@@ -80,13 +80,13 @@ const clone = <T,>(x: T): T => structuredClone(x);
 
 // --- 1. key inventory ------------------------------------------------------
 // v14 rewards (2026-08-16): 35 -> 37 (set_savings, gift_tiers appended at the END).
-ok(FEATURE_KEYS.length === 43, `FEATURE_KEYS has 43 keys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 45, `FEATURE_KEYS has 45 keys (got ${FEATURE_KEYS.length})`);
 ok(FEATURE_KEYS.includes("az_ships_from"), "az_ships_from is a FeatureKey");
 ok(
   FEATURE_KEYS.indexOf("az_ships_from") === FEATURE_KEYS.indexOf("az_stock_line") + 1,
   "az_ships_from sits right after az_stock_line",
 );
-ok(new Set(FEATURE_KEYS).size === 43, "FEATURE_KEYS has no duplicates");
+ok(new Set(FEATURE_KEYS).size === 45, "FEATURE_KEYS has no duplicates");
 // v9 trust-module V2 rows sit right after the module key, mirroring the
 // checkout block's order in the union.
 ok(
@@ -1124,15 +1124,17 @@ for (const key of FEATURE_KEYS) {
 // default OFF, and the tier sanitizers hold the SPEC caps.
 {
   ok(
-    FEATURE_KEYS[FEATURE_KEYS.length - 8] === "set_savings" &&
-      FEATURE_KEYS[FEATURE_KEYS.length - 7] === "gift_tiers" &&
-      FEATURE_KEYS[FEATURE_KEYS.length - 6] === "buy_box_proof" &&
-      FEATURE_KEYS[FEATURE_KEYS.length - 5] === "image_badges" &&
-      FEATURE_KEYS[FEATURE_KEYS.length - 4] === "cart_overlay_fix" &&
-      FEATURE_KEYS[FEATURE_KEYS.length - 3] === "cart_compact" &&
-      FEATURE_KEYS[FEATURE_KEYS.length - 2] === "cart_pinned_checkout" &&
-      FEATURE_KEYS[FEATURE_KEYS.length - 1] === "quantity_selector",
-    "v14/v19/v20/v21/v26: set_savings + gift_tiers, then buy_box_proof, then image_badges, then the three v21 overlay keys, then quantity_selector, are the LAST FeatureKeys (appended, never inserted)",
+    FEATURE_KEYS[FEATURE_KEYS.length - 10] === "set_savings" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 9] === "gift_tiers" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 8] === "buy_box_proof" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 7] === "image_badges" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 6] === "cart_overlay_fix" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 5] === "cart_compact" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 4] === "cart_pinned_checkout" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 3] === "quantity_selector" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 2] === "research_band" &&
+      FEATURE_KEYS[FEATURE_KEYS.length - 1] === "award_strip",
+    "v14/v19/v20/v21/v26/v29: set_savings + gift_tiers, then buy_box_proof, then image_badges, then the three v21 overlay keys, then quantity_selector, then the two v29 split keys, are the LAST FeatureKeys (appended, never inserted)",
   );
   const rwKeys = FEATURE_KEYS.filter(
     (k: string) => FEATURE_RAW_FIELD[k]?.kind === "rewards",

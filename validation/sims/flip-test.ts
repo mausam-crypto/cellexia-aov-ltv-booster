@@ -51,7 +51,7 @@ const MARKETS = ["ch", "eu", "us"];
 // v19 (2026-09-09): 37 -> 38 (buy_box_proof appended at the END).
 // v20 (2026-09-11): 38 -> 39 (image_badges appended at the END).
 // v21 (2026-09-14): 39 -> 42 (cart_overlay_fix + cart_compact + cart_pinned_checkout appended at the END).
-ok(FEATURE_KEYS.length === 43, `43 FeatureKeys (got ${FEATURE_KEYS.length})`);
+ok(FEATURE_KEYS.length === 45, `45 FeatureKeys (got ${FEATURE_KEYS.length})`);
 ok(new Set(FEATURE_KEYS).size === FEATURE_KEYS.length, "no duplicate keys");
 ok(AMAZON_FLAG_FIELDS.length === FEATURE_KEYS.filter((k) => k.startsWith("az_")).length,
   "one amazon flag field per az_* key");

@@ -102,7 +102,12 @@ export type FeatureKey =
   | "cart_pinned_checkout"
   // v26 quantity selector cards (docs/SPEC-v26-quantity-selector.md) —
   // appended at the END for the same reason.
-  | "quantity_selector";
+  | "quantity_selector"
+  // v29 proof-block split (docs/SPEC-v29-proof-split.md): the research
+  // band and the award strip become their OWN features so each has its
+  // own flag, market scope, Preview Center draft flag and beacon.
+  | "research_band"
+  | "award_strip";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "cart_volume_upsell",
@@ -153,6 +158,9 @@ export const FEATURE_KEYS: FeatureKey[] = [
   "cart_pinned_checkout",
   // v26 quantity selector cards — appended last (42 → 43 keys).
   "quantity_selector",
+  // v29 proof-block split — appended last (43 → 45 keys).
+  "research_band",
+  "award_strip",
 ];
 
 /**
@@ -1186,70 +1194,92 @@ export interface BoosterSettings {
     showGuarantee: boolean;
     /** The star rating + review-count + Trustpilot row (trustpilot.*). */
     showRating: boolean;
-    /** "Based on published research from" band. */
-    research: {
-      enabled: boolean;
-      /** v22: "" = visible to everyone (when enabled). A GateId names the
-       *  URL parameter gate that hides this band on the normal storefront
-       *  and reveals it only to a visitor who arrived through the tagged
-       *  link. Fail-closed: a gate id whose gate is off paints nothing. */
-      gate: string;
-      /** Max BUY_BOX_PROOF_MAX_INSTITUTIONS. `name` is merchant free text
-       *  and stays UNTRANSLATED (institution names are proper nouns — the
-       *  US_STATE_NAMES precedent); `imageUrl` is an optional https logo
-       *  (Shopify Files), "" = the name renders as a text wordmark. */
-      institutions: { name: string; imageUrl: string }[];
-    };
+    // v29: the research band (with its seal) and the award strip moved to
+    // their OWN sections/features — researchBand and awardStrip below
+    // (docs/SPEC-v29-proof-split.md). coerceLegacyProofSplit migrates a
+    // pre-v29 blob's buyBoxProof.research/.seal/.award on read.
+  };
+  /**
+   * v29 — the "Based on published research from" band, split OUT of the
+   * proof block into its OWN feature (docs/SPEC-v29-proof-split.md):
+   * FeatureKey `research_band`, own flag, own market scope, own Preview
+   * Center draft flag and its own impression beacon — the merchant asked
+   * for the band and the award strip to be switchable and previewable as
+   * separate features. It renders exactly where it always did: a sibling
+   * card directly under `.pdp__grey`, after the award strip when both are
+   * on, whatever the proof block's own flag says.
+   */
+  researchBand: {
+    /** Master switch for the whole band. Default OFF (features ship off);
+     *  coerceLegacyProofSplit turns it on for a shop whose pre-v29 blob
+     *  had the proof block live with research or seal enabled, so the
+     *  split never changes what shoppers currently see. */
+    enabled: boolean;
+    /** The institutions half of the band (the seal has its own switch) —
+     *  the pre-v29 research.enabled, renamed: the band master above now
+     *  owns feature visibility. Default-true sub-flag (`!== false`). */
+    showResearch: boolean;
+    /** v22: "" = visible to everyone (when the band is on). A GateId names
+     *  the URL parameter gate ("br") that hides the institutions on the
+     *  normal storefront and reveals them only to a visitor who arrived
+     *  through the tagged link. Fail-closed: a gate id whose gate is off
+     *  paints nothing. */
+    gate: string;
+    /** Max BUY_BOX_PROOF_MAX_INSTITUTIONS. `name` is merchant free text
+     *  and stays UNTRANSLATED (institution names are proper nouns — the
+     *  US_STATE_NAMES precedent); `imageUrl` is an optional https logo
+     *  (Shopify Files), "" = the name renders as a text wordmark. */
+    institutions: { name: string; imageUrl: string }[];
     /** Independent-certification seal beside the research logos. */
     seal: {
       enabled: boolean;
-      /** v22: see research.gate — its own independent gate. */
+      /** v22: gate "bs" — its own independent gate. */
       gate: string;
       /** "" = the built-in DermaCert seal artwork drawn by the extension
        *  JS; an https URL replaces it with the merchant's own file. */
       imageUrl: string;
     };
-    /**
-     * v28 — the "Rated #1" award strip (docs/SPEC-v28-award-strip.md): a
-     * compact endorsement card that renders as the FIRST sibling directly
-     * under `.pdp__grey`, ahead of the research band. Default OFF (strict
-     * `=== true`, the v21 flag convention), so a pre-v28 mirror without the
-     * key paints nothing.
-     *
-     * The sentence ("Rated #1 of 100+ wrinkle treatments", "in independent
-     * lab testing") is app-curated per locale in the extension asset
-     * (CX_BBP_AWARD, the v26 CX_QSEL_STR convention — zero locale-file and
-     * zero Liquid bytes); only the numbers and the category CHOICE are the
-     * merchant's. The publication name is free text and stays untranslated
-     * (a proper noun — the US_STATE_NAMES precedent).
-     */
-    award: {
-      enabled: boolean;
-      /** v22: see research.gate — its own independent gate ("ba"). */
-      gate: string;
-      /** The awarded position, AWARD_RANK_MIN..AWARD_RANK_MAX. */
-      rank: number;
-      /** The tested field ("of {count}+ ..."), AWARD_COUNT_MIN..
-       *  AWARD_COUNT_MAX. The floor is 20: the curated templates are
-       *  written for the round-figure register (Romanian's "de" after 19,
-       *  Polish's genitive after round numerals), and a "#1 of fewer than
-       *  20" claim is not a strip worth showing. */
-      count: number;
-      /** Closed catalog key (AWARD_CATEGORY_KEYS). The translated category
-       *  noun is curated per locale WITH the template's grammatical case
-       *  baked in (the v27 CX_QSEL_UNITS lesson: plural/case tables are
-       *  grammar, so a free-text or DeepL category cannot be correct in
-       *  the inflecting languages). An unknown key paints nothing. */
-      category: string;
-      /** Publication name — merchant free text, required for the strip to
-       *  render (fail closed: no named source, no claim). */
-      publication: string;
-      /** Optional https logo (Shopify Files) replacing the text wordmark. */
-      imageUrl: string;
-      /** The award year shown under the publication,
-       *  AWARD_YEAR_MIN..AWARD_YEAR_MAX. */
-      year: number;
-    };
+  };
+  /**
+   * v28/v29 — the "Rated #1" award strip (docs/SPEC-v28-award-strip.md),
+   * its OWN feature since v29: FeatureKey `award_strip`, default OFF
+   * (strict `=== true`, the v21 flag convention — a pre-v28 mirror
+   * without the key paints nothing). Renders as the FIRST sibling card
+   * directly under `.pdp__grey`, ahead of the research band.
+   *
+   * The sentence ("Rated #1 of 100+ wrinkle treatments", "in independent
+   * lab testing") is app-curated per locale in the extension asset
+   * (CX_BBP_AWARD, the v26 CX_QSEL_STR convention — zero locale-file and
+   * zero Liquid bytes); only the numbers and the category CHOICE are the
+   * merchant's. The publication name is free text and stays untranslated
+   * (a proper noun — the US_STATE_NAMES precedent).
+   */
+  awardStrip: {
+    enabled: boolean;
+    /** v22: gate "ba" — its own independent gate. */
+    gate: string;
+    /** The awarded position, AWARD_RANK_MIN..AWARD_RANK_MAX. */
+    rank: number;
+    /** The tested field ("of {count}+ ..."), AWARD_COUNT_MIN..
+     *  AWARD_COUNT_MAX. The floor is 20: the curated templates are
+     *  written for the round-figure register (Romanian's "de" after 19,
+     *  Polish's genitive after round numerals), and a "#1 of fewer than
+     *  20" claim is not a strip worth showing. */
+    count: number;
+    /** Closed catalog key (AWARD_CATEGORY_KEYS). The translated category
+     *  noun is curated per locale WITH the template's grammatical case
+     *  baked in (the v27 CX_QSEL_UNITS lesson: plural/case tables are
+     *  grammar, so a free-text or DeepL category cannot be correct in
+     *  the inflecting languages). An unknown key paints nothing. */
+    category: string;
+    /** Publication name — merchant free text, required for the strip to
+     *  render (fail closed: no named source, no claim). */
+    publication: string;
+    /** Optional https logo (Shopify Files) replacing the text wordmark. */
+    imageUrl: string;
+    /** The award year shown beside the publication,
+     *  AWARD_YEAR_MIN..AWARD_YEAR_MAX. */
+    year: number;
   };
   /**
    * v20 — the SIZE of the award/certification badges the THEME overlays on
@@ -1536,7 +1566,7 @@ export interface BoosterSettings {
    * applies at the owning feature's level, above the gate.
    *
    * The piece that a gate hides points AT it by id (e.g.
-   * buyBoxProof.research.gate === "br"), so the secret lives here and the
+   * researchBand.gate === "br"), so the secret lives here and the
    * reference lives in the feature — neither is duplicated or derived.
    *
    * `param` and `token` are minted by the sanitizer and NEVER leave this
@@ -1565,18 +1595,21 @@ export interface BoosterSettings {
  * id, so recycling one would hand them somebody else's gate.
  */
 export const GATE_TARGETS = {
+  // v29: the three targets moved to the features that now own them
+  // (docs/SPEC-v29-proof-split.md). The IDS are stable — a live visitor's
+  // stored unlock names the id — only the owning feature changed.
   br: {
-    label: "Proof block — research band",
-    feature: "buy_box_proof" as FeatureKey,
+    label: "Research band — institutions",
+    feature: "research_band" as FeatureKey,
   },
   bs: {
-    label: "Proof block — certification seal",
-    feature: "buy_box_proof" as FeatureKey,
+    label: "Research band — certification seal",
+    feature: "research_band" as FeatureKey,
   },
   // v28: the "Rated #1" award strip (docs/SPEC-v28-award-strip.md §2).
   ba: {
-    label: "Proof block — award strip",
-    feature: "buy_box_proof" as FeatureKey,
+    label: "Award strip",
+    feature: "award_strip" as FeatureKey,
   },
 } as const;
 
@@ -1863,30 +1896,31 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     ],
     showGuarantee: true,
     showRating: true,
-    research: {
-      enabled: true,
-      gate: "",
-      institutions: [
-        { name: "Harvard Medical School", imageUrl: "" },
-        { name: "University of Oxford", imageUrl: "" },
-        { name: "The Lancet", imageUrl: "" },
-      ],
-    },
+  },
+  researchBand: {
+    enabled: false,
+    showResearch: true,
+    gate: "",
+    institutions: [
+      { name: "Harvard Medical School", imageUrl: "" },
+      { name: "University of Oxford", imageUrl: "" },
+      { name: "The Lancet", imageUrl: "" },
+    ],
     seal: {
       enabled: true,
       gate: "",
       imageUrl: "",
     },
-    award: {
-      enabled: false,
-      gate: "",
-      rank: 1,
-      count: 100,
-      category: "wrinkle",
-      publication: "Verbraucher Berichte",
-      imageUrl: "",
-      year: 2026,
-    },
+  },
+  awardStrip: {
+    enabled: false,
+    gate: "",
+    rank: 1,
+    count: 100,
+    category: "wrinkle",
+    publication: "Verbraucher Berichte",
+    imageUrl: "",
+    year: 2026,
   },
   imageBadges: {
     enabled: false,
@@ -3156,6 +3190,95 @@ export function coerceLegacyGiftClusters(
   return settings;
 }
 
+/**
+ * v29 (docs/SPEC-v29-proof-split.md): a pre-v29 blob stores the research
+ * band and the award strip INSIDE buyBoxProof (research / seal / award).
+ * mergeSettings walks the defaults, so those legacy keys silently drop out
+ * of the merged object — this coercion carries them into the new
+ * top-level sections, preserving exactly what shoppers currently see:
+ *
+ *   new enabled = old proof-block master AND the piece's own switch
+ *
+ * (a piece was only ever visible under the master, so the formula keeps
+ * live shops live and default/off shops off). The migrated pieces also
+ * inherit the proof block's market scope, which used to govern them.
+ * Values were sanitized when the old blob was saved; they are carried
+ * with type guards only, like every other coercion.
+ */
+export function coerceLegacyProofSplit(
+  settings: BoosterSettings,
+  raw: unknown,
+): BoosterSettings {
+  if (!isPlainObject(raw)) return settings;
+  const rawObj = raw as Record<string, unknown>;
+  const bbp = rawObj.buyBoxProof;
+  if (!isPlainObject(bbp)) return settings;
+  const masterOn = bbp.enabled === true;
+  const legacyScope = isPlainObject(rawObj.marketScopes)
+    ? (rawObj.marketScopes as Record<string, unknown>).buy_box_proof
+    : undefined;
+  const inheritScope = (key: "research_band" | "award_strip") => {
+    if (
+      isPlainObject(legacyScope) &&
+      legacyScope.mode === "selected" &&
+      Array.isArray(legacyScope.markets)
+    ) {
+      settings.marketScopes[key] = {
+        mode: "selected",
+        markets: legacyScope.markets.filter(
+          (handle): handle is string => typeof handle === "string",
+        ),
+      };
+    }
+  };
+
+  const band = settings.researchBand;
+  if (
+    !isPlainObject(rawObj.researchBand) &&
+    (isPlainObject(bbp.research) || isPlainObject(bbp.seal))
+  ) {
+    const research = isPlainObject(bbp.research) ? bbp.research : {};
+    const seal = isPlainObject(bbp.seal) ? bbp.seal : {};
+    const researchOn = research.enabled !== false;
+    const sealOn = seal.enabled !== false;
+    band.enabled = masterOn && (researchOn || sealOn);
+    band.showResearch = researchOn;
+    band.gate = typeof research.gate === "string" ? research.gate : "";
+    if (Array.isArray(research.institutions)) {
+      band.institutions = research.institutions
+        .filter(isPlainObject)
+        .map((item) => ({
+          name: typeof item.name === "string" ? item.name : "",
+          imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : "",
+        }))
+        .filter((item) => item.name !== "");
+    }
+    band.seal.enabled = sealOn;
+    band.seal.gate = typeof seal.gate === "string" ? seal.gate : "";
+    band.seal.imageUrl =
+      typeof seal.imageUrl === "string" ? seal.imageUrl : "";
+    inheritScope("research_band");
+  }
+
+  if (!isPlainObject(rawObj.awardStrip) && isPlainObject(bbp.award)) {
+    const award = bbp.award;
+    const strip = settings.awardStrip;
+    strip.enabled = masterOn && award.enabled === true;
+    strip.gate = typeof award.gate === "string" ? award.gate : "";
+    if (typeof award.rank === "number") strip.rank = award.rank;
+    if (typeof award.count === "number") strip.count = award.count;
+    if (typeof award.category === "string") strip.category = award.category;
+    if (typeof award.publication === "string") {
+      strip.publication = award.publication;
+    }
+    if (typeof award.imageUrl === "string") strip.imageUrl = award.imageUrl;
+    if (typeof award.year === "number") strip.year = award.year;
+    inheritScope("award_strip");
+  }
+
+  return settings;
+}
+
 export function coerceLegacyProofDensities(
   settings: BoosterSettings,
   raw: unknown,
@@ -3436,11 +3559,12 @@ export function sanitizeSettings(
       ),
     ),
   ).slice(0, BUY_BOX_PROOF_MAX_BADGES);
-  next.buyBoxProof.research.enabled =
-    next.buyBoxProof.research.enabled !== false;
-  next.buyBoxProof.research.institutions = (
-    next.buyBoxProof.research.institutions ?? []
-  )
+  // v29: the band is its own feature — strict default-OFF master (the v21
+  // convention), default-true showResearch sub-flag (the pre-v29
+  // research.enabled semantics).
+  next.researchBand.enabled = next.researchBand.enabled === true;
+  next.researchBand.showResearch = next.researchBand.showResearch !== false;
+  next.researchBand.institutions = (next.researchBand.institutions ?? [])
     .filter(isPlainObject)
     .map((item) => ({
       name:
@@ -3453,52 +3577,53 @@ export function sanitizeSettings(
     }))
     .filter((item) => item.name !== "")
     .slice(0, BUY_BOX_PROOF_MAX_INSTITUTIONS);
-  next.buyBoxProof.seal.enabled = next.buyBoxProof.seal.enabled !== false;
-  next.buyBoxProof.seal.imageUrl = isSafeHttpsUrl(next.buyBoxProof.seal.imageUrl)
-    ? next.buyBoxProof.seal.imageUrl
+  next.researchBand.seal.enabled = next.researchBand.seal.enabled !== false;
+  next.researchBand.seal.imageUrl = isSafeHttpsUrl(
+    next.researchBand.seal.imageUrl,
+  )
+    ? next.researchBand.seal.imageUrl
     : "";
 
-  // v28 award strip. Default-OFF strict boolean (the v21 convention), the
-  // numbers clamped into the ranges the curated grammar is written for,
-  // the category held to the closed catalog, and the publication treated
-  // like an institution name (trimmed free text, proper noun).
-  next.buyBoxProof.award.enabled = next.buyBoxProof.award.enabled === true;
-  next.buyBoxProof.award.rank = Math.round(
+  // v28 award strip (its own feature since v29). Default-OFF strict
+  // boolean (the v21 convention), the numbers clamped into the ranges the
+  // curated grammar is written for, the category held to the closed
+  // catalog, and the publication treated like an institution name
+  // (trimmed free text, proper noun).
+  next.awardStrip.enabled = next.awardStrip.enabled === true;
+  next.awardStrip.rank = Math.round(
     clampNumber(
-      next.buyBoxProof.award.rank,
+      next.awardStrip.rank,
       AWARD_RANK_MIN,
       AWARD_RANK_MAX,
-      DEFAULT_SETTINGS.buyBoxProof.award.rank,
+      DEFAULT_SETTINGS.awardStrip.rank,
     ),
   );
-  next.buyBoxProof.award.count = Math.round(
+  next.awardStrip.count = Math.round(
     clampNumber(
-      next.buyBoxProof.award.count,
+      next.awardStrip.count,
       AWARD_COUNT_MIN,
       AWARD_COUNT_MAX,
-      DEFAULT_SETTINGS.buyBoxProof.award.count,
+      DEFAULT_SETTINGS.awardStrip.count,
     ),
   );
-  next.buyBoxProof.award.category = (
+  next.awardStrip.category = (
     AWARD_CATEGORY_KEYS as readonly string[]
-  ).includes(next.buyBoxProof.award.category)
-    ? next.buyBoxProof.award.category
-    : DEFAULT_SETTINGS.buyBoxProof.award.category;
-  next.buyBoxProof.award.publication =
-    typeof next.buyBoxProof.award.publication === "string"
-      ? next.buyBoxProof.award.publication.trim().slice(0, BUY_BOX_PROOF_MAX_NAME)
+  ).includes(next.awardStrip.category)
+    ? next.awardStrip.category
+    : DEFAULT_SETTINGS.awardStrip.category;
+  next.awardStrip.publication =
+    typeof next.awardStrip.publication === "string"
+      ? next.awardStrip.publication.trim().slice(0, BUY_BOX_PROOF_MAX_NAME)
       : "";
-  next.buyBoxProof.award.imageUrl = isSafeHttpsUrl(
-    next.buyBoxProof.award.imageUrl,
-  )
-    ? next.buyBoxProof.award.imageUrl
+  next.awardStrip.imageUrl = isSafeHttpsUrl(next.awardStrip.imageUrl)
+    ? next.awardStrip.imageUrl
     : "";
-  next.buyBoxProof.award.year = Math.round(
+  next.awardStrip.year = Math.round(
     clampNumber(
-      next.buyBoxProof.award.year,
+      next.awardStrip.year,
       AWARD_YEAR_MIN,
       AWARD_YEAR_MAX,
-      DEFAULT_SETTINGS.buyBoxProof.award.year,
+      DEFAULT_SETTINGS.awardStrip.year,
     ),
   );
 
@@ -3542,14 +3667,14 @@ export function sanitizeSettings(
   // CLOSED and paints nothing. Clearing it here would fail open and show
   // link-only content to every visitor — the one outcome that must never
   // happen by accident.
-  next.buyBoxProof.research.gate = isGateId(next.buyBoxProof.research.gate)
-    ? next.buyBoxProof.research.gate
+  next.researchBand.gate = isGateId(next.researchBand.gate)
+    ? next.researchBand.gate
     : "";
-  next.buyBoxProof.seal.gate = isGateId(next.buyBoxProof.seal.gate)
-    ? next.buyBoxProof.seal.gate
+  next.researchBand.seal.gate = isGateId(next.researchBand.seal.gate)
+    ? next.researchBand.seal.gate
     : "";
-  next.buyBoxProof.award.gate = isGateId(next.buyBoxProof.award.gate)
-    ? next.buyBoxProof.award.gate
+  next.awardStrip.gate = isGateId(next.awardStrip.gate)
+    ? next.awardStrip.gate
     : "";
 
   next.trustpilot.rating = clampNumber(
@@ -4498,6 +4623,23 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     },
     siblings: [],
   },
+  // v29 proof-block split — each piece is its own feature now.
+  research_band: {
+    label: "Research band",
+    get: (s) => s.researchBand.enabled,
+    set: (s, on) => {
+      s.researchBand.enabled = on;
+    },
+    siblings: [],
+  },
+  award_strip: {
+    label: "Award strip",
+    get: (s) => s.awardStrip.enabled,
+    set: (s, on) => {
+      s.awardStrip.enabled = on;
+    },
+    siblings: [],
+  },
   cart_overlay_fix: {
     label: "Cart overlay fix",
     get: (s) => s.overlayFix.scrollFix,
@@ -4856,6 +4998,9 @@ export const STANDALONE_SECTION_FIELDS = [
   "buyBoxProof",
   "imageBadges",
   "quantitySelector",
+  // v29 proof-block split.
+  "researchBand",
+  "awardStrip",
 ] as const;
 export type StandaloneSectionField = (typeof STANDALONE_SECTION_FIELDS)[number];
 
@@ -4918,6 +5063,9 @@ export const FEATURE_RAW_FIELD: Record<
   cart_compact: { kind: "overlay", field: "compact" },
   cart_pinned_checkout: { kind: "overlay", field: "pinned" },
   quantity_selector: { kind: "section", field: "quantitySelector" },
+  // v29 proof-block split.
+  research_band: { kind: "section", field: "researchBand" },
+  award_strip: { kind: "section", field: "awardStrip" },
 };
 
 /**
@@ -5217,7 +5365,10 @@ export async function getSettings(shop: string): Promise<BoosterSettings> {
     return upgradeRetiredEndorsementCopy(
       coerceLegacyGiftClusters(
         coerceLegacyProofDensities(
-          mergeSettings(structuredClone(DEFAULT_SETTINGS), raw),
+          coerceLegacyProofSplit(
+            mergeSettings(structuredClone(DEFAULT_SETTINGS), raw),
+            raw,
+          ),
           raw,
         ),
         raw,

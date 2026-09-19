@@ -105,7 +105,17 @@ const FNS = [
   "bbpBuildRows",
   // v22: mountBbp tags the impression with which URL-gated pieces painted.
   "bbpGateMeta",
+  "bbpAwardWatch",
   "mountBbp",
+  // v29 split: the band and the strip are their own features with their
+  // own members, mounts and beacons; mountBbp keeps a LEGACY branch for a
+  // pre-v29 metafield (no rb/aw member).
+  "rbData",
+  "awData",
+  "rbBandConf",
+  "awBuildConf",
+  "mountResearchBand",
+  "mountAwardStrip",
 ];
 const EXTRACTED = [
   extractVar(SRC, "CX_AZ_ICONS"),
@@ -191,6 +201,7 @@ function run(cfg, opts) {
   opts = opts || {};
   const page = makePage();
   const tracked = [];
+  const metas = [];
   const sandbox = {
     document: page.doc,
     window: { Intl },
@@ -200,7 +211,10 @@ function run(cfg, opts) {
     cfg: cfg,
     PREVIEW: opts.preview || null,
     AZ_CFG: opts.azCfg || null,
-    track: (k) => tracked.push(k),
+    track: (k, _t, m) => { tracked.push(k); metas.push(m === undefined ? null : m); },
+    // The gate module is proven by sims/param-gates; here every gate is
+    // LOCKED so the render-side guards and per-feature meta are testable.
+    cxGateOpen: () => false,
     decodeEntities: (s) => s, // sim strings carry no HTML entities
     // Delivery DATE engine: proven by its own suites. Here it is a fixed,
     // documented stub so these checks isolate the ROW composition.
@@ -227,8 +241,10 @@ function run(cfg, opts) {
   };
   vm.createContext(sandbox);
   vm.runInContext(EXTRACTED, sandbox, { filename: "extracted-bbp-module.js" });
-  vm.runInContext("mountBbp()", sandbox);
-  return { page, sandbox, tracked };
+  // The real init() order: rows/legacy first, then the band, then the
+  // strip (which unshifts ahead of the band under the panel).
+  vm.runInContext("mountBbp(); mountResearchBand(); mountAwardStrip();", sandbox);
+  return { page, sandbox, tracked, metas };
 }
 
 // mini-dom's El.textContent already walks children (and returns _text for
@@ -653,6 +669,157 @@ const rowClasses = (root) =>
   ok(noYearRun.page.doc.querySelector(".cx-bbp-award__year") === null, "AW9 the year line drops alone");
 }
 
+// ------------------------------------------------- V. v29 feature split
+// The band and the strip as their OWN features: own island members ("rb"
+// / "aw"), own live + draft flags, own markers and own beacons. baseCfg
+// above is deliberately the LEGACY island (old nested config, no rb/aw
+// member): every A-G check therefore also proves the deploy-gap path.
+function splitBandSection(over) {
+  return Object.assign({
+    enabled: true,
+    showResearch: true,
+    gate: "",
+    institutions: [
+      { name: "Harvard Medical School", imageUrl: "" },
+      { name: "University of Oxford", imageUrl: "" },
+      { name: "The Lancet", imageUrl: "" },
+    ],
+    seal: { enabled: true, gate: "", imageUrl: "" },
+  }, over || {});
+}
+
+function splitCfg(over) {
+  // The v29 island: rows-only bbp config, the band and the strip in their
+  // own members ("rs" rides both bbp — legacy — and rb).
+  const cfg = baseCfg();
+  cfg.bbp.c = {
+    enabled: true,
+    showShipsFrom: true,
+    showDelivery: true,
+    showDeliveryBadge: true,
+    badges: ["secure_checkout", "dermatologist_tested", "cruelty_free", "easy_returns"],
+    showGuarantee: true,
+    showRating: true,
+  };
+  cfg.rb = { live: true, c: splitBandSection(), rs: "Based on published research from" };
+  cfg.aw = { live: true, c: awardOn() };
+  return Object.assign(cfg, over || {});
+}
+
+{
+  // V1 — all three live: rows in the panel, then strip, then band; the
+  // pieces carry their OWN feature markers and each feature beacons once.
+  const all = run(splitCfg());
+  ok(all.page.doc.querySelector(".cx-bbp") !== null, "V1 rows render from the rows-only config");
+  const band = all.page.doc.querySelector(".cx-bbp-research");
+  const strip = all.page.doc.querySelector(".cx-bbp-award");
+  ok(!!band && band.getAttribute("data-cx-feature") === "research_band", "V1 the band carries its OWN feature marker");
+  ok(!!strip && strip.getAttribute("data-cx-feature") === "award_strip", "V1 the strip carries its OWN feature marker");
+  const kids = all.page.info.children.map((c) => c.getAttribute("class") || "");
+  const iGrey = kids.findIndex((c) => /pdp__grey/.test(c));
+  const iAward = kids.findIndex((c) => /cx-bbp-award/.test(c));
+  const iBand = kids.findIndex((c) => /cx-bbp-research/.test(c));
+  ok(iGrey !== -1 && iAward === iGrey + 1 && iBand === iAward + 1,
+    `V1 design order holds across features: grey, strip, band (got ${kids.join(" | ")})`);
+  ok(all.tracked.slice().sort().join(",") === "award_strip,buy_box_proof,research_band",
+    `V1 one beacon per FEATURE (got ${all.tracked.join(",")})`);
+  ok(all.metas[all.tracked.indexOf("buy_box_proof")] === null,
+    "V1 the rows beacon carries no gate meta in the split model");
+
+  // V2 — independence from the proof block: rows OFF, band + strip still
+  // render and beacon; buy_box_proof stays silent.
+  const noRows = splitCfg();
+  noRows.bbp.live = false;
+  const nr = run(noRows);
+  ok(nr.page.doc.querySelector(".cx-bbp") === null, "V2 proof block off: no rows");
+  ok(nr.page.doc.querySelector(".cx-bbp-research") !== null, "V2 the band renders without the proof block");
+  ok(nr.page.doc.querySelector(".cx-bbp-award") !== null, "V2 the strip renders without the proof block");
+  ok(nr.tracked.slice().sort().join(",") === "award_strip,research_band",
+    `V2 only the two features that painted beacon (got ${nr.tracked.join(",")})`);
+
+  // V2b — and each is gated by its OWN live flag.
+  const bandOff = splitCfg();
+  bandOff.rb.live = false;
+  ok(run(bandOff).page.doc.querySelector(".cx-bbp-research") === null, "V2b band not live: no band");
+  ok(run(bandOff).page.doc.querySelector(".cx-bbp-award") !== null, "V2b the strip is unaffected");
+  const stripOff = splitCfg();
+  stripOff.aw.live = false;
+  ok(run(stripOff).page.doc.querySelector(".cx-bbp-award") === null, "V2b strip not live: no strip");
+  ok(run(stripOff).page.doc.querySelector(".cx-bbp-research") !== null, "V2b the band is unaffected");
+
+  // V3 — showResearch=false keeps the seal-only band (the pre-v29
+  // research.enabled semantics, carried by the sub-flag).
+  const sealOnly = splitCfg();
+  sealOnly.rb.c = splitBandSection({ showResearch: false });
+  const so = run(sealOnly);
+  ok(so.page.doc.querySelector(".cx-bbp-research__col") === null, "V3 showResearch off: no institution column");
+  ok(so.page.doc.querySelector(".cx-bbp-research__seal") !== null, "V3 the seal survives on its own");
+
+  // V4 — PREVIEWABLE SEPARATELY (the point of the split): a verified
+  // preview session with ONLY the band's draft flag renders the band and
+  // nothing else; only the strip's flag renders the strip alone. Beacons
+  // are suppressed by track() in preview, exactly like every feature.
+  const dark = splitCfg();
+  dark.bbp.live = false;
+  dark.rb.live = false;
+  dark.aw.live = false;
+  const bandPrev = run(dark, { preview: { live: {}, flags: { research_band: true }, market: "poland" } });
+  ok(bandPrev.page.doc.querySelector(".cx-bbp-research") !== null, "V4 band draft flag alone: the band previews");
+  ok(bandPrev.page.doc.querySelector(".cx-bbp-award") === null, "V4 ...without the strip");
+  ok(bandPrev.page.doc.querySelector(".cx-bbp") === null, "V4 ...and without the proof block");
+  const stripPrev = run(dark, { preview: { live: {}, flags: { award_strip: true }, market: "poland" } });
+  ok(stripPrev.page.doc.querySelector(".cx-bbp-award") !== null, "V4 strip draft flag alone: the strip previews");
+  ok(stripPrev.page.doc.querySelector(".cx-bbp-research") === null, "V4 ...without the band");
+
+  // V5 — a draft preview of a NOT-yet-enabled strip still renders: the
+  // enabled flag IS the feature flag in the split model, so the builder's
+  // strict check is satisfied by awBuildConf once the draft gate passed.
+  const darkOff = splitCfg();
+  darkOff.bbp.live = false;
+  darkOff.rb.live = false;
+  darkOff.aw.live = false;
+  darkOff.aw.c = awardOn({ enabled: false });
+  ok(
+    run(darkOff, { preview: { live: {}, flags: { award_strip: true }, market: "poland" } })
+      .page.doc.querySelector(".cx-bbp-award") !== null,
+    "V5 draft preview renders the strip even while its flag is still off",
+  );
+
+  // V6 — fail closed per feature: a member whose config is null (a
+  // hand-edited mirror) paints nothing and beacons nothing.
+  const nullBand = splitCfg();
+  nullBand.rb.c = null;
+  ok(run(nullBand).page.doc.querySelector(".cx-bbp-research") === null, "V6 null band config: nothing");
+  const nullStrip = splitCfg();
+  nullStrip.aw.c = null;
+  ok(run(nullStrip).page.doc.querySelector(".cx-bbp-award") === null, "V6 null strip config: nothing");
+
+  // V7 — the split island never double-renders through the legacy branch
+  // (rb/aw present -> mountBbp leaves the pieces to their own mounts).
+  const both = run(splitCfg());
+  ok(both.page.doc.querySelectorAll(".cx-bbp-research").length === 1, "V7 exactly one band");
+  ok(both.page.doc.querySelectorAll(".cx-bbp-award").length === 1, "V7 exactly one strip");
+
+  // V8 — gate meta rides the OWNING feature's beacon now (every gate is
+  // LOCKED via the cxGateOpen stub; the digest machinery has its own sim).
+  const gated = splitCfg();
+  // Institutions gated, seal ungated: the band still paints (seal), so
+  // its beacon carries the control arm. The strip is all-or-nothing.
+  gated.rb.c = splitBandSection({ gate: "br" });
+  gated.aw.c = awardOn({ gate: "ba" });
+  const gr = run(gated, { preview: { live: { research_band: true, award_strip: true, buy_box_proof: true }, flags: {}, market: "poland" } });
+  ok(gr.page.doc.querySelector(".cx-bbp-research__col") !== null && gr.page.doc.querySelector(".cx-bbp-award") !== null,
+    "V8 the Preview Center renders the gated pieces of both features");
+  const liveGated = run(gated);
+  ok(liveGated.page.doc.querySelector(".cx-bbp-research__col") === null,
+    "V8 locked institutions do not paint outside preview");
+  ok(liveGated.tracked.indexOf("research_band") !== -1 &&
+    liveGated.metas[liveGated.tracked.indexOf("research_band")] === "g:",
+    "V8 the partially locked band beacons the control arm under ITS OWN feature");
+  ok(liveGated.tracked.indexOf("award_strip") === -1,
+    "V8 a fully locked strip paints nothing and beacons nothing (impression honesty)");
+}
+
 // ---------------------------------------------------------- G. preview
 {
   const draft = baseCfg();
@@ -741,10 +908,11 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         replace: "    if (!aw) return null;",
       },
       {
-        // v28: the strip must land BETWEEN the panel and the band (AW3).
+        // v28: the strip must land BETWEEN the panel and the band (AW3;
+        // the legacy branch is one level deeper since v29).
         name: "m9-award-not-first",
-        find: "      var award = bbpAwardNode(conf);\n      if (award && insertAfter(award, grey)) painted = true;",
-        replace: "      var award = bbpAwardNode(conf);\n      if (award && insertAfter(award, research || grey)) painted = true;",
+        find: "        var award = bbpAwardNode(conf);\n        if (award && insertAfter(award, grey)) painted = true;",
+        replace: "        var award = bbpAwardNode(conf);\n        if (award && insertAfter(award, research || grey)) painted = true;",
       },
       {
         // v28: an unknown category must never render half a sentence (AW4).
@@ -752,12 +920,34 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         find: "    var cat = pack && pack.c && typeof pack.c[aw.category] === 'string' ? pack.c[aw.category] : '';",
         replace: "    var cat = pack && pack.c && typeof pack.c[aw.category] === 'string' ? pack.c[aw.category] : String(aw.category || '');",
       },
+      {
+        // v29: the band must gate on ITS OWN feature flag (V2b/V4).
+        name: "m11-band-not-own-feature",
+        find: "      if (!d || !pdpMemberAllowed(d, 'research_band')) return;",
+        replace: "      if (!d) return;",
+      },
+      {
+        // v29: the strip's own marker is the analytics identity (V1).
+        name: "m12-strip-marker-lost",
+        find: "      award.setAttribute('data-cx-feature', 'award_strip');",
+        replace: "      ;",
+      },
+      {
+        // v29: dropping the legacy branch dark-ships every pre-migration
+        // shop (A3/AW2 run against the legacy island on purpose).
+        name: "m13-legacy-path-lost",
+        find: "      if (!rbData() && !awData()) {",
+        replace: "      if (false) {",
+      },
     ],
   });
   if (bad > 0) {
     console.log(`\n${bad} MUTANT(S) NOT CAUGHT (buy-box-proof)`);
     process.exitCode = 1;
   } else {
-    console.log("ALL 10 MUTANTS CAUGHT (buy-box-proof)");
+    // (init's mountResearchBand-before-mountAwardStrip order cannot be
+    // mutation-tested here — the sim drives the mounts itself — so the
+    // harness v29 block pins the call sequence instead.)
+    console.log("ALL 13 MUTANTS CAUGHT (buy-box-proof)");
   }
 }

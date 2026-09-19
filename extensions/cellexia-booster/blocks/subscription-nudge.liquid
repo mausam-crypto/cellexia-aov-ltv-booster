@@ -43,5 +43,5 @@ endif
 {% render 'cx-impression', feature: 'subscription_nudge', b2b: true, market: cx_market %}
 {%- endif -%}
 {% schema %}
-{"name":"Cellexia subscription","target":"section","settings":[{"type":"text","id":"title_override","label":"Title override","info":"Leave blank to use the translated default."},{"type":"text","id":"body_override","label":"Body override","info":"Leave blank to use the translated default."},{"type":"text","id":"discount_override","label":"Discount % override","info":"Leave blank to use the percentage configured in the Cellexia dashboard."},{"type":"select","id":"style","label":"Style","options":[{"value":"panel","label":"Grey panel"},{"value":"accent","label":"Accent panel"},{"value":"outline","label":"Outline card"}],"default":"panel"}]}
+{"name":"Cellexia subscription","target":"section","settings":[{"type":"text","id":"title_override","label":"Title override"},{"type":"text","id":"body_override","label":"Body override"},{"type":"text","id":"discount_override","label":"Discount % override"},{"type":"select","id":"style","label":"Style","options":[{"value":"panel","label":"Grey panel"},{"value":"accent","label":"Accent panel"},{"value":"outline","label":"Outline card"}],"default":"panel"}]}
 {% endschema %}
