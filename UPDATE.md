@@ -278,13 +278,28 @@ the Preview Center can arm it as a draft so only you see it on the live store, e
 like every other booster. Analytics land under "Quantity selector cards" (one
 impression per view, one click per tier change tagged q1/q2/q3).
 
+### v26.1 (2026-09-19) — free-shipping micro-line on qualifying tiers
+
+A green truck + "Free shipping" line (native in all 18 languages, each locale's own
+`badges.free_shipping_over` wording) under the tier name of every card whose OWN
+price clears your per-market free-shipping threshold — the exact resolution the trust
+badges and cart bar already use. On most products that is the 2- and 3-unit tiers; on
+a product where only the 3-unit tier qualifies, only it is tagged, and a market
+without a safe threshold amount shows no line at all — it can never promise what
+checkout won't honor. If the threshold ever sits below the 1-unit price, every tier
+is tagged (tagging only 2/3 would falsely imply tier 1 pays shipping). The line
+shares a row with the tier name, so it adds ~5 px to the whole block on a 375 px
+phone. **Toggle**: "Show a green 'Free shipping' line on qualifying tiers" on
+Features → Quantity selector — ON by default, untick to remove.
+
 ### Liquid budget
 
-Total extension Liquid is now 99,338 B of the project's 99,500 B budget (hard Shopify
-cap 102,400). The next Liquid-heavy wave must diet first — the earmarked lever is
-still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but note the
-deploy-safety island expander does not expand `{% render %}` inside islands, so that
-dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
+Total extension Liquid is now 99,424 B of the project's 99,500 B budget (hard Shopify
+cap 102,400; v26.1 paid for its bytes by inlining two single-use assigns and
+shortening a comment). The next Liquid-heavy wave must diet first — the earmarked
+lever is still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but note
+the deploy-safety island expander does not expand `{% render %}` inside islands, so
+that dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
 
 ## 3b. v25 — before/after gallery: clinical trust redesign — what this release changes
 
@@ -849,8 +864,12 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
   `cx-qsel*` styles in `cellexia-booster.css`. The theme's own pill buttons
   stay the only control channel (native-click relay, id-mapped, fail-closed).
 - ZERO new locale keys (el/ar byte walls untouched); Liquid total
-  99,338/99,500. New suite `validation/sims/quantity-selector.cjs` (64 checks,
-  8 mutants); suite total now 34 suites / 10,222 checks.
+  99,424/99,500 incl. v26.1. New suite `validation/sims/quantity-selector.cjs`
+  (70 checks, 10 mutants); suite total now 34 suites / 10,258 checks.
+- v26.1 (2026-09-19): free-shipping micro-line on qualifying tiers —
+  `quantitySelector.freeShipTag` (default ON, tick box on the feature page),
+  island `fst` = the trust badges' per-market safe threshold as presentment
+  cents, storefront tags only tiers whose own price clears it (§3a).
 
 v20 — IMAGE BADGES ON MOBILE (2026-09-11):
 

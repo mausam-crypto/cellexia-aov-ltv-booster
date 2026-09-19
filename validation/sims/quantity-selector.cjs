@@ -44,12 +44,13 @@ const SRC_PATH = process.env.CX_SIM_SRC || REAL_SRC;
 const SRC = fs.readFileSync(SRC_PATH, "utf8");
 
 const EXTRACTED = extractAll(SRC, {
-  vars: ["PREVIEW", "CX_QSEL_STR", "qselMounted"],
+  vars: ["PREVIEW", "CX_QSEL_STR", "CX_AZ_ICONS", "qselMounted"],
   functions: [
     "pdpMember",
     "pdpMemberAllowed",
     "cxEl",
     "cxSp",
+    "cxIcon",
     "qselData",
     "qselAllowed",
     "qselLocale",
@@ -489,6 +490,77 @@ function mountLive(opts) {
   ok(call(ctx, "qselLabel", "Duo Pack") === "Duo Pack", "Q6: suffix-less titles pass verbatim");
 }
 
+// -------------------------------------- Q8: v26.1 free-shipping micro-line
+
+{
+  // Threshold between tier 1 and tier 2 (the live-store shape): tags land
+  // on tiers 2 and 3 only, in the name column.
+  const ctx = makeContext();
+  makePicker(ctx, IDS);
+  const d = euro(LIVE_VARIANTS);
+  d.fst = 10000;
+  ctx.sandbox.cfg = { qs: d };
+  call(ctx, "qselMount");
+  const root = ctx.doc.querySelector(".cx-qsel");
+  const ships = [].map.call(root.querySelectorAll(".cx-qsel__card"), (c) => {
+    const s = c.querySelector(".cx-qsel__ship-label");
+    return s ? s.textContent : "";
+  });
+  ok(
+    ships[0] === "" && ships[1] === "Free shipping" && ships[2] === "Free shipping",
+    "Q8: tag only on tiers whose OWN price clears the threshold (got: " + ships.join(" | ") + ")",
+  );
+  ok(
+    root.querySelectorAll(".cx-qsel__ship").length === 2,
+    "Q8: exactly two ship lines for the live-store threshold shape",
+  );
+}
+{
+  // No fst member (sub-flag off, or no safe per-market amount): no tags.
+  const ctx = makeContext();
+  makePicker(ctx, IDS);
+  ctx.sandbox.cfg = { qs: euro(LIVE_VARIANTS) };
+  call(ctx, "qselMount");
+  ok(
+    ctx.doc.querySelectorAll(".cx-qsel__ship").length === 0,
+    "Q8: fst absent = no tag anywhere (fail closed)",
+  );
+}
+{
+  // Threshold above every tier (the lip-stick shape): no tags — the line
+  // must never promise what checkout will not honor.
+  const ctx = makeContext();
+  makePicker(ctx, IDS);
+  const d = euro(LIVE_VARIANTS);
+  d.fst = 99000;
+  ctx.sandbox.cfg = { qs: d };
+  call(ctx, "qselMount");
+  ok(
+    ctx.doc.querySelectorAll(".cx-qsel__ship").length === 0,
+    "Q8: a threshold no tier reaches shows no tag (honesty over nudging)",
+  );
+}
+{
+  // Threshold below tier 1: every tier qualifies, every tier says so —
+  // tagging only 2/3 would imply tier 1 pays shipping, which would be
+  // false. Localized label rides the same table.
+  const ctx = makeContext();
+  makePicker(ctx, IDS);
+  const d = euro(LIVE_VARIANTS);
+  d.l = "fr";
+  d.fst = 5000;
+  ctx.sandbox.cfg = { qs: d };
+  call(ctx, "qselMount");
+  const labels = [].map.call(
+    ctx.doc.querySelectorAll(".cx-qsel__ship-label"),
+    (s) => s.textContent,
+  );
+  ok(
+    labels.length === 3 && labels.every((t) => t === "Livraison gratuite"),
+    "Q8: below-baseline threshold tags every tier, native label (got: " + labels.join(" | ") + ")",
+  );
+}
+
 // ------------------------------------------------------------- Q7: images
 
 {
@@ -588,6 +660,19 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m8-impression-dropped",
         find: "      qselMounted = true;\n      track('quantity_selector');",
         replace: "      qselMounted = true;",
+      },
+      {
+        // Dropping the per-tier price comparison would tag EVERY tier the
+        // moment any threshold exists — a false claim on low tiers.
+        name: "m9-ship-threshold-ignored",
+        find: "    if (typeof d.fst === 'number' && d.fst > 0 && typeof v.p === 'number' && v.p >= d.fst) {",
+        replace: "    if (typeof d.fst === 'number' && d.fst > 0) {",
+      },
+      {
+        // A flipped comparison tags the CHEAP tiers instead.
+        name: "m10-ship-comparison-flipped",
+        find: "typeof v.p === 'number' && v.p >= d.fst) {",
+        replace: "typeof v.p === 'number' && v.p < d.fst) {",
       },
     ],
   });

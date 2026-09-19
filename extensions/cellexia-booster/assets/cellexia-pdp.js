@@ -6875,7 +6875,7 @@
   // locale comes from the island ("l") ONLY: the <html> lang attribute is
   // BANNED as a source here — this theme stamps shop.locale there (always
   // the primary language, verified live), never the page language.
-  var CX_QSEL_STR = {"en":{"title":"Choose quantity","each":"{amount} each","save":"Save {amount}","b2":"Clinically recommended","b3":"Best value"},"fr":{"title":"Choisissez la quantité","each":"{amount} l'unité","save":"Économisez {amount}","b2":"Recommandation clinique","b3":"Meilleure offre"},"de":{"title":"Menge wählen","each":"je {amount}","save":"{amount} sparen","b2":"Klinisch empfohlen","b3":"Größte Ersparnis"},"es":{"title":"Elige la cantidad","each":"{amount}/ud.","save":"Ahorra {amount}","b2":"Recomendación clínica","b3":"Mejor oferta"},"it":{"title":"Scegli la quantità","each":"{amount} l'uno","save":"Risparmia {amount}","b2":"Raccomandazione clinica","b3":"Più conveniente"},"nl":{"title":"Kies je aantal","each":"{amount} per stuk","save":"Bespaar {amount}","b2":"Klinisch aanbevolen","b3":"Voordeligste keuze"},"pt-PT":{"title":"Escolha a quantidade","each":"{amount}/un.","save":"Poupe {amount}","b2":"Recomendação clínica","b3":"Mais vantajoso"},"da":{"title":"Vælg antal","each":"{amount} pr. stk.","save":"Spar {amount}","b2":"Klinisk anbefalet","b3":"Bedste værdi"},"sv":{"title":"Välj antal","each":"{amount}/st","save":"Spara {amount}","b2":"Kliniskt rekommenderad","b3":"Bästa värdet"},"nb":{"title":"Velg antall","each":"{amount} per stk.","save":"Spar {amount}","b2":"Klinisk anbefalt","b3":"Best verdi"},"no":{"title":"Velg antall","each":"{amount} per stk.","save":"Spar {amount}","b2":"Klinisk anbefalt","b3":"Best verdi"},"fi":{"title":"Valitse määrä","each":"{amount}/kpl","save":"Säästä {amount}","b2":"Kliinisesti suositeltu","b3":"Paras arvo"},"pl":{"title":"Wybierz ilość","each":"{amount}/szt.","save":"Oszczędź {amount}","b2":"Zalecany klinicznie","b3":"Najbardziej opłacalny"},"ro":{"title":"Alege cantitatea","each":"{amount}/buc.","save":"Economisește {amount}","b2":"Recomandat clinic","b3":"Cel mai avantajos"},"hu":{"title":"Válassz mennyiséget","each":"{amount}/db","save":"Megtakarítás: {amount}","b2":"Klinikailag ajánlott","b3":"Legjobb ár-érték arány"},"el":{"title":"Επίλεξε ποσότητα","each":"{amount}/τεμ.","save":"Εξοικονόμησε {amount}","b2":"Κλινικά συνιστώμενο","b3":"Το πιο συμφέρον"},"ja":{"title":"数量を選択","each":"各{amount}","save":"{amount}お得","b2":"臨床推奨","b3":"一番お得"},"ar":{"title":"اختر الكمية","each":"{amount} للقطعة","save":"وفّر {amount}","b2":"موصى به سريريًا","b3":"أفضل قيمة"}};
+  var CX_QSEL_STR = {"en":{"title":"Choose quantity","each":"{amount} each","save":"Save {amount}","b2":"Clinically recommended","b3":"Best value","fs":"Free shipping"},"fr":{"title":"Choisissez la quantité","each":"{amount} l'unité","save":"Économisez {amount}","b2":"Recommandation clinique","b3":"Meilleure offre","fs":"Livraison gratuite"},"de":{"title":"Menge wählen","each":"je {amount}","save":"{amount} sparen","b2":"Klinisch empfohlen","b3":"Größte Ersparnis","fs":"Kostenloser Versand"},"es":{"title":"Elige la cantidad","each":"{amount}/ud.","save":"Ahorra {amount}","b2":"Recomendación clínica","b3":"Mejor oferta","fs":"Envío gratis"},"it":{"title":"Scegli la quantità","each":"{amount} l'uno","save":"Risparmia {amount}","b2":"Raccomandazione clinica","b3":"Più conveniente","fs":"Spedizione gratuita"},"nl":{"title":"Kies je aantal","each":"{amount} per stuk","save":"Bespaar {amount}","b2":"Klinisch aanbevolen","b3":"Voordeligste keuze","fs":"Gratis verzending"},"pt-PT":{"title":"Escolha a quantidade","each":"{amount}/un.","save":"Poupe {amount}","b2":"Recomendação clínica","b3":"Mais vantajoso","fs":"Envio gratuito"},"da":{"title":"Vælg antal","each":"{amount} pr. stk.","save":"Spar {amount}","b2":"Klinisk anbefalet","b3":"Bedste værdi","fs":"Gratis fragt"},"sv":{"title":"Välj antal","each":"{amount}/st","save":"Spara {amount}","b2":"Kliniskt rekommenderad","b3":"Bästa värdet","fs":"Fri frakt"},"nb":{"title":"Velg antall","each":"{amount} per stk.","save":"Spar {amount}","b2":"Klinisk anbefalt","b3":"Best verdi","fs":"Fri frakt"},"no":{"title":"Velg antall","each":"{amount} per stk.","save":"Spar {amount}","b2":"Klinisk anbefalt","b3":"Best verdi","fs":"Fri frakt"},"fi":{"title":"Valitse määrä","each":"{amount}/kpl","save":"Säästä {amount}","b2":"Kliinisesti suositeltu","b3":"Paras arvo","fs":"Ilmainen toimitus"},"pl":{"title":"Wybierz ilość","each":"{amount}/szt.","save":"Oszczędź {amount}","b2":"Zalecany klinicznie","b3":"Najbardziej opłacalny","fs":"Darmowa dostawa"},"ro":{"title":"Alege cantitatea","each":"{amount}/buc.","save":"Economisește {amount}","b2":"Recomandat clinic","b3":"Cel mai avantajos","fs":"Livrare gratuită"},"hu":{"title":"Válassz mennyiséget","each":"{amount}/db","save":"Megtakarítás: {amount}","b2":"Klinikailag ajánlott","b3":"Legjobb ár-érték arány","fs":"Ingyenes szállítás"},"el":{"title":"Επίλεξε ποσότητα","each":"{amount}/τεμ.","save":"Εξοικονόμησε {amount}","b2":"Κλινικά συνιστώμενο","b3":"Το πιο συμφέρον","fs":"Δωρεάν μεταφορικά"},"ja":{"title":"数量を選択","each":"各{amount}","save":"{amount}お得","b2":"臨床推奨","b3":"一番お得","fs":"送料無料"},"ar":{"title":"اختر الكمية","each":"{amount} للقطعة","save":"وفّر {amount}","b2":"موصى به سريريًا","b3":"أفضل قيمة","fs":"شحن مجاني"}};
 
   var qselMounted = false;
 
@@ -7057,9 +7057,26 @@
       chip.textContent = badge;
       mid.appendChild(chip);
     }
+    // Name row: the tier name plus (v26.1) the free-shipping micro-line —
+    // one wrap-row, so on wider phones the green line sits INLINE after the
+    // name and the card grows nothing; on narrow screens it wraps under it.
+    var row = cxEl('span', 'cx-qsel__row');
     var name = cxEl('span', 'cx-qsel__name');
     name.textContent = qselLabel(v.t);
-    mid.appendChild(name);
+    row.appendChild(name);
+    // v26.1: only on a tier whose OWN price clears the market threshold the
+    // island resolved (fst absent = sub-flag off or no safe per-market
+    // amount — fail closed, never a false claim). Truck via cxIcon
+    // (literal-only call sites, harness section 8).
+    if (typeof d.fst === 'number' && d.fst > 0 && typeof v.p === 'number' && v.p >= d.fst) {
+      var ship = cxEl('span', 'cx-qsel__ship');
+      ship.appendChild(cxIcon('truck', 12));
+      var shipLabel = cxEl('span', 'cx-qsel__ship-label');
+      shipLabel.textContent = qselStr(d, 'fs');
+      ship.appendChild(shipLabel);
+      row.appendChild(ship);
+    }
+    mid.appendChild(row);
     card.appendChild(mid);
     card.appendChild(qselPriceBlock(d, v, base));
     return card;

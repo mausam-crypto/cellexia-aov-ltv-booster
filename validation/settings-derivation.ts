@@ -1638,6 +1638,31 @@ for (const key of FEATURE_KEYS) {
     cleaned.quantitySelector.enabled === false,
     "v26: sanitize is strict-boolean — junk can never switch it on",
   );
+  // v26.1: the free-shipping tag is a default-TRUE sub-flag (the v13
+  // selectorPrompt convention): only an explicit false switches it off,
+  // and a pre-v26.1 stored blob (no field) heals to ON.
+  ok(
+    DEFAULT_SETTINGS.quantitySelector.freeShipTag === true,
+    "v26.1: freeShipTag defaults ON",
+  );
+  const fsOff = clone(DEFAULT_SETTINGS) as any;
+  fsOff.quantitySelector.freeShipTag = false;
+  ok(
+    sanitizeSettings(fsOff, clone(DEFAULT_SETTINGS)).quantitySelector.freeShipTag === false,
+    "v26.1: explicit false sticks",
+  );
+  const fsJunk = clone(DEFAULT_SETTINGS) as any;
+  fsJunk.quantitySelector.freeShipTag = "no";
+  ok(
+    sanitizeSettings(fsJunk, clone(DEFAULT_SETTINGS)).quantitySelector.freeShipTag === true,
+    "v26.1: junk heals to the default (only explicit false disables)",
+  );
+  const fsOld = clone(DEFAULT_SETTINGS) as any;
+  delete fsOld.quantitySelector.freeShipTag;
+  ok(
+    mergeSettings(clone(DEFAULT_SETTINGS), fsOld).quantitySelector.freeShipTag === true,
+    "v26.1: a pre-v26.1 blob heals to ON",
+  );
   const on = clone(DEFAULT_SETTINGS) as any;
   on.quantitySelector.enabled = true;
   ok(

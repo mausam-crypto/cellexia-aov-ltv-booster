@@ -66,6 +66,16 @@ Binding. Each is enforced by the harness v26 block and/or sims/quantity-selector
 8. **Vertically compact.** One card row ≈ 64px on phones (image 48px), heading a small
    uppercase line — the block replaces the pill group's own vertical footprint instead of
    stacking under it.
+9. **(v26.1) The free-shipping micro-line is computed, never asserted.** A green
+   truck + the locale's own free-shipping wording (the `badges.free_shipping_over`
+   noun, key `fs` in CX_QSEL_STR) renders on a tier exactly when `v.p >= qs.fst`,
+   where `fst` is the SAME per-market safe-amount resolution the trust badges use
+   (byMarket entry matching the presentment currency, else the global threshold only
+   in the shop currency) — emitted only while `quantitySelector.freeShipTag != false`
+   (default-TRUE sub-flag, the v13 selectorPrompt convention). No safe amount for the
+   market = no line anywhere; a threshold below the 1-unit price tags EVERY tier
+   (tagging only 2/3 would falsely imply tier 1 pays shipping). The line shares a
+   wrap-row with the tier name, so on typical phones it adds ~0-5px to the block.
 
 ## 2. Settings
 
@@ -73,6 +83,9 @@ Binding. Each is enforced by the harness v26 block and/or sims/quantity-selector
 quantitySelector: {
   /** Master switch (43rd FeatureKey). Default false — safe-by-default. */
   enabled: boolean;
+  /** v26.1 free-shipping micro-line on qualifying tiers. Default TRUE;
+   *  sanitize is `!== false` (only an explicit false disables). */
+  freeShipTag: boolean;
 }
 ```
 
@@ -86,9 +99,13 @@ Emitted inside #cx-pdp-config when live-in-market or draft-armed (`cx_qs`):
 
 ```json
 "qs": {"live": bool, "l": "<request.locale.iso_code>", "mf": "<shop.money_format>",
+        "fst": 15000,
         "v": [{"id": 42…, "t": "2 Jars - 15% Off", "p": 11390,
                 "im": "<168px CDN url>", "vi": 1}]}
 ```
+
+`fst` (v26.1) = the market's free-shipping threshold in presentment cents — emitted only
+when the sub-flag is on AND the badges' safe-amount rule resolves one (`cx_fs_cents`).
 
 `im` = the variant's own featured image (then `vi:1` — the runtime shows it alone) else
 the product's featured image (the runtime fans `min(q,3)` copies). `p` is presentment
@@ -115,5 +132,5 @@ leaves the theme picker untouched.
 
 ## 6. Budgets
 
-Liquid additions ≈ 0.9 KB (gates + member); total must stay ≤ 99,500 (harness §1).
+Liquid additions ≈ 0.9 KB (gates + member) + ~0.2 KB v26.1 (fst twin + emission, paid by inlining two single-use assigns); total 99,424 ≤ 99,500 (harness §1).
 Locale files: ZERO new keys (el/ar walls untouched). JS/CSS asset growth is uncapped.

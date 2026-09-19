@@ -4902,10 +4902,16 @@ const EVIDENCE = {
     "v26: draft preview flag widens the emission gate (live stays cx_qsl)",
   );
   ok(
-    /\{%- if cx_qs %\}\n"qs": \{"live": \{\{ cx_qsl \}\}, "l": \{\{ request\.locale\.iso_code \| json \}\}, "mf": \{\{ shop\.money_format \| json \}\}, "v": \[/.test(
+    /\{%- if cx_qs %\}\n"qs": \{"live": \{\{ cx_qsl \}\}, "l": \{\{ request\.locale\.iso_code \| json \}\}, "mf": \{\{ shop\.money_format \| json \}\}, \{% if cx_fs_cents > 0 and cfg\.quantitySelector\.freeShipTag != false %\}"fst": \{\{ cx_fs_cents \}\}, \{% endif %\}"v": \[/.test(
       qsLiquid,
     ),
-    "v26: qs member emits live + page locale + shop money format (the v21.1 mf precedent) + the variant array",
+    "v26/v26.1: qs member emits live + page locale + shop money format + the gated fst threshold + the variant array",
+  );
+  ok(
+    /assign cx_fs_cents = cx_fs\.amount \| times: 100 \| round\n/.test(qsLiquid) &&
+      /assign cx_fs_cents = threshold \| times: 100\n/.test(qsLiquid) &&
+      qsLiquid.includes("assign cx_fs_cents = 0"),
+    "v26.1: fst rides the SAME per-market safe-amount resolution the trust badges use (cents twin in both branches, 0 default)",
   );
   ok(
     qsLiquid.includes('{"id": {{ cx_v.id | json }}, "t": {{ cx_v.title | json }}, "p": {{ cx_v.price | json }}'),
@@ -4977,7 +4983,7 @@ const EVIDENCE = {
           "v26: the table covers exactly the 18 shipped storefront locales",
         );
         for (const [loc, pack] of Object.entries(table)) {
-          for (const key of ["title", "each", "save", "b2", "b3"]) {
+          for (const key of ["title", "each", "save", "b2", "b3", "fs"]) {
             ok(
               typeof pack[key] === "string" && pack[key].length > 0,
               `v26: ${loc}.${key} present and non-empty`,
@@ -5049,8 +5055,28 @@ const EVIDENCE = {
     "v26: the Configure destination exists (every feature's destination carries its master switch — the v8.12b rule)",
   );
   ok(
-    read("app/routes/app.features.quantity.tsx").includes("quantitySelector: { enabled: state.enabled }"),
-    "v26: the admin page saves the master flag",
+    read("app/routes/app.features.quantity.tsx").includes("enabled: state.enabled,\n        freeShipTag: state.freeShipTag,"),
+    "v26/v26.1: the admin page saves the master flag AND the free-shipping sub-flag",
+  );
+  ok(
+    read("app/routes/app.features.quantity.tsx").includes("Show a green “Free shipping” line on qualifying tiers"),
+    "v26.1: the sub-flag has a visible tick box on the Configure page (the v8.12b rule)",
+  );
+  ok(
+    qsSettings.includes("next.quantitySelector.freeShipTag = next.quantitySelector.freeShipTag !== false;"),
+    "v26.1: freeShipTag sanitize is the default-TRUE sub-flag convention (v13 selectorPrompt)",
+  );
+  ok(
+    qsJs.includes("if (typeof d.fst === 'number' && d.fst > 0 && typeof v.p === 'number' && v.p >= d.fst) {"),
+    "v26.1: the ship line gates on the tier's OWN price clearing the threshold (never hardcoded to a tier index)",
+  );
+  ok(
+    qsJs.includes("ship.appendChild(cxIcon('truck', 12));"),
+    "v26.1: truck icon via a literal-only cxIcon call site (section 8 invariant)",
+  );
+  ok(
+    qsCss.includes(".cx-qsel__ship {") && qsCss.includes(".cx-qsel__ship-label {") && qsCss.includes("color: #0b7b3c;"),
+    "v26.1: ship line styled in the house In-Stock green",
   );
   ok(
     read("app/routes/app.preview.tsx").includes('"quantity_selector"'),

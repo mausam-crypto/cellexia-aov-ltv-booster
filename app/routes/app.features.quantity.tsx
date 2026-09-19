@@ -235,12 +235,14 @@ function MarketScopeCard({
 
 interface QuantityFormState {
   enabled: boolean;
+  freeShipTag: boolean;
   scope: ScopeState;
 }
 
 function initialFormState(settings: BoosterSettings): QuantityFormState {
   return {
     enabled: settings.quantitySelector.enabled,
+    freeShipTag: settings.quantitySelector.freeShipTag !== false,
     scope: toScopeState(settings.marketScopes.quantity_selector),
   };
 }
@@ -259,7 +261,10 @@ export default function QuantityFeaturePage() {
 
   const handleSave = () => {
     const patch: DeepPartial<BoosterSettings> = {
-      quantitySelector: { enabled: state.enabled },
+      quantitySelector: {
+        enabled: state.enabled,
+        freeShipTag: state.freeShipTag,
+      },
       marketScopes: {
         quantity_selector: toScopePatch(state.scope),
       } as BoosterSettings["marketScopes"],
@@ -345,6 +350,14 @@ export default function QuantityFeaturePage() {
                   “Clinically recommended” badge and the last one “Best
                   value”, in all 18 storefront languages.
                 </Text>
+                <Checkbox
+                  label="Show a green “Free shipping” line on qualifying tiers"
+                  helpText="Computed per market from your free-shipping threshold (the same one the trust badges and the cart bar use): a tier gets the line only when its own price clears the threshold — on most products that is the 2- and 3-unit tiers. Markets without a safe threshold amount show no line at all, so it can never promise something checkout won’t honor. Adds no card height."
+                  checked={state.freeShipTag}
+                  onChange={(freeShipTag) =>
+                    setState((previous) => ({ ...previous, freeShipTag }))
+                  }
+                />
                 <List type="bullet">
                   <List.Item>
                     Selection still runs through the theme’s own picker

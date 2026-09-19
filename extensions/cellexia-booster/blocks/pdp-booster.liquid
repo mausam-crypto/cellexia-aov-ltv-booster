@@ -41,7 +41,7 @@ endif
 assign cx_pdp_flags = product.metafields.cellexia.pdp_flags.value
 assign cx_pname = product.metafields.cellexia.display_name.value | default: product.title
 comment
-Shopify's real parser rejects literal brace strings as filter args inside output tags - use this token variable.
+brace literals break output-tag filters on live Shopify
 endcomment
 assign cx_name_token = '{name}'
 assign survey_ok = false
@@ -178,19 +178,20 @@ if cx_country == 'US' and cx_de.usStates.enabled == true
 assign cx_us = cx_de.usStates
 endif
 assign threshold = cfg.global.freeShippingThreshold | default: 150
-assign threshold_money = threshold | times: 100 | money
 assign cx_fs = cfg.freeShipping.byMarket[cx_market]
 assign cx_fs_badge_ok = false
-assign cx_fs_badge_money = threshold_money
+assign cx_fs_cents = 0
+assign cx_fs_badge_money = threshold | times: 100 | money
 if cx_fs and cx_fs.currencyCode == cart.currency.iso_code
 assign cx_fs_badge_money = cx_fs.amount | times: 100 | round | money
+assign cx_fs_cents = cx_fs.amount | times: 100 | round
 assign cx_fs_badge_ok = true
 elsif cart.currency.iso_code == shop.currency
+assign cx_fs_cents = threshold | times: 100
 assign cx_fs_badge_ok = true
 endif
 assign guarantee_days = cfg.guarantee.days | default: 60
 assign tp_rating = cfg.trustpilot.rating | default: 4.8
-assign tp_rating_rounded = tp_rating | round: 1
 assign tp_sep = 'trustpilot.decimal_separator' | t
 assign tp_count = cfg.trustpilot.reviewCount | default: 1000
 assign tp_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
@@ -413,7 +414,7 @@ assign tp_stars = 0.0
 endif
 assign tp_stars_label = tp_stars | round: 1
 -%}
-"tp": {"live": {{ show_trustpilot }}, "aria": {{ 'a11y.rating_out_of_5' | t: rating: tp_stars_label | json }}, "label": {{ tp_rating_rounded | append: '' | replace: '.', tp_sep | append: '/5' | json }}, "r": {{ tp_stars | json }}, "cnt": {{ 'trustpilot.reviews_count' | t: count: tp_count | json }}, "view": {{ 'trustpilot.view' | t | json }}, "url": {{ tp_url | json }}, "link": {% if cfg.trustpilot.showLink == false %}false{% else %}true{% endif %}},
+"tp": {"live": {{ show_trustpilot }}, "aria": {{ 'a11y.rating_out_of_5' | t: rating: tp_stars_label | json }}, "label": {{ tp_rating | round: 1 | append: '' | replace: '.', tp_sep | append: '/5' | json }}, "r": {{ tp_stars | json }}, "cnt": {{ 'trustpilot.reviews_count' | t: count: tp_count | json }}, "view": {{ 'trustpilot.view' | t | json }}, "url": {{ tp_url | json }}, "link": {% if cfg.trustpilot.showLink == false %}false{% else %}true{% endif %}},
 {%- endif %}
 {%- if show_nudge or cx_draft_nudge %}
 "n": {"live": {{ show_nudge }}, "t": {{ 'subscription.nudge_title' | t | json }}, "b": {{ 'subscription.nudge_body' | t: percent: nudge_pct | json }}},
@@ -425,7 +426,7 @@ assign tp_stars_label = tp_stars | round: 1
 "ib": {"live": {{ cx_ibl }}, "s": {{ cx_ibs }}},
 {%- endif %}
 {%- if cx_qs %}
-"qs": {"live": {{ cx_qsl }}, "l": {{ request.locale.iso_code | json }}, "mf": {{ shop.money_format | json }}, "v": [{%- for cx_v in product.variants limit: 6 -%}{%- liquid
+"qs": {"live": {{ cx_qsl }}, "l": {{ request.locale.iso_code | json }}, "mf": {{ shop.money_format | json }}, {% if cx_fs_cents > 0 and cfg.quantitySelector.freeShipTag != false %}"fst": {{ cx_fs_cents }}, {% endif %}"v": [{%- for cx_v in product.variants limit: 6 -%}{%- liquid
 assign cx_qi = cx_v.featured_image
 assign cx_vi = 1
 if cx_qi == blank

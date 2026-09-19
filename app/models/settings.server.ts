@@ -1269,6 +1269,18 @@ export interface BoosterSettings {
    */
   quantitySelector: {
     enabled: boolean;
+    /**
+     * v26.1 — green "free shipping" micro-line on every tier whose OWN
+     * price clears the market's free-shipping threshold (the same
+     * per-market cx_fs/threshold resolution the trust badges use; no safe
+     * threshold for the market = no tag anywhere, fail closed). Truthful
+     * by construction: it is computed from the tier price vs the real
+     * threshold, never hardcoded to "2 and 3 units" — on cheaper products
+     * only the tiers that genuinely qualify carry it. Sub-flag convention
+     * (v13 selectorPrompt): default TRUE, storefront reads `fst` member
+     * presence, so pre-v26.1 mirrors light it on the next settings sync.
+     */
+    freeShipTag: boolean;
   };
   /**
    * Amazon-pattern features (v6.1; eleven flags since the v6.8
@@ -1831,6 +1843,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   },
   quantitySelector: {
     enabled: false,
+    freeShipTag: true,
   },
   amazon: {
     buyBox: false,
@@ -3449,6 +3462,9 @@ export function sanitizeSettings(
 
   // v26: quantity selector cards — same strict-boolean discipline.
   next.quantitySelector.enabled = next.quantitySelector.enabled === true;
+  // v26.1: default-TRUE sub-flag (the v13 selectorPrompt convention —
+  // only an explicit false switches it off).
+  next.quantitySelector.freeShipTag = next.quantitySelector.freeShipTag !== false;
 
   next.clinicalResults.stats = (next.clinicalResults.stats ?? [])
     .filter(
