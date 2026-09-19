@@ -22,10 +22,13 @@ anchor; after `.cx-dispatch--pdp` when the countdown painted), as
 | *N*-Day money-back card | `cx-bbp__guarantee` | the shared `g` member (`guarantee.days`) |
 | Stars + score + count + Trustpilot | `cx-bbp__rating` | the shared `tp` member (`trustpilot.*`) |
 
-Then, as a SIBLING inserted directly after `.pdp__grey` (so it reads as its
-own card, above `.pdp__accordions`), `div.cx-bbp-research`: the translated
-"Based on published research from" eyebrow, the institution logos, and the
-certification seal with its translated note.
+Then, as SIBLINGS inserted directly after `.pdp__grey` (so each reads as its
+own card, above `.pdp__accordions`), in this order:
+
+1. `div.cx-bbp-award` — the v28 "Rated #1" award strip
+   (docs/SPEC-v28-award-strip.md), default OFF, always FIRST when enabled;
+2. `div.cx-bbp-research` — the translated "Based on published research
+   from" eyebrow, the institution logos, and the certification seal.
 
 ## 2. One source of truth per fact
 

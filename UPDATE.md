@@ -235,7 +235,54 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
+## 3a. v28 — "Rated #1" award strip under the buy box (ships OFF) — what this release changes
+
+A third piece of the **Buy-box proof block**: your reference card, replicated
+exactly — the navy "#1" medallion, "Rated #1 of 100+ wrinkle treatments" over
+"in independent lab testing", the little red-over-yellow colour bar beside the
+publication name (built in; an uploaded logo file replaces that lockup), and
+the year in its own cell, all on **one row at every width** (on narrow phones
+the whole card scales down proportionally instead of wrapping). It renders as
+its own card **directly under the Add-to-cart panel, always FIRST — the
+"Based on published research from" band moves down one place** when both are
+enabled.
+
+- **Ships OFF.** Turn it on at *App → Buy-box proof block → Award strip*.
+  The proof block itself must be enabled (it already is on the live store);
+  everything the card needs is on that one page: rank, the "of 100+" field
+  size, the product category, the publication name, an optional logo file,
+  and the year.
+- **Every store language, automatically.** The sentence is app-translated in
+  all 18 storefront languages with real grammar (Polish/Finnish/Arabic case
+  forms, Japanese word order, RTL layout). The **category is a fixed list**
+  (wrinkle treatments, cellulite treatments, dark spot correctors, …) for
+  exactly that reason — free text cannot be made grammatical in 18
+  languages. Need a category that is missing? Ask; it is a small code
+  addition. The publication name stays as you type it in every language
+  (proper nouns are not translated).
+- **Preview it before anyone sees it.** The Preview Center shows the strip
+  exactly as it will go live (use the block's draft flag if the block is
+  off; the saved card settings otherwise) — gated or not, the preview
+  always renders it.
+- **Link-only mode, like the research band.** The card has its own "Who sees
+  it" control: tick it and the strip disappears from the normal storefront
+  and shows only to visitors arriving through its own generated
+  `param=token` link suffix (90-day memory, `?param=off` escape hatch, the
+  same rules as v22). Impressions are tagged so Analytics → "Tagged-link
+  pieces" can compare the arms.
+- **Honesty note (shown in the admin too):** show only a rating or award
+  that was actually published, name the publication exactly, and upload its
+  logo only if you are licensed to use it. The claim is yours, not the
+  app's.
+- **Zero cost where it matters:** no Liquid bytes (the config rides the
+  existing island), no locale-file bytes (el/ar stay at their wall), no new
+  FeatureKey, no schema change, no new scopes.
+
+Deploy BOTH halves exactly as §3 describes (server carries the settings +
+admin card + gate; the extension carries the renderer, styles and the
+18-language copy). Full contract: `docs/SPEC-v28-award-strip.md`.
+
+## 3b. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
 
 A new 43rd feature, `Quantity selector cards` (`quantity_selector`), for the product
 page. While it is on, the theme's text-pill size picker ("1 Jar / 2 Jars - 15% Off /
@@ -319,7 +366,7 @@ lever is still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but n
 the deploy-safety island expander does not expand `{% render %}` inside islands, so
 that dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
 
-## 3b. v25 — before/after gallery: clinical trust redesign — what this release changes
+## 3c. v25 — before/after gallery: clinical trust redesign — what this release changes
 
 Merchant ask (2026-09-18, with two reference designs): redesign the
 before/after results widget and its click-to-enlarge overlay for maximum
@@ -405,7 +452,7 @@ win and should be cleared.
 - To see it before enabling: arm a preview (§ preview) with the
   before/after draft flag, or enable + market-scope it to a test market.
 
-## 3c. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
+## 3d. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
 
 **The ask (2026-09-17):** restyle the PDP clinical study widget to match the
 reference design (letterspaced "PUBLISHED CLINICAL RESEARCH" eyebrow, big
@@ -456,7 +503,7 @@ BEFORE saving study content. Spec: `docs/SPEC-v24-study-redesign.md`.
 Pinned by `sims/survey-methodology.cjs` T2-T8 + mutants m13-m15 and the
 harness v24 pin updates.
 
-## 3d. v23 — subscription card prices now require the app to be LIVE — what this release changes
+## 3e. v23 — subscription card prices now require the app to be LIVE — what this release changes
 
 **The bug this fixes (reported by the merchant):** while the NEW subscription
 app is still in setup (or live in only some markets), theme product cards on
@@ -494,7 +541,7 @@ run). Spec: `docs/SPEC-v23-subs-live-gate.md`. Pinned by the harness (v23
 tripwires) and by `sims/badge-cards` (setup-mode and missing-member
 scenarios) + `sims/subscribed-upgrade` (setup fallback refusal).
 
-## 3e. v21 cart overlay features — what this release changes
+## 3f. v21 cart overlay features — what this release changes
 
 ### v21.2 (2026-09-14, after your field test) — five fixes in this build
 
@@ -630,7 +677,7 @@ collapsed into two loops that mirror the file's own `bought_count` loop
 precedent (identical keys and values; JSON member order is parser-neutral).
 The release leaves 244 B of per-file headroom where it found 87 B.
 
-## 3f. v20 image badges on mobile — what this release changes
+## 3g. v20 image badges on mobile — what this release changes
 
 **No database migration. No new API scopes. No webhook changes. No new
 translated strings.** Deploy the app server and the extensions exactly as §3
@@ -672,7 +719,7 @@ mechanically and proved byte-identical for every icon before it landed, so the
 five legacy blocks that render those icons are unchanged on the page. The
 release LEAVES 1,371 B of headroom where it found 207 B.
 
-## 3g. v18 free gifts V2 — what this release changes
+## 3h. v18 free gifts V2 — what this release changes
 
 **No database migration. No new API scopes. No webhook changes.** Deploy the
 app server and the extensions exactly as §3 describes; nothing extra is needed
@@ -886,7 +933,7 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - New FeatureKey `quantity_selector` (42 -> 43, appended at the end), settings
   section `quantitySelector` {enabled false}, own admin page
   `/app/features/quantity`, previewable, market-scoped, analytics-labeled.
-  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3a above.
+  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3b above.
 - Storefront: gated `qs` member in the #cx-pdp-config island (live flag, page
   locale, shop money format, per-variant id/title/cents/image) + the `qsel*`
   module and `CX_QSEL_STR` 18-locale table in `cellexia-pdp.js` + the
@@ -901,7 +948,7 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - v26.1 (2026-09-19): free-shipping micro-line on qualifying tiers —
   `quantitySelector.freeShipTag` (default ON, tick box on the feature page),
   island `fst` = the trust badges' per-market safe threshold as presentment
-  cents, storefront tags only tiers whose own price clears it (§3a).
+  cents, storefront tags only tiers whose own price clears it (§3b).
 
 v20 — IMAGE BADGES ON MOBILE (2026-09-11):
 

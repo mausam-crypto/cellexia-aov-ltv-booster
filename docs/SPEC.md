@@ -509,6 +509,11 @@ rating row, research + certification band). It borrows every fact from the
 feature that already owns it and SUPPRESSES the widgets it would duplicate
 in the buy box. Full contract: `docs/SPEC-v19-buy-box-proof.md`.
 
+v28 adds a third under-the-panel piece, `buyBoxProof.award` — the "Rated #1"
+award strip (default OFF, own v22 gate `ba`, curated 18-locale copy in the
+JS asset, always FIRST above the research band). Full contract:
+`docs/SPEC-v28-award-strip.md`.
+
 ## v20 image badges on mobile
 
 `image_badges` — the SIZE of the award/certification badges the THEME lays

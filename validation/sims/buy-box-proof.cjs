@@ -95,6 +95,12 @@ const FNS = [
   // v19.2: the runtime balances each logo cell to equal optical area once
   // the image's natural size is known.
   "bbpBalanceLogo",
+  // v28: the award strip (curated 18-locale copy, closed category catalog,
+  // one-row proportional fit).
+  "bbpAwardLocale",
+  "bbpAwardTpl",
+  "bbpAwardFit",
+  "bbpAwardNode",
   "bbpResearchNode",
   "bbpBuildRows",
   // v22: mountBbp tags the impression with which URL-gated pieces painted.
@@ -106,6 +112,7 @@ const EXTRACTED = [
   extractVar(SRC, "AZ_SHIPS_FORMS"),
   extractVar(SRC, "BBP_DATE_SENTINEL"),
   extractVar(SRC, "BBP_COUNTRY_SENTINEL"),
+  extractVar(SRC, "CX_BBP_AWARD"),
   ...FNS.map((n) => extractFunction(SRC, n)),
 ].join("\n\n");
 
@@ -153,7 +160,14 @@ function baseConf(over) {
       ],
     },
     seal: { enabled: true, imageUrl: "" },
+    // v28: the award strip's DEFAULT_SETTINGS mirror — OFF, gateless.
+    award: { enabled: false, gate: "", rank: 1, count: 100, category: "wrinkle", publication: "Verbraucher Berichte", imageUrl: "", year: 2026 },
   }, over || {});
+}
+
+// The award strip enabled with the shipped defaults (the reference mock).
+function awardOn(over) {
+  return Object.assign({ enabled: true, gate: "", rank: 1, count: 100, category: "wrinkle", publication: "Verbraucher Berichte", imageUrl: "", year: 2026 }, over || {});
 }
 
 function baseCfg(over) {
@@ -527,6 +541,118 @@ const rowClasses = (root) =>
   ok(liBad.style.flexGrow === undefined, "E9 an unmeasured image keeps the equal-cell default");
 }
 
+// ------------------------------------------------------ AW. award strip
+{
+  // AW1 — the default config ships the strip OFF: nothing paints, and the
+  // rest of the block is exactly as before v28.
+  const off = run(baseCfg());
+  ok(off.page.doc.querySelector(".cx-bbp-award") === null, "AW1 default config: the strip is absent");
+
+  // AW2 — enabled with the shipped defaults: the reference-mock content in
+  // English, wordmark cell, year beneath.
+  const onCfg = baseCfg();
+  onCfg.bbp.c = baseConf({ award: awardOn() });
+  const on = run(onCfg);
+  const strip = on.page.doc.querySelector(".cx-bbp-award");
+  ok(!!strip, "AW2 enabled: the strip mounts");
+  ok(strip && strip.getAttribute("data-cx-feature") === "buy_box_proof", "AW2 the strip carries the block's feature marker");
+  ok(textOf(strip && strip.querySelector(".cx-bbp-award__rank")) === "#1", "AW2 the medallion is the English '#1'");
+  ok(
+    textOf(strip && strip.querySelector(".cx-bbp-award__l1")) === "Rated #1 of 100+ wrinkle treatments",
+    `AW2 line 1 composes rank, count and the curated category (got "${textOf(strip && strip.querySelector(".cx-bbp-award__l1"))}")`,
+  );
+  ok(textOf(strip && strip.querySelector(".cx-bbp-award__l2")) === "in independent lab testing", "AW2 line 2 is the curated method line");
+  ok(textOf(strip && strip.querySelector(".cx-bbp-award__pub-name")) === "Verbraucher Berichte", "AW2 the publication renders as written (proper noun)");
+  ok(strip && strip.querySelector(".cx-bbp-award__bar") !== null, "AW2 the built-in lockup carries the reference's colour bar");
+  ok(strip && strip.querySelector(".cx-bbp-award__bar").getAttribute("aria-hidden") === "true", "AW2 the bar is decorative");
+  ok(textOf(strip && strip.querySelector(".cx-bbp-award__year")) === "2026", "AW2 the year is its own fourth cell");
+  ok(strip && strip.querySelector(".cx-bbp-award__rank").getAttribute("aria-hidden") === "true", "AW2 the medallion is decorative (line 1 already states the rank)");
+
+  // AW3 — design order: .pdp__grey, then the strip, then the research band.
+  const kids = on.page.info.children.map((c) => c.getAttribute("class") || "");
+  const iGrey = kids.findIndex((c) => /pdp__grey/.test(c));
+  const iAward = kids.findIndex((c) => /cx-bbp-award/.test(c));
+  const iBand = kids.findIndex((c) => /cx-bbp-research/.test(c));
+  ok(
+    iGrey !== -1 && iAward === iGrey + 1 && iBand === iAward + 1,
+    `AW3 order under the panel is grey, award strip, research band (got ${kids.join(" | ")})`,
+  );
+  ok(on.tracked.join(",") === "buy_box_proof", "AW3 still exactly one beacon for the whole block");
+
+  // AW4 — fail closed on every leg.
+  const noPub = baseCfg();
+  noPub.bbp.c = baseConf({ award: awardOn({ publication: "" }) });
+  ok(run(noPub).page.doc.querySelector(".cx-bbp-award") === null, "AW4 no named publication: no strip (no source, no claim)");
+  const badCat = baseCfg();
+  badCat.bbp.c = baseConf({ award: awardOn({ category: "unicorns" }) });
+  ok(run(badCat).page.doc.querySelector(".cx-bbp-award") === null, "AW4 unknown category key: no strip (never half a sentence)");
+  const badRank = baseCfg();
+  badRank.bbp.c = baseConf({ award: awardOn({ rank: 0 }) });
+  ok(run(badRank).page.doc.querySelector(".cx-bbp-award") === null, "AW4 a non-positive rank: no strip");
+  const preV28 = baseCfg();
+  preV28.bbp.c = baseConf();
+  delete preV28.bbp.c.award;
+  ok(run(preV28).page.doc.querySelector(".cx-bbp-award") === null, "AW4 a pre-v28 mirror (no award key): no strip");
+  ok(run(preV28).page.doc.querySelector(".cx-bbp") !== null, "AW4 and the rest of the block is untouched");
+
+  // AW5 — an uploaded mark replaces the wordmark; the name becomes alt.
+  const withLogo = baseCfg();
+  withLogo.bbp.c = baseConf({ award: awardOn({ imageUrl: "https://cdn.shopify.com/vb.png" }) });
+  const logoRun = run(withLogo);
+  const mark = logoRun.page.doc.querySelector(".cx-bbp-award__pub-img");
+  ok(!!mark && mark.getAttribute("src") === "https://cdn.shopify.com/vb.png", "AW5 the merchant's mark is rendered verbatim");
+  ok(!!mark && mark.getAttribute("alt") === "Verbraucher Berichte", "AW5 the publication name is the mark's alt");
+  ok(logoRun.page.doc.querySelector(".cx-bbp-award__pub-name") === null, "AW5 no wordmark beside the mark");
+  ok(logoRun.page.doc.querySelector(".cx-bbp-award__bar") === null, "AW5 the uploaded mark replaces the WHOLE lockup, colour bar included");
+
+  // AW6 — the strip stands alone: research off, seal off, still one strip
+  // and one beacon (the band is absent, not the strip).
+  const alone = baseCfg();
+  alone.bbp.c = baseConf({
+    research: { enabled: false, institutions: [] },
+    seal: { enabled: false, imageUrl: "" },
+    award: awardOn(),
+  });
+  const aloneRun = run(alone);
+  ok(aloneRun.page.doc.querySelector(".cx-bbp-award") !== null, "AW6 the strip renders without the research band");
+  ok(aloneRun.page.doc.querySelector(".cx-bbp-research") === null, "AW6 the band stays absent");
+  ok(aloneRun.tracked.join(",") === "buy_box_proof", "AW6 one beacon");
+
+  // AW7 — locale composition: Japanese puts the category FIRST and counts
+  // with 種類 (the {c}/{n}/{r} template is order-free), and the medallion
+  // takes the locale's own short form.
+  const ja = baseCfg({ delivery: { pageLocale: "ja" } });
+  ja.bbp.c = baseConf({ award: awardOn() });
+  const jaRun = run(ja);
+  ok(
+    textOf(jaRun.page.doc.querySelector(".cx-bbp-award__l1")) === "シワケア製品100種類以上の中で第1位",
+    `AW7 Japanese line 1 (got "${textOf(jaRun.page.doc.querySelector(".cx-bbp-award__l1"))}")`,
+  );
+  ok(textOf(jaRun.page.doc.querySelector(".cx-bbp-award__rank")) === "1位", "AW7 Japanese medallion");
+
+  // AW8 — a medallion form longer than three characters takes the --wide
+  // modifier instead of overflowing the circle (German "Nr.1" is four,
+  // "Nr.10" five; the English "#1" stays at full size).
+  const de = baseCfg({ delivery: { pageLocale: "de" } });
+  de.bbp.c = baseConf({ award: awardOn({ rank: 10 }) });
+  const deRun = run(de);
+  const medal = deRun.page.doc.querySelector(".cx-bbp-award__rank");
+  ok(textOf(medal) === "Nr.10", "AW8 German medallion form");
+  ok(!!medal && /cx-bbp-award__rank--wide/.test(medal.getAttribute("class") || ""), "AW8 five characters take the --wide modifier");
+  const enShort = baseCfg();
+  enShort.bbp.c = baseConf({ award: awardOn() });
+  const enMedal = run(enShort).page.doc.querySelector(".cx-bbp-award__rank");
+  ok(!!enMedal && !/--wide/.test(enMedal.getAttribute("class") || ""), "AW8 the two-character '#1' does not");
+
+  // AW9 — a missing year (a hand-edited mirror) drops the year line alone.
+  const noYear = baseCfg();
+  noYear.bbp.c = baseConf({ award: awardOn() });
+  delete noYear.bbp.c.award.year;
+  const noYearRun = run(noYear);
+  ok(noYearRun.page.doc.querySelector(".cx-bbp-award") !== null, "AW9 the strip survives a missing year");
+  ok(noYearRun.page.doc.querySelector(".cx-bbp-award__year") === null, "AW9 the year line drops alone");
+}
+
 // ---------------------------------------------------------- G. preview
 {
   const draft = baseCfg();
@@ -607,12 +733,31 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         find: "      var conf = bbpConf(d);\n      if (!conf) return;",
         replace: "      var conf = bbpConf(d) || {};\n      if (!conf) return;",
       },
+      {
+        // v28: the strict default-OFF gate — losing it lights the strip on
+        // every pre-v28 blob whose merged defaults carry content (AW1).
+        name: "m8-award-default-on",
+        find: "    if (!aw || aw.enabled !== true) return null;",
+        replace: "    if (!aw) return null;",
+      },
+      {
+        // v28: the strip must land BETWEEN the panel and the band (AW3).
+        name: "m9-award-not-first",
+        find: "      var award = bbpAwardNode(conf);\n      if (award && insertAfter(award, grey)) painted = true;",
+        replace: "      var award = bbpAwardNode(conf);\n      if (award && insertAfter(award, research || grey)) painted = true;",
+      },
+      {
+        // v28: an unknown category must never render half a sentence (AW4).
+        name: "m10-award-category-open",
+        find: "    var cat = pack && pack.c && typeof pack.c[aw.category] === 'string' ? pack.c[aw.category] : '';",
+        replace: "    var cat = pack && pack.c && typeof pack.c[aw.category] === 'string' ? pack.c[aw.category] : String(aw.category || '');",
+      },
     ],
   });
   if (bad > 0) {
     console.log(`\n${bad} MUTANT(S) NOT CAUGHT (buy-box-proof)`);
     process.exitCode = 1;
   } else {
-    console.log("ALL 7 MUTANTS CAUGHT (buy-box-proof)");
+    console.log("ALL 10 MUTANTS CAUGHT (buy-box-proof)");
   }
 }

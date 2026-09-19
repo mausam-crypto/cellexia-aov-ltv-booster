@@ -20,6 +20,7 @@ import {
   Layout,
   Link,
   Page,
+  Select,
   Text,
   TextField,
 } from "@shopify/polaris";
@@ -27,6 +28,12 @@ import { ArrowDownIcon, ArrowUpIcon, DeleteIcon } from "@shopify/polaris-icons";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import {
+  AWARD_COUNT_MAX,
+  AWARD_COUNT_MIN,
+  AWARD_RANK_MAX,
+  AWARD_RANK_MIN,
+  AWARD_YEAR_MAX,
+  AWARD_YEAR_MIN,
   BUY_BOX_PROOF_MAX_BADGES,
   BUY_BOX_PROOF_MAX_INSTITUTIONS,
   getSettings,
@@ -106,6 +113,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     caps: {
       badges: BUY_BOX_PROOF_MAX_BADGES,
       institutions: BUY_BOX_PROOF_MAX_INSTITUTIONS,
+      // v28: the award strip's sanitizer ranges, surfaced so the form can
+      // flag a value the server would clamp.
+      award: {
+        rankMin: AWARD_RANK_MIN,
+        rankMax: AWARD_RANK_MAX,
+        countMin: AWARD_COUNT_MIN,
+        countMax: AWARD_COUNT_MAX,
+        yearMin: AWARD_YEAR_MIN,
+        yearMax: AWARD_YEAR_MAX,
+      },
     },
     // Every fact the block borrows, surfaced so the merchant can see WHY a
     // row would stay hidden without leaving this page (the v13.2 lesson:
@@ -262,6 +279,41 @@ function badgeLabel(key: string): string {
   return BADGE_OPTIONS.find((option) => option.key === key)?.label ?? key;
 }
 
+// v28 — the award strip's closed category catalog (AWARD_CATEGORY_KEYS on
+// the server; labels are admin-only copy, the BADGE_OPTIONS precedent).
+// The storefront noun is curated per locale in the extension asset, so
+// each language stays grammatical — which merchant free text could not.
+const AWARD_CATEGORY_OPTIONS: { value: string; label: string }[] = [
+  { value: "wrinkle", label: "Wrinkle treatments" },
+  { value: "cellulite", label: "Cellulite treatments" },
+  { value: "antiaging", label: "Anti-aging creams" },
+  { value: "firming", label: "Skin-firming creams" },
+  { value: "darkspot", label: "Dark spot correctors" },
+  { value: "serum", label: "Facial serums" },
+  { value: "eye", label: "Eye creams" },
+  { value: "lip", label: "Lip care products" },
+  { value: "hair", label: "Hair serums" },
+  { value: "skincare", label: "Skincare products" },
+];
+
+// The English wording, for the live preview under the fields. Twins of the
+// extension's CX_BBP_AWARD "en" entry (harness-pinned, so they cannot
+// drift apart).
+const AWARD_EN_L1 = "Rated #{r} of {n}+ {c}";
+const AWARD_EN_L2 = "in independent lab testing";
+
+function awardPreviewLine(rank: string, count: string, category: string): string {
+  const cat =
+    AWARD_CATEGORY_OPTIONS.find((option) => option.value === category)?.label ??
+    category;
+  return AWARD_EN_L1.split("{r}")
+    .join(rank.trim() || "1")
+    .split("{n}")
+    .join(count.trim() || "100")
+    .split("{c}")
+    .join(cat.toLowerCase());
+}
+
 interface InstitutionRow {
   name: string;
   imageUrl: string;
@@ -279,8 +331,17 @@ interface ProofBlockFormState {
   institutions: InstitutionRow[];
   sealEnabled: boolean;
   sealImageUrl: string;
+  // v28 — the award strip. The numeric fields are STRINGS while edited
+  // (Polaris TextField contract); the save converts and the server clamps.
+  awardEnabled: boolean;
+  awardRank: string;
+  awardCount: string;
+  awardCategory: string;
+  awardPublication: string;
+  awardImageUrl: string;
+  awardYear: string;
   scope: ScopeState;
-  // v22 — the two URL parameter gates. `gate*Param`/`gate*Token` are read
+  // v22 — the URL parameter gates. `gate*Param`/`gate*Token` are read
   // only: minted server-side, shown so the merchant can copy them, and
   // cleared (never typed) to ask for a fresh pair.
   gateResearch: boolean;
@@ -289,6 +350,9 @@ interface ProofBlockFormState {
   gateSeal: boolean;
   gateSealParam: string;
   gateSealToken: string;
+  gateAward: boolean;
+  gateAwardParam: string;
+  gateAwardToken: string;
 }
 
 function initialFormState(settings: BoosterSettings): ProofBlockFormState {
@@ -308,6 +372,13 @@ function initialFormState(settings: BoosterSettings): ProofBlockFormState {
     })),
     sealEnabled: block.seal.enabled,
     sealImageUrl: block.seal.imageUrl,
+    awardEnabled: block.award.enabled,
+    awardRank: String(block.award.rank),
+    awardCount: String(block.award.count),
+    awardCategory: block.award.category,
+    awardPublication: block.award.publication,
+    awardImageUrl: block.award.imageUrl,
+    awardYear: String(block.award.year),
     scope: toScopeState(settings.marketScopes.buy_box_proof),
     gateResearch: block.research.gate === "br" && settings.paramGates.br.enabled,
     gateResearchParam: settings.paramGates.br.param,
@@ -315,6 +386,9 @@ function initialFormState(settings: BoosterSettings): ProofBlockFormState {
     gateSeal: block.seal.gate === "bs" && settings.paramGates.bs.enabled,
     gateSealParam: settings.paramGates.bs.param,
     gateSealToken: settings.paramGates.bs.token,
+    gateAward: block.award.gate === "ba" && settings.paramGates.ba.enabled,
+    gateAwardParam: settings.paramGates.ba.param,
+    gateAwardToken: settings.paramGates.ba.token,
   };
 }
 
@@ -370,8 +444,53 @@ export default function ProofBlockPage() {
   );
   const institutionsError =
     emptyNameIndex >= 0 ? "Every row needs a name" : undefined;
+
+  // v28 award strip. The server clamps silently, so out-of-range input is
+  // flagged HERE, where the merchant can still see what they typed.
+  const awardNumberError = (
+    value: string,
+    min: number,
+    max: number,
+  ): string | undefined => {
+    const n = Number(value.trim());
+    return value.trim() === "" || !Number.isFinite(n) || n < min || n > max || !Number.isInteger(n)
+      ? `Enter a whole number between ${min} and ${max}`
+      : undefined;
+  };
+  const awardRankError = awardNumberError(
+    state.awardRank,
+    caps.award.rankMin,
+    caps.award.rankMax,
+  );
+  const awardCountError = awardNumberError(
+    state.awardCount,
+    caps.award.countMin,
+    caps.award.countMax,
+  );
+  const awardYearError = awardNumberError(
+    state.awardYear,
+    caps.award.yearMin,
+    caps.award.yearMax,
+  );
+  const awardPublicationError =
+    state.awardEnabled && state.awardPublication.trim() === ""
+      ? "Required — the strip does not render without a named source"
+      : undefined;
+  const awardUrlError =
+    state.awardImageUrl.trim() !== "" &&
+    !HTTPS_URL.test(state.awardImageUrl.trim())
+      ? "Enter a full https:// URL (upload the file in Settings → Files)"
+      : undefined;
+
   const hasErrors = Boolean(
-    sealUrlError || institutionsError || institutionErrors.some(Boolean),
+    sealUrlError ||
+      institutionsError ||
+      institutionErrors.some(Boolean) ||
+      awardRankError ||
+      awardCountError ||
+      awardYearError ||
+      awardPublicationError ||
+      awardUrlError,
   );
 
   const toggleBadge = (key: string) => {
@@ -443,6 +562,16 @@ export default function ProofBlockPage() {
           gate: state.gateSeal ? "bs" : "",
           imageUrl: state.sealImageUrl.trim(),
         },
+        award: {
+          enabled: state.awardEnabled,
+          gate: state.gateAward ? "ba" : "",
+          rank: Number(state.awardRank.trim()),
+          count: Number(state.awardCount.trim()),
+          category: state.awardCategory,
+          publication: state.awardPublication.trim(),
+          imageUrl: state.awardImageUrl.trim(),
+          year: Number(state.awardYear.trim()),
+        },
       },
       // An empty param/token asks the sanitizer to mint a fresh pair; a kept
       // one survives the round trip untouched.
@@ -456,6 +585,11 @@ export default function ProofBlockPage() {
           enabled: state.gateSeal,
           param: state.gateSealParam,
           token: state.gateSealToken,
+        },
+        ba: {
+          enabled: state.gateAward,
+          param: state.gateAwardParam,
+          token: state.gateAwardToken,
         },
       },
       marketScopes: { buy_box_proof: toScopePatch(state.scope) },
@@ -706,6 +840,160 @@ export default function ProofBlockPage() {
                   checked={state.showRating}
                   onChange={(showRating) =>
                     setState((previous) => ({ ...previous, showRating }))
+                  }
+                />
+              </BlockStack>
+            </Card>
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Award strip
+                </Text>
+                <Checkbox
+                  label="Show the “Rated #1” award strip"
+                  helpText="A compact endorsement card that sits directly under the Add-to-cart panel — first, above the research band. The sentence is translated in every store language; the publication name stays as written (proper nouns are not translated)."
+                  checked={state.awardEnabled}
+                  onChange={(awardEnabled) =>
+                    setState((previous) => ({ ...previous, awardEnabled }))
+                  }
+                />
+                <Banner tone="warning">
+                  <Text as="p" variant="bodySm">
+                    Show only a rating or award that was actually published, and
+                    name the publication exactly. This claim is yours, not the
+                    app&rsquo;s — and the app renders exactly the logo file you
+                    upload, so use the official mark only where you are licensed
+                    to.
+                  </Text>
+                </Banner>
+                <InlineStack gap="300" wrap>
+                  <Box minWidth="120px">
+                    <TextField
+                      label="Rank"
+                      type="number"
+                      value={state.awardRank}
+                      onChange={(awardRank) =>
+                        setState((previous) => ({ ...previous, awardRank }))
+                      }
+                      error={awardRankError}
+                      autoComplete="off"
+                    />
+                  </Box>
+                  <Box minWidth="160px">
+                    <TextField
+                      label="Products tested"
+                      type="number"
+                      helpText="Shown as “of 100+”"
+                      value={state.awardCount}
+                      onChange={(awardCount) =>
+                        setState((previous) => ({ ...previous, awardCount }))
+                      }
+                      error={awardCountError}
+                      autoComplete="off"
+                    />
+                  </Box>
+                  <Box minWidth="120px">
+                    <TextField
+                      label="Year"
+                      type="number"
+                      value={state.awardYear}
+                      onChange={(awardYear) =>
+                        setState((previous) => ({ ...previous, awardYear }))
+                      }
+                      error={awardYearError}
+                      autoComplete="off"
+                    />
+                  </Box>
+                </InlineStack>
+                <Select
+                  label="Product category"
+                  options={AWARD_CATEGORY_OPTIONS}
+                  helpText="A fixed list so the sentence stays grammatical in every language — each language carries its own wording for the category. Need one that is missing? It is a small code addition."
+                  value={state.awardCategory}
+                  onChange={(awardCategory) =>
+                    setState((previous) => ({ ...previous, awardCategory }))
+                  }
+                />
+                <TextField
+                  label="Publication name"
+                  helpText="The source of the rating (for example a consumer-test magazine). Free text, shown as written in every language."
+                  value={state.awardPublication}
+                  onChange={(awardPublication) =>
+                    setState((previous) => ({ ...previous, awardPublication }))
+                  }
+                  error={awardPublicationError}
+                  autoComplete="off"
+                />
+                <TextField
+                  label="Publication logo URL (optional)"
+                  helpText="Shopify admin → Content → Files → Upload, then paste the file link. Leave blank to show the name as a text wordmark."
+                  value={state.awardImageUrl}
+                  onChange={(awardImageUrl) =>
+                    setState((previous) => ({ ...previous, awardImageUrl }))
+                  }
+                  error={awardUrlError}
+                  autoComplete="off"
+                />
+                {state.awardImageUrl.trim() !== "" && !awardUrlError ? (
+                  <InlineStack gap="200" blockAlign="center">
+                    <Box padding="200" background="bg-surface" borderRadius="200">
+                      {/* Same box the storefront gives the mark: what you
+                          see here is what the strip renders. */}
+                      <img
+                        src={state.awardImageUrl.trim()}
+                        alt={`${state.awardPublication || "Publication"} logo preview`}
+                        style={{
+                          display: "block",
+                          width: 88,
+                          height: 40,
+                          objectFit: "contain",
+                        }}
+                      />
+                    </Box>
+                    <Text as="span" tone="subdued" variant="bodySm">
+                      Storefront size
+                    </Text>
+                  </InlineStack>
+                ) : null}
+                <Box padding="300" background="bg-surface-secondary" borderRadius="200">
+                  <BlockStack gap="100">
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Storefront wording (English shown; every store language
+                      has its own translation):
+                    </Text>
+                    <Text as="p" variant="bodyMd" fontWeight="semibold">
+                      {awardPreviewLine(
+                        state.awardRank,
+                        state.awardCount,
+                        state.awardCategory,
+                      )}
+                    </Text>
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      {AWARD_EN_L2}
+                      {" · "}
+                      {state.awardPublication.trim() || "Publication"}
+                      {" · "}
+                      {state.awardYear.trim() || "Year"}
+                    </Text>
+                  </BlockStack>
+                </Box>
+                <ParamGateCard
+                  pieceLabel="the award strip"
+                  enabled={state.gateAward}
+                  param={state.gateAwardParam}
+                  token={state.gateAwardToken}
+                  featureEnabled={state.enabled && state.awardEnabled}
+                  storeUrl={storeUrl}
+                  onToggle={(gateAward) =>
+                    setState((previous) => ({ ...previous, gateAward }))
+                  }
+                  onRegenerate={() =>
+                    setState((previous) => ({
+                      ...previous,
+                      gateAwardParam: "",
+                      gateAwardToken: "",
+                    }))
                   }
                 />
               </BlockStack>

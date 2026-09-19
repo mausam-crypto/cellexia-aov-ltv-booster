@@ -4618,15 +4618,17 @@ const EVIDENCE = {
   // ---- the registry is CLOSED: gating a feature is a deliberate change ----
   ok(
     gateSettings.includes("export const GATE_TARGETS = {") &&
-      gateSettings.includes('br: {') && gateSettings.includes('bs: {'),
-    "v22: GATE_TARGETS is a closed allowlist declaring both proof-block gates",
+      gateSettings.includes('br: {') && gateSettings.includes('bs: {') && gateSettings.includes('ba: {'),
+    "v22: GATE_TARGETS is a closed allowlist declaring all three proof-block gates",
   );
   ok(
     gateSettings.includes("export type GateId = keyof typeof GATE_TARGETS;"),
     "v22: a gate reference can only name a registered id (GateId is derived from the registry)",
   );
+  // v28 (documented spec update, SPEC-v22 §2 + SPEC-v28): the award strip
+  // is the third target. A FOURTH needs the next spec update.
   const gateTargetCount = (gateSettings.match(/\n    feature: "[a-z_]+" as FeatureKey,/g) || []).length;
-  ok(gateTargetCount === 2, `v22: exactly two gate targets ship (got ${gateTargetCount}) — a third needs a spec update`);
+  ok(gateTargetCount === 3, `v22/v28: exactly three gate targets ship (got ${gateTargetCount}) — a fourth needs a spec update`);
   ok(
     !FEATURE_KEYS.includes("param_gate") && !FEATURE_KEYS.some((k) => k.startsWith("gate_")),
     "v22: parameter gates are per-feature metadata, NOT a FeatureKey (FEATURE_KEYS is untouched)",
@@ -4720,7 +4722,8 @@ const EVIDENCE = {
   );
   ok(
     gateSettings.includes("next.buyBoxProof.research.gate = isGateId(next.buyBoxProof.research.gate)") &&
-      gateSettings.includes("next.buyBoxProof.seal.gate = isGateId(next.buyBoxProof.seal.gate)"),
+      gateSettings.includes("next.buyBoxProof.seal.gate = isGateId(next.buyBoxProof.seal.gate)") &&
+      gateSettings.includes("next.buyBoxProof.award.gate = isGateId(next.buyBoxProof.award.gate)"),
     "v22: an unknown gate reference is cleared; a reference to a gate that is OFF is kept so the runtime fails closed",
   );
 
@@ -5170,6 +5173,126 @@ const EVIDENCE = {
       "v27: the enum rides the loader into the client (the v8.3 .server-value rule)",
     );
   }
+}
+
+// ================================================= v28 AWARD STRIP
+// docs/SPEC-v28-award-strip.md — the "Rated #1" endorsement card, the
+// third piece of the buy-box proof block and the third v22 gate target.
+// Behavior is pinned by sims/buy-box-proof.cjs (AW series) and
+// sims/param-gates.cjs (R12+); what is pinned HERE is the wiring a sandbox
+// cannot see: the curated table's two-way agreement with the server
+// catalog, the zero-byte budgets, and the fail-closed default.
+{
+  const awSettings = read("app/models/settings.server.ts");
+  const awPdpJs = read(PDP_JS);
+  const awRoute = read("app/routes/app.features.proof-block.tsx");
+
+  // ---- default OFF, strict boolean (the v21 convention) ------------------
+  ok(
+    awSettings.includes("next.buyBoxProof.award.enabled = next.buyBoxProof.award.enabled === true;"),
+    "v28: the strip is default-OFF strict — junk or a pre-v28 blob lands on false, never on",
+  );
+  ok(
+    /award: \{\n      enabled: false,\n      gate: "",\n      rank: 1,\n      count: 100,\n      category: "wrinkle",\n      publication: "Verbraucher Berichte",\n      imageUrl: "",\n      year: 2026,\n    \},/.test(awSettings),
+    "v28: DEFAULT_SETTINGS award block verbatim (off, gateless, the reference-mock content)",
+  );
+  ok(
+    awPdpJs.includes("if (!aw || aw.enabled !== true) return null;"),
+    "v28: the storefront twin of the strict default — a pre-v28 mirror (no key) paints nothing",
+  );
+
+  // ---- the v22 gate wiring, same shape as research/seal ------------------
+  ok(
+    awPdpJs.includes("if (aw.gate && !PREVIEW && !cxGateOpen(aw.gate, Date.now())) return null;"),
+    "v28: the award strip's gate guard is in the shipped builder",
+  );
+  ok(
+    awPdpJs.includes("track('buy_box_proof', 'impression', bbpGateMeta(conf, research, award));"),
+    "v28: the block's one impression carries the award's gate meta too",
+  );
+
+  // ---- design order: the strip mounts AFTER the band in code, so it sits
+  // FIRST under .pdp__grey (insertAfter unshifts) ---------------------------
+  const researchInsert = awPdpJs.indexOf("if (research && insertAfter(research, grey)) painted = true;");
+  const awardInsert = awPdpJs.indexOf("if (award && insertAfter(award, grey)) painted = true;");
+  ok(
+    researchInsert !== -1 && awardInsert !== -1 && researchInsert < awardInsert,
+    "v28: the award insert follows the research insert (both after .pdp__grey), so the strip lands first",
+  );
+
+  // ---- the curated table: 18 locales, closed catalog, native copy --------
+  const catMatch = awSettings.match(/export const AWARD_CATEGORY_KEYS = \[([\s\S]*?)\] as const;/);
+  ok(!!catMatch, "v28: AWARD_CATEGORY_KEYS is the server catalog");
+  const serverCats = catMatch
+    ? [...catMatch[1].matchAll(/"([a-z]+)"/g)].map((m) => m[1])
+    : [];
+  const awTableMatch = awPdpJs.match(/var CX_BBP_AWARD = (\{.*?\});\n/);
+  ok(!!awTableMatch, "v28: CX_BBP_AWARD literal present (single line)");
+  if (awTableMatch) {
+    let table = null;
+    try {
+      table = JSON.parse(awTableMatch[1]);
+    } catch (e) {
+      table = null;
+    }
+    ok(!!table, "v28: CX_BBP_AWARD parses as strict JSON");
+    if (table) {
+      const locales = listFiles(`${EXT}/locales`, ".json").map((f) =>
+        f.replace(".default", "").replace(".json", ""),
+      );
+      ok(
+        locales.length === 18 && locales.every((l) => !!table[l]),
+        "v28: the award copy covers exactly the 18 shipped locales (zero locale-file bytes — the el/ar wall untouched)",
+      );
+      ok(
+        JSON.stringify(table.nb) === JSON.stringify(table.no),
+        "v28: nb and no are twins",
+      );
+      for (const [loc, pack] of Object.entries(table)) {
+        ok(
+          Object.keys(pack).sort().join(",") === "b,c,l1,l2",
+          `v28: ${loc} carries exactly l1/l2/b/c`,
+        );
+        ok(
+          Object.keys(pack.c).sort().join(",") === serverCats.slice().sort().join(","),
+          `v28: ${loc} category catalog is two-way with AWARD_CATEGORY_KEYS`,
+        );
+        ok(!JSON.stringify(pack).match(/[—–]/), `v28: ${loc} award copy dash-free`);
+        ok(
+          pack.l1.includes("{r}") && pack.l1.includes("{n}") && pack.l1.includes("{c}") && pack.b.includes("{r}"),
+          `v28: ${loc} templates carry every placeholder`,
+        );
+      }
+      // The admin page's live preview twins the en entry, so the wording
+      // the merchant reads is the wording the storefront renders.
+      ok(
+        awRoute.includes(`const AWARD_EN_L1 = ${JSON.stringify(table.en.l1)};`) &&
+          awRoute.includes(`const AWARD_EN_L2 = ${JSON.stringify(table.en.l2)};`),
+        "v28: the admin preview strings twin CX_BBP_AWARD.en",
+      );
+      // The admin Select is two-way with the server catalog too.
+      for (const cat of serverCats) {
+        ok(
+          awRoute.includes(`{ value: "${cat}", label: "`),
+          `v28: the admin category picker offers "${cat}"`,
+        );
+      }
+    }
+  }
+
+  // ---- admin gate card + patch ------------------------------------------
+  ok(
+    awRoute.includes('pieceLabel="the award strip"') &&
+      awRoute.includes('gate: state.gateAward ? "ba" : ""') &&
+      awRoute.includes("ba: {\n          enabled: state.gateAward,"),
+    "v28: the admin page gates the strip through the shared ParamGateCard and saves the ba pair",
+  );
+
+  // ---- budgets: this feature ships ZERO Liquid and ZERO locale bytes ----
+  ok(
+    !read(`${EXT}/blocks/pdp-booster.liquid`).includes("award"),
+    "v28: pdp-booster.liquid is untouched — the config rides the existing whole-section island member",
+  );
 }
 
 finish();

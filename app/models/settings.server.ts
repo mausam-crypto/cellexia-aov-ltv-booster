@@ -1209,6 +1209,47 @@ export interface BoosterSettings {
        *  JS; an https URL replaces it with the merchant's own file. */
       imageUrl: string;
     };
+    /**
+     * v28 — the "Rated #1" award strip (docs/SPEC-v28-award-strip.md): a
+     * compact endorsement card that renders as the FIRST sibling directly
+     * under `.pdp__grey`, ahead of the research band. Default OFF (strict
+     * `=== true`, the v21 flag convention), so a pre-v28 mirror without the
+     * key paints nothing.
+     *
+     * The sentence ("Rated #1 of 100+ wrinkle treatments", "in independent
+     * lab testing") is app-curated per locale in the extension asset
+     * (CX_BBP_AWARD, the v26 CX_QSEL_STR convention — zero locale-file and
+     * zero Liquid bytes); only the numbers and the category CHOICE are the
+     * merchant's. The publication name is free text and stays untranslated
+     * (a proper noun — the US_STATE_NAMES precedent).
+     */
+    award: {
+      enabled: boolean;
+      /** v22: see research.gate — its own independent gate ("ba"). */
+      gate: string;
+      /** The awarded position, AWARD_RANK_MIN..AWARD_RANK_MAX. */
+      rank: number;
+      /** The tested field ("of {count}+ ..."), AWARD_COUNT_MIN..
+       *  AWARD_COUNT_MAX. The floor is 20: the curated templates are
+       *  written for the round-figure register (Romanian's "de" after 19,
+       *  Polish's genitive after round numerals), and a "#1 of fewer than
+       *  20" claim is not a strip worth showing. */
+      count: number;
+      /** Closed catalog key (AWARD_CATEGORY_KEYS). The translated category
+       *  noun is curated per locale WITH the template's grammatical case
+       *  baked in (the v27 CX_QSEL_UNITS lesson: plural/case tables are
+       *  grammar, so a free-text or DeepL category cannot be correct in
+       *  the inflecting languages). An unknown key paints nothing. */
+      category: string;
+      /** Publication name — merchant free text, required for the strip to
+       *  render (fail closed: no named source, no claim). */
+      publication: string;
+      /** Optional https logo (Shopify Files) replacing the text wordmark. */
+      imageUrl: string;
+      /** The award year shown under the publication,
+       *  AWARD_YEAR_MIN..AWARD_YEAR_MAX. */
+      year: number;
+    };
   };
   /**
    * v20 — the SIZE of the award/certification badges the THEME overlays on
@@ -1532,6 +1573,11 @@ export const GATE_TARGETS = {
     label: "Proof block — certification seal",
     feature: "buy_box_proof" as FeatureKey,
   },
+  // v28: the "Rated #1" award strip (docs/SPEC-v28-award-strip.md §2).
+  ba: {
+    label: "Proof block — award strip",
+    feature: "buy_box_proof" as FeatureKey,
+  },
 } as const;
 
 export type GateId = keyof typeof GATE_TARGETS;
@@ -1830,6 +1876,16 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
       enabled: true,
       gate: "",
       imageUrl: "",
+    },
+    award: {
+      enabled: false,
+      gate: "",
+      rank: 1,
+      count: 100,
+      category: "wrinkle",
+      publication: "Verbraucher Berichte",
+      imageUrl: "",
+      year: 2026,
     },
   },
   imageBadges: {
@@ -3176,6 +3232,32 @@ export const BUY_BOX_PROOF_MAX_INSTITUTIONS = 6;
 const BUY_BOX_PROOF_MAX_NAME = 60;
 
 /**
+ * v28 award strip. The category catalog is CLOSED and twinned by the
+ * extension's curated CX_BBP_AWARD table (harness-pinned in both
+ * directions): each locale carries the noun already inflected for ITS
+ * sentence template, which free text never could be. Adding a category is
+ * a code change that lands with its 18 translations.
+ */
+export const AWARD_CATEGORY_KEYS = [
+  "wrinkle",
+  "cellulite",
+  "antiaging",
+  "firming",
+  "darkspot",
+  "serum",
+  "eye",
+  "lip",
+  "hair",
+  "skincare",
+] as const;
+export const AWARD_RANK_MIN = 1;
+export const AWARD_RANK_MAX = 99;
+export const AWARD_COUNT_MIN = 20;
+export const AWARD_COUNT_MAX = 9999;
+export const AWARD_YEAR_MIN = 2000;
+export const AWARD_YEAR_MAX = 2100;
+
+/**
  * v22 parameter gates. `param` is minted, never merchant-typed, so it can
  * never be guessable, collide with another gate, or shadow a parameter the
  * storefront, an ad platform or an analytics tool already owns.
@@ -3376,6 +3458,50 @@ export function sanitizeSettings(
     ? next.buyBoxProof.seal.imageUrl
     : "";
 
+  // v28 award strip. Default-OFF strict boolean (the v21 convention), the
+  // numbers clamped into the ranges the curated grammar is written for,
+  // the category held to the closed catalog, and the publication treated
+  // like an institution name (trimmed free text, proper noun).
+  next.buyBoxProof.award.enabled = next.buyBoxProof.award.enabled === true;
+  next.buyBoxProof.award.rank = Math.round(
+    clampNumber(
+      next.buyBoxProof.award.rank,
+      AWARD_RANK_MIN,
+      AWARD_RANK_MAX,
+      DEFAULT_SETTINGS.buyBoxProof.award.rank,
+    ),
+  );
+  next.buyBoxProof.award.count = Math.round(
+    clampNumber(
+      next.buyBoxProof.award.count,
+      AWARD_COUNT_MIN,
+      AWARD_COUNT_MAX,
+      DEFAULT_SETTINGS.buyBoxProof.award.count,
+    ),
+  );
+  next.buyBoxProof.award.category = (
+    AWARD_CATEGORY_KEYS as readonly string[]
+  ).includes(next.buyBoxProof.award.category)
+    ? next.buyBoxProof.award.category
+    : DEFAULT_SETTINGS.buyBoxProof.award.category;
+  next.buyBoxProof.award.publication =
+    typeof next.buyBoxProof.award.publication === "string"
+      ? next.buyBoxProof.award.publication.trim().slice(0, BUY_BOX_PROOF_MAX_NAME)
+      : "";
+  next.buyBoxProof.award.imageUrl = isSafeHttpsUrl(
+    next.buyBoxProof.award.imageUrl,
+  )
+    ? next.buyBoxProof.award.imageUrl
+    : "";
+  next.buyBoxProof.award.year = Math.round(
+    clampNumber(
+      next.buyBoxProof.award.year,
+      AWARD_YEAR_MIN,
+      AWARD_YEAR_MAX,
+      DEFAULT_SETTINGS.buyBoxProof.award.year,
+    ),
+  );
+
   // v22 parameter gates. The registry first (so a reference can be checked
   // against the sanitized gates), then the references that point at it.
   const sanitizedGates = defaultParamGates();
@@ -3421,6 +3547,9 @@ export function sanitizeSettings(
     : "";
   next.buyBoxProof.seal.gate = isGateId(next.buyBoxProof.seal.gate)
     ? next.buyBoxProof.seal.gate
+    : "";
+  next.buyBoxProof.award.gate = isGateId(next.buyBoxProof.award.gate)
+    ? next.buyBoxProof.award.gate
     : "";
 
   next.trustpilot.rating = clampNumber(

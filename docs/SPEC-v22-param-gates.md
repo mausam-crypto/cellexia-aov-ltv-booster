@@ -12,6 +12,11 @@ at it, and everything below applies unchanged.
 own. The buy-box rows themselves are never gated, so the proof block's suppression of the
 classic badge / guarantee / Trustpilot / delivery widgets is unaffected by any of this.
 
+**Third target (v28, documented spec update):** the award strip —
+`buyBoxProof.award` (gate `ba`), docs/SPEC-v28-award-strip.md. Same rules, same
+`ParamGateCard`, same digests-only projection; the harness pin moved from "exactly two"
+to "exactly three" gate targets.
+
 ---
 
 ## 1. Design invariants
@@ -56,6 +61,7 @@ case of a forced collision is that somebody sees an extra trust band.
 export const GATE_TARGETS = {
   br: { label: "Proof block — research band",      feature: "buy_box_proof" },
   bs: { label: "Proof block — certification seal", feature: "buy_box_proof" },
+  ba: { label: "Proof block — award strip",        feature: "buy_box_proof" }, // v28
 } as const;
 
 paramGates: Record<GateId, { enabled: boolean; param: string; token: string }>;

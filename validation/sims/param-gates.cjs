@@ -24,9 +24,10 @@
  *   I. TWINS          cellexia-pdp.js and cellexia-cart.js carry the same
  *                     module byte for byte.
  *
- * SCOPE NOTE: the two render-side guards (bbpSealNode / bbpResearchNode)
- * are proved here against the real builders, so a gate that stops hiding
- * its piece fails this suite and not only the v19 one.
+ * SCOPE NOTE: the render-side guards (bbpSealNode / bbpResearchNode /
+ * v28's bbpAwardNode) are proved here against the real builders, so a
+ * gate that stops hiding its piece fails this suite and not only the v19
+ * one.
  *
  * MUTATION TESTS (all must be CAUGHT):
  *   m1  the clear digest stops winning over the open digest
@@ -35,6 +36,7 @@
  *   m4  the research band's gate guard is dropped
  *   m5  the stored value is not version-checked
  *   m6  the proxy sync stops de-duplicating across the two bundles
+ *   m7  the award strip's gate guard is dropped (v28)
  */
 "use strict";
 
@@ -439,10 +441,13 @@ const ISLAND = islandFor(GATE_A, GATE_B);
 
 // ----------------------------------------------- render-side gate guards
 {
-  // The real v19 builders, with the gate guards in place.
+  // The real v19 builders, with the gate guards in place — plus the v28
+  // award strip's builder and its curated table (bbpLocale needs a cfg
+  // with a page locale, exactly what the pdp bundle gives it).
   const RENDER_FNS = [
     "cxEl", "cxSp", "cxRawStr", "decodeEntities", "bottleStr", "insertAfter",
     "bbpSealNode", "bbpBalanceLogo", "bbpResearchNode", "bbpGateMeta",
+    "bbpLocale", "bbpAwardLocale", "bbpAwardTpl", "bbpAwardNode",
   ];
   function renderBand({ conf, unlocked = "", preview = null, now = T0 }) {
     const page = makeDocument();
@@ -459,17 +464,23 @@ const ISLAND = islandFor(GATE_A, GATE_B);
       PREVIEW: preview,
       JSON, Math, Number, String, Object, Array, RegExp, isFinite,
       decodeURIComponent, console,
+      cfg: { delivery: { pageLocale: "en" } },
       cxIcon: () => new El("svg"),
       bbpBuiltInSeal: () => { const e = new El("svg"); e.setAttribute("class", "cx-bbp-research__seal-art"); return e; },
     };
     vm.createContext(sandbox);
     vm.runInContext(GATE_MODULE, sandbox, { filename: "gate.js" });
-    vm.runInContext(RENDER_FNS.map((f) => extractFunction(SRC, f)).join("\n\n"), sandbox, { filename: "render.js" });
+    vm.runInContext(
+      [extractVar(SRC, "CX_BBP_AWARD"), ...RENDER_FNS.map((f) => extractFunction(SRC, f))].join("\n\n"),
+      sandbox,
+      { filename: "render.js" },
+    );
     sandbox.__conf = conf;
     sandbox.__d = { rs: "Based on published research from" };
     return {
       node: vm.runInContext("bbpResearchNode(__d, __conf)", sandbox),
-      meta: (n) => vm.runInContext("bbpGateMeta(__conf, __node)", Object.assign(sandbox, { __node: n })),
+      award: vm.runInContext("bbpAwardNode(__conf)", sandbox),
+      meta: (n, aw) => vm.runInContext("bbpGateMeta(__conf, __node, __award)", Object.assign(sandbox, { __node: n, __award: aw === undefined ? null : aw })),
     };
   }
   const INSTS = [{ name: "Harvard Medical School", imageUrl: "" }];
@@ -508,6 +519,42 @@ const ISLAND = islandFor(GATE_A, GATE_B);
   // so no digest exists for it. The piece must stay hidden, never fall open.
   r = renderBand({ conf: { research: { enabled: true, gate: "zz", institutions: INSTS }, seal: { enabled: false, gate: "", imageUrl: "" } } });
   ok(r.node === null, "R11 a dangling gate reference fails CLOSED");
+
+  // ---- v28: the award strip is the third gated piece -----------------------
+  const AWARD = { enabled: true, gate: "", rank: 1, count: 100, category: "wrinkle", publication: "Verbraucher Berichte", imageUrl: "", year: 2026 };
+  const awardGated = {
+    research: { enabled: true, gate: "", institutions: INSTS },
+    seal: { enabled: false, gate: "", imageUrl: "" },
+    award: Object.assign({}, AWARD, { gate: "ba" }),
+  };
+
+  r = renderBand({ conf: Object.assign({}, awardGated, { award: AWARD }) });
+  ok(r.award && r.award.querySelector(".cx-bbp-award__l1") !== null, "R12 ungated award: the strip paints for everyone");
+  ok(r.meta(r.node, r.award) === "", "R12 and the beacon carries no gate meta");
+
+  r = renderBand({ conf: awardGated });
+  ok(r.award === null, "R13 gated and locked: the strip is absent");
+  ok(r.meta(r.node, r.award) === "g:", "R13 the control arm is tagged for the comparison");
+
+  r = renderBand({ conf: awardGated, unlocked: `1.ba-${T0 + TTL}` });
+  ok(r.award !== null, "R14 the tagged link's unlock paints the strip");
+  ok(r.meta(r.node, r.award) === "g:ba", "R14 the treated arm carries the award's id");
+
+  r = renderBand({ conf: awardGated, preview: { live: {}, flags: {} } });
+  ok(r.award !== null, "R15 the Preview Center renders the gated strip");
+
+  r = renderBand({ conf: Object.assign({}, awardGated, { award: Object.assign({}, AWARD, { gate: "zz" }) }) });
+  ok(r.award === null, "R16 a dangling award gate reference fails CLOSED");
+
+  // All three pieces gated and unlocked together: one sorted meta.
+  const allGated = {
+    research: { enabled: true, gate: "br", institutions: INSTS },
+    seal: { enabled: true, gate: "bs", imageUrl: "" },
+    award: Object.assign({}, AWARD, { gate: "ba" }),
+  };
+  r = renderBand({ conf: allGated, unlocked: `1.br-${T0 + TTL}.bs-${T0 + TTL}.ba-${T0 + TTL}` });
+  ok(r.node !== null && r.award !== null, "R17 all three unlock together");
+  ok(r.meta(r.node, r.award) === "g:ba,br,bs", "R17 the meta lists every painted gated piece, sorted");
 }
 
 // ------------------------------------------------------------ static pins
@@ -515,7 +562,8 @@ const ISLAND = islandFor(GATE_A, GATE_B);
   const pins = [
     ["if (seal.gate && !PREVIEW && !cxGateOpen(seal.gate, Date.now())) return null;", "the seal's gate guard is in the shipped builder"],
     ["var researchGated = !!(research && research.gate) && !PREVIEW && !cxGateOpen(research.gate, Date.now());", "the research band's gate guard is in the shipped builder"],
-    ["track('buy_box_proof', 'impression', bbpGateMeta(conf, research));", "the impression carries the gate meta"],
+    ["if (aw.gate && !PREVIEW && !cxGateOpen(aw.gate, Date.now())) return null;", "the award strip's gate guard is in the shipped builder (v28)"],
+    ["track('buy_box_proof', 'impression', bbpGateMeta(conf, research, award));", "the impression carries the gate meta for all three pieces"],
     ["if (typeof meta === 'string' && meta) payload.meta = meta;", "track() forwards meta to the beacon"],
     ["'apps/cellexia/gate'", "the proxy path is the documented one"],
   ];
@@ -574,12 +622,18 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         find: "    if (parts[0] !== CX_GATE_VERSION) return out;",
         replace: "    if (false) return out;",
       },
+      {
+        // v28: the award strip's guard (R13).
+        name: "m7-award-gate-dropped",
+        find: "    if (aw.gate && !PREVIEW && !cxGateOpen(aw.gate, Date.now())) return null;",
+        replace: "    if (false) return null;",
+      },
     ],
   });
   if (bad.length) {
     console.log(`\nMUTANTS NOT CAUGHT: ${bad.join(", ")}`);
     process.exitCode = 1;
   } else {
-    console.log("ALL 6 MUTANTS CAUGHT (v22 parameter gates)");
+    console.log("ALL 7 MUTANTS CAUGHT (v22 parameter gates)");
   }
 }

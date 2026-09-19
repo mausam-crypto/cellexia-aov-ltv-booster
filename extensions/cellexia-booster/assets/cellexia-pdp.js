@@ -6560,6 +6560,126 @@
     if (img.addEventListener) img.addEventListener('load', apply);
   }
 
+  // The v28 award strip's curated copy (docs/SPEC-v28-award-strip.md) —
+  // the v26 CX_QSEL_STR convention: 18 locales in the ASSET (zero
+  // locale-file bytes, the el/ar 15,200B wall untouched), nb/no twins.
+  // Each locale's "c" catalog carries the category noun ALREADY INFLECTED
+  // for that locale's own l1 template (Polish genitive plural, Finnish
+  // genitive singular before "joukossa", Arabic singular after a round
+  // hundred, German dative after "von") — the v27 CX_QSEL_UNITS lesson:
+  // case tables are grammar, so DeepL or merchant free text cannot be
+  // right here. {r} = rank, {n} = count, {c} = category; "b" is the rank
+  // medallion's text ("#1", "Nr.1", "1.").
+  var CX_BBP_AWARD = {"en":{"l1":"Rated #{r} of {n}+ {c}","l2":"in independent lab testing","b":"#{r}","c":{"wrinkle":"wrinkle treatments","cellulite":"cellulite treatments","antiaging":"anti-aging creams","firming":"skin-firming creams","darkspot":"dark spot correctors","serum":"facial serums","eye":"eye creams","lip":"lip care products","hair":"hair serums","skincare":"skincare products"}},"fr":{"l1":"N°{r} sur plus de {n} {c}","l2":"selon des tests indépendants en laboratoire","b":"N°{r}","c":{"wrinkle":"soins anti-rides","cellulite":"soins anticellulite","antiaging":"crèmes anti-âge","firming":"crèmes raffermissantes","darkspot":"correcteurs de taches","serum":"sérums visage","eye":"crèmes contour des yeux","lip":"soins des lèvres","hair":"sérums capillaires","skincare":"produits de soin de la peau"}},"de":{"l1":"Platz {r} von über {n} {c}","l2":"in unabhängigen Labortests","b":"Nr.{r}","c":{"wrinkle":"Anti-Falten-Behandlungen","cellulite":"Cellulite-Behandlungen","antiaging":"Anti-Aging-Cremes","firming":"straffenden Cremes","darkspot":"Produkten gegen Pigmentflecken","serum":"Gesichtsseren","eye":"Augencremes","lip":"Lippenpflegeprodukten","hair":"Haarseren","skincare":"Hautpflegeprodukten"}},"es":{"l1":"N.º {r} entre más de {n} {c}","l2":"en pruebas independientes de laboratorio","b":"N.º{r}","c":{"wrinkle":"tratamientos antiarrugas","cellulite":"tratamientos anticelulíticos","antiaging":"cremas antiedad","firming":"cremas reafirmantes","darkspot":"correctores de manchas","serum":"sérums faciales","eye":"contornos de ojos","lip":"productos para labios","hair":"sérums capilares","skincare":"productos para la piel"}},"it":{"l1":"N.{r} tra oltre {n} {c}","l2":"in test indipendenti di laboratorio","b":"N.{r}","c":{"wrinkle":"trattamenti antirughe","cellulite":"trattamenti anticellulite","antiaging":"creme antietà","firming":"creme rassodanti","darkspot":"correttori di macchie","serum":"sieri viso","eye":"creme contorno occhi","lip":"prodotti per le labbra","hair":"sieri per capelli","skincare":"prodotti per la pelle"}},"nl":{"l1":"Nr. {r} van ruim {n} {c}","l2":"in onafhankelijke laboratoriumtests","b":"Nr.{r}","c":{"wrinkle":"rimpelbehandelingen","cellulite":"cellulitisbehandelingen","antiaging":"anti-agingcrèmes","firming":"verstevigende crèmes","darkspot":"producten tegen pigmentvlekken","serum":"gezichtsserums","eye":"oogcrèmes","lip":"lippenverzorgingsproducten","hair":"haarserums","skincare":"huidverzorgingsproducten"}},"pt-PT":{"l1":"N.º {r} entre mais de {n} {c}","l2":"em testes laboratoriais independentes","b":"N.º{r}","c":{"wrinkle":"tratamentos antirrugas","cellulite":"tratamentos anticelulite","antiaging":"cremes antienvelhecimento","firming":"cremes reafirmantes","darkspot":"corretores de manchas","serum":"séruns faciais","eye":"cremes de contorno de olhos","lip":"produtos para os lábios","hair":"séruns capilares","skincare":"produtos de cuidado da pele"}},"da":{"l1":"Nr. {r} af over {n} {c}","l2":"i uafhængige laboratorietest","b":"Nr.{r}","c":{"wrinkle":"rynkebehandlinger","cellulite":"cellulitebehandlinger","antiaging":"anti-age-cremer","firming":"opstrammende cremer","darkspot":"produkter mod pigmentpletter","serum":"ansigtsserummer","eye":"øjencremer","lip":"læbeplejeprodukter","hair":"hårserummer","skincare":"hudplejeprodukter"}},"sv":{"l1":"Nr {r} av över {n} {c}","l2":"i oberoende laboratorietester","b":"Nr{r}","c":{"wrinkle":"rynkbehandlingar","cellulite":"cellulitbehandlingar","antiaging":"anti-age-krämer","firming":"uppstramande krämer","darkspot":"produkter mot pigmentfläckar","serum":"ansiktsserum","eye":"ögonkrämer","lip":"läppvårdsprodukter","hair":"hårserum","skincare":"hudvårdsprodukter"}},"nb":{"l1":"Nr. {r} av over {n} {c}","l2":"i uavhengige laboratorietester","b":"Nr.{r}","c":{"wrinkle":"rynkebehandlinger","cellulite":"cellulittbehandlinger","antiaging":"anti-age-kremer","firming":"oppstrammende kremer","darkspot":"produkter mot pigmentflekker","serum":"ansiktsserum","eye":"øyekremer","lip":"leppepleieprodukter","hair":"hårserum","skincare":"hudpleieprodukter"}},"no":{"l1":"Nr. {r} av over {n} {c}","l2":"i uavhengige laboratorietester","b":"Nr.{r}","c":{"wrinkle":"rynkebehandlinger","cellulite":"cellulittbehandlinger","antiaging":"anti-age-kremer","firming":"oppstrammende kremer","darkspot":"produkter mot pigmentflekker","serum":"ansiktsserum","eye":"øyekremer","lip":"leppepleieprodukter","hair":"hårserum","skincare":"hudpleieprodukter"}},"fi":{"l1":"Sijalla {r} yli {n} {c} joukossa","l2":"riippumattomissa laboratoriotesteissä","b":"{r}.","c":{"wrinkle":"ryppyhoidon","cellulite":"selluliittihoidon","antiaging":"anti-age-voiteen","firming":"kiinteyttävän voiteen","darkspot":"pigmenttiläiskien hoitotuotteen","serum":"kasvoseerumin","eye":"silmänympärysvoiteen","lip":"huultenhoitotuotteen","hair":"hiusseerumin","skincare":"ihonhoitotuotteen"}},"pl":{"l1":"Nr {r} wśród ponad {n} {c}","l2":"w niezależnych testach laboratoryjnych","b":"Nr {r}","c":{"wrinkle":"kuracji przeciwzmarszczkowych","cellulite":"kuracji antycellulitowych","antiaging":"kremów przeciwstarzeniowych","firming":"kremów ujędrniających","darkspot":"korektorów przebarwień","serum":"serum do twarzy","eye":"kremów pod oczy","lip":"produktów do pielęgnacji ust","hair":"serum do włosów","skincare":"produktów do pielęgnacji skóry"}},"ro":{"l1":"Locul {r} din peste {n} de {c}","l2":"în teste independente de laborator","b":"Nr.{r}","c":{"wrinkle":"tratamente antirid","cellulite":"tratamente anticelulitice","antiaging":"creme antiîmbătrânire","firming":"creme pentru fermitate","darkspot":"corectoare de pete pigmentare","serum":"seruri faciale","eye":"creme pentru ochi","lip":"produse pentru îngrijirea buzelor","hair":"seruri pentru păr","skincare":"produse de îngrijire a pielii"}},"hu":{"l1":"{r}. hely több mint {n} {c} közül","l2":"független laboratóriumi tesztek alapján","b":"{r}.","c":{"wrinkle":"ránctalanító kezelés","cellulite":"cellulit elleni kezelés","antiaging":"öregedésgátló krém","firming":"feszesítő krém","darkspot":"pigmentfolt-halványító termék","serum":"arcszérum","eye":"szemkörnyékápoló krém","lip":"ajakápoló termék","hair":"hajszérum","skincare":"bőrápoló termék"}},"el":{"l1":"Νο {r} ανάμεσα σε πάνω από {n} {c}","l2":"σε ανεξάρτητες εργαστηριακές δοκιμές","b":"Νο{r}","c":{"wrinkle":"θεραπείες ρυτίδων","cellulite":"θεραπείες κυτταρίτιδας","antiaging":"αντιγηραντικές κρέμες","firming":"συσφιγκτικές κρέμες","darkspot":"προϊόντα κατά των κηλίδων","serum":"ορούς προσώπου","eye":"κρέμες ματιών","lip":"προϊόντα περιποίησης χειλιών","hair":"ορούς μαλλιών","skincare":"προϊόντα περιποίησης δέρματος"}},"ja":{"l1":"{c}{n}種類以上の中で第{r}位","l2":"独立した第三者機関の試験による","b":"{r}位","c":{"wrinkle":"シワケア製品","cellulite":"セルライトケア製品","antiaging":"エイジングケアクリーム","firming":"ハリケアクリーム","darkspot":"シミケア製品","serum":"美容液","eye":"アイクリーム","lip":"リップケア製品","hair":"ヘアセラム","skincare":"スキンケア製品"}},"ar":{"l1":"المرتبة {r} من بين أكثر من {n} {c}","l2":"في اختبارات مخبرية مستقلة","b":"{r}","c":{"wrinkle":"علاج للتجاعيد","cellulite":"علاج للسيلوليت","antiaging":"كريم مضاد للشيخوخة","firming":"كريم لشد البشرة","darkspot":"منتج لتصحيح التصبغات","serum":"سيروم للوجه","eye":"كريم للعين","lip":"منتج للعناية بالشفاه","hair":"سيروم للشعر","skincare":"منتج للعناية بالبشرة"}}};
+
+  function bbpAwardLocale() {
+    // Exact tag, then base language, then any regional sibling — the
+    // qselLocale chain, resolved from the page language (bbpLocale),
+    // since the bbp island carries no locale member of its own.
+    var l = bbpLocale();
+    if (CX_BBP_AWARD[l]) return l;
+    var base = String(l).split('-')[0].toLowerCase();
+    if (CX_BBP_AWARD[base]) return base;
+    for (var k in CX_BBP_AWARD) {
+      if (CX_BBP_AWARD.hasOwnProperty(k) && k.split('-')[0].toLowerCase() === base) return k;
+    }
+    return 'en';
+  }
+
+  function bbpAwardTpl(s, aw, cat) {
+    // Global substitution via split/join — string .replace is first-match
+    // only (the v8.17 lesson), and a "$" in a value would be a pattern.
+    return s.split('{r}').join(String(aw.rank)).split('{n}').join(String(aw.count)).split('{c}').join(cat);
+  }
+
+  function bbpAwardFit(root) {
+    // ONE-ROW GUARANTEE (the merchant's requirement: the reference lockup
+    // is a single row at every width). Every strip metric is authored as
+    // calc(var(--cxaw) * Npx), so scaling ONE inline custom property (the
+    // v21 --cx-spo precedent) shrinks the whole design proportionally —
+    // the reference photographed smaller, never a reflowed variant. The
+    // measurement resets to scale 1, reads the natural nowrap width, and
+    // fits it to the column; 2% slack absorbs subpixel font rounding, and
+    // the 0.5 floor keeps the longest translation legible (below it the
+    // card clips instead of scrolling the page).
+    try {
+      root.style.setProperty('--cxaw', '1');
+      var avail = root.clientWidth;
+      var need = root.scrollWidth;
+      if (!avail || !need) return;
+      var s = avail / (need * 1.02);
+      if (s > 1) s = 1;
+      // 0.4 sits below the longest translation's requirement on a 320px
+      // phone (Polish), so the floor exists only for pathological
+      // containers — at the floor the card clips rather than the page.
+      if (s < 0.4) s = 0.4;
+      root.style.setProperty('--cxaw', String(Math.floor(s * 1000) / 1000));
+    } catch (e) { /* keep scale 1 */ }
+  }
+
+  function bbpAwardNode(conf) {
+    // v28: the "Rated #1" award strip — rank medallion, two translated
+    // lines, and the publication cell (uploaded mark or text wordmark,
+    // year beneath). Fail closed on every leg: strict default-OFF enabled
+    // (a pre-v28 mirror has no key and paints nothing), a named
+    // publication required (no source, no claim), real positive numbers,
+    // and the category resolved from the curated catalog (an unknown key
+    // must never render half a sentence).
+    var aw = conf.award && typeof conf.award === 'object' ? conf.award : null;
+    if (!aw || aw.enabled !== true) return null;
+    // v22: the strip's own URL parameter gate. PREVIEW always renders it
+    // so the merchant can check the design in the Preview Center (track()
+    // already suppresses every beacon there).
+    if (aw.gate && !PREVIEW && !cxGateOpen(aw.gate, Date.now())) return null;
+    var pub = cxRawStr(aw, 'publication');
+    if (!pub) return null;
+    if (typeof aw.rank !== 'number' || !isFinite(aw.rank) || aw.rank < 1) return null;
+    if (typeof aw.count !== 'number' || !isFinite(aw.count) || aw.count < 1) return null;
+    var pack = CX_BBP_AWARD[bbpAwardLocale()];
+    var cat = pack && pack.c && typeof pack.c[aw.category] === 'string' ? pack.c[aw.category] : '';
+    if (!cat) return null;
+    var root = cxEl('div', 'cx-bbp-award', ['data-cx-feature', 'buy_box_proof']);
+    var medalText = bbpAwardTpl(pack.b, aw, cat);
+    // The medallion is decorative (line 1 already states the rank); long
+    // forms ("Nr.10") take the --wide modifier's smaller type.
+    var medal = cxEl('span', 'cx-bbp-award__rank' + (medalText.length > 3 ? ' cx-bbp-award__rank--wide' : ''), ['aria-hidden', 'true']);
+    medal.textContent = medalText;
+    root.appendChild(medal);
+    var col = cxEl('div', 'cx-bbp-award__col');
+    var l1 = cxEl('p', 'cx-bbp-award__l1');
+    l1.textContent = bbpAwardTpl(pack.l1, aw, cat);
+    col.appendChild(l1);
+    if (typeof pack.l2 === 'string' && pack.l2) {
+      var l2 = cxEl('p', 'cx-bbp-award__l2');
+      l2.textContent = pack.l2;
+      col.appendChild(l2);
+    }
+    root.appendChild(col);
+    var cell = cxEl('div', 'cx-bbp-award__pub');
+    var url = cxRawStr(aw, 'imageUrl');
+    if (url) {
+      cell.appendChild(cxEl('img', 'cx-bbp-award__pub-img', ['src', url, 'alt', pub, 'loading', 'lazy', 'decoding', 'async']));
+    } else {
+      // The built-in lockup is the reference design's device: the small
+      // red-over-yellow colour bar beside the name (the bbpBuiltInSeal
+      // precedent — the app draws its own artwork; an uploaded logo file
+      // replaces the WHOLE lockup, bar included).
+      cell.appendChild(cxEl('span', 'cx-bbp-award__bar', ['aria-hidden', 'true']));
+      var wm = cxEl('span', 'cx-bbp-award__pub-name');
+      wm.textContent = pub;
+      cell.appendChild(wm);
+    }
+    root.appendChild(cell);
+    // The year is the reference's own FOURTH cell, behind its own rule —
+    // and drops alone when a hand-edited mirror carries none.
+    if (typeof aw.year === 'number' && isFinite(aw.year) && aw.year > 0) {
+      var year = cxEl('div', 'cx-bbp-award__year');
+      year.textContent = String(Math.round(aw.year));
+      root.appendChild(year);
+    }
+    return root;
+  }
+
   function bbpResearchNode(d, conf) {
     // "Based on published research from" + the institution wordmarks (or
     // their uploaded logos) + the seal. Institution names are merchant
@@ -6640,7 +6760,7 @@
     return painted > 0 ? root : null;
   }
 
-  function bbpGateMeta(conf, research) {
+  function bbpGateMeta(conf, research, award) {
     // "" when no piece of this block is gated — an ungated shop's beacons
     // are byte-identical to what they were before v22. Otherwise "g:" plus
     // the gated pieces that actually painted, so "g:" alone is the control
@@ -6656,6 +6776,11 @@
       if (conf.seal && conf.seal.gate) {
         gated = true;
         if (research && research.querySelector('.cx-bbp-research__seal')) ids.push(conf.seal.gate);
+      }
+      // v28: the award strip is its own node, so painted === mounted.
+      if (conf.award && conf.award.gate) {
+        gated = true;
+        if (award) ids.push(conf.award.gate);
       }
       if (!gated) return '';
       ids.sort();
@@ -6688,7 +6813,25 @@
       if (rows && insertAfter(rows, anchor)) painted = true;
       var research = bbpResearchNode(d, conf);
       if (research && insertAfter(research, grey)) painted = true;
-      if (painted) track('buy_box_proof', 'impression', bbpGateMeta(conf, research));
+      // v28: the award strip is inserted LAST but also directly after
+      // .pdp__grey, which unshifts it ahead of the research band — the
+      // design order under the panel is: award strip first, band second.
+      var award = bbpAwardNode(conf);
+      if (award && insertAfter(award, grey)) painted = true;
+      if (award && award.parentNode) {
+        // Fit BEFORE first paint (same task as insertion), then keep fit
+        // across rotations/resizes — the v20 ibApply re-measure pattern.
+        // The load + delayed refits cover the theme's webfont swap, which
+        // changes text metrics after mount.
+        bbpAwardFit(award);
+        var refit = function () { bbpAwardFit(award); };
+        if (window.addEventListener) {
+          window.addEventListener('resize', refit);
+          window.addEventListener('load', refit);
+        }
+        if (window.setTimeout) window.setTimeout(refit, 800);
+      }
+      if (painted) track('buy_box_proof', 'impression', bbpGateMeta(conf, research, award));
     } catch (e) { /* never break the theme */ }
   }
 

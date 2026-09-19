@@ -7121,6 +7121,133 @@ body.customer--b2b .cx-sub-remove {
   }
 }
 
+/* --------------------------------------------- v28 award strip
+   The reference lockup, replicated pixel-for-pixel and held on ONE ROW at
+   every width (the merchant's requirement): every metric below is
+   authored as calc(var(--cxaw, 1) * Npx), and the runtime (bbpAwardFit)
+   measures the strip's natural single-line width and sets --cxaw so the
+   WHOLE design scales down proportionally to its column — the reference
+   photographed smaller, never a reflowed variant. Cells: navy medallion,
+   rule, headline over method line, rule, the red-over-yellow colour bar
+   beside the publication name (built-in artwork; an uploaded logo
+   replaces the whole lockup), rule, year. Logical properties keep RTL
+   correct with no extra rules. Hairline rules and the card border stay
+   unscaled (sub-pixel strokes disappear). */
+.cx-bbp-award {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--cxaw, 1) * 13px);
+  margin-block-start: 12px;
+  padding: calc(var(--cxaw, 1) * 13px) calc(var(--cxaw, 1) * 16px);
+  background: #fff;
+  border: 1.5px solid #e4e7ee;
+  border-radius: calc(var(--cxaw, 1) * 14px);
+  overflow: hidden;
+}
+
+.cx-bbp-award__rank {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--cxaw, 1) * 44px);
+  height: calc(var(--cxaw, 1) * 44px);
+  border-radius: 50%;
+  background: #24344f;
+  color: #fff;
+  font-weight: 800;
+  font-size: calc(var(--cxaw, 1) * 16.5px);
+  line-height: 1;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+/* Long medallion forms ("Nr.10") drop a size instead of overflowing. */
+.cx-bbp-award__rank--wide {
+  font-size: calc(var(--cxaw, 1) * 12px);
+  letter-spacing: 0;
+}
+
+.cx-bbp-award__col {
+  /* Grows so the elastic gap sits before the lockup (as the reference),
+     but never shrinks below its own nowrap lines — min-width stays auto,
+     so the root's scrollWidth is the honest one-line width the fit
+     measurement needs. */
+  flex: 1 1 auto;
+  padding-inline-start: calc(var(--cxaw, 1) * 13px);
+  border-inline-start: 1px solid #e0e4ea;
+}
+
+.cx-bbp-award__l1 {
+  margin: 0;
+  font-weight: 700;
+  font-size: calc(var(--cxaw, 1) * 15.5px);
+  line-height: 1.2;
+  color: #223a64;
+  white-space: nowrap;
+}
+
+.cx-bbp-award__l2 {
+  margin: calc(var(--cxaw, 1) * 3px) 0 0;
+  font-size: calc(var(--cxaw, 1) * 12.5px);
+  line-height: 1.2;
+  font-weight: 500;
+  color: #8590a2;
+  white-space: nowrap;
+}
+
+.cx-bbp-award__pub {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--cxaw, 1) * 7px);
+  padding-inline-start: calc(var(--cxaw, 1) * 13px);
+  border-inline-start: 1px solid #e0e4ea;
+}
+
+/* The reference's device: the small red-over-yellow bar spanning the
+   wordmark's height. Part of the built-in lockup, not merchant data. */
+.cx-bbp-award__bar {
+  flex: 0 0 auto;
+  align-self: stretch;
+  min-height: calc(var(--cxaw, 1) * 32px);
+  width: calc(var(--cxaw, 1) * 7px);
+  border-radius: 1.5px;
+  background: linear-gradient(#e63229 0 58%, #f6c500 58% 100%);
+}
+
+/* min-content: a multi-word name stacks at its longest word, exactly the
+   reference's "Verbraucher / Berichte" two-line wordmark. */
+.cx-bbp-award__pub-name {
+  width: min-content;
+  font-weight: 800;
+  font-size: calc(var(--cxaw, 1) * 14.5px);
+  line-height: 1.12;
+  color: #1e2a44;
+}
+
+.cx-bbp-award__pub-img {
+  display: block;
+  max-width: calc(var(--cxaw, 1) * 104px);
+  max-height: calc(var(--cxaw, 1) * 40px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.cx-bbp-award__year {
+  flex: 0 0 auto;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding-inline-start: calc(var(--cxaw, 1) * 13px);
+  border-inline-start: 1px solid #e0e4ea;
+  font-size: calc(var(--cxaw, 1) * 15px);
+  font-weight: 600;
+  color: #959daa;
+  white-space: nowrap;
+}
+
 /* ===========================================================================
    v20 — Product-image badges, phones only (FeatureKey image_badges)
    ===========================================================================
