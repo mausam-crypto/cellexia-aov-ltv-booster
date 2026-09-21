@@ -316,8 +316,12 @@ function RatingRowMock({
   const starPath =
     "M10 1.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L1.6 7.7l5.8-.8z";
   const clamped = Math.min(5, Math.max(0, rating));
+  // v30.1 Trustpilot display rule (twinned with cxStarsSvgs): the star
+  // IMAGE snaps to the nearest half star — 4.8 previews five FULL stars —
+  // while the score text beside it keeps the raw value.
+  const snapped = Math.round(clamped * 2) / 2;
   const stars = Array.from({ length: 5 }, (_, index) => {
-    const part = Math.min(1, Math.max(0, clamped - index));
+    const part = Math.min(1, Math.max(0, snapped - index));
     const pct = Math.round(part * 100);
     const gid = `cx-admin-tp-${index}-${pct}`;
     const size = Math.round(17 * factor);

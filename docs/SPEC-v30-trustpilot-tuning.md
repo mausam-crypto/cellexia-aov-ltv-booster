@@ -1,10 +1,14 @@
-# SPEC v30 — Trustpilot presentation tuning (checkout star color + buy-box rating size)
+# SPEC v30 — Trustpilot presentation tuning (checkout star color + buy-box rating size + star display rounding)
 
-Two merchant-facing display options, both **LIVE settings** (the v6.5
-placement precedent: no draft flags, no Preview Center plumbing — they only
-restyle rows that are already visible), both defaulting to the exact
-pre-v30 render so deploying this release changes **nothing** until the
-merchant edits them in the admin.
+Two merchant-facing display options plus one merchant-requested rendering
+correction. The OPTIONS are **LIVE settings** (the v6.5 placement
+precedent: no draft flags, no Preview Center plumbing — they only restyle
+rows that are already visible) defaulting to the exact pre-v30 render, so
+they change nothing until edited in the admin. The ROUNDING RULE (§3,
+v30.1) ships ON: the merchant asked for it as the correct behavior ("if
+it's 4.8/5, all 5 stars should be full just like on trustpilot" — the
+v16.1 direct-change precedent), and deploying it fills the fifth star
+completely wherever a 4.8 previously drew an 80% partial.
 
 ## 1. Checkout trust module — Trustpilot star color
 
@@ -94,11 +98,41 @@ the block) is off — the markets-card precedent.
 attribute-free; 130 → `--cxtp:1.3`; 999 → capped `--cxtp:2`) + mutants
 `m14-ratingscale-writes-at-100`, `m15-ratingscale-uncapped`.
 
-## 3. Deploy-safety summary
+## 3. Star display rounding — Trustpilot's own rule (v30.1, ships ON)
+
+Trustpilot renders its star IMAGE rounded to the **nearest half star**
+(TrustScore 4.8 → five full stars; 4.3 → four and a half) while the score
+text stays raw. The merchant asked for exactly that ("if it's 4.8/5, all 5
+stars should be full just like on trustpilot"), so every place this app
+draws Trustpilot stars now snaps the FILL — never the label or aria — the
+same way:
+
+| Renderer | Snap |
+| --- | --- |
+| `snippets/cx-trustpilot-stars.liquid` (standalone strip, server render) | `times: 2 \| round \| divided_by: 2.0` AFTER `cx_rating_label` is taken (aria keeps the raw score) |
+| `cxStarsSvgs` in `cellexia-pdp.js` (PDP strip + buy-box rating row) | `r = Math.round(r * 2) / 2` after the clamps — byte-identical twin lines |
+| `cxStarsSvgs` in `cellexia-cart.js` (cart trust row) | same twin line |
+| checkout (`trust-logic.ts` → `Checkout.tsx`) | NEW pure `trustStarShapes(rating)` → `full \| half \| empty` ×5; halves drawn with the `starHalf` icon, full/half take the v30 star color, empty stays subdued. Replaces the old `Math.round` whole-star fill |
+| admin `RatingRowMock` (proof-block page) | same snap, so the slider preview matches the storefront |
+
+Consequences at the LIVE 4.8 rating: the buy-box/PDP/cart fifth star goes
+from an 80% gradient to fully filled **on deploy** (the requested change);
+checkout was already five full stars at 4.8 (old `Math.round`), so its
+render is IDENTICAL at 4.8 — the rule only redraws checkout in the
+half-star bands (e.g. 4.6: five full → four and a half, matching
+trustpilot.com instead of over-filling). Gradient stops now only ever hit
+0/50/100%.
+
+Sims: `checkout-trust.ts` shape table (4.8/4.75 → five full, 4.6/4.74 →
+half, clamps, junk) + anchors + mutant `m13-star-snap-dropped`;
+`buy-box-proof.cjs` D15 (fixture 4.7 → 50% stop, never 70%; 4.8 → ten
+100% stops) + mutant `m16-star-snap-dropped`.
+
+## 4. Deploy-safety summary
 
 | Order | Result |
 | --- | --- |
-| Deploy only (no admin touch) | Both surfaces byte-identical: missing keys resolve to `accent`/100 |
+| Deploy only (no admin touch) | The two OPTIONS change nothing (missing keys resolve to `accent`/100). The §3 rounding applies immediately: at 4.8 the storefront fifth star fills completely (requested); checkout unchanged at 4.8 |
 | Save BEFORE extensions deploy | New keys in both mirrors; OLD bundles ignore unknown keys |
-| Save AFTER deploy (controls untouched) | Sanitize persists `"accent"`/100 → identical render |
-| Revert | Set the ChoiceList back / slider to 100 and Save — identical to pre-v30 |
+| Save AFTER deploy (controls untouched) | Sanitize persists `"accent"`/100 → render unchanged (§3 aside) |
+| Revert options | Set the ChoiceList back / slider to 100 and Save — identical to pre-v30 (§3 rounding stays: it is the requested correct behavior, not an option) |

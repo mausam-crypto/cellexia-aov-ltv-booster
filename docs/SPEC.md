@@ -459,6 +459,10 @@ when off. All components from `@shopify/ui-extensions-react/checkout`. Use `useT
    pre-v30 blob included — renders byte-identically to before. LIVE display setting (the v6.5
    placement precedent, no preview plumbing); the control lives on the Checkout admin page's
    trust-module card (docs/SPEC-v30-trustpilot-tuning.md).
+   v30.1: the star GLYPHS come from `trustStarShapes` (pure, sim-tested) — Trustpilot's own
+   display rule, rounded to the NEAREST HALF star (4.8 → five `starFill`, halves drawn with
+   `starHalf`, empties subdued) while the label/aria keep the raw score; twinned with the
+   storefront `cxStarsSvgs` renderers and the stars snippet, which snap the same way.
 
 ## Admin dashboard spec (`app/routes/`)
 

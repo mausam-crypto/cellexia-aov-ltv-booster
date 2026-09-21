@@ -1,265 +1,270 @@
 {
-  "_doc": "Equivalence-prover allowlist. Every entry acknowledges an INTENDED divergence between the current tree and validation/baselines/v68. Entries require file (repo-relative), reason, and wave (e.g. v6.9). The prover fails on any un-allowlisted diff and on any stale entry whose file no longer diverges.",
-  "entries": [
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v6.8.1 microcopy fixes: (1) the micro ships-from row now YIELDS when the dedicated az_ships_from line is effective (azShipsAllowed() gate) so the buy box never says Ships-from twice; (2) label resolution unchanged otherwise. Companion CSS guard .cx-az-micro__row[hidden]{display:none!important} fixes the display:flex-defeats-[hidden] bare-truck-icon bug (CSS is outside baseline scope).",
-      "wave": "v6.8.1"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v6.10 merchant-selectable ships-from display format: azShipsFormat() decodes the lean 's'/'p' code from the gated ships member (draft override preview.sf only inside a VERIFIED preview session, fail-closed to subtle); azBuildStock gains a shipsName param and a prominent branch (.cx-az-stock__ships--prominent: truck icon + @@COUNTRY@@ sentinel split into prefix/<strong>country</strong>/suffix, textContent-only, sentinel-less fallback to the plain composed line); azMountStock hoists the warehouse name. Subtle path markup byte-identical to v6.8. Pinned by sims/az-split.cjs F1-F5 + mutants m6/m7.",
-      "wave": "v6.10"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v6.11 survey methodology full-text editability: surveyBuildPanel's merchant branch substitutes the built-in text's live-number tokens ({{ total }}/{{ yes }}/{{ percent }}, flexible inner whitespace) with the cfg.survey numbers before the textContent write, so a merchant-edited copy of the built-in explanation keeps tracking the survey numbers. Fail-safe 0 on non-finite numbers; sink stays textContent-only. Pinned by sims/survey-methodology.cjs M1-M7 + mutants m1-m4 and harness section-5 v6.11 pins.",
-      "wave": "v6.11"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v7 per-product proof wave: survey gates + island rewritten per-product (cellexia.product_survey metaobject read, content-presence gate, per-product outcome rows + methodology/verifier fallbacks, legacy sampleSize/yesCount/format reads and the draft surveyFormat preview member removed); study island gains sub/pn/pw/pl/pi members (m1/m2 composition retired) + str.sub/str.fn; bottle title now interpolates the pluralized days label and body/point_1..3 gain theme-block overrides (+4 schema settings). Pinned by harness section-5 v7 block + sims/survey-methodology.cjs.",
-      "wave": "v7"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v7 per-product proof wave: five-format survey machinery (SURVEY_FORMATS, surveyBuildFormat, buildSurveyDots, cfg.preview.surveyFormat) replaced by one zero-arg outcomes-forward surveyBuildSection (derived row percents, decorative bar fills, @@YES@@/@@TOTAL@@ sentinel labels, fail-closed row/total/rec validation); surveyBuildPanel keeps v6.11 token substitution with per-product numbers (total=sample size, yes=rec); study builder gains the always-on subject line + protocol fact chips and drops m1/m2 paragraphs. Pinned by sims/survey-methodology.cjs (59 checks, 7 mutants) + harness v7 block.",
-      "wave": "v7"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
-      "reason": "v6.10 ships-from format plumbing: the gated ships member gains the lean live format code (\"f\": cfg.amazon.shipsFromFormat | slice: 0, the v6.5 place-code convention) and the armed preview member gains the lean draft code (\"sf\": cx_prev.draftConfig.shipsFromFormat | slice: 0, tokenless closed enum). No gate or emission-structure changes.",
-      "wave": "v6.10"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v8 proof library + compact modes: the #cx-ba-config island emission is DELETED (the PDP before/after widget retires — the standalone results-gallery block replaces it; the show_ba/cx_bas reads are kept because they still feed the outer emission gate and cx_draft_any), and the survey/study/bottle islands gain lean LIVE compact members ('\"cm\": 1' under cfg.dermSurvey.compact / cfg.clinicalStudy.compact / cfg.emptyBottleGuarantee.compact == true strict gates) plus the compact-gated surveyStrings.more_outcomes key. Pinned by harness section-5 v8 block + sims/survey-methodology.cjs C-series.",
-      "wave": "v8"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v8 compact modes + BA retirement: surveyBuildSection grows the compact branch (top-line first-valid-row inline, '+ N more outcomes' disclosure over the surveyBuildOutcomes list, bindSurveyMore toggle, stale-island degrade ships the list visible), studyBuildSection gains the cx-study--compact modifier (same DOM), bottleBuildNode the slim-band branch (points stay in the untouched modal); the ba* builders + PROOF_ORDER ba row + dispatch branch are deleted (the verified_before_after EVIDENCE marker moves to cellexia-proof.js); boot()'s verified branch sets window.CellexiaBooster.__preview = true for the proof asset's beacon/draft contract. Pinned by sims/survey-methodology.cjs (C-series + mutants m11/m12) + harness v8 block.",
-      "wave": "v8"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
-      "reason": "v8 NEW shared asset: ES5 IIFE with pf-prefixed helper twins (zero name overlap with the pdp sim extraction surface), proofFetch (8s timeout, one retry, cb(null) fail-closed), the press band / endorsement wall / results gallery renderers + filter drawer + lightbox, ZERO innerHTML anywhere (SVG via createElementNS, entity decode via a bounded replace chain), every URL through the pfHttps gate, beacons suppressed via window.CellexiaBooster.__preview OR sessionStorage cx_preview_token. Carries the moved verified_before_after EVIDENCE marker plus the press/derm_endorsements markers. Pinned by harness (EVIDENCE, class coverage, zero-innerHTML escape discipline) + sims/proof-gallery.cjs (29-function extraction, 6 mutants).",
-      "wave": "v8"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
-      "reason": "v8.2 ultra-compact branches (cm-guarded, textContent-only, same DOM): pressBuildSection collapses to one row (quote starts [hidden]; bindLogo tap reveals + rotates, a second tap on the ACTIVE logo re-hides + clears aria-pressed); endoBuildSection composes ONE <p> head row (count · shown_of, per-part degrade, re-composed by setProgress after Show more appends into the same wall); resultsBuildSection emits only the cx-results--compact root modifier (CSS leverage). cm-absent paths byte-identical to v8. Pinned by sims/proof-gallery.cjs U/V series + mutants m7/m8/m9 and the harness class-coverage self-test (--compact trio).",
-      "wave": "v8.2"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
-      "reason": "v8.3 COMPACT middle tier: each of the three builders resolves density ONCE (var ultra = conf.cm === 2; var compact = conf.cm === 1; strict === so strings/unknown codes fall back to full) and the v8.2 branches are repointed to cm 2 under RENAMED --ultra root modifiers (cx-press--ultra / cx-endo--ultra / cx-results--ultra); cm 1 now means the NEW compact tier (cx-press--compact: quote ALWAYS visible, rotation like full; cx-endo--compact: composed H2 head line with inline shown_of; cx-results--compact: root-modifier-only CSS leverage). Pinned by sims/proof-gallery.cjs U/C series + mutants m7/m8/m10 and the harness class-coverage self-test (--compact + --ultra trios).",
-      "wave": "v8.3"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/proof-booster.liquid",
-      "reason": "v8.7 NEW embed replacing the three v8 SECTION blocks (press/derm-endorsements/results-gallery .liquid, entries retired this wave): the store's legacy Liquid templates cannot take section app blocks (merchant-verified), so the three proof widgets merge into ONE app embed (target body, name 'Cellexia proof library', 22 chars). The #cx-press-config/#cx-endo-config/#cx-results-config islands keep their v8/v8.3 payload byte-for-byte (incl. the two-code cm density members) — only the gate assigns are renamed per widget (cx_p_*/cx_e_*/cx_r_*) and the data-cx-mount divs are gone: cellexia-proof.js now self-inserts via the ordered .cx-proof-band (after .pdp__tabs on product pages, end of #main elsewhere, fail-closed). Pinned by harness section-5 v8.7 block + the CM_ISLANDS density pins.",
-      "wave": "v8.7"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v8.13 product display names: new `assign cx_pname = product.metafields.cellexia.display_name.value | default: product.title` and the three name interpolations (survey rec_line, survey outcomes_intro, study sub) switch from product.title to cx_pname. The metafield is translatable (native Shopify translations registered by the Product names admin page), so localized pages serve the merchant's exact per-language name; unset falls back to the title — byte-identical output for shops that never set a display name.",
-      "wave": "v8.13"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v8.13b {name} placeholder in custom text (merchant catch: 'Tested on {name} itself' rendered the literal braces): the 14 merchant-entered text substitution sites of the survey island (title/question/intro/outcome statements/methodology, plus verifier via a single assign-site replace covering both its emissions) and study island (title/concern/subject/footnote/result labels/result suffixes/lab name/instruments) gain `| replace: '{name}', cx_pname` before | json, so custom copy can interpolate the per-language display name exactly like the built-in lines. No-op for text without the token.",
-      "wave": "v8.13b"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v10 US delivery by state: new cx_us assign gated on cx_country == 'US' and cx_de.usStates.enabled == true; the delivery member gains the conditional nested us member ({% if cx_us %}, \"us\": {{ cx_us | json }}{% endif %} — nested, so no new top-level cfg key) and deliveryStrings gains \"delivery.deliver_to\" (label only, NOT a required key — a missing string hides only the selector). Pinned by harness section-5 v10 pins + sims/us-state-delivery.mjs.",
-      "wave": "v10"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
-      "reason": "v10 US delivery by state: new cx_us assign gated on cx_country == 'US' and cx_de.usStates.enabled == true; the delivery member gains the conditional nested us member ({% if cx_us %}, \"us\": {{ cx_us | json }}{% endif %}) and deliveryStrings gains \"delivery.deliver_to\" — the exact twin of the pdp-booster emission. Pinned by harness section-5 v10 pins + sims/us-state-delivery.mjs.",
-      "wave": "v10"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
-      "reason": "v10 US delivery by state: the az standalone delivery member gains the same cx_us gate + conditional nested us member ({% if cx_us %}, \"us\": {{ cx_us | json }}{% endif %}) and its deliveryStrings map gains \"delivery.deliver_to\", so az-only pages keep the state promise (azGapFillConfig copies cfg.delivery wholesale — the nested us rides along). Pinned by harness section-5 v10 pins + sims/us-state-delivery.mjs.",
-      "wave": "v10"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v10 US state overlay: deliveryConfig gains the fail-OPEN state layer (per-field keep-if-valid candidate merge, whole-entry discard on an incoherent window, hidden:true -> null, cutoff -> cutoffMinutes + dispatchDays partial dispatch override, dc.extra/dc.usFederal/dc.us) and deliveryQualifies the dc.extra + dc.usFederal clauses; new byte-twinned US_STATE_NAMES + deliveryUs* region (deliveryUsFederal movable-holiday math, choice/geo persistence via localStorage 'cx:us_state' + sessionStorage 'cx_geo:1' 6h TTL, single-flight geo kick to 'apps/cellexia/geo', 'Deliver to' selector built createElement/textContent-only); dispatchSchedule substitutes the RESOLVED state cutoff/dispatchDays; CX_AZ_ICONS gains 'pin'; mountDelivery/azMountDeliveryLine attach the selector + geo kick. v10 fix wave adds byte-twinned deliveryUsPrime (synchronous pre-mount state resolution, called at init() top before any mount/beacon), deliveryUsBroadcast + deliveryUsEventToken (the 'cx:us-state' cross-bundle fan-out) and deliveryUsPointerCoarse (coarse-close / fine-stay-open selector change semantics), plus the hidden-state option filter and the stored-hidden-choice auto-clear. Pinned by sims/us-state-delivery.mjs (twins, 4-way federal parity, overlay matrix, geo + prime units, dispatchSchedule coherence, selector DOM incl. pointer split + fan-out, mutants M1-M8), sims/delivery-businessdays.mjs FUNCS extraction and harness v10 pins.",
-      "wave": "v10"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
-      "reason": "v10 US state overlay, byte-twin of the cellexia-pdp.js change: deliveryConfig state layer + deliveryQualifies dc.extra/dc.usFederal clauses, the US_STATE_NAMES + deliveryUs* twin region ('cx:us_state'/'cx_geo:1'/'apps/cellexia/geo' literals, selector, geo kick), dispatchSchedule resolved-state cutoff/dispatchDays substitution, CX_AZ_ICONS 'pin' entry; renderDelivery attaches the selector and kicks the geo hint. v10 fix wave adds the byte-twinned deliveryUsPrime (called at renderInto() top before the render decisions), deliveryUsBroadcast + deliveryUsEventToken 'cx:us-state' fan-out and deliveryUsPointerCoarse close split, plus the hidden-state option filter + stored-hidden-choice auto-clear. First allowlist entry for this file (baseline-clean before v10). Pinned by sims/us-state-delivery.mjs per-symbol twin byte-identity + behavioral matrix on BOTH bundles (incl. the pdp+cart shared-document fan-out pairing), sims/delivery-businessdays.mjs and harness v10 pins.",
-      "wave": "v10"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/proof-booster.liquid",
-      "reason": "v8.22 wall/overlay design codes: the cx-endo-config island gains two lean members — \"ws\":1 when cfg.dermEndorsements.wallStyle == \"panel\" (official fixed-height panel wall) and \"os\":1 when cfg.dermEndorsements.overlayStyle == \"official\" (explainer overlay: intro + FAQ dropdowns + dermatologist roster). Absent members = the classic wall / list overlay, so a stale island keeps the v8.21 behavior. The overlay-content COPY (intro/FAQ/roster title/panel CTA) deliberately does NOT ride the island: it has non-blank English defaults and no locale-catalog fallback, so the proxy serves it translated-else-source in payload.copy (zero Liquid bytes). Pinned by sims/proof-gallery.cjs P/OF series + harness v8.22 block.",
-      "wave": "v8.22"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v12 per-market product exclusions: new cx_pgid assign ('gid://shopify/Product/' | append: product.id) + cx_exc_dsp flag off cfg.dispatch.excludedByMarket[cx_market] contains cx_pgid; the live dispatch gate gains `and cx_exc_dsp == false`, the draft gate becomes `unless cfg.dispatch.showOnPdp == false or cx_exc_dsp`; the delivery exclusion (cfg.deliveryEstimate.excludedByMarket) FOLDS into cx_del_hidden so live + draft delivery paths are both bound (the byCountry-hidden precedent). No island-member changes — an excluded product simply gets no dispatch/delivery emission, so beacons stay honest for free. Pinned by harness section-5 v12 block.",
-      "wave": "v12"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
-      "reason": "v12 per-market product exclusions: new az_pgid assign + two flags — the delivery/dispatch exclusion folds into az_del_hidden (az_delivery_line hides on EITHER list: the line bundles the delivery date AND the order-within countdown clause, so either promise being untrue for the product invalidates it — killing az_any_delivery also drops thresholdOk, which azTplPayload keys on), and az_exc_sf off cfg.amazon.shipsFromExcludedByMarket gates the live + draft az_ships_from paths AND the shipsFrom member emission ({%- if az_any_micro and az_exc_sf == false %}) — the member is the micro ships row's ONLY warehouse/defaultLabel source, and dropping `ships` alone would have flipped the micro fallback ON (the v6.8.1 yield rule inverts). Both JS read sites are null-guarded, so the absent member renders nothing. Pinned by harness section-5 v12 block.",
-      "wave": "v12"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
-      "reason": "v12 per-market product exclusions: two assigns read the CURRENT market's lists (cx_exc_d = cfg.dispatch.excludedByMarket[cx_market], cx_exc_e = cfg.deliveryEstimate.excludedByMarket[cx_market]) and a new gated island member emits them ({%- if cx_exc_d or cx_exc_e %} \"exc\": {\"d\": .. | json, \"e\": .. | json},) between the dc and delivery members — the cart is client-mutable, so the verdict must be computed in JS at render time from state.cart, not baked at Liquid render. Pinned by harness section-5 v12 block; the deploy-safety island matrix parses the new branch.",
-      "wave": "v12"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
-      "reason": "v12 per-market product exclusions: new CART-ONLY helper cartExcludedAny(list) (state.cart items vs 'gid://shopify/Product/' + product_id; deliberately NOT a pdp twin — the dispatchSchedule per-file rule) plus one early-return gate in renderDispatch (after the cfg.dc check, before the PREVIEW branch) and one in renderDelivery (after featureOn, before deliveryConfig): `if (cartExcludedAny(cfg.exc && cfg.exc.d|e)) return null;`. A null return means no node AND no impression (renderAll only tracks returned feature keys), and renderInto re-runs on every cart rebuild so client-side cart changes re-verdict without a reload. Exclusion applies in preview too (the byCountry-hidden precedent). Pinned by harness section-5 v12 block.",
-      "wave": "v12"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v12 review fix (preview honesty): new DISPATCH_PREVIEW_EXCLUDED constant + a cfg.dspx === 1 branch in mountDispatchPreview's invalid-config path — an exclusion-hidden product in a verified preview session names the exclusion (plain cx-preview-note) instead of rendering the false DISPATCH_PREVIEW_INVALID schedule warning (the island suppresses the dispatch member for excluded products, which mountDispatchPreview otherwise reads as an invalid schedule). The dspx marker is emitted by pdp-booster.liquid ONLY while a preview is armed, so real visitors' payloads are byte-identical. Pinned by harness section-5 v12 block (marker emission + JS branch).",
-      "wave": "v12"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
-      "reason": "v14 rewards (SPEC-v14 §4): `cx_rw = cfg.rewards` alias; the armed block gains cx_draft_rw (draftFlags.set_savings/gift_tiers OR either master) joined into cx_cart_draft_any; the master gate admits either rewards master; the liquid block computes cx_eff_ss / cx_eff_gt (master AND marketScopes.set_savings / gift_tiers allow cx_market) and the effective map always emits \"setSavings\"/\"giftTiers\"; a gated \"rw\" member ({%- if cx_eff_ss or cx_eff_gt or cx_draft_rw %}) ships {\"ss\": rewards.setSavings | json, \"gt\": rewards.giftTiers | json, \"paused\": gift_stock.value.paused[cx_market], \"gifts\": {\"<vid>\": {h,t,c,a}}} built from a {% liquid %} capture over tiers/slots/options + samplePool → all_products lookup; 16 rw.* strings (one-letter @@A@@/@@P@@/@@N@@/@@C@@/@@G@@/@@V@@ sentinels) inside the same gate; the products map flags sample-sachet products with \"s\": 1 (twin of proxy.cart-data PRODUCT_BODY_LIQUID). 21,198 → 23,439 B (cap 23,600). Pinned by harness v14 block (gate/member/effective/scope anchors + per-file cap) + sims/rewards-tiers.mjs; the deploy-safety island-JSON matrix parses the new branch.",
-      "wave": "v14"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
-      "reason": "v14 rewards (SPEC-v14 §5): `cx_rw = cfg.rewards.setSavings` alias; az_eff_ss (master AND marketScopes.set_savings allows cx_market, the az_eff_* pattern), cx_draft_ss inside the armed block, az_any_ss joins az_any AND az_need_product; island member gated on az_any_ss: \"rw\": {live, tiers | json (settings shape {count,pct,code}), sf {pdp,sim,fbt}, excl (setSavingsExcludedByMarket[cx_market] raw), giftPids [<all_products[handle].id …>, 0]}; strings rw.pdp_line/pdp_line_next/fbt_caption/fbt_add_save/similar_caption via a for-loop over a split list; \"effective\" gains \"set_savings\". Byte diet to stay under the cap (behaviour-neutral): the seven header assign/if lines folded into the {%- liquid block, the nine `assign cx_draft_az_* = false` inits removed (nil is falsy; only ever read in if conditions), amazon.fbt_add_1..4 emitted by a (1..4) for-loop. 18,756 → 19,673 B (cap 19,700). Pinned by harness v14 block (member/effective/scope anchors + per-file cap).",
-      "wave": "v14"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
-      "reason": "v14 rewards (SPEC-v14 §6/§7): CART_FEATURE_KEYS += setSavings/giftTiers; state.rw per-render snapshot; NEW \"v14 rewards\" region before renderInto(): the cxRwTier/cxRwNext twin (byte-identical to cellexia-pdp.js, pinned by sims/rewards-tiers.mjs), RW/RW_DEFAULTS (21 keys)/RW_SENTINELS/rwT, CART-ONLY helpers rwSpendCents/rwEligibleLines/rwDistinctCount/rwUnits/rwGiftLines/rwDesiredCode/rwSyncCode/rwSyncGifts/rwRenderMeter/rwRenderNudge/rwDecorateGiftRows (+ rwGiftPlan/rwPickSamples/rwKitActive/rwKitSavingCents/rwPerformGiftRemove/Swap/rwGiftBack/rwSnapshot/rwSimRead/Write/rwPreviewControls, session memories cx_rw_gift_removed/unfree/choice); renderInto: rwSnapshot() then the gift METER (rwRenderMeter when giftTiers on, renderShipbar fallback) then the NUDGE; renderAll: rwDecorateGiftRows() then rwSyncCode() → rwSyncGifts(); shipbar/az-free-line/distinct-count/offers/cross-sell read rwSpendCents() and skip gift/sachet lines; cross-sell reframe (rw.set_title, struck price × (1 − pct)); preview bar simulator (rwPreviewControls); boot PREVIEW gains sim/rehearsal/rw. Track: set_savings code_applied, gift_tiers tier_reached/gift_added/gift_removed. Markers 'data-cx-feature','gift_tiers' (meter) / 'set_savings' (nudge). ES5, no new innerHTML. Pinned by harness v14 block + EVIDENCE + sims/rewards-tiers.mjs cart-only rule.",
-      "wave": "v14"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v14 rewards (SPEC-v14 §5/§6/§7): NEW region before the az entry — the cxRwTier/cxRwNext twin (byte-identical to cellexia-cart.js, pinned by sims/rewards-tiers.mjs), RW_DEFAULTS (5 PDP keys), PDP-only azRw* helpers (azRwT/azRwCfg/azRwTiers/azRwPct/azRwOn/azRwNum/azRwIdSet/azRwSkip/azRwCartCount/azRwSub/azRwFbtApply), azBuildRwPdp (p.cx-az-row.cx-rw-pdp[data-cx-feature=set_savings]) + azMountRwPdp (after .stock-msg, skipped for excluded/gift/sachet products, tracks set_savings once); hooks: azFbtUpdate (tier for the checked count → discounted total + struck original + fbt_add_save label), azFbtFinish (fbt_caption), azFbtCollect/azMountSimilar pick loops + azFbtEnrich/similar byHandle stage skip gift/sachet/excluded via azRwSkip, similar caption, AZ_BUYBOX_ORDER gains '.cx-rw-pdp', azInit calls azMountRwPdp(). Cart awareness reads window.CartJS.cart.items only (never a fetch). ES5, no new innerHTML (10 pinned sites unchanged). Pinned by harness v14 block + EVIDENCE + sims/fbt.cjs (extraction carries the azRw* helpers) + sims/rewards-tiers.mjs pdp-only rule.",
-      "wave": "v14"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/clinical-results.liquid",
-      "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
-      "wave": "v18"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/guarantee.liquid",
-      "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
-      "wave": "v18"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/subscription-nudge.liquid",
-      "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
-      "wave": "v18"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/trust-badges.liquid",
-      "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
-      "wave": "v18"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/trustpilot.liquid",
-      "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
-      "wave": "v18"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
-      "reason": "v18 gift diagnostics: new rwGiftWhy() names, in merchant-facing English, the reason the gift pass did or did not put a gift in the cart, and rwUpdateWhy() renders it into the preview bar after every renderAll. Fixes the reported \"gifts never get added in preview\": rwMutable() requires PREVIEW.rehearsal AND no simulator, so typing a spend into the simulator silently cancelled the \"Test with my real cart\" tick with no explanation. Decision ORDER is load-bearing (distance to the next tier before the simulator notice, simulator before the rehearsal tick) and is pinned by validation/sims/gift-why.mjs. Also exposes window.CellexiaBooster.giftWhy for live pages. No behaviour change to the gift sync itself: rwSyncGifts, its single-flight, its one-correction-per-cart-signature and its never-loop guarantees are untouched.",
-      "wave": "v18"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
-      "reason": "v18 gift clusters: the #cx-rw-config island stops dumping the whole rewards settings section and instead emits THIS COUNTRY's cluster slice, sliced out of the new cellexia/gift_plan app-data metafield with cx_country (the pattern gift_stock.paused[cx_market] already used). A browser therefore only ever receives its own ladder, which shrinks the island and stops one country's offers leaking into another's page source. The paused set now rides inside the cluster entry, so the separate \"paused\" member is gone.",
-      "wave": "v18"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v18: new #cx-gift-config island carrying the same per-country gift slice for the product page, in its OWN script tag rather than inside #cx-pdp-config, so a Liquid problem in the gift data can only break the gift surface (the 2026-08-17 isolation lesson). Gated live-effective on cx_eff_gt exactly like the cart island.",
-      "wave": "v18"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v18 free-gift product-page surface: azGtIsland/azGtCfg/azGtPlan/azBuildGiftSurface/azMountGift render one of three merchant-chosen placements (quiet line above Add to cart, reward card below it, ladder strip under the title). All three are cart-aware and pick the strongest of three sentences, so the line says how far the shopper is from a named gift instead of advertising one. Adds azShopRate/azCurrency/azProductPriceCents (twins of the cart helpers). The card renders after the Add-to-cart actions so a promotion can never push the button down the page.",
-      "wave": "v18"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
-      "reason": "v18 gift clusters + reward ladder: the storefront readers now consume the per-country cluster slice (rwGtTiers rebuilds {amount,slots} from the plan's a/t arrays, rwPool/rwPaused/rwGiftThresholdCents read the short plan keys, and the country's own amounts arrive pre-resolved as RW.gb instead of a market map lookup). rwRenderLadder draws a card per gift tier under the meter track: unlocked cards keep their tick and stay full-strength, which communicates the cumulative rule with no new copy to translate into 18 languages. The gift sync itself, its single-flight, one-correction-per-cart-signature and never-loop guarantees are untouched.",
-      "wave": "v18"
-    },
-    {
-      "file": "extensions/cellexia-booster/snippets/cx-icons.liquid",
-      "reason": "v20 Liquid diet (paid FIRST, the v19 \"slim before you spend\" rule): the nine <svg> branches repeated one identical opening tag. The head (class/width/height/viewBox) and the attribute sets are hoisted — one default stroke set, two named exceptions (star = filled, check = stroke-width 2) — and the case now carries only each icon's inner markup. Generated mechanically and proved byte-identical for all 8 keys plus the else branch before the write: 3,610B -> 2,043B (-1,567B), which pays for the v20 image-badge gates + island with ~1.1KB left over. No caller changed.",
-      "wave": "v20"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v20 image badges: +403B of gates and one island member. cx_ibl is the market-scoped live flag (cfg.imageBadges.enabled + marketScopes.image_badges through the house idiom), cx_ibs carries the scale for the live OR preview-drafted case, the island emits \"ib\": {live, s} under cx_ibs > 0, and the island/CSS/JS emission gate gained `or cx_ibs > 0` so this feature ALONE keeps the asset on the page. A pre-v20 metafield has no cfg.imageBadges, so cx_ibs stays nil and every gate fails closed. Pinned by harness section v20 + sims/image-badges.cjs.",
-      "wave": "v20"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v20 image badges: the ib* module (ibData/ibAllowed/ibScale/ibPhone/ibImageBox/ibBasePx/ibClear/ibSizeFor/ibApply/ibBind/mountImageBadges) plus its call at the top of init(). It paints NOTHING: it measures the theme's own badge row against the live product image and writes --cx-ib-w + .cx-ib-on on the row, which the stylesheet consumes below 576px only. No marker, no beacon, no template. The clamp, the fail-closed paths, idempotence and the live/draft gate are pinned by sims/image-badges.cjs (86 checks, 7 mutants).",
-      "wave": "v20"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
-      "reason": "v21 cart overlay features. Diet FIRST (the \"slim before you spend\" rule, -~1,050B): the top-of-file standalone assigns fold into one {%- liquid -%} block, the duplicate cx_country assign inside the main block is deleted (template-global, the top one always runs first), the six amazon.cta_count.* string lines become a for-loop mirroring the adjacent bought_count precedent, and 18 param-less strings (volume/subscription/crosssell/shipbar.unlocked/amazon.qualifies/a11y.loading) collapse into one cx_pk loop with identical keys and values (JSON member order/whitespace is parser-neutral). Then +~900B: cx_ov alias, three house-idiom gates (cx_eff_ofx/cpt/pin on their OWN marketScopes), three armed-preview draft flags into the draft-any chain, three emission-gate clauses in FRONT of the pinned v14 tail, and three always-emitted effective members (ofix/compact/pinned). Net: 23,513 -> 23,356B, 244B under the unmoved 23,600 cap. Pinned by harness v21 + sims/cart-overlay-fix.cjs. v21.1 adds the ~35B \"mf\" island member (shop.money_format) feeding ofixMoneyHeal so the very first drawer-open needs no theme global; 23,394B, 206B under the cap.",
-      "wave": "v21"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
-      "reason": "v21 cart overlay features + v21.1 field fixes: CART_FEATURE_KEYS gains ofix/compact/pinned and the ofix* module (ofixSync/ofixCueUpdate/ofixQtyHeal/ofixMoneyHeal/ofixPeek/ofixSchedule/ofixInit) plants the html gate classes cx-ofix/cx-compact/cx-pin, mirrors .mini-cart.is-open onto html.cx-ofix-lock from the EXISTING class observer, drives the scroll-thumb custom properties on .mini-cart's STYLE attribute (never its class), toggles the cx-noscroll pan guard on a rangeless drawer (v21.1 report #1), fills BLANK unfocused drawer qty inputs from state.cart by data-lineid with a data-varid identity check (the theme's mini-cart.liquid item vs line_item typo), re-writes the checkout/footer totals in shop money format in the same task the theme's Intl flash lands (wrapper hook, v21.1 report #2), recreates the LIVE theme's header count badge verbatim when a page that loaded empty gets its first item (ofixCountHeal, v21.2 - the only node the module ever creates, the theme's own markup), and glides the drawer once per open as the scroll lesson (v21.1 report #3, reduced-motion aware, shopper-touch aborted). Four hook lines: renderAll tail, classObserver first line, listObserver, init; plus the wrapper's ofixMoneyHeal call. Paints no node, no marker, no beacon (v20 precedent); never writes .mini-cart's own classList (theme observer fetch-storm guard). Pinned by harness v21/v21.1 + sims/cart-overlay-fix.cjs (18 mutants).",
-      "wave": "v21"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
-      "reason": "v22 URL parameter gates: the #cx-g digest island beside the always-on session beacon, plus `cfg.paramGates` in the bundle-loader condition so cellexia-cart.js is present on every page type whenever a gate is live. The island carries DIGESTS only — projectGates() strips the parameter and token before either metafield mirror is written. Emission is gated on the registry alone, never on anything about the request, so the HTML is identical for every visitor. Pinned by sims/param-gates.cjs (100 checks, 5 mutants) and harness section 22.",
-      "wave": "v22"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v22 URL parameter gates: the cxGate* module (digest / capture / storage / proxy sync), its cxGateBoot(Date.now()) call at the top of boot(), the two render-side guards in bbpSealNode and bbpResearchNode, bbpGateMeta, and the optional third `meta` argument on track(). The module reads the query string and its own first-party storage and nothing else; sims/param-gates.cjs section H pins that it never reads the user agent, referrer or any automation signal.",
-      "wave": "v22"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
-      "reason": "v22 URL parameter gates: a BYTE-IDENTICAL copy of the cxGate* module (the cx:us_state duplication precedent) plus its cxGateBoot(Date.now()) call at the top of boot(). This bundle is the one that loads on every page type, so it is what captures an unlock for a visitor who lands on the home page or a collection and only reaches a product page later. sims/param-gates.cjs section I pins the two copies byte for byte.",
-      "wave": "v22"
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v24 clinical-study recomposition (merchant reference design): the study island gains three per-product members: \"e\" (eyebrow override), \"j\" (publication line), \"b\" (free-text fact pill), each emitted only when the metaobject field is non-blank and riding the cx_name_token replace. The lab_name assign + \"pl\" emission are retired (the lab now reads inside the merchant's conducted-by sentence), and \"pi\" emits the RAW instruments value (the study.instruments t: composition is retired; the line renders verbatim inside the stat panel). Zero new locale keys; name-token replace count 14 -> 16 (harness pin updated).",
-      "wave": "v24"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v24 clinical-study recomposition: studyBuildSection renders the merchant reference design. Per-product eyebrow override (data.e, else str.eyebrow); the heading drops the theme heading--two class (styled as the heavy uppercase protocol headline in CSS); new cx-study__journal line (data.j); the first result becomes the tinted stat panel whose cx-study__hero-body right column (built only when a label or method exists, so no orphan divider) carries the label plus the RAW instruments line (data.pi); the fact pills reduce to participants/duration plus the free-text badge (data.b); the lab-name chip is retired from display. Pinned by sims/survey-methodology.cjs T2-T8 + mutants m13-m15.",
-      "wave": "v24"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
-      "wave": "v25/v26.2",
-      "reason": "v25 results-gallery clinical redesign (docs/SPEC-v25-results-redesign.md): resultsValidItems gains the lab-gated m/mk/an/ar members; NEW builders resultsIcon (stroke icon set incl. the flask badge icon and the lightbox X), resultsApplyCopy (whitelisted proxy chrome codes rp/ma/vsb/mi/mp/mu, pfStrRaw reads), resultsValidMeasurements (per-row fail-closed), resultsClinical (measured-at panel + info-note toggle + trust-mark row, lab-only), resultsAttr (name + role, textContent sinks); card order media>panel>badges>meta>quote>attr; lightbox close swaps the invisible text glyph for the icon button and quote/attr/meta compose the cx-lightbox__foot row; resultsBuildSection merges proxy copy first and renders the cx-results__tagline; resultsBuildFrame tags the After frame cx-results__tag--after. Pinned by sims/proof-gallery.cjs R19-R24 + mutants m32-m36 and the harness v25 block. v26.2: resultsValidPct (one-decimal 0.1-500 percent, String-round-trip check) replaces the pfPosInt cap in resultsValidMeasurements, and resultsFmtPct + RESULTS_COMMA_DECIMAL render the decimal mark per page language (comma for the 15 comma-decimal theme locales, Western digits kept); pinned by R19/R20/R21b + m35/m37."
-    },
-    {
-      "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-      "reason": "v26 quantity selector cards: live/draft gate assigns (marketScopes.quantity_selector + quantitySelector.enabled + prev_flags), cx_qs admitted into the CSS/island wrapper gate, and the gated qs island member (live + page locale + shop money_format + per-variant id/title/presentment-cents/image, loop capped at 6). See docs/SPEC-v26-quantity-selector.md.",
-      "wave": "v26"
-    },
-    {
-      "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-      "reason": "v26 quantity selector cards: CX_QSEL_STR 18-locale table (AZ_SHIPS_FORMS convention) + the qsel* module (id-mapped button relay, math-honesty gates, formatMoney twin) + the two init() wiring lines. See docs/SPEC-v26-quantity-selector.md.",
-      "wave": "v26"
-    }
-  ]
+ "_doc": "Equivalence-prover allowlist. Every entry acknowledges an INTENDED divergence between the current tree and validation/baselines/v68. Entries require file (repo-relative), reason, and wave (e.g. v6.9). The prover fails on any un-allowlisted diff and on any stale entry whose file no longer diverges.",
+ "entries": [
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v6.8.1 microcopy fixes: (1) the micro ships-from row now YIELDS when the dedicated az_ships_from line is effective (azShipsAllowed() gate) so the buy box never says Ships-from twice; (2) label resolution unchanged otherwise. Companion CSS guard .cx-az-micro__row[hidden]{display:none!important} fixes the display:flex-defeats-[hidden] bare-truck-icon bug (CSS is outside baseline scope).",
+   "wave": "v6.8.1"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v6.10 merchant-selectable ships-from display format: azShipsFormat() decodes the lean 's'/'p' code from the gated ships member (draft override preview.sf only inside a VERIFIED preview session, fail-closed to subtle); azBuildStock gains a shipsName param and a prominent branch (.cx-az-stock__ships--prominent: truck icon + @@COUNTRY@@ sentinel split into prefix/<strong>country</strong>/suffix, textContent-only, sentinel-less fallback to the plain composed line); azMountStock hoists the warehouse name. Subtle path markup byte-identical to v6.8. Pinned by sims/az-split.cjs F1-F5 + mutants m6/m7.",
+   "wave": "v6.10"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v6.11 survey methodology full-text editability: surveyBuildPanel's merchant branch substitutes the built-in text's live-number tokens ({{ total }}/{{ yes }}/{{ percent }}, flexible inner whitespace) with the cfg.survey numbers before the textContent write, so a merchant-edited copy of the built-in explanation keeps tracking the survey numbers. Fail-safe 0 on non-finite numbers; sink stays textContent-only. Pinned by sims/survey-methodology.cjs M1-M7 + mutants m1-m4 and harness section-5 v6.11 pins.",
+   "wave": "v6.11"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v7 per-product proof wave: survey gates + island rewritten per-product (cellexia.product_survey metaobject read, content-presence gate, per-product outcome rows + methodology/verifier fallbacks, legacy sampleSize/yesCount/format reads and the draft surveyFormat preview member removed); study island gains sub/pn/pw/pl/pi members (m1/m2 composition retired) + str.sub/str.fn; bottle title now interpolates the pluralized days label and body/point_1..3 gain theme-block overrides (+4 schema settings). Pinned by harness section-5 v7 block + sims/survey-methodology.cjs.",
+   "wave": "v7"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v7 per-product proof wave: five-format survey machinery (SURVEY_FORMATS, surveyBuildFormat, buildSurveyDots, cfg.preview.surveyFormat) replaced by one zero-arg outcomes-forward surveyBuildSection (derived row percents, decorative bar fills, @@YES@@/@@TOTAL@@ sentinel labels, fail-closed row/total/rec validation); surveyBuildPanel keeps v6.11 token substitution with per-product numbers (total=sample size, yes=rec); study builder gains the always-on subject line + protocol fact chips and drops m1/m2 paragraphs. Pinned by sims/survey-methodology.cjs (59 checks, 7 mutants) + harness v7 block.",
+   "wave": "v7"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
+   "reason": "v6.10 ships-from format plumbing: the gated ships member gains the lean live format code (\"f\": cfg.amazon.shipsFromFormat | slice: 0, the v6.5 place-code convention) and the armed preview member gains the lean draft code (\"sf\": cx_prev.draftConfig.shipsFromFormat | slice: 0, tokenless closed enum). No gate or emission-structure changes.",
+   "wave": "v6.10"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v8 proof library + compact modes: the #cx-ba-config island emission is DELETED (the PDP before/after widget retires — the standalone results-gallery block replaces it; the show_ba/cx_bas reads are kept because they still feed the outer emission gate and cx_draft_any), and the survey/study/bottle islands gain lean LIVE compact members ('\"cm\": 1' under cfg.dermSurvey.compact / cfg.clinicalStudy.compact / cfg.emptyBottleGuarantee.compact == true strict gates) plus the compact-gated surveyStrings.more_outcomes key. Pinned by harness section-5 v8 block + sims/survey-methodology.cjs C-series.",
+   "wave": "v8"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v8 compact modes + BA retirement: surveyBuildSection grows the compact branch (top-line first-valid-row inline, '+ N more outcomes' disclosure over the surveyBuildOutcomes list, bindSurveyMore toggle, stale-island degrade ships the list visible), studyBuildSection gains the cx-study--compact modifier (same DOM), bottleBuildNode the slim-band branch (points stay in the untouched modal); the ba* builders + PROOF_ORDER ba row + dispatch branch are deleted (the verified_before_after EVIDENCE marker moves to cellexia-proof.js); boot()'s verified branch sets window.CellexiaBooster.__preview = true for the proof asset's beacon/draft contract. Pinned by sims/survey-methodology.cjs (C-series + mutants m11/m12) + harness v8 block.",
+   "wave": "v8"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+   "reason": "v8 NEW shared asset: ES5 IIFE with pf-prefixed helper twins (zero name overlap with the pdp sim extraction surface), proofFetch (8s timeout, one retry, cb(null) fail-closed), the press band / endorsement wall / results gallery renderers + filter drawer + lightbox, ZERO innerHTML anywhere (SVG via createElementNS, entity decode via a bounded replace chain), every URL through the pfHttps gate, beacons suppressed via window.CellexiaBooster.__preview OR sessionStorage cx_preview_token. Carries the moved verified_before_after EVIDENCE marker plus the press/derm_endorsements markers. Pinned by harness (EVIDENCE, class coverage, zero-innerHTML escape discipline) + sims/proof-gallery.cjs (29-function extraction, 6 mutants).",
+   "wave": "v8"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+   "reason": "v8.2 ultra-compact branches (cm-guarded, textContent-only, same DOM): pressBuildSection collapses to one row (quote starts [hidden]; bindLogo tap reveals + rotates, a second tap on the ACTIVE logo re-hides + clears aria-pressed); endoBuildSection composes ONE <p> head row (count · shown_of, per-part degrade, re-composed by setProgress after Show more appends into the same wall); resultsBuildSection emits only the cx-results--compact root modifier (CSS leverage). cm-absent paths byte-identical to v8. Pinned by sims/proof-gallery.cjs U/V series + mutants m7/m8/m9 and the harness class-coverage self-test (--compact trio).",
+   "wave": "v8.2"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+   "reason": "v8.3 COMPACT middle tier: each of the three builders resolves density ONCE (var ultra = conf.cm === 2; var compact = conf.cm === 1; strict === so strings/unknown codes fall back to full) and the v8.2 branches are repointed to cm 2 under RENAMED --ultra root modifiers (cx-press--ultra / cx-endo--ultra / cx-results--ultra); cm 1 now means the NEW compact tier (cx-press--compact: quote ALWAYS visible, rotation like full; cx-endo--compact: composed H2 head line with inline shown_of; cx-results--compact: root-modifier-only CSS leverage). Pinned by sims/proof-gallery.cjs U/C series + mutants m7/m8/m10 and the harness class-coverage self-test (--compact + --ultra trios).",
+   "wave": "v8.3"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/proof-booster.liquid",
+   "reason": "v8.7 NEW embed replacing the three v8 SECTION blocks (press/derm-endorsements/results-gallery .liquid, entries retired this wave): the store's legacy Liquid templates cannot take section app blocks (merchant-verified), so the three proof widgets merge into ONE app embed (target body, name 'Cellexia proof library', 22 chars). The #cx-press-config/#cx-endo-config/#cx-results-config islands keep their v8/v8.3 payload byte-for-byte (incl. the two-code cm density members) — only the gate assigns are renamed per widget (cx_p_*/cx_e_*/cx_r_*) and the data-cx-mount divs are gone: cellexia-proof.js now self-inserts via the ordered .cx-proof-band (after .pdp__tabs on product pages, end of #main elsewhere, fail-closed). Pinned by harness section-5 v8.7 block + the CM_ISLANDS density pins.",
+   "wave": "v8.7"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v8.13 product display names: new `assign cx_pname = product.metafields.cellexia.display_name.value | default: product.title` and the three name interpolations (survey rec_line, survey outcomes_intro, study sub) switch from product.title to cx_pname. The metafield is translatable (native Shopify translations registered by the Product names admin page), so localized pages serve the merchant's exact per-language name; unset falls back to the title — byte-identical output for shops that never set a display name.",
+   "wave": "v8.13"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v8.13b {name} placeholder in custom text (merchant catch: 'Tested on {name} itself' rendered the literal braces): the 14 merchant-entered text substitution sites of the survey island (title/question/intro/outcome statements/methodology, plus verifier via a single assign-site replace covering both its emissions) and study island (title/concern/subject/footnote/result labels/result suffixes/lab name/instruments) gain `| replace: '{name}', cx_pname` before | json, so custom copy can interpolate the per-language display name exactly like the built-in lines. No-op for text without the token.",
+   "wave": "v8.13b"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v10 US delivery by state: new cx_us assign gated on cx_country == 'US' and cx_de.usStates.enabled == true; the delivery member gains the conditional nested us member ({% if cx_us %}, \"us\": {{ cx_us | json }}{% endif %} — nested, so no new top-level cfg key) and deliveryStrings gains \"delivery.deliver_to\" (label only, NOT a required key — a missing string hides only the selector). Pinned by harness section-5 v10 pins + sims/us-state-delivery.mjs.",
+   "wave": "v10"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+   "reason": "v10 US delivery by state: new cx_us assign gated on cx_country == 'US' and cx_de.usStates.enabled == true; the delivery member gains the conditional nested us member ({% if cx_us %}, \"us\": {{ cx_us | json }}{% endif %}) and deliveryStrings gains \"delivery.deliver_to\" — the exact twin of the pdp-booster emission. Pinned by harness section-5 v10 pins + sims/us-state-delivery.mjs.",
+   "wave": "v10"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
+   "reason": "v10 US delivery by state: the az standalone delivery member gains the same cx_us gate + conditional nested us member ({% if cx_us %}, \"us\": {{ cx_us | json }}{% endif %}) and its deliveryStrings map gains \"delivery.deliver_to\", so az-only pages keep the state promise (azGapFillConfig copies cfg.delivery wholesale — the nested us rides along). Pinned by harness section-5 v10 pins + sims/us-state-delivery.mjs.",
+   "wave": "v10"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v10 US state overlay: deliveryConfig gains the fail-OPEN state layer (per-field keep-if-valid candidate merge, whole-entry discard on an incoherent window, hidden:true -> null, cutoff -> cutoffMinutes + dispatchDays partial dispatch override, dc.extra/dc.usFederal/dc.us) and deliveryQualifies the dc.extra + dc.usFederal clauses; new byte-twinned US_STATE_NAMES + deliveryUs* region (deliveryUsFederal movable-holiday math, choice/geo persistence via localStorage 'cx:us_state' + sessionStorage 'cx_geo:1' 6h TTL, single-flight geo kick to 'apps/cellexia/geo', 'Deliver to' selector built createElement/textContent-only); dispatchSchedule substitutes the RESOLVED state cutoff/dispatchDays; CX_AZ_ICONS gains 'pin'; mountDelivery/azMountDeliveryLine attach the selector + geo kick. v10 fix wave adds byte-twinned deliveryUsPrime (synchronous pre-mount state resolution, called at init() top before any mount/beacon), deliveryUsBroadcast + deliveryUsEventToken (the 'cx:us-state' cross-bundle fan-out) and deliveryUsPointerCoarse (coarse-close / fine-stay-open selector change semantics), plus the hidden-state option filter and the stored-hidden-choice auto-clear. Pinned by sims/us-state-delivery.mjs (twins, 4-way federal parity, overlay matrix, geo + prime units, dispatchSchedule coherence, selector DOM incl. pointer split + fan-out, mutants M1-M8), sims/delivery-businessdays.mjs FUNCS extraction and harness v10 pins.",
+   "wave": "v10"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+   "reason": "v10 US state overlay, byte-twin of the cellexia-pdp.js change: deliveryConfig state layer + deliveryQualifies dc.extra/dc.usFederal clauses, the US_STATE_NAMES + deliveryUs* twin region ('cx:us_state'/'cx_geo:1'/'apps/cellexia/geo' literals, selector, geo kick), dispatchSchedule resolved-state cutoff/dispatchDays substitution, CX_AZ_ICONS 'pin' entry; renderDelivery attaches the selector and kicks the geo hint. v10 fix wave adds the byte-twinned deliveryUsPrime (called at renderInto() top before the render decisions), deliveryUsBroadcast + deliveryUsEventToken 'cx:us-state' fan-out and deliveryUsPointerCoarse close split, plus the hidden-state option filter + stored-hidden-choice auto-clear. First allowlist entry for this file (baseline-clean before v10). Pinned by sims/us-state-delivery.mjs per-symbol twin byte-identity + behavioral matrix on BOTH bundles (incl. the pdp+cart shared-document fan-out pairing), sims/delivery-businessdays.mjs and harness v10 pins.",
+   "wave": "v10"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/proof-booster.liquid",
+   "reason": "v8.22 wall/overlay design codes: the cx-endo-config island gains two lean members — \"ws\":1 when cfg.dermEndorsements.wallStyle == \"panel\" (official fixed-height panel wall) and \"os\":1 when cfg.dermEndorsements.overlayStyle == \"official\" (explainer overlay: intro + FAQ dropdowns + dermatologist roster). Absent members = the classic wall / list overlay, so a stale island keeps the v8.21 behavior. The overlay-content COPY (intro/FAQ/roster title/panel CTA) deliberately does NOT ride the island: it has non-blank English defaults and no locale-catalog fallback, so the proxy serves it translated-else-source in payload.copy (zero Liquid bytes). Pinned by sims/proof-gallery.cjs P/OF series + harness v8.22 block.",
+   "wave": "v8.22"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v12 per-market product exclusions: new cx_pgid assign ('gid://shopify/Product/' | append: product.id) + cx_exc_dsp flag off cfg.dispatch.excludedByMarket[cx_market] contains cx_pgid; the live dispatch gate gains `and cx_exc_dsp == false`, the draft gate becomes `unless cfg.dispatch.showOnPdp == false or cx_exc_dsp`; the delivery exclusion (cfg.deliveryEstimate.excludedByMarket) FOLDS into cx_del_hidden so live + draft delivery paths are both bound (the byCountry-hidden precedent). No island-member changes — an excluded product simply gets no dispatch/delivery emission, so beacons stay honest for free. Pinned by harness section-5 v12 block.",
+   "wave": "v12"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
+   "reason": "v12 per-market product exclusions: new az_pgid assign + two flags — the delivery/dispatch exclusion folds into az_del_hidden (az_delivery_line hides on EITHER list: the line bundles the delivery date AND the order-within countdown clause, so either promise being untrue for the product invalidates it — killing az_any_delivery also drops thresholdOk, which azTplPayload keys on), and az_exc_sf off cfg.amazon.shipsFromExcludedByMarket gates the live + draft az_ships_from paths AND the shipsFrom member emission ({%- if az_any_micro and az_exc_sf == false %}) — the member is the micro ships row's ONLY warehouse/defaultLabel source, and dropping `ships` alone would have flipped the micro fallback ON (the v6.8.1 yield rule inverts). Both JS read sites are null-guarded, so the absent member renders nothing. Pinned by harness section-5 v12 block.",
+   "wave": "v12"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+   "reason": "v12 per-market product exclusions: two assigns read the CURRENT market's lists (cx_exc_d = cfg.dispatch.excludedByMarket[cx_market], cx_exc_e = cfg.deliveryEstimate.excludedByMarket[cx_market]) and a new gated island member emits them ({%- if cx_exc_d or cx_exc_e %} \"exc\": {\"d\": .. | json, \"e\": .. | json},) between the dc and delivery members — the cart is client-mutable, so the verdict must be computed in JS at render time from state.cart, not baked at Liquid render. Pinned by harness section-5 v12 block; the deploy-safety island matrix parses the new branch.",
+   "wave": "v12"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+   "reason": "v12 per-market product exclusions: new CART-ONLY helper cartExcludedAny(list) (state.cart items vs 'gid://shopify/Product/' + product_id; deliberately NOT a pdp twin — the dispatchSchedule per-file rule) plus one early-return gate in renderDispatch (after the cfg.dc check, before the PREVIEW branch) and one in renderDelivery (after featureOn, before deliveryConfig): `if (cartExcludedAny(cfg.exc && cfg.exc.d|e)) return null;`. A null return means no node AND no impression (renderAll only tracks returned feature keys), and renderInto re-runs on every cart rebuild so client-side cart changes re-verdict without a reload. Exclusion applies in preview too (the byCountry-hidden precedent). Pinned by harness section-5 v12 block.",
+   "wave": "v12"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v12 review fix (preview honesty): new DISPATCH_PREVIEW_EXCLUDED constant + a cfg.dspx === 1 branch in mountDispatchPreview's invalid-config path — an exclusion-hidden product in a verified preview session names the exclusion (plain cx-preview-note) instead of rendering the false DISPATCH_PREVIEW_INVALID schedule warning (the island suppresses the dispatch member for excluded products, which mountDispatchPreview otherwise reads as an invalid schedule). The dspx marker is emitted by pdp-booster.liquid ONLY while a preview is armed, so real visitors' payloads are byte-identical. Pinned by harness section-5 v12 block (marker emission + JS branch).",
+   "wave": "v12"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+   "reason": "v14 rewards (SPEC-v14 §4): `cx_rw = cfg.rewards` alias; the armed block gains cx_draft_rw (draftFlags.set_savings/gift_tiers OR either master) joined into cx_cart_draft_any; the master gate admits either rewards master; the liquid block computes cx_eff_ss / cx_eff_gt (master AND marketScopes.set_savings / gift_tiers allow cx_market) and the effective map always emits \"setSavings\"/\"giftTiers\"; a gated \"rw\" member ({%- if cx_eff_ss or cx_eff_gt or cx_draft_rw %}) ships {\"ss\": rewards.setSavings | json, \"gt\": rewards.giftTiers | json, \"paused\": gift_stock.value.paused[cx_market], \"gifts\": {\"<vid>\": {h,t,c,a}}} built from a {% liquid %} capture over tiers/slots/options + samplePool → all_products lookup; 16 rw.* strings (one-letter @@A@@/@@P@@/@@N@@/@@C@@/@@G@@/@@V@@ sentinels) inside the same gate; the products map flags sample-sachet products with \"s\": 1 (twin of proxy.cart-data PRODUCT_BODY_LIQUID). 21,198 → 23,439 B (cap 23,600). Pinned by harness v14 block (gate/member/effective/scope anchors + per-file cap) + sims/rewards-tiers.mjs; the deploy-safety island-JSON matrix parses the new branch.",
+   "wave": "v14"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
+   "reason": "v14 rewards (SPEC-v14 §5): `cx_rw = cfg.rewards.setSavings` alias; az_eff_ss (master AND marketScopes.set_savings allows cx_market, the az_eff_* pattern), cx_draft_ss inside the armed block, az_any_ss joins az_any AND az_need_product; island member gated on az_any_ss: \"rw\": {live, tiers | json (settings shape {count,pct,code}), sf {pdp,sim,fbt}, excl (setSavingsExcludedByMarket[cx_market] raw), giftPids [<all_products[handle].id …>, 0]}; strings rw.pdp_line/pdp_line_next/fbt_caption/fbt_add_save/similar_caption via a for-loop over a split list; \"effective\" gains \"set_savings\". Byte diet to stay under the cap (behaviour-neutral): the seven header assign/if lines folded into the {%- liquid block, the nine `assign cx_draft_az_* = false` inits removed (nil is falsy; only ever read in if conditions), amazon.fbt_add_1..4 emitted by a (1..4) for-loop. 18,756 → 19,673 B (cap 19,700). Pinned by harness v14 block (member/effective/scope anchors + per-file cap).",
+   "wave": "v14"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+   "reason": "v14 rewards (SPEC-v14 §6/§7): CART_FEATURE_KEYS += setSavings/giftTiers; state.rw per-render snapshot; NEW \"v14 rewards\" region before renderInto(): the cxRwTier/cxRwNext twin (byte-identical to cellexia-pdp.js, pinned by sims/rewards-tiers.mjs), RW/RW_DEFAULTS (21 keys)/RW_SENTINELS/rwT, CART-ONLY helpers rwSpendCents/rwEligibleLines/rwDistinctCount/rwUnits/rwGiftLines/rwDesiredCode/rwSyncCode/rwSyncGifts/rwRenderMeter/rwRenderNudge/rwDecorateGiftRows (+ rwGiftPlan/rwPickSamples/rwKitActive/rwKitSavingCents/rwPerformGiftRemove/Swap/rwGiftBack/rwSnapshot/rwSimRead/Write/rwPreviewControls, session memories cx_rw_gift_removed/unfree/choice); renderInto: rwSnapshot() then the gift METER (rwRenderMeter when giftTiers on, renderShipbar fallback) then the NUDGE; renderAll: rwDecorateGiftRows() then rwSyncCode() → rwSyncGifts(); shipbar/az-free-line/distinct-count/offers/cross-sell read rwSpendCents() and skip gift/sachet lines; cross-sell reframe (rw.set_title, struck price × (1 − pct)); preview bar simulator (rwPreviewControls); boot PREVIEW gains sim/rehearsal/rw. Track: set_savings code_applied, gift_tiers tier_reached/gift_added/gift_removed. Markers 'data-cx-feature','gift_tiers' (meter) / 'set_savings' (nudge). ES5, no new innerHTML. Pinned by harness v14 block + EVIDENCE + sims/rewards-tiers.mjs cart-only rule.",
+   "wave": "v14"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v14 rewards (SPEC-v14 §5/§6/§7): NEW region before the az entry — the cxRwTier/cxRwNext twin (byte-identical to cellexia-cart.js, pinned by sims/rewards-tiers.mjs), RW_DEFAULTS (5 PDP keys), PDP-only azRw* helpers (azRwT/azRwCfg/azRwTiers/azRwPct/azRwOn/azRwNum/azRwIdSet/azRwSkip/azRwCartCount/azRwSub/azRwFbtApply), azBuildRwPdp (p.cx-az-row.cx-rw-pdp[data-cx-feature=set_savings]) + azMountRwPdp (after .stock-msg, skipped for excluded/gift/sachet products, tracks set_savings once); hooks: azFbtUpdate (tier for the checked count → discounted total + struck original + fbt_add_save label), azFbtFinish (fbt_caption), azFbtCollect/azMountSimilar pick loops + azFbtEnrich/similar byHandle stage skip gift/sachet/excluded via azRwSkip, similar caption, AZ_BUYBOX_ORDER gains '.cx-rw-pdp', azInit calls azMountRwPdp(). Cart awareness reads window.CartJS.cart.items only (never a fetch). ES5, no new innerHTML (10 pinned sites unchanged). Pinned by harness v14 block + EVIDENCE + sims/fbt.cjs (extraction carries the azRw* helpers) + sims/rewards-tiers.mjs pdp-only rule.",
+   "wave": "v14"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/clinical-results.liquid",
+   "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
+   "wave": "v18"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/guarantee.liquid",
+   "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
+   "wave": "v18"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/subscription-nudge.liquid",
+   "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
+   "wave": "v18"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/trust-badges.liquid",
+   "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
+   "wave": "v18"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/trustpilot.liquid",
+   "reason": "v18 Liquid diet: the scratch variable cx_scope was renamed to cx_s across every block. It is a pure scratch temp used only in the two-line market-scope idiom (assign cx_s = cfg.marketScopes.<key> / if cx_s.mode != 'selected' or cx_s.markets contains cx_market), never read outside it, so the rename is behaviour-free. 129 occurrences across 9 blocks freed 516 B, taking Liquid from 99,278 B to 98,762 B (738 B under the 99,500 budget) to make room for the V2 gift-plan island in cart-booster and pdp-booster. Harness pins at sections 3355/3436 updated to match.",
+   "wave": "v18"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+   "reason": "v18 gift diagnostics: new rwGiftWhy() names, in merchant-facing English, the reason the gift pass did or did not put a gift in the cart, and rwUpdateWhy() renders it into the preview bar after every renderAll. Fixes the reported \"gifts never get added in preview\": rwMutable() requires PREVIEW.rehearsal AND no simulator, so typing a spend into the simulator silently cancelled the \"Test with my real cart\" tick with no explanation. Decision ORDER is load-bearing (distance to the next tier before the simulator notice, simulator before the rehearsal tick) and is pinned by validation/sims/gift-why.mjs. Also exposes window.CellexiaBooster.giftWhy for live pages. No behaviour change to the gift sync itself: rwSyncGifts, its single-flight, its one-correction-per-cart-signature and its never-loop guarantees are untouched.",
+   "wave": "v18"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+   "reason": "v18 gift clusters: the #cx-rw-config island stops dumping the whole rewards settings section and instead emits THIS COUNTRY's cluster slice, sliced out of the new cellexia/gift_plan app-data metafield with cx_country (the pattern gift_stock.paused[cx_market] already used). A browser therefore only ever receives its own ladder, which shrinks the island and stops one country's offers leaking into another's page source. The paused set now rides inside the cluster entry, so the separate \"paused\" member is gone.",
+   "wave": "v18"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v18: new #cx-gift-config island carrying the same per-country gift slice for the product page, in its OWN script tag rather than inside #cx-pdp-config, so a Liquid problem in the gift data can only break the gift surface (the 2026-08-17 isolation lesson). Gated live-effective on cx_eff_gt exactly like the cart island.",
+   "wave": "v18"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v18 free-gift product-page surface: azGtIsland/azGtCfg/azGtPlan/azBuildGiftSurface/azMountGift render one of three merchant-chosen placements (quiet line above Add to cart, reward card below it, ladder strip under the title). All three are cart-aware and pick the strongest of three sentences, so the line says how far the shopper is from a named gift instead of advertising one. Adds azShopRate/azCurrency/azProductPriceCents (twins of the cart helpers). The card renders after the Add-to-cart actions so a promotion can never push the button down the page.",
+   "wave": "v18"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+   "reason": "v18 gift clusters + reward ladder: the storefront readers now consume the per-country cluster slice (rwGtTiers rebuilds {amount,slots} from the plan's a/t arrays, rwPool/rwPaused/rwGiftThresholdCents read the short plan keys, and the country's own amounts arrive pre-resolved as RW.gb instead of a market map lookup). rwRenderLadder draws a card per gift tier under the meter track: unlocked cards keep their tick and stay full-strength, which communicates the cumulative rule with no new copy to translate into 18 languages. The gift sync itself, its single-flight, one-correction-per-cart-signature and never-loop guarantees are untouched.",
+   "wave": "v18"
+  },
+  {
+   "file": "extensions/cellexia-booster/snippets/cx-icons.liquid",
+   "reason": "v20 Liquid diet (paid FIRST, the v19 \"slim before you spend\" rule): the nine <svg> branches repeated one identical opening tag. The head (class/width/height/viewBox) and the attribute sets are hoisted — one default stroke set, two named exceptions (star = filled, check = stroke-width 2) — and the case now carries only each icon's inner markup. Generated mechanically and proved byte-identical for all 8 keys plus the else branch before the write: 3,610B -> 2,043B (-1,567B), which pays for the v20 image-badge gates + island with ~1.1KB left over. No caller changed.",
+   "wave": "v20"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v20 image badges: +403B of gates and one island member. cx_ibl is the market-scoped live flag (cfg.imageBadges.enabled + marketScopes.image_badges through the house idiom), cx_ibs carries the scale for the live OR preview-drafted case, the island emits \"ib\": {live, s} under cx_ibs > 0, and the island/CSS/JS emission gate gained `or cx_ibs > 0` so this feature ALONE keeps the asset on the page. A pre-v20 metafield has no cfg.imageBadges, so cx_ibs stays nil and every gate fails closed. Pinned by harness section v20 + sims/image-badges.cjs.",
+   "wave": "v20"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v20 image badges: the ib* module (ibData/ibAllowed/ibScale/ibPhone/ibImageBox/ibBasePx/ibClear/ibSizeFor/ibApply/ibBind/mountImageBadges) plus its call at the top of init(). It paints NOTHING: it measures the theme's own badge row against the live product image and writes --cx-ib-w + .cx-ib-on on the row, which the stylesheet consumes below 576px only. No marker, no beacon, no template. The clamp, the fail-closed paths, idempotence and the live/draft gate are pinned by sims/image-badges.cjs (86 checks, 7 mutants).",
+   "wave": "v20"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+   "reason": "v21 cart overlay features. Diet FIRST (the \"slim before you spend\" rule, -~1,050B): the top-of-file standalone assigns fold into one {%- liquid -%} block, the duplicate cx_country assign inside the main block is deleted (template-global, the top one always runs first), the six amazon.cta_count.* string lines become a for-loop mirroring the adjacent bought_count precedent, and 18 param-less strings (volume/subscription/crosssell/shipbar.unlocked/amazon.qualifies/a11y.loading) collapse into one cx_pk loop with identical keys and values (JSON member order/whitespace is parser-neutral). Then +~900B: cx_ov alias, three house-idiom gates (cx_eff_ofx/cpt/pin on their OWN marketScopes), three armed-preview draft flags into the draft-any chain, three emission-gate clauses in FRONT of the pinned v14 tail, and three always-emitted effective members (ofix/compact/pinned). Net: 23,513 -> 23,356B, 244B under the unmoved 23,600 cap. Pinned by harness v21 + sims/cart-overlay-fix.cjs. v21.1 adds the ~35B \"mf\" island member (shop.money_format) feeding ofixMoneyHeal so the very first drawer-open needs no theme global; 23,394B, 206B under the cap.",
+   "wave": "v21"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+   "reason": "v21 cart overlay features + v21.1 field fixes: CART_FEATURE_KEYS gains ofix/compact/pinned and the ofix* module (ofixSync/ofixCueUpdate/ofixQtyHeal/ofixMoneyHeal/ofixPeek/ofixSchedule/ofixInit) plants the html gate classes cx-ofix/cx-compact/cx-pin, mirrors .mini-cart.is-open onto html.cx-ofix-lock from the EXISTING class observer, drives the scroll-thumb custom properties on .mini-cart's STYLE attribute (never its class), toggles the cx-noscroll pan guard on a rangeless drawer (v21.1 report #1), fills BLANK unfocused drawer qty inputs from state.cart by data-lineid with a data-varid identity check (the theme's mini-cart.liquid item vs line_item typo), re-writes the checkout/footer totals in shop money format in the same task the theme's Intl flash lands (wrapper hook, v21.1 report #2), recreates the LIVE theme's header count badge verbatim when a page that loaded empty gets its first item (ofixCountHeal, v21.2 - the only node the module ever creates, the theme's own markup), and glides the drawer once per open as the scroll lesson (v21.1 report #3, reduced-motion aware, shopper-touch aborted). Four hook lines: renderAll tail, classObserver first line, listObserver, init; plus the wrapper's ofixMoneyHeal call. Paints no node, no marker, no beacon (v20 precedent); never writes .mini-cart's own classList (theme observer fetch-storm guard). Pinned by harness v21/v21.1 + sims/cart-overlay-fix.cjs (18 mutants).",
+   "wave": "v21"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/cart-booster.liquid",
+   "reason": "v22 URL parameter gates: the #cx-g digest island beside the always-on session beacon, plus `cfg.paramGates` in the bundle-loader condition so cellexia-cart.js is present on every page type whenever a gate is live. The island carries DIGESTS only — projectGates() strips the parameter and token before either metafield mirror is written. Emission is gated on the registry alone, never on anything about the request, so the HTML is identical for every visitor. Pinned by sims/param-gates.cjs (100 checks, 5 mutants) and harness section 22.",
+   "wave": "v22"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v22 URL parameter gates: the cxGate* module (digest / capture / storage / proxy sync), its cxGateBoot(Date.now()) call at the top of boot(), the two render-side guards in bbpSealNode and bbpResearchNode, bbpGateMeta, and the optional third `meta` argument on track(). The module reads the query string and its own first-party storage and nothing else; sims/param-gates.cjs section H pins that it never reads the user agent, referrer or any automation signal.",
+   "wave": "v22"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+   "reason": "v22 URL parameter gates: a BYTE-IDENTICAL copy of the cxGate* module (the cx:us_state duplication precedent) plus its cxGateBoot(Date.now()) call at the top of boot(). This bundle is the one that loads on every page type, so it is what captures an unlock for a visitor who lands on the home page or a collection and only reaches a product page later. sims/param-gates.cjs section I pins the two copies byte for byte.",
+   "wave": "v22"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v24 clinical-study recomposition (merchant reference design): the study island gains three per-product members: \"e\" (eyebrow override), \"j\" (publication line), \"b\" (free-text fact pill), each emitted only when the metaobject field is non-blank and riding the cx_name_token replace. The lab_name assign + \"pl\" emission are retired (the lab now reads inside the merchant's conducted-by sentence), and \"pi\" emits the RAW instruments value (the study.instruments t: composition is retired; the line renders verbatim inside the stat panel). Zero new locale keys; name-token replace count 14 -> 16 (harness pin updated).",
+   "wave": "v24"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v24 clinical-study recomposition: studyBuildSection renders the merchant reference design. Per-product eyebrow override (data.e, else str.eyebrow); the heading drops the theme heading--two class (styled as the heavy uppercase protocol headline in CSS); new cx-study__journal line (data.j); the first result becomes the tinted stat panel whose cx-study__hero-body right column (built only when a label or method exists, so no orphan divider) carries the label plus the RAW instruments line (data.pi); the fact pills reduce to participants/duration plus the free-text badge (data.b); the lab-name chip is retired from display. Pinned by sims/survey-methodology.cjs T2-T8 + mutants m13-m15.",
+   "wave": "v24"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+   "wave": "v25/v26.2",
+   "reason": "v25 results-gallery clinical redesign (docs/SPEC-v25-results-redesign.md): resultsValidItems gains the lab-gated m/mk/an/ar members; NEW builders resultsIcon (stroke icon set incl. the flask badge icon and the lightbox X), resultsApplyCopy (whitelisted proxy chrome codes rp/ma/vsb/mi/mp/mu, pfStrRaw reads), resultsValidMeasurements (per-row fail-closed), resultsClinical (measured-at panel + info-note toggle + trust-mark row, lab-only), resultsAttr (name + role, textContent sinks); card order media>panel>badges>meta>quote>attr; lightbox close swaps the invisible text glyph for the icon button and quote/attr/meta compose the cx-lightbox__foot row; resultsBuildSection merges proxy copy first and renders the cx-results__tagline; resultsBuildFrame tags the After frame cx-results__tag--after. Pinned by sims/proof-gallery.cjs R19-R24 + mutants m32-m36 and the harness v25 block. v26.2: resultsValidPct (one-decimal 0.1-500 percent, String-round-trip check) replaces the pfPosInt cap in resultsValidMeasurements, and resultsFmtPct + RESULTS_COMMA_DECIMAL render the decimal mark per page language (comma for the 15 comma-decimal theme locales, Western digits kept); pinned by R19/R20/R21b + m35/m37."
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v26 quantity selector cards: live/draft gate assigns (marketScopes.quantity_selector + quantitySelector.enabled + prev_flags), cx_qs admitted into the CSS/island wrapper gate, and the gated qs island member (live + page locale + shop money_format + per-variant id/title/presentment-cents/image, loop capped at 6). See docs/SPEC-v26-quantity-selector.md.",
+   "wave": "v26"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v26 quantity selector cards: CX_QSEL_STR 18-locale table (AZ_SHIPS_FORMS convention) + the qsel* module (id-mapped button relay, math-honesty gates, formatMoney twin) + the two init() wiring lines. See docs/SPEC-v26-quantity-selector.md.",
+   "wave": "v26"
+  },
+  {
+   "file": "extensions/cellexia-booster/snippets/cx-trustpilot-stars.liquid",
+   "reason": "v30.1 Trustpilot display rounding (merchant: 'if it's 4.8/5, all 5 stars should be full just like on trustpilot'): the star IMAGE snaps to the nearest half star via `assign cx_rating = cx_rating | times: 2 | round | divided_by: 2.0`, inserted AFTER cx_rating_label so the aria keeps the raw score. The JS twins in cellexia-pdp.js/cellexia-cart.js snap identically (Math.round(r*2)/2; pinned by buy-box-proof D15 + mutant m16 and the checkout-trust shape table + mutant m13).",
+   "wave": "v30.1"
+  }
+ ]
 }

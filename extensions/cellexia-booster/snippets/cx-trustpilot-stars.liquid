@@ -11,6 +11,7 @@ assign cx_size = size | default: 20
 assign cx_fill = color | default: '#00b67a'
 assign cx_empty = empty | default: '#d8d8d8'
 assign cx_rating_label = cx_rating | round: 1
+assign cx_rating = cx_rating | times: 2 | round | divided_by: 2.0
 -%}
 <span class="cx-stars" role="img" aria-label="{{ 'a11y.rating_out_of_5' | t: rating: cx_rating_label }}">
 {%- for i in (1..5) -%}

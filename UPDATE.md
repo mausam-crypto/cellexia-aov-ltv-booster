@@ -235,15 +235,18 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v30 — Trustpilot star color in checkout + buy-box rating row size — what this release changes
+## 3a. v30 — Trustpilot star color in checkout + buy-box rating row size + Trustpilot star rounding — what this release changes
 
-Two small display options (full contract: `docs/SPEC-v30-trustpilot-tuning.md`).
-Deploy BOTH halves per §3 — the app server carries the settings model and the
-two admin controls, the extension half carries the checkout-trust bundle and
-the PDP JS/CSS. **Deploying changes nothing shoppers see**: both options
-default to today's exact render, and only flip when you change them in the
-app admin and Save. No Liquid changed, no locale strings changed, no new
-scopes, no schema change.
+Two small display options plus one requested rendering correction (full
+contract: `docs/SPEC-v30-trustpilot-tuning.md`). Deploy BOTH halves per §3 —
+the app server carries the settings model and the two admin controls, the
+extension half carries the checkout-trust bundle, the PDP/cart JS, the CSS
+and the stars snippet. **The two options change nothing shoppers see on
+deploy**: both default to today's exact render, and only flip when you
+change them in the app admin and Save. **Change 3 below applies on deploy**
+(you asked for it as the correct rendering). No locale strings changed, no
+new scopes, no schema change; Liquid grew only ~58 bytes (the stars
+snippet), well inside the budget.
 
 1. **Checkout trust module — Trustpilot star color.** App admin → Features →
    Checkout → trust-module card → "Trustpilot line — star color". Default
@@ -262,11 +265,21 @@ scopes, no schema change.
    (exact storefront pixel sizes and colors — only the typeface differs).
    100% is today's design; the slider saves even while the row is off.
    Applies live on Save.
+3. **Trustpilot star rounding (applies on deploy).** The star IMAGE now
+   follows Trustpilot's own display rule everywhere the app draws it:
+   rounded to the NEAREST HALF star, while the "4.8/5" score text and the
+   screen-reader label keep the raw value — exactly like trustpilot.com.
+   At your live 4.8 that means the fifth star on the product page, buy box
+   and cart goes from an 80%-filled gradient to FULLY filled the moment
+   you deploy; checkout already showed five full stars at 4.8, so it looks
+   the same there (it only changes in half-star bands, e.g. a 4.6 would
+   now show four and a half instead of five). This is not an option — it
+   is the corrected behavior you asked for.
 
-Revert either one by putting it back (theme color / 100%) and saving —
-byte-identical to before this release. Suite: 11,369 checks green
-(new D14 + T2 coverage and mutants m12/m14/m15 pin the
-byte-identical-by-default guarantees).
+Revert either option by putting it back (theme color / 100%) and saving —
+byte-identical to before this release. Suite: 11,384 checks green
+(new D14/D15 + star-shape coverage and mutants m12/m13/m14/m15/m16 pin the
+byte-identical-by-default guarantees and the rounding rule).
 
 ## 3b. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
 

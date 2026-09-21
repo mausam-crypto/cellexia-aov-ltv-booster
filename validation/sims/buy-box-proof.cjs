@@ -460,6 +460,18 @@ const rowClasses = (root) =>
   const hugeScale = baseCfg();
   hugeScale.bbp.c = baseConf({ ratingScale: 999 });
   ok(run(hugeScale).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === "--cxtp:2", "D14 ratingScale 999 caps at --cxtp:2");
+
+  // v30.1 Trustpilot display rounding: the star IMAGE snaps to the nearest
+  // half star while label/aria keep the raw score — the base 4.7 paints
+  // 4.5 (fifth star a 50% gradient, never the raw 70%), and 4.8 paints
+  // five FULL stars, exactly like trustpilot.com. A full star's gradient
+  // carries TWO offset="100%" stops, so five full stars = ten of them.
+  const starsHtml = base.page.doc.querySelector(".cx-stars").innerHTML;
+  ok(starsHtml.indexOf('offset="50%"') !== -1 && starsHtml.indexOf('offset="70%"') === -1, "D15 r=4.7 snaps to 4.5: fifth star 50%, never 70%");
+  const rFull = baseCfg();
+  rFull.tp = Object.assign({}, rFull.tp, { r: 4.8 });
+  const fullHtml = run(rFull).page.doc.querySelector(".cx-stars").innerHTML;
+  ok(fullHtml.split('offset="100%"').length === 11, "D15 r=4.8 snaps to 5: five FULL stars (ten 100% stops)");
 }
 
 // --------------------------------------------------------- E. research
@@ -968,6 +980,13 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         replace: "      ;",
       },
       {
+        // v30.1: dropping the half-star snap paints the raw 70% partial
+        // again — the Trustpilot-rule display dies.
+        name: "m16-star-snap-dropped",
+        find: "    r = Math.round(r * 2) / 2;",
+        replace: "    ;",
+      },
+      {
         name: "m13-legacy-path-lost",
         find: "      if (!rbData() && !awData()) {",
         replace: "      if (false) {",
@@ -981,6 +1000,6 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
     // (init's mountResearchBand-before-mountAwardStrip order cannot be
     // mutation-tested here — the sim drives the mounts itself — so the
     // harness v29 block pins the call sequence instead.)
-    console.log("ALL 15 MUTANTS CAUGHT (buy-box-proof)");
+    console.log("ALL 16 MUTANTS CAUGHT (buy-box-proof)");
   }
 }

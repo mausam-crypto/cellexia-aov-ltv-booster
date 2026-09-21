@@ -157,6 +157,33 @@ export function normalizeRowOrder(value: unknown): TrustRowKey[] {
   return out;
 }
 
+export type TrustStarShape = 'full' | 'half' | 'empty';
+
+/**
+ * v30.1 — the five star GLYPHS for a rating, using Trustpilot's own display
+ * rule: the star image rounds to the NEAREST HALF star (4.8 → five full
+ * stars, 4.6 → four and a half) while the label/aria keep the raw score —
+ * exactly what trustpilot.com itself renders. Mirrors the storefront twins
+ * (cxStarsSvgs in cellexia-pdp.js / cellexia-cart.js and
+ * snippets/cx-trustpilot-stars.liquid), which snap the same way; checkout
+ * draws the halves with the `starHalf` icon instead of a gradient.
+ * Self-defending like every pure helper here: junk → 0 → five empty.
+ */
+export function trustStarShapes(rating: number): TrustStarShape[] {
+  let r = Number(rating);
+  if (!Number.isFinite(r)) r = 0;
+  if (r > 5) r = 5;
+  if (r < 0) r = 0;
+  const snapped = Math.round(r * 2) / 2;
+  const shapes: TrustStarShape[] = [];
+  for (let i = 0; i < 5; i++) {
+    if (snapped - i >= 1) shapes.push('full');
+    else if (snapped - i === 0.5) shapes.push('half');
+    else shapes.push('empty');
+  }
+  return shapes;
+}
+
 /**
  * Locates the `config` JSON metafield among the app metafield entries.
  * The namespace is declared as `$app:cellexia`; at runtime it may surface as

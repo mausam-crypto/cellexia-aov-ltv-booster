@@ -29,6 +29,7 @@ import {
   resolvePreview,
   trustFormatDateCompact,
   trustPreviewDiagnosis,
+  trustStarShapes,
   type PreviewConfig,
   type TrustRowKey,
 } from './trust-logic';
@@ -391,14 +392,18 @@ function Extension() {
       ? config.trustpilot.profileUrl
       : undefined;
 
-  const filledStars = Math.min(5, Math.max(0, Math.round(config.trustpilot.rating)));
+  // v30.1: star glyphs follow Trustpilot's own display rule — the image
+  // rounds to the NEAREST HALF star (4.8 → five FULL stars, halves drawn
+  // with the starHalf icon) while the label keeps the raw score. Pure and
+  // sim-tested in trust-logic.ts, twinned with the storefront renderers.
+  const starShapes = trustStarShapes(config.trustpilot.rating);
 
   // v30: filled-star color. "accent" (the default — every pre-v30 config
   // resolves to it) renders byte-identically to before; "green" uses the
   // `success` appearance token, the closest checkout UI extensions allow to
   // Trustpilot's own star green (extensions cannot use arbitrary hex —
   // exact #00b67a would need an externally hosted image, a dependency this
-  // module deliberately avoids). Unfilled stars stay subdued either way.
+  // module deliberately avoids). Empty stars stay subdued either way.
   const starAppearance =
     config.checkoutTrust.trustpilotStars === 'green' ? 'success' : 'accent';
 
@@ -461,11 +466,11 @@ function Extension() {
         {/* Decorative: unlabeled Icons are not announced, so screen
             readers only hear the rating text next to the stars. */}
         <InlineStack spacing="none">
-          {Array.from({length: 5}, (_, index) => (
+          {starShapes.map((shape, index) => (
             <Icon
               key={`star-${index}`}
-              source={index < filledStars ? 'starFill' : 'star'}
-              appearance={index < filledStars ? starAppearance : 'subdued'}
+              source={shape === 'full' ? 'starFill' : shape === 'half' ? 'starHalf' : 'star'}
+              appearance={shape === 'empty' ? 'subdued' : starAppearance}
               size="small"
             />
           ))}

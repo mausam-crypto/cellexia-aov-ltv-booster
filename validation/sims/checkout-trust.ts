@@ -273,6 +273,29 @@ const L = await loadTrustLogic();
         .checkoutTrust.trustpilotStars === "accent");
   }
 
+  // v30.1 trustStarShapes — Trustpilot's own display rule: the star image
+  // rounds to the NEAREST HALF star while the label keeps the raw score.
+  // Twinned with the storefront renderers (which snap the same way).
+  const shapesOf = (r: number): string => L.trustStarShapes(r).join(",");
+  tap.check("T2: stars 4.8 -> FIVE FULL (the Trustpilot 4.75+ band)",
+    shapesOf(4.8) === "full,full,full,full,full");
+  tap.check("T2: stars 4.75 rounds up to five full",
+    shapesOf(4.75) === "full,full,full,full,full");
+  tap.check("T2: stars 4.6 -> four and a HALF (was five full pre-v30.1)",
+    shapesOf(4.6) === "full,full,full,full,half");
+  tap.check("T2: stars 4.74 stays four and a half",
+    shapesOf(4.74) === "full,full,full,full,half");
+  tap.check("T2: stars 4.2 -> four full, fifth empty",
+    shapesOf(4.2) === "full,full,full,full,empty");
+  tap.check("T2: stars 3.5 -> three full + half + empty",
+    shapesOf(3.5) === "full,full,full,half,empty");
+  tap.check("T2: stars 0 -> five empty", shapesOf(0) === "empty,empty,empty,empty,empty");
+  tap.check("T2: stars clamp above (9 -> five full)", shapesOf(9) === "full,full,full,full,full");
+  tap.check("T2: stars clamp below (-3 -> five empty)",
+    shapesOf(-3) === "empty,empty,empty,empty,empty");
+  tap.check("T2: stars junk (NaN) -> five empty",
+    shapesOf(Number.NaN) === "empty,empty,empty,empty,empty");
+
   // resolvePreview: inert unless well-formed.
   const inert = L.resolvePreview({ preview: "nope" });
   tap.check("T2: malformed preview -> inert",
@@ -560,9 +583,13 @@ const L = await loadTrustLogic();
     "const renderClinical = showClinical || inEditor;",
     "const renderTrustpilot = showTrustpilot || inEditor;",
     // v30: the star-color option maps "green" -> the success token and
-    // feeds ONLY the filled-star branch (unfilled stars stay subdued).
+    // feeds ONLY the full/half glyphs (empty stars stay subdued).
     "config.checkoutTrust.trustpilotStars === 'green' ? 'success' : 'accent'",
-    "appearance={index < filledStars ? starAppearance : 'subdued'}",
+    // v30.1: glyphs come from the sim-tested pure helper (Trustpilot's
+    // nearest-half display rule), never a local rounding.
+    "const starShapes = trustStarShapes(config.trustpilot.rating);",
+    "source={shape === 'full' ? 'starFill' : shape === 'half' ? 'starHalf' : 'star'}",
+    "appearance={shape === 'empty' ? 'subdued' : starAppearance}",
     // v12 exclusions: cart lines read (bundle components included), both
     // records checked against the buyer's market, both row derivations
     // carry the veto (draft grants included), and the diagnosis receives
@@ -658,6 +685,14 @@ if (!process.env.CX_SKIP_MUTANTS) {
         name: "m12-starcolor-loose",
         find: "        isPlainObject(trust) && trust.trustpilotStars === 'green'",
         replace: "        isPlainObject(trust)",
+      },
+      {
+        // v30.1: dropping the half-star snap leaves 4.8 with a raw 0.8
+        // remainder — neither full nor half, the fifth star goes EMPTY and
+        // the Trustpilot display rule dies.
+        name: "m13-star-snap-dropped",
+        find: "  const snapped = Math.round(r * 2) / 2;",
+        replace: "  const snapped = r;",
       },
     ],
   });

@@ -2619,6 +2619,10 @@
     if (!isFinite(r)) r = 0;
     if (r > 5) r = 5;
     if (r < 0) r = 0;
+    // v30.1 Trustpilot display rule: the star IMAGE snaps to the nearest
+    // half star (4.8 paints five FULL stars) while label/aria keep the raw
+    // score — exactly what trustpilot.com itself renders.
+    r = Math.round(r * 2) / 2;
     var s = '';
     for (var i = 1; i <= 5; i++) {
       var part = r - (i - 1);
