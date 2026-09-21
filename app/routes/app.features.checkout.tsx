@@ -497,6 +497,10 @@ interface CheckoutFormState {
   /** v11: display order of the six trust lines (always a full permutation —
    *  normalized server-side in the loader, sanitized on save). */
   rowOrder: CheckoutTrustRow[];
+  /** v30: filled-star color on the Trustpilot line ("accent" = checkout
+   *  theme color, the pre-v30 render; "green" = the checkout's success
+   *  green — the closest checkout blocks can get to Trustpilot's own). */
+  trustpilotStars: "accent" | "green";
   /** v12: per-market excluded products for the customs-free row
    *  (market handle -> product GIDs). */
   customsExcluded: Record<string, string[]>;
@@ -542,6 +546,10 @@ function initialFormState(settings: BoosterSettings): CheckoutFormState {
     // normalizeTrustRowOrder is a .server value and must never run in
     // client code). Fresh array copy so state edits never alias the source.
     rowOrder: [...settings.checkoutTrust.rowOrder],
+    // v30: sanitize keeps this a closed enum, but a stored blob predating
+    // the field still reaches the loader — coerce so state stays typed.
+    trustpilotStars:
+      settings.checkoutTrust.trustpilotStars === "green" ? "green" : "accent",
     // v12: deep copies — state edits must never alias the loader settings.
     customsExcluded: Object.fromEntries(
       Object.entries(settings.checkoutTrust.customsExcludedByMarket).map(
@@ -930,6 +938,7 @@ export default function CheckoutFeaturesPage() {
         showCustoms: state.showCustoms,
         showTracked: state.showTracked,
         rowOrder: state.rowOrder,
+        trustpilotStars: state.trustpilotStars,
         // v12: wholesale-replaced records — always send the full maps (an
         // empty object clears every exclusion).
         customsExcludedByMarket: state.customsExcluded,
@@ -1508,6 +1517,43 @@ export default function CheckoutFeaturesPage() {
                       </InlineStack>
                     );
                   })}
+                </BlockStack>
+                <Divider />
+                <BlockStack gap="200">
+                  <Text as="h3" variant="headingSm">
+                    Trustpilot line — star color
+                  </Text>
+                  <ChoiceList
+                    title="Star color"
+                    titleHidden
+                    choices={[
+                      {
+                        label: "Checkout theme color (default)",
+                        value: "accent",
+                        helpText:
+                          "Filled stars keep your checkout's accent color — exactly what buyers see today.",
+                      },
+                      {
+                        label: "Trustpilot green",
+                        value: "green",
+                        helpText:
+                          "Filled stars switch to your checkout's success green — the closest Shopify lets checkout blocks get to Trustpilot's own star green (blocks can only use the theme's named colors, never a custom hex, so the exact shade follows the success color in your checkout branding).",
+                      },
+                    ]}
+                    selected={[state.trustpilotStars]}
+                    onChange={(selected) =>
+                      setState((previous) => ({
+                        ...previous,
+                        trustpilotStars:
+                          selected[0] === "green" ? "green" : "accent",
+                      }))
+                    }
+                  />
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Applies live after you save. Check the result in the
+                    checkout editor or a test checkout — the exact shades come
+                    from your checkout branding, not from this app.
+                  </Text>
                 </BlockStack>
               </BlockStack>
             </Card>

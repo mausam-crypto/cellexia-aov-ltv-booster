@@ -45,6 +45,13 @@ export interface TrustModuleConfig {
      *  TRUST_ROW_ORDER_DEFAULT (ordering can never hide a row; visibility
      *  stays with the show* flags and the per-row market gates). */
     rowOrder: TrustRowKey[];
+    /** v30 filled-star color on the Trustpilot line. "accent" (default —
+     *  every pre-v30 config resolves here, byte-identical render) keeps the
+     *  checkout theme's accent; "green" maps to the `success` appearance
+     *  token, the closest checkout UI extensions allow to Trustpilot's own
+     *  star green (arbitrary hex is not available to extensions). Closed
+     *  enum: anything but an explicit "green" is "accent". */
+    trustpilotStars: 'accent' | 'green';
   };
   guarantee: {days: number};
   trustpilot: {
@@ -67,6 +74,7 @@ export const DEFAULT_CONFIG: TrustModuleConfig = {
     showCustoms: false,
     showTracked: false,
     rowOrder: [...TRUST_ROW_ORDER_DEFAULT],
+    trustpilotStars: 'accent',
   },
   guarantee: {days: 60},
   trustpilot: {
@@ -218,6 +226,13 @@ export function resolveConfig(
       showTracked: readBoolean(trust, 'showTracked', defaults.checkoutTrust.showTracked),
       // v11: always a full permutation — order can reshuffle, never hide.
       rowOrder: normalizeRowOrder(isPlainObject(trust) ? trust.rowOrder : undefined),
+      // v30 closed enum: an explicit "green" switches the filled stars to
+      // the success token; anything else (junk, and every pre-v30 config)
+      // keeps the accent color — byte-identical to the pre-v30 render.
+      trustpilotStars:
+        isPlainObject(trust) && trust.trustpilotStars === 'green'
+          ? 'green'
+          : 'accent',
     },
     guarantee: {
       days: Math.max(1, Math.round(readNumber(guarantee, 'days', defaults.guarantee.days))),

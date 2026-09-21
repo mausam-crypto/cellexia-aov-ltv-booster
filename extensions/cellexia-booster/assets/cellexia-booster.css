@@ -6862,31 +6862,52 @@ body.customer--b2b .cx-sub-remove {
   text-transform: uppercase;
 }
 
+/* v30: every metric of the rating row is authored as
+   calc(var(--cxtp, 1) * Npx) — the v28 award-strip technique — so the ONE
+   inline `--cxtp` custom property bbpRatingRow writes (only when the
+   merchant raises Rating row size above 100%) scales stars, score, count
+   and the Trustpilot wordmark proportionally. Unset var = factor 1 =
+   the exact pre-v30 values. The top margin stays fixed on purpose: it is
+   the block's rhythm, not part of the row. */
 .cx-bbp__rating {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: calc(var(--cxtp, 1) * 6px) calc(var(--cxtp, 1) * 10px);
   margin-block-start: 14px;
+}
+
+.cx-bbp__rating .cx-stars {
+  gap: calc(var(--cxtp, 1) * 2px);
+}
+
+.cx-bbp__rating .cx-stars__star {
+  width: calc(var(--cxtp, 1) * 17px);
+  height: calc(var(--cxtp, 1) * 17px);
 }
 
 .cx-bbp__score {
   font-weight: 700;
-  font-size: 15px;
+  font-size: calc(var(--cxtp, 1) * 15px);
 }
 
 .cx-bbp__count {
-  font-size: 13px;
+  font-size: calc(var(--cxtp, 1) * 13px);
   color: #565959;
 }
 
 .cx-bbp__brand {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(var(--cxtp, 1) * 4px);
   font-weight: 700;
-  font-size: 14px;
+  font-size: calc(var(--cxtp, 1) * 14px);
   color: #1d1d1b;
+}
+
+.cx-bbp__brand .cx-trustpilot__brand-star {
+  width: calc(var(--cxtp, 1) * 15px);
+  height: calc(var(--cxtp, 1) * 15px);
 }
 
 .cx-bbp__brand-link {
@@ -7105,19 +7126,19 @@ body.customer--b2b .cx-sub-remove {
 /* Very narrow phones: keep the rating line on ONE row. */
 @media screen and (max-width: 400px) {
   .cx-bbp__rating {
-    gap: 6px;
+    gap: calc(var(--cxtp, 1) * 6px);
   }
 
   .cx-bbp__score {
-    font-size: 14px;
+    font-size: calc(var(--cxtp, 1) * 14px);
   }
 
   .cx-bbp__count {
-    font-size: 11px;
+    font-size: calc(var(--cxtp, 1) * 11px);
   }
 
   .cx-bbp__brand {
-    font-size: 12px;
+    font-size: calc(var(--cxtp, 1) * 12px);
   }
 }
 

@@ -257,6 +257,22 @@ const L = await loadTrustLogic();
   tap.check("T2: review count clamps to 0", clamped.trustpilot.reviewCount === 0);
   tap.check("T2: showLink defaults linked", clamped.trustpilot.showLink === true);
 
+  // v30 trustpilotStars: closed enum — ONLY an explicit "green" switches the
+  // filled stars; junk and every pre-v30 config (no key) resolve "accent",
+  // so upgrading renders byte-identically until the merchant opts in.
+  tap.check("T2: no config -> star color accent",
+    dflt.checkoutTrust.trustpilotStars === "accent");
+  tap.check("T2: pre-v30 config (no key) -> star color accent (byte-identical upgrade)",
+    preV2.checkoutTrust.trustpilotStars === "accent");
+  tap.check("T2: explicit green honored",
+    L.resolveConfig({ checkoutTrust: { trustpilotStars: "green" } })
+      .checkoutTrust.trustpilotStars === "green");
+  for (const bad of ["lime", "GREEN", "success", "accent ", true, 1, null, {}, []]) {
+    tap.check(`T2: trustpilotStars=${JSON.stringify(bad)} -> accent`,
+      L.resolveConfig({ checkoutTrust: { trustpilotStars: bad } })
+        .checkoutTrust.trustpilotStars === "accent");
+  }
+
   // resolvePreview: inert unless well-formed.
   const inert = L.resolvePreview({ preview: "nope" });
   tap.check("T2: malformed preview -> inert",
@@ -543,6 +559,10 @@ const L = await loadTrustLogic();
     "trackedVisible || (inEditor && trackedDateLabel !== '')",
     "const renderClinical = showClinical || inEditor;",
     "const renderTrustpilot = showTrustpilot || inEditor;",
+    // v30: the star-color option maps "green" -> the success token and
+    // feeds ONLY the filled-star branch (unfilled stars stay subdued).
+    "config.checkoutTrust.trustpilotStars === 'green' ? 'success' : 'accent'",
+    "appearance={index < filledStars ? starAppearance : 'subdued'}",
     // v12 exclusions: cart lines read (bundle components included), both
     // records checked against the buyer's market, both row derivations
     // carry the veto (draft grants included), and the diagnosis receives
@@ -631,6 +651,13 @@ if (!process.env.CX_SKIP_MUTANTS) {
         name: "m11-exclusion-dead",
         find: "    if (list.includes(id)) return true;",
         replace: "    if (list.includes(id)) return false;",
+      },
+      {
+        // v30: loosening the closed enum would turn ANY checkoutTrust
+        // object green — the pre-v30 byte-identical-upgrade guarantee dies.
+        name: "m12-starcolor-loose",
+        find: "        isPlainObject(trust) && trust.trustpilotStars === 'green'",
+        replace: "        isPlainObject(trust)",
       },
     ],
   });

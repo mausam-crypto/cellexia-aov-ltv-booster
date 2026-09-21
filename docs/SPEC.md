@@ -449,6 +449,16 @@ when off. All components from `@shopify/ui-extensions-react/checkout`. Use `useT
    hide, duplicate or reveal a row; visibility stays with the show* flags and per-row market
    gates. Missing/pre-v11 config = default order = the pre-v11 hardcoded sequence
    (byte-identical render).
+   v30: `checkoutTrust.trustpilotStars` (`"accent"` default | `"green"`) — the FILLED-star
+   color on the Trustpilot line. `"green"` maps to the `success` appearance token, the closest
+   checkout UI extensions allow to Trustpilot's own star green (#00b67a — extensions may only
+   use the theme's named appearance colors, never arbitrary hex, and `Image` cannot carry a
+   data: URI, so the exact shade would need an externally hosted file — a runtime dependency
+   this module deliberately refuses). Unfilled stars stay `subdued` either way. Closed enum at
+   sanitize AND at `resolveConfig`: anything but an explicit `"green"` — junk and every
+   pre-v30 blob included — renders byte-identically to before. LIVE display setting (the v6.5
+   placement precedent, no preview plumbing); the control lives on the Checkout admin page's
+   trust-module card (docs/SPEC-v30-trustpilot-tuning.md).
 
 ## Admin dashboard spec (`app/routes/`)
 

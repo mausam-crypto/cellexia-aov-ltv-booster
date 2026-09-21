@@ -439,6 +439,27 @@ const rowClasses = (root) =>
   const noTp = baseCfg();
   noTp.tp = undefined;
   ok(run(noTp).page.doc.querySelector(".cx-bbp__rating") === null, "D13 no tp member: rating row drops");
+
+  // v30 rating-row size: bbpRatingRow writes the `--cxtp` custom property
+  // ONLY when the conf asks for MORE than 100% — a pre-v30 conf (no key,
+  // the base fixture), 100 itself, junk and anything below leave the style
+  // attribute off entirely (byte-identical DOM), and the factor caps at 2.
+  ok(base.page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === null, "D14 pre-v30 conf (no ratingScale): no inline style — byte-identical DOM");
+  const scaled = baseCfg();
+  scaled.bbp.c = baseConf({ ratingScale: 130 });
+  ok(run(scaled).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === "--cxtp:1.3", "D14 ratingScale 130 -> --cxtp:1.3");
+  const atHundred = baseCfg();
+  atHundred.bbp.c = baseConf({ ratingScale: 100 });
+  ok(run(atHundred).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === null, "D14 ratingScale 100: no inline style");
+  const below = baseCfg();
+  below.bbp.c = baseConf({ ratingScale: 80 });
+  ok(run(below).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === null, "D14 ratingScale below 100: no inline style");
+  const junkScale = baseCfg();
+  junkScale.bbp.c = baseConf({ ratingScale: "big" });
+  ok(run(junkScale).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === null, "D14 junk ratingScale: no inline style");
+  const hugeScale = baseCfg();
+  hugeScale.bbp.c = baseConf({ ratingScale: 999 });
+  ok(run(hugeScale).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === "--cxtp:2", "D14 ratingScale 999 caps at --cxtp:2");
 }
 
 // --------------------------------------------------------- E. research
@@ -935,6 +956,18 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
       {
         // v29: dropping the legacy branch dark-ships every pre-migration
         // shop (A3/AW2 run against the legacy island on purpose).
+        // v30: dropping the >100 gate writes --cxtp:1 into every
+        // explicit-100 row — the byte-identical default DOM guarantee dies.
+        name: "m14-ratingscale-writes-at-100",
+        find: "    if (isFinite(rs) && rs > 100) {",
+        replace: "    if (isFinite(rs)) {",
+      },
+      {
+        name: "m15-ratingscale-uncapped",
+        find: "      if (rs > 200) rs = 200;",
+        replace: "      ;",
+      },
+      {
         name: "m13-legacy-path-lost",
         find: "      if (!rbData() && !awData()) {",
         replace: "      if (false) {",
@@ -948,6 +981,6 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
     // (init's mountResearchBand-before-mountAwardStrip order cannot be
     // mutation-tested here — the sim drives the mounts itself — so the
     // harness v29 block pins the call sequence instead.)
-    console.log("ALL 13 MUTANTS CAUGHT (buy-box-proof)");
+    console.log("ALL 15 MUTANTS CAUGHT (buy-box-proof)");
   }
 }

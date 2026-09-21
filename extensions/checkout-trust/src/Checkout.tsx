@@ -393,6 +393,15 @@ function Extension() {
 
   const filledStars = Math.min(5, Math.max(0, Math.round(config.trustpilot.rating)));
 
+  // v30: filled-star color. "accent" (the default — every pre-v30 config
+  // resolves to it) renders byte-identically to before; "green" uses the
+  // `success` appearance token, the closest checkout UI extensions allow to
+  // Trustpilot's own star green (extensions cannot use arbitrary hex —
+  // exact #00b67a would need an externally hosted image, a dependency this
+  // module deliberately avoids). Unfilled stars stay subdued either way.
+  const starAppearance =
+    config.checkoutTrust.trustpilotStars === 'green' ? 'success' : 'accent';
+
   // v11 MERCHANT-ORDERED ROWS: rowOrder is a normalized FULL permutation of
   // the six row keys (resolveConfig guarantees it — unknown keys dropped,
   // missing keys appended), so the map below renders every row exactly once,
@@ -456,7 +465,7 @@ function Extension() {
             <Icon
               key={`star-${index}`}
               source={index < filledStars ? 'starFill' : 'star'}
-              appearance={index < filledStars ? 'accent' : 'subdued'}
+              appearance={index < filledStars ? starAppearance : 'subdued'}
               size="small"
             />
           ))}

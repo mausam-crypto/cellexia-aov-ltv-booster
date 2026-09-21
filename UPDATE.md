@@ -235,7 +235,40 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
+## 3a. v30 — Trustpilot star color in checkout + buy-box rating row size — what this release changes
+
+Two small display options (full contract: `docs/SPEC-v30-trustpilot-tuning.md`).
+Deploy BOTH halves per §3 — the app server carries the settings model and the
+two admin controls, the extension half carries the checkout-trust bundle and
+the PDP JS/CSS. **Deploying changes nothing shoppers see**: both options
+default to today's exact render, and only flip when you change them in the
+app admin and Save. No Liquid changed, no locale strings changed, no new
+scopes, no schema change.
+
+1. **Checkout trust module — Trustpilot star color.** App admin → Features →
+   Checkout → trust-module card → "Trustpilot line — star color". Default
+   "Checkout theme color" keeps the current blue accent stars. "Trustpilot
+   green" switches the FILLED stars to your checkout's success green — the
+   closest Shopify lets a checkout block get to Trustpilot's own star green
+   (checkout blocks may only use the theme's named colors, never a custom
+   hex; the exact shade follows the success color in your checkout
+   branding, where you could set it to #00b67a store-wide if you ever want
+   the precise Trustpilot shade). Applies live on Save; check it in the
+   checkout editor or a test checkout.
+2. **Buy-box proof block — rating row size.** App admin → Features →
+   Buy-box proof block → "Guarantee and rating" card → "Rating row size"
+   slider (100–200%). Stars, score, review count and the Trustpilot
+   wordmark scale together, with a to-scale preview right under the slider
+   (exact storefront pixel sizes and colors — only the typeface differs).
+   100% is today's design; the slider saves even while the row is off.
+   Applies live on Save.
+
+Revert either one by putting it back (theme color / 100%) and saving —
+byte-identical to before this release. Suite: 11,369 checks green
+(new D14 + T2 coverage and mutants m12/m14/m15 pin the
+byte-identical-by-default guarantees).
+
+## 3b. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
 
 Two things landed together in this build:
 
@@ -296,7 +329,7 @@ on the storefront config; until then the legacy path keeps today's look.
 
 Full contracts: `docs/SPEC-v28-award-strip.md`, `docs/SPEC-v29-proof-split.md`.
 
-## 3b. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
+## 3c. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
 
 A new 43rd feature, `Quantity selector cards` (`quantity_selector`), for the product
 page. While it is on, the theme's text-pill size picker ("1 Jar / 2 Jars - 15% Off /
@@ -380,7 +413,7 @@ lever is still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but n
 the deploy-safety island expander does not expand `{% render %}` inside islands, so
 that dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
 
-## 3c. v25 — before/after gallery: clinical trust redesign — what this release changes
+## 3d. v25 — before/after gallery: clinical trust redesign — what this release changes
 
 Merchant ask (2026-09-18, with two reference designs): redesign the
 before/after results widget and its click-to-enlarge overlay for maximum
@@ -466,7 +499,7 @@ win and should be cleared.
 - To see it before enabling: arm a preview (§ preview) with the
   before/after draft flag, or enable + market-scope it to a test market.
 
-## 3d. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
+## 3e. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
 
 **The ask (2026-09-17):** restyle the PDP clinical study widget to match the
 reference design (letterspaced "PUBLISHED CLINICAL RESEARCH" eyebrow, big
@@ -517,7 +550,7 @@ BEFORE saving study content. Spec: `docs/SPEC-v24-study-redesign.md`.
 Pinned by `sims/survey-methodology.cjs` T2-T8 + mutants m13-m15 and the
 harness v24 pin updates.
 
-## 3e. v23 — subscription card prices now require the app to be LIVE — what this release changes
+## 3f. v23 — subscription card prices now require the app to be LIVE — what this release changes
 
 **The bug this fixes (reported by the merchant):** while the NEW subscription
 app is still in setup (or live in only some markets), theme product cards on
@@ -555,7 +588,7 @@ run). Spec: `docs/SPEC-v23-subs-live-gate.md`. Pinned by the harness (v23
 tripwires) and by `sims/badge-cards` (setup-mode and missing-member
 scenarios) + `sims/subscribed-upgrade` (setup fallback refusal).
 
-## 3f. v21 cart overlay features — what this release changes
+## 3g. v21 cart overlay features — what this release changes
 
 ### v21.2 (2026-09-14, after your field test) — five fixes in this build
 
@@ -691,7 +724,7 @@ collapsed into two loops that mirror the file's own `bought_count` loop
 precedent (identical keys and values; JSON member order is parser-neutral).
 The release leaves 244 B of per-file headroom where it found 87 B.
 
-## 3g. v20 image badges on mobile — what this release changes
+## 3h. v20 image badges on mobile — what this release changes
 
 **No database migration. No new API scopes. No webhook changes. No new
 translated strings.** Deploy the app server and the extensions exactly as §3
@@ -733,7 +766,7 @@ mechanically and proved byte-identical for every icon before it landed, so the
 five legacy blocks that render those icons are unchanged on the page. The
 release LEAVES 1,371 B of headroom where it found 207 B.
 
-## 3h. v18 free gifts V2 — what this release changes
+## 3i. v18 free gifts V2 — what this release changes
 
 **No database migration. No new API scopes. No webhook changes.** Deploy the
 app server and the extensions exactly as §3 describes; nothing extra is needed
@@ -947,7 +980,7 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - New FeatureKey `quantity_selector` (42 -> 43, appended at the end), settings
   section `quantitySelector` {enabled false}, own admin page
   `/app/features/quantity`, previewable, market-scoped, analytics-labeled.
-  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3b above.
+  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3c above.
 - Storefront: gated `qs` member in the #cx-pdp-config island (live flag, page
   locale, shop money format, per-variant id/title/cents/image) + the `qsel*`
   module and `CX_QSEL_STR` 18-locale table in `cellexia-pdp.js` + the
@@ -962,14 +995,14 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - v26.1 (2026-09-19): free-shipping micro-line on qualifying tiers —
   `quantitySelector.freeShipTag` (default ON, tick box on the feature page),
   island `fst` = the trust badges' per-market safe threshold as presentment
-  cents, storefront tags only tiers whose own price clears it (§3b).
+  cents, storefront tags only tiers whose own price clears it (§3c).
 
 v20 — IMAGE BADGES ON MOBILE (2026-09-11):
 
 - New FeatureKey `image_badges` (38 -> 39, appended at the end), settings
   section `imageBadges` {enabled false, scale 140}, configured on Trust &
   badges, previewable, market-scoped. Full contract:
-  `docs/SPEC-v20-image-badges.md`; deploy notes in §3b above.
+  `docs/SPEC-v20-image-badges.md`; deploy notes in §3h above.
 - Storefront surface is ONE CSS declaration: the width of the theme's own
   `.pdp .badges .badge` on phones, from a custom property the PDP asset
   writes after measuring the live product image. No node, no copy, no locale

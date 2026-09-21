@@ -813,6 +813,17 @@ export interface BoosterSettings {
      * LIVE setting (the v6.5 placement precedent): no draft/preview plumbing.
      */
     rowOrder: CheckoutTrustRow[];
+    /**
+     * v30: color of the FILLED stars on the Trustpilot line. "accent" (the
+     * default, and what every pre-v30 blob resolves to) keeps the checkout
+     * theme's accent color — byte-identical render. "green" switches the
+     * filled stars to the checkout's `success` appearance token, the
+     * closest checkout UI extensions allow to Trustpilot's own star green
+     * (#00b67a): extensions may only use the theme's named appearance
+     * colors, never arbitrary hex. Closed enum, sanitize coerces junk to
+     * "accent". LIVE display setting (the v6.5 placement precedent).
+     */
+    trustpilotStars: "accent" | "green";
   };
   /**
    * PDP trust boosters (SPEC v3). Content lives in per-product metaobjects
@@ -1194,6 +1205,16 @@ export interface BoosterSettings {
     showGuarantee: boolean;
     /** The star rating + review-count + Trustpilot row (trustpilot.*). */
     showRating: boolean;
+    /**
+     * v30: whole-percent size of the rating row (stars, score, count and the
+     * Trustpilot wordmark scale together — the v28 award-strip
+     * calc(var()*Npx) technique, custom property `--cxtp`). 100 = the
+     * designed size, byte-identical DOM (the storefront only writes the
+     * property when the value is ABOVE 100), clamped to
+     * BUY_BOX_RATING_SCALE_MIN..MAX. LIVE display setting (the v6.5
+     * placement precedent — no draft/preview plumbing).
+     */
+    ratingScale: number;
     // v29: the research band (with its seal) and the award strip moved to
     // their OWN sections/features — researchBand and awardStrip below
     // (docs/SPEC-v29-proof-split.md). coerceLegacyProofSplit migrates a
@@ -1663,6 +1684,15 @@ export const IMAGE_BADGE_MAX_IMAGE_SHARE = 0.25;
 export const IMAGE_BADGE_MAX_ROW_SHARE = 0.75;
 
 /**
+ * v30: bounds for buyBoxProof.ratingScale (whole percent of the designed
+ * rating-row size). MIN doubles as the default: 100 = byte-identical DOM
+ * (the storefront omits the `--cxtp` custom property entirely at 100).
+ * Route loaders pass these through as values (the v8.3 build lesson).
+ */
+export const BUY_BOX_RATING_SCALE_MIN = 100;
+export const BUY_BOX_RATING_SCALE_MAX = 200;
+
+/**
  * SAFE-BY-DEFAULT: every feature master switch ships OFF, and every render
  * surface treats a missing config metafield as "hidden". Installing (or even
  * deploying + enabling the app embeds) changes NOTHING on the storefront or
@@ -1765,6 +1795,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     customsExcludedByMarket: {},
     trackedExcludedByMarket: {},
     rowOrder: [...CHECKOUT_TRUST_ROWS],
+    trustpilotStars: "accent",
   },
   clinicalStudy: {
     enabled: false,
@@ -1896,6 +1927,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     ],
     showGuarantee: true,
     showRating: true,
+    ratingScale: BUY_BOX_RATING_SCALE_MIN,
   },
   researchBand: {
     enabled: false,
@@ -3551,6 +3583,17 @@ export function sanitizeSettings(
     next.buyBoxProof.showDeliveryBadge !== false;
   next.buyBoxProof.showGuarantee = next.buyBoxProof.showGuarantee !== false;
   next.buyBoxProof.showRating = next.buyBoxProof.showRating !== false;
+  // v30: whole percent of the designed rating-row size. 100 (also the
+  // fallback for a pre-v30 blob or junk) = byte-identical DOM — the
+  // storefront writes `--cxtp` only when the clamped value is above 100.
+  next.buyBoxProof.ratingScale = Math.round(
+    clampNumber(
+      next.buyBoxProof.ratingScale,
+      BUY_BOX_RATING_SCALE_MIN,
+      BUY_BOX_RATING_SCALE_MAX,
+      BUY_BOX_RATING_SCALE_MIN,
+    ),
+  );
   next.buyBoxProof.badges = Array.from(
     new Set(
       (next.buyBoxProof.badges ?? []).filter(
@@ -3762,6 +3805,10 @@ export function sanitizeSettings(
   next.checkoutTrust.rowOrder = normalizeTrustRowOrder(
     next.checkoutTrust.rowOrder,
   );
+  // v30: closed enum — anything but an explicit "green" (including every
+  // pre-v30 blob) stays on the checkout theme's accent color.
+  next.checkoutTrust.trustpilotStars =
+    next.checkoutTrust.trustpilotStars === "green" ? "green" : "accent";
   // v12: per-market product exclusions for the customs/tracked rows.
   next.checkoutTrust.customsExcludedByMarket = sanitizeExcludedByMarket(
     next.checkoutTrust.customsExcludedByMarket,

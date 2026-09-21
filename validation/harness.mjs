@@ -1357,7 +1357,11 @@ const EVIDENCE = {
     "cx-nudge--panel": "variant marker; the panel look lives on .cx-nudge base + theme card styles",
     "cx-nudge__content": "structural wrapper (parity with subscription-nudge.liquid); children styled",
     "cx-preview-bar__label": "preview bar styles itself inline (must render on any theme without our CSS)",
-    "cx-stars__star": "SVG star sized by width/height attributes, colored by its gradient fill",
+    // (cx-stars__star left this list in v30: the buy-box rating row now
+    // scales the stars via a scoped `.cx-bbp__rating .cx-stars__star` rule
+    // — calc(var(--cxtp,1)*17px), attribute-identical while the var is
+    // unset. Everywhere else the SVG is still sized by its width/height
+    // attributes and colored by its gradient fill.)
     "cx-survey__panel-verify": "verification paragraph; typography inherited from the survey panel",
     "cx-subswitch__head": "laid out entirely by the theme utility classes it is paired with (d-flex align-center)",
     "cx-offers-more__label": "overflow-toggle label span; typography inherited from the toggle button",
