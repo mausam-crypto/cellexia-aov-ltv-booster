@@ -3485,8 +3485,25 @@
     return wrap.firstChild || document.createTextNode('');
   }
 
+  function cxTpScale(node, tp) {
+    // v30 merchant size control (trustpilot.scale, shared by the PDP strip
+    // and the proof block's rating row): both rows' metrics are authored
+    // as calc(var(--cxtp, 1) * Npx) in the stylesheet (the v28 award-strip
+    // technique), so ONE inline custom property scales stars, score, count
+    // and the wordmark together. The island carries `s` — and this writes
+    // the property — ONLY when the merchant asked for MORE than 100%: a
+    // pre-v30 mirror (no member), junk, 100 or anything below leaves the
+    // attribute off entirely, byte-identical DOM.
+    var rs = tp ? Number(tp.s) : NaN;
+    if (isFinite(rs) && rs > 100) {
+      if (rs > 200) rs = 200;
+      node.setAttribute('style', '--cxtp:' + (Math.round(rs) / 100));
+    }
+  }
+
   function pdpTrustpilotBuildNode(d) {
     var root = cxEl('div', 'cx-trustpilot cx-trustpilot--pdp', ['data-cx-feature', 'trustpilot']);
+    cxTpScale(root, d);
     cxSp(root);
     var main = cxEl('div', 'cx-trustpilot__main d-flex align-center');
     cxSp(main);
@@ -6462,17 +6479,9 @@
     var score = bottleStr(tp, 'label');
     if (!score) return null;
     var row = cxEl('div', 'cx-bbp__rating');
-    // v30 merchant size control: the row's metrics are all authored as
-    // calc(var(--cxtp, 1) * Npx) in the stylesheet (the v28 award-strip
-    // technique), so ONE inline custom property scales stars, score, count
-    // and the wordmark together. Written ONLY when the config asks for
-    // MORE than 100% — a pre-v30 config (no key), junk, 100 or anything
-    // below leaves the attribute off entirely: byte-identical DOM.
-    var rs = Number(conf.ratingScale);
-    if (isFinite(rs) && rs > 100) {
-      if (rs > 200) rs = 200;
-      row.setAttribute('style', '--cxtp:' + (Math.round(rs) / 100));
-    }
+    // v30: size rides the SHARED trustpilot.scale via the tp member's `s`
+    // (cxTpScale) — the strip and this row always scale together.
+    cxTpScale(row, tp);
     row.appendChild(cxStarsNode(tp.r, 'bbp', 17, bottleStr(tp, 'aria')));
     var scoreEl = cxEl('span', 'cx-bbp__score');
     scoreEl.textContent = score;

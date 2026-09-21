@@ -2771,7 +2771,7 @@ const EVIDENCE = {
   const ALLOWED_INNERHTML = [
     { re: /decodeArea\.innerHTML = str;/g, why: "HTML-entity decode trick; result only ever reaches textContent", expect: { [CART_JS]: 1, [PDP_JS]: 1, [PROOF_JS]: 0 } },
     { re: /span\.innerHTML = cxStarsSvgs\(rating, uid, size\);/g, why: "the annotated numeric-stars case (all inputs numeric)", expect: { [CART_JS]: 1, [PDP_JS]: 1, [PROOF_JS]: 0 } },
-    { re: /wrap\.innerHTML = '<svg [\s\S]*?';/g, why: "static svg icon constants (v19 adds the built-in certification seal); only numeric size + static icon-map spec are concatenated", expect: { [CART_JS]: 1, [PDP_JS]: 3, [PROOF_JS]: 0 } },
+    { re: /wrap\.innerHTML = '<svg [\s\S]*?';/g, why: "static svg icon constants (v19 adds the built-in certification seal; v30.2 adds the cart cxStarIcon twin for the trust row's wordmark); only numeric size + static icon-map spec are concatenated", expect: { [CART_JS]: 2, [PDP_JS]: 3, [PROOF_JS]: 0 } },
   ];
   for (const jf of [CART_JS, PDP_JS, PROOF_JS]) {
     const src = read(jf);
@@ -5436,6 +5436,57 @@ const EVIDENCE = {
       spBlockRoute.includes('url="/app/features/award-strip"') &&
       spBlockRoute.includes('url="/app/features/research-band"'),
     "v29: the proof-block page is rows-only and points at the two new pages",
+  );
+}
+
+// ===================================== v30 TRUSTPILOT PRESENTATION TUNING
+// docs/SPEC-v30-trustpilot-tuning.md — checkout star color (sim-pinned in
+// sims/checkout-trust.ts), the SHARED trustpilot.scale size control
+// (sim-pinned in sims/buy-box-proof.cjs D14/D16 + mutants m14/m15) and the
+// cart trust row's count + wordmark (v30.2). Pinned HERE: the cross-file
+// wiring a sandbox cannot see — island emissions, the cart cell's new
+// pieces, and the admin home of the slider (Trust & badges, NOT the
+// proof-block page: the merchant runs the strip with the proof block off).
+{
+  const tpSettings = read("app/models/settings.server.ts");
+  const tpPdpLiquid = read(`${EXT}/blocks/pdp-booster.liquid`);
+  const tpCartLiquid = read(`${EXT}/blocks/cart-booster.liquid`);
+  const tpCartJs = read(CART_JS);
+  const tpBadgesRoute = read("app/routes/app.features.badges.tsx");
+  const tpBlockRoute = read("app/routes/app.features.proof-block.tsx");
+
+  // ---- ONE shared size setting, riding the shared tp island member ----
+  ok(
+    tpSettings.includes("export const TRUSTPILOT_SCALE_MIN = 100;") &&
+      tpSettings.includes("export const TRUSTPILOT_SCALE_MAX = 200;") &&
+      !tpSettings.includes("ratingScale"),
+    "v30: trustpilot.scale is the ONE size setting (the misplaced buyBoxProof.ratingScale is gone)",
+  );
+  ok(
+    tpPdpLiquid.includes(
+      `{%- if cfg.trustpilot.scale > 100 -%},"s":{{ cfg.trustpilot.scale | times: 1 }}{%- endif -%}`,
+    ),
+    "v30: the pdp tp member carries `s` ONLY above 100 (100 = byte-identical island)",
+  );
+  ok(
+    tpBadgesRoute.includes("scale: Math.round(state.trustpilotScale),") &&
+      !tpBlockRoute.includes("ratingScale"),
+    "v30: the size slider lives on Trust & badges (the proof-block page has no size control)",
+  );
+
+  // ---- cart trust row: count + wordmark (v30.2) ----
+  ok(
+    tpCartLiquid.includes(
+      `"cnt": {{ 'trustpilot.reviews_count' | t: count: tp_count | json }}`,
+    ),
+    "v30.2: the cart tpr member carries the localized, count-baked reviews string",
+  );
+  ok(
+    tpCartJs.includes("var cnt = cxStr(tp, 'cnt');") &&
+      tpCartJs.includes("brandName.textContent = 'Trustpilot';") &&
+      tpCartJs.includes("cx-trust-row__brand") &&
+      tpCartJs.includes("typeof tp.url !== 'string' || !/\\S/.test(tp.url)"),
+    "v30.2: the cart cell renders count + wordmark and guards a blank url like the PDP twins",
   );
 }
 

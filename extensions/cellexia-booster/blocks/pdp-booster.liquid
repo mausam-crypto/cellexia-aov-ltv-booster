@@ -424,7 +424,7 @@ assign tp_stars = 0.0
 endif
 assign tp_stars_label = tp_stars | round: 1
 -%}
-"tp": {"live": {{ show_trustpilot }}, "aria": {{ 'a11y.rating_out_of_5' | t: rating: tp_stars_label | json }}, "label": {{ tp_rating | round: 1 | append: '' | replace: '.', tp_sep | append: '/5' | json }}, "r": {{ tp_stars | json }}, "cnt": {{ 'trustpilot.reviews_count' | t: count: tp_count | json }}, "view": {{ 'trustpilot.view' | t | json }}, "url": {{ cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com' | json }}, "link": {% if cfg.trustpilot.showLink == false %}false{% else %}true{% endif %}},
+"tp": {"live": {{ show_trustpilot }}, "aria": {{ 'a11y.rating_out_of_5' | t: rating: tp_stars_label | json }}, "label": {{ tp_rating | round: 1 | append: '' | replace: '.', tp_sep | append: '/5' | json }}, "r": {{ tp_stars | json }}, "cnt": {{ 'trustpilot.reviews_count' | t: count: tp_count | json }}, "view": {{ 'trustpilot.view' | t | json }}, "url": {{ cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com' | json }}, "link": {% if cfg.trustpilot.showLink == false %}false{% else %}true{% endif %}{%- if cfg.trustpilot.scale > 100 -%},"s":{{ cfg.trustpilot.scale | times: 1 }}{%- endif -%}},
 {%- endif %}
 {%- if show_nudge or cx_draft_nudge %}
 "n": {"live": {{ show_nudge }}, "t": {{ 'subscription.nudge_title' | t | json }}, "b": {{ 'subscription.nudge_body' | t: percent: nudge_pct | json }}},

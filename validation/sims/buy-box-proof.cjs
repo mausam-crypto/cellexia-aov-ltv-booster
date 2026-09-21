@@ -76,6 +76,10 @@ const FNS = [
   "cxStarsSvgs",
   "cxStarsNode",
   "cxStarIcon",
+  // v30: shared trustpilot.scale (tp member `s`) + the strip builder that
+  // consumes it alongside bbpRatingRow.
+  "cxTpScale",
+  "pdpTrustpilotBuildNode",
   "azPageLocale",
   "pdpMember",
   "pdpMemberAllowed",
@@ -440,26 +444,32 @@ const rowClasses = (root) =>
   noTp.tp = undefined;
   ok(run(noTp).page.doc.querySelector(".cx-bbp__rating") === null, "D13 no tp member: rating row drops");
 
-  // v30 rating-row size: bbpRatingRow writes the `--cxtp` custom property
-  // ONLY when the conf asks for MORE than 100% — a pre-v30 conf (no key,
-  // the base fixture), 100 itself, junk and anything below leave the style
+  // v30 Trustpilot size: the SHARED trustpilot.scale rides the tp member's
+  // `s`, and cxTpScale writes the `--cxtp` custom property ONLY when it
+  // asks for MORE than 100% — a pre-v30 mirror (no member, the base
+  // fixture), 100 itself, junk and anything below leave the style
   // attribute off entirely (byte-identical DOM), and the factor caps at 2.
-  ok(base.page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === null, "D14 pre-v30 conf (no ratingScale): no inline style — byte-identical DOM");
-  const scaled = baseCfg();
-  scaled.bbp.c = baseConf({ ratingScale: 130 });
-  ok(run(scaled).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === "--cxtp:1.3", "D14 ratingScale 130 -> --cxtp:1.3");
-  const atHundred = baseCfg();
-  atHundred.bbp.c = baseConf({ ratingScale: 100 });
-  ok(run(atHundred).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === null, "D14 ratingScale 100: no inline style");
-  const below = baseCfg();
-  below.bbp.c = baseConf({ ratingScale: 80 });
-  ok(run(below).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === null, "D14 ratingScale below 100: no inline style");
-  const junkScale = baseCfg();
-  junkScale.bbp.c = baseConf({ ratingScale: "big" });
-  ok(run(junkScale).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === null, "D14 junk ratingScale: no inline style");
-  const hugeScale = baseCfg();
-  hugeScale.bbp.c = baseConf({ ratingScale: 999 });
-  ok(run(hugeScale).page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === "--cxtp:2", "D14 ratingScale 999 caps at --cxtp:2");
+  ok(base.page.doc.querySelector(".cx-bbp__rating").getAttribute("style") === null, "D14 pre-v30 tp (no s): no inline style — byte-identical DOM");
+  const tpScaled = (s) => {
+    const cfg = baseCfg();
+    cfg.tp = Object.assign({}, cfg.tp, { s });
+    return run(cfg).page.doc.querySelector(".cx-bbp__rating").getAttribute("style");
+  };
+  ok(tpScaled(130) === "--cxtp:1.3", "D14 tp.s 130 -> --cxtp:1.3");
+  ok(tpScaled(100) === null, "D14 tp.s 100: no inline style");
+  ok(tpScaled(80) === null, "D14 tp.s below 100: no inline style");
+  ok(tpScaled("big") === null, "D14 junk tp.s: no inline style");
+  ok(tpScaled(999) === "--cxtp:2", "D14 tp.s 999 caps at --cxtp:2");
+
+  // v30: the PDP strip consumes the SAME `s` through the SAME helper — the
+  // two Trustpilot rows can never scale apart — and its content (count +
+  // wordmark) is the layout the cart cell now mirrors.
+  const stripOf = (tp) => run(baseCfg()).sandbox.pdpTrustpilotBuildNode(tp);
+  const stripPlain = stripOf(baseCfg().tp);
+  ok(stripPlain.getAttribute("style") === null, "D16 strip without s: no inline style — byte-identical DOM");
+  ok(textOf(stripPlain).indexOf("4619 reviews on") !== -1, "D16 strip carries the review count");
+  ok(textOf(stripPlain).indexOf("Trustpilot") !== -1, "D16 strip carries the wordmark");
+  ok(stripOf(Object.assign({}, baseCfg().tp, { s: 130 })).getAttribute("style") === "--cxtp:1.3", "D16 strip s=130 -> --cxtp:1.3");
 
   // v30.1 Trustpilot display rounding: the star IMAGE snaps to the nearest
   // half star while label/aria keep the raw score — the base 4.7 paints
@@ -970,12 +980,12 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         // shop (A3/AW2 run against the legacy island on purpose).
         // v30: dropping the >100 gate writes --cxtp:1 into every
         // explicit-100 row — the byte-identical default DOM guarantee dies.
-        name: "m14-ratingscale-writes-at-100",
+        name: "m14-tpscale-writes-at-100",
         find: "    if (isFinite(rs) && rs > 100) {",
         replace: "    if (isFinite(rs)) {",
       },
       {
-        name: "m15-ratingscale-uncapped",
+        name: "m15-tpscale-uncapped",
         find: "      if (rs > 200) rs = 200;",
         replace: "      ;",
       },

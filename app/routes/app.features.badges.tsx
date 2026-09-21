@@ -35,6 +35,8 @@ import {
   IMAGE_BADGE_MAX_ROW_SHARE,
   IMAGE_BADGE_SCALE_MAX,
   IMAGE_BADGE_SCALE_MIN,
+  TRUSTPILOT_SCALE_MAX,
+  TRUSTPILOT_SCALE_MIN,
   type BoosterSettings,
   type DeepPartial,
 } from "../models/settings.server";
@@ -109,6 +111,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       defaultScale: IMAGE_BADGE_DEFAULT_SCALE,
       maxImageShare: IMAGE_BADGE_MAX_IMAGE_SHARE,
       maxRowShare: IMAGE_BADGE_MAX_ROW_SHARE,
+    },
+    // v30: Trustpilot size slider bounds (min doubles as the default) —
+    // same loader route for the same v8.3 reason.
+    trustpilotScaleCaps: {
+      min: TRUSTPILOT_SCALE_MIN,
+      max: TRUSTPILOT_SCALE_MAX,
     },
   };
 };
@@ -345,6 +353,131 @@ function imageBadgePreview(
   };
 }
 
+/**
+ * v30: to-scale mock of the storefront's PDP Trustpilot strip, drawn with
+ * the SAME pixel formulas the stylesheet derives from `--cxtp` (stars 16px,
+ * star gap 2px, item gap 8px, score 13px bold, count 11px, wordmark 13px
+ * bold + its 14px green star, link 11px underlined — each × factor), the
+ * storefront's own star artwork/colors, and the v30.1 Trustpilot display
+ * rounding (the star image snaps to the nearest half star while the score
+ * text stays raw). Typeface aside (the storefront uses the theme's fonts,
+ * and the texts follow the buyer's language), what you see is what ships.
+ * The buy-box proof block's rating row follows the same slider.
+ */
+function TrustpilotStripMock({
+  factor,
+  rating,
+  reviewCount,
+  showLink,
+}: {
+  factor: number;
+  rating: number;
+  reviewCount: string;
+  showLink: boolean;
+}) {
+  const starPath =
+    "M10 1.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L1.6 7.7l5.8-.8z";
+  const clamped = Math.min(5, Math.max(0, rating));
+  const snapped = Math.round(clamped * 2) / 2;
+  const stars = Array.from({ length: 5 }, (_, index) => {
+    const part = Math.min(1, Math.max(0, snapped - index));
+    const pct = Math.round(part * 100);
+    const gid = `cx-admin-tps-${index}-${pct}`;
+    const size = Math.round(16 * factor);
+    return (
+      <svg
+        key={index}
+        width={size}
+        height={size}
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
+            <stop offset={`${pct}%`} stopColor="#00b67a" />
+            <stop offset={`${pct}%`} stopColor="#d8d8d8" />
+          </linearGradient>
+        </defs>
+        <path fill={`url(#${gid})`} d={starPath} />
+      </svg>
+    );
+  });
+  const count = Number(reviewCount);
+  const countLabel = `${Number.isFinite(count) && count >= 0 ? count : 1000} reviews on`;
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: `${8 * factor}px ${16 * factor}px`,
+        padding: 12,
+        background: "#fff",
+        border: "1px solid #e3e3e3",
+        borderRadius: 8,
+        color: "#1d1d1b",
+      }}
+    >
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 8 * factor,
+        }}
+      >
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 2 * factor,
+            lineHeight: 0,
+          }}
+        >
+          {stars}
+        </span>
+        <span style={{ fontWeight: 700, fontSize: 13 * factor }}>
+          {`${rating}/5`}
+        </span>
+        <span style={{ fontSize: 11 * factor }}>{countLabel}</span>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 3 * factor,
+            fontWeight: 700,
+            fontSize: 13 * factor,
+          }}
+        >
+          <svg
+            width={Math.round(14 * factor)}
+            height={Math.round(14 * factor)}
+            viewBox="0 0 20 20"
+            fill="#00b67a"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d={starPath} />
+          </svg>
+          Trustpilot
+        </span>
+      </span>
+      {showLink ? (
+        <span
+          style={{
+            fontSize: 11 * factor,
+            textDecoration: "underline",
+            textUnderlineOffset: 2,
+          }}
+        >
+          See our reviews on Trustpilot
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 interface BadgesFormState {
   badgesEnabled: boolean;
   style: "light" | "dark";
@@ -354,6 +487,8 @@ interface BadgesFormState {
   reviewCount: string;
   profileUrl: string;
   showLink: boolean;
+  /** v30: whole percent of the PDP Trustpilot-row size (100 = as today). */
+  trustpilotScale: number;
   guaranteeEnabled: boolean;
   days: string;
   imageBadgesEnabled: boolean;
@@ -376,6 +511,13 @@ function initialFormState(settings: BoosterSettings): BadgesFormState {
     reviewCount: String(settings.trustpilot.reviewCount),
     profileUrl: settings.trustpilot.profileUrl,
     showLink: settings.trustpilot.showLink,
+    // v30: sanitize clamps this server-side, but a stored blob predating
+    // the field still reaches the loader — default it so state stays typed.
+    trustpilotScale:
+      typeof settings.trustpilot.scale === "number" &&
+      Number.isFinite(settings.trustpilot.scale)
+        ? Math.round(settings.trustpilot.scale)
+        : 100,
     guaranteeEnabled: settings.guarantee.enabled,
     days: String(settings.guarantee.days),
     imageBadgesEnabled: settings.imageBadges.enabled,
@@ -390,7 +532,7 @@ function initialFormState(settings: BoosterSettings): BadgesFormState {
 }
 
 export default function BadgesFeaturesPage() {
-  const { settings, markets, headerEnabled, imageBadgeCaps } =
+  const { settings, markets, headerEnabled, imageBadgeCaps, trustpilotScaleCaps } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
@@ -498,6 +640,7 @@ export default function BadgesFeaturesPage() {
         reviewCount: Number(state.reviewCount),
         profileUrl: state.profileUrl.trim(),
         showLink: state.showLink,
+        scale: Math.round(state.trustpilotScale),
       },
       guarantee: {
         enabled: state.guaranteeEnabled,
@@ -742,6 +885,40 @@ export default function BadgesFeaturesPage() {
                     setState((previous) => ({ ...previous, showLink }))
                   }
                 />
+                <RangeSlider
+                  label={`Size on the product page: ${state.trustpilotScale}%`}
+                  min={trustpilotScaleCaps.min}
+                  max={trustpilotScaleCaps.max}
+                  step={5}
+                  value={state.trustpilotScale}
+                  output
+                  helpText={
+                    state.trustpilotScale <= 100
+                      ? "100% is the current design — nothing changes until you raise it."
+                      : "Stars, score, review count and the Trustpilot wordmark scale together on the product page (the buy-box proof block's rating row follows the same slider). Applies live after you save."
+                  }
+                  onChange={(value) =>
+                    setState((previous) => ({
+                      ...previous,
+                      trustpilotScale: Math.round(
+                        typeof value === "number" ? value : value[0],
+                      ),
+                    }))
+                  }
+                />
+                <BlockStack gap="150">
+                  <TrustpilotStripMock
+                    factor={state.trustpilotScale / 100}
+                    rating={state.rating}
+                    reviewCount={state.reviewCount}
+                    showLink={state.showLink}
+                  />
+                  <Text as="span" tone="subdued" variant="bodySm">
+                    To scale — exact storefront sizes and colors (the
+                    storefront uses your theme&rsquo;s typeface, and the texts
+                    follow the buyer&rsquo;s language).
+                  </Text>
+                </BlockStack>
               </BlockStack>
             </Card>
 

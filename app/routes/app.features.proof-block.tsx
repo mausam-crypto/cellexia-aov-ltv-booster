@@ -19,7 +19,6 @@ import {
   Layout,
   Link,
   Page,
-  RangeSlider,
   Text,
 } from "@shopify/polaris";
 import { ArrowDownIcon, ArrowUpIcon, DeleteIcon } from "@shopify/polaris-icons";
@@ -27,8 +26,6 @@ import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import {
   BUY_BOX_PROOF_MAX_BADGES,
-  BUY_BOX_RATING_SCALE_MAX,
-  BUY_BOX_RATING_SCALE_MIN,
   getSettings,
   resolveFeatureFlag,
   saveSettings,
@@ -104,9 +101,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // (the v8.3 build lesson), only its types.
     caps: {
       badges: BUY_BOX_PROOF_MAX_BADGES,
-      // v30 rating-row size slider bounds (min doubles as the default).
-      ratingScaleMin: BUY_BOX_RATING_SCALE_MIN,
-      ratingScaleMax: BUY_BOX_RATING_SCALE_MAX,
     },
     // Every fact the block borrows, surfaced so the merchant can see WHY a
     // row would stay hidden without leaving this page (the v13.2 lesson:
@@ -271,8 +265,6 @@ interface ProofBlockFormState {
   badges: string[];
   showGuarantee: boolean;
   showRating: boolean;
-  /** v30: whole percent of the designed rating-row size (100 = as today). */
-  ratingScale: number;
   scope: ScopeState;
 }
 
@@ -286,117 +278,8 @@ function initialFormState(settings: BoosterSettings): ProofBlockFormState {
     badges: [...block.badges],
     showGuarantee: block.showGuarantee,
     showRating: block.showRating,
-    // v30: sanitize clamps this server-side, but a stored blob predating
-    // the field still reaches the loader — default it so state stays typed.
-    ratingScale:
-      typeof block.ratingScale === "number" && Number.isFinite(block.ratingScale)
-        ? Math.round(block.ratingScale)
-        : 100,
     scope: toScopeState(settings.marketScopes.buy_box_proof),
   };
-}
-
-/**
- * v30: to-scale mock of the storefront rating row, drawn with the SAME pixel
- * formulas the stylesheet derives from `--cxtp` (stars 17px, star gap 2px,
- * score 15px, count 13px, wordmark 14px + its 15px star, row gap 6×10px —
- * each × factor) and the storefront's own star artwork and colors, so the
- * slider is honest about what saves. Typeface aside (the storefront uses the
- * theme's fonts), what you see is what ships.
- */
-function RatingRowMock({
-  factor,
-  rating,
-  reviewCount,
-}: {
-  factor: number;
-  rating: number;
-  reviewCount: number;
-}) {
-  const starPath =
-    "M10 1.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L1.6 7.7l5.8-.8z";
-  const clamped = Math.min(5, Math.max(0, rating));
-  // v30.1 Trustpilot display rule (twinned with cxStarsSvgs): the star
-  // IMAGE snaps to the nearest half star — 4.8 previews five FULL stars —
-  // while the score text beside it keeps the raw value.
-  const snapped = Math.round(clamped * 2) / 2;
-  const stars = Array.from({ length: 5 }, (_, index) => {
-    const part = Math.min(1, Math.max(0, snapped - index));
-    const pct = Math.round(part * 100);
-    const gid = `cx-admin-tp-${index}-${pct}`;
-    const size = Math.round(17 * factor);
-    return (
-      <svg
-        key={index}
-        width={size}
-        height={size}
-        viewBox="0 0 20 20"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <defs>
-          <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
-            <stop offset={`${pct}%`} stopColor="#00b67a" />
-            <stop offset={`${pct}%`} stopColor="#d8d8d8" />
-          </linearGradient>
-        </defs>
-        <path fill={`url(#${gid})`} d={starPath} />
-      </svg>
-    );
-  });
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: `${6 * factor}px ${10 * factor}px`,
-        padding: 12,
-        background: "#fff",
-        border: "1px solid #e3e3e3",
-        borderRadius: 8,
-      }}
-    >
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 2 * factor,
-          lineHeight: 0,
-        }}
-      >
-        {stars}
-      </span>
-      <span style={{ fontWeight: 700, fontSize: 15 * factor }}>
-        {`${rating}/5`}
-      </span>
-      <span style={{ fontSize: 13 * factor, color: "#565959" }}>
-        {`${reviewCount} reviews on`}
-      </span>
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 4 * factor,
-          fontWeight: 700,
-          fontSize: 14 * factor,
-          color: "#1d1d1b",
-        }}
-      >
-        <svg
-          width={Math.round(15 * factor)}
-          height={Math.round(15 * factor)}
-          viewBox="0 0 20 20"
-          fill="#00b67a"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d={starPath} />
-        </svg>
-        Trustpilot
-      </span>
-    </div>
-  );
 }
 
 export default function ProofBlockPage() {
@@ -467,7 +350,6 @@ export default function ProofBlockPage() {
         badges: state.badges,
         showGuarantee: state.showGuarantee,
         showRating: state.showRating,
-        ratingScale: state.ratingScale,
       },
       marketScopes: { buy_box_proof: toScopePatch(state.scope) },
     };
@@ -713,45 +595,12 @@ export default function ProofBlockPage() {
                 />
                 <Checkbox
                   label={`Rating row (${sources.rating}/5, ${sources.reviewCount} reviews)`}
-                  helpText="Stars, score, review count and the review-platform link all come from the Trustpilot settings on the Trust & badges page."
+                  helpText="Stars, score, review count and the review-platform link all come from the Trustpilot settings on the Trust & badges page — including the Trustpilot size slider there, which scales this row too."
                   checked={state.showRating}
                   onChange={(showRating) =>
                     setState((previous) => ({ ...previous, showRating }))
                   }
                 />
-                <RangeSlider
-                  label={`Rating row size: ${state.ratingScale}%`}
-                  min={caps.ratingScaleMin}
-                  max={caps.ratingScaleMax}
-                  step={5}
-                  value={state.ratingScale}
-                  output
-                  helpText={
-                    state.ratingScale <= 100
-                      ? "100% is the current design — nothing changes until you raise it."
-                      : "Stars, score, review count and the Trustpilot wordmark scale together. Applies live after you save."
-                  }
-                  onChange={(value) =>
-                    setState((previous) => ({
-                      ...previous,
-                      ratingScale: Math.round(
-                        typeof value === "number" ? value : value[0],
-                      ),
-                    }))
-                  }
-                />
-                <BlockStack gap="150">
-                  <RatingRowMock
-                    factor={state.ratingScale / 100}
-                    rating={sources.rating}
-                    reviewCount={sources.reviewCount}
-                  />
-                  <Text as="span" tone="subdued" variant="bodySm">
-                    To scale — exact storefront sizes and colors (the
-                    storefront uses your theme&rsquo;s typeface, and the row
-                    text follows the buyer&rsquo;s language).
-                  </Text>
-                </BlockStack>
               </BlockStack>
             </Card>
 

@@ -740,6 +740,17 @@ export interface BoosterSettings {
     profileUrl: string;
     /** Link the widget to the Trustpilot profile (false = plain text/stars). */
     showLink: boolean;
+    /**
+     * v30: whole-percent size of the PDP Trustpilot row (stars, score,
+     * review count and the wordmark scale together — the v28 award-strip
+     * calc(var()*Npx) technique, custom property `--cxtp`). Applies to the
+     * Trustpilot strip in the buy box AND to the buy-box proof block's
+     * rating row (both read the shared `tp` island member, which carries
+     * `s` ONLY when this is ABOVE 100 — 100, the default, is byte-identical
+     * DOM). Clamped to TRUSTPILOT_SCALE_MIN..MAX. LIVE display setting
+     * (the v6.5 placement precedent — no draft/preview plumbing).
+     */
+    scale: number;
   };
   guarantee: {
     enabled: boolean;
@@ -1203,18 +1214,10 @@ export interface BoosterSettings {
     badges: string[];
     /** The "{days}-day money-back guarantee" card (guarantee.days). */
     showGuarantee: boolean;
-    /** The star rating + review-count + Trustpilot row (trustpilot.*). */
+    /** The star rating + review-count + Trustpilot row (trustpilot.*).
+     *  v30: its SIZE follows the shared `trustpilot.scale` (the row reads
+     *  the same `tp` island member the strip does). */
     showRating: boolean;
-    /**
-     * v30: whole-percent size of the rating row (stars, score, count and the
-     * Trustpilot wordmark scale together — the v28 award-strip
-     * calc(var()*Npx) technique, custom property `--cxtp`). 100 = the
-     * designed size, byte-identical DOM (the storefront only writes the
-     * property when the value is ABOVE 100), clamped to
-     * BUY_BOX_RATING_SCALE_MIN..MAX. LIVE display setting (the v6.5
-     * placement precedent — no draft/preview plumbing).
-     */
-    ratingScale: number;
     // v29: the research band (with its seal) and the award strip moved to
     // their OWN sections/features — researchBand and awardStrip below
     // (docs/SPEC-v29-proof-split.md). coerceLegacyProofSplit migrates a
@@ -1684,13 +1687,15 @@ export const IMAGE_BADGE_MAX_IMAGE_SHARE = 0.25;
 export const IMAGE_BADGE_MAX_ROW_SHARE = 0.75;
 
 /**
- * v30: bounds for buyBoxProof.ratingScale (whole percent of the designed
- * rating-row size). MIN doubles as the default: 100 = byte-identical DOM
- * (the storefront omits the `--cxtp` custom property entirely at 100).
- * Route loaders pass these through as values (the v8.3 build lesson).
+ * v30: bounds for trustpilot.scale (whole percent of the designed PDP
+ * Trustpilot-row size — the strip AND the proof block's rating row). MIN
+ * doubles as the default: 100 = byte-identical DOM (the island omits the
+ * `s` member and the storefront omits the `--cxtp` custom property
+ * entirely at 100). Route loaders pass these through as values (the v8.3
+ * build lesson).
  */
-export const BUY_BOX_RATING_SCALE_MIN = 100;
-export const BUY_BOX_RATING_SCALE_MAX = 200;
+export const TRUSTPILOT_SCALE_MIN = 100;
+export const TRUSTPILOT_SCALE_MAX = 200;
 
 /**
  * SAFE-BY-DEFAULT: every feature master switch ships OFF, and every render
@@ -1750,6 +1755,7 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     reviewCount: 1000,
     profileUrl: "https://www.trustpilot.com/review/cellexia.com",
     showLink: true,
+    scale: TRUSTPILOT_SCALE_MIN,
   },
   guarantee: {
     enabled: false,
@@ -1927,7 +1933,6 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     ],
     showGuarantee: true,
     showRating: true,
-    ratingScale: BUY_BOX_RATING_SCALE_MIN,
   },
   researchBand: {
     enabled: false,
@@ -3583,17 +3588,6 @@ export function sanitizeSettings(
     next.buyBoxProof.showDeliveryBadge !== false;
   next.buyBoxProof.showGuarantee = next.buyBoxProof.showGuarantee !== false;
   next.buyBoxProof.showRating = next.buyBoxProof.showRating !== false;
-  // v30: whole percent of the designed rating-row size. 100 (also the
-  // fallback for a pre-v30 blob or junk) = byte-identical DOM — the
-  // storefront writes `--cxtp` only when the clamped value is above 100.
-  next.buyBoxProof.ratingScale = Math.round(
-    clampNumber(
-      next.buyBoxProof.ratingScale,
-      BUY_BOX_RATING_SCALE_MIN,
-      BUY_BOX_RATING_SCALE_MAX,
-      BUY_BOX_RATING_SCALE_MIN,
-    ),
-  );
   next.buyBoxProof.badges = Array.from(
     new Set(
       (next.buyBoxProof.badges ?? []).filter(
@@ -3730,6 +3724,18 @@ export function sanitizeSettings(
     next.trustpilot.profileUrl,
     previous.trustpilot.profileUrl,
     DEFAULT_SETTINGS.trustpilot.profileUrl,
+  );
+  // v30: whole percent of the designed PDP Trustpilot-row size. 100 (also
+  // the fallback for a pre-v30 blob or junk) = byte-identical DOM — the
+  // island emits `s` only above 100, and the storefront writes `--cxtp`
+  // only then.
+  next.trustpilot.scale = Math.round(
+    clampNumber(
+      next.trustpilot.scale,
+      TRUSTPILOT_SCALE_MIN,
+      TRUSTPILOT_SCALE_MAX,
+      TRUSTPILOT_SCALE_MIN,
+    ),
   );
 
   next.guarantee.days = clampNumber(

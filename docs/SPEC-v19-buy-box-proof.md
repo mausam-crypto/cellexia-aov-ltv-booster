@@ -35,15 +35,16 @@ now (`award_strip`, `research_band`) — own flags, scopes, previews, beacons �
 and render whatever this block's flag says. This feature keeps the in-panel
 rows and the replacement rule only. The sibling order above still holds.
 
-**v30 (docs/SPEC-v30-trustpilot-tuning.md):** `buyBoxProof.ratingScale`
-(whole percent, 100–200, default 100) sizes the rating row. `bbpRatingRow`
-writes the inline `--cxtp` custom property ONLY when the clamped value is
-ABOVE 100, and every metric of the row is authored
+**v30 (docs/SPEC-v30-trustpilot-tuning.md):** the rating row's SIZE
+follows the SHARED `trustpilot.scale` (whole percent, 100–200, default
+100 — the slider lives on Trust & badges → Trustpilot, and also drives
+the standalone PDP strip). The shared `tp` island member carries `s` only
+above 100; `bbpRatingRow` passes it through `cxTpScale`, which writes the
+inline `--cxtp` custom property, and every metric of the row is authored
 `calc(var(--cxtp,1)*Npx)` in the stylesheet (the v28 award-strip
-technique), so 100 — and every pre-v30 mirror without the key — is
-byte-identical DOM with identical computed styles. Admin: "Rating row
-size" slider with a to-scale mock on this feature's page. LIVE display
-setting (the v6.5 placement precedent).
+technique) — so 100, and every pre-v30 mirror, is byte-identical DOM with
+identical computed styles. LIVE display setting (the v6.5 placement
+precedent).
 
 ## 2. One source of truth per fact
 

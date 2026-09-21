@@ -2641,6 +2641,16 @@
     return span;
   }
 
+  function cxStarIcon(size) {
+    // v30.2 twin of cellexia-pdp.js cxStarIcon — the one FILLED star (its
+    // shell differs from cxIcon's stroked shell), colored Trustpilot green
+    // by the shared .cx-trustpilot__brand-star rule. No dynamic value ever
+    // reaches this innerHTML.
+    var wrap = document.createElement('div');
+    wrap.innerHTML = '<svg class="cx-icon cx-trustpilot__brand-star" width="' + size + '" height="' + size + '" viewBox="0 0 20 20" fill="currentColor" stroke="none" aria-hidden="true" focusable="false"><path d="M10 1.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L1.6 7.7l5.8-.8z"/></svg>';
+    return wrap.firstChild || document.createTextNode('');
+  }
+
   function trustRowBuildNode() {
     var root = cxEl('div', 'cx-trust-row', ['data-cx-feature', 'trust_badges']);
     cxSp(root);
@@ -2663,15 +2673,36 @@
     if (SETTINGS.trustpilotEnabled === true && tp && typeof tp === 'object') {
       // the old cx_tp_on branch: settings.trustpilotEnabled IS cx_tp_on
       var item3;
-      if (tp.link === false) {
-        item3 = cxEl('span', 'cx-trust-row__item d-flex align-center no-dec');
+      // v30.2: the url rides the raw config now (the Liquid default was
+      // dieted away for the cnt member) — same \S guard as the PDP strip
+      // and the bbp row, so a blank/absent url renders the plain span.
+      if (tp.link === false || typeof tp.url !== 'string' || !/\S/.test(tp.url)) {
+        item3 = cxEl('span', 'cx-trust-row__item cx-trust-row__item--tp d-flex align-center no-dec');
       } else {
-        item3 = cxEl('a', 'cx-trust-row__item cx-trust-row__item--link d-flex align-center no-dec', ['href', cxRawStr(tp, 'url'), 'target', '_blank', 'rel', 'noopener nofollow']);
+        item3 = cxEl('a', 'cx-trust-row__item cx-trust-row__item--tp cx-trust-row__item--link d-flex align-center no-dec', ['href', cxRawStr(tp, 'url'), 'target', '_blank', 'rel', 'noopener nofollow']);
       }
       item3.appendChild(cxStarsNode(tp.r, 'cart-trust', 14, cxStr(tp, 'aria')));
       var s3 = document.createElement('span');
       s3.textContent = cxStr(tp, 'label');
       item3.appendChild(s3);
+      cxSp(item3);
+      // v30.2 (merchant): the cell now carries the review count and the
+      // Trustpilot wordmark like every other surface. `cnt` is precomposed
+      // server-side ('trustpilot.reviews_count' with the live count); a
+      // mirror from the deploy gap has no cnt — the span is simply skipped.
+      var cnt = cxStr(tp, 'cnt');
+      if (cnt) {
+        var s4 = document.createElement('span');
+        s4.textContent = cnt;
+        item3.appendChild(s4);
+        cxSp(item3);
+      }
+      var brand = cxEl('span', 'cx-trust-row__brand');
+      brand.appendChild(cxStarIcon(12));
+      var brandName = document.createElement('span');
+      brandName.textContent = 'Trustpilot';
+      brand.appendChild(brandName);
+      item3.appendChild(brand);
       cxSp(item3);
       root.appendChild(item3);
     }

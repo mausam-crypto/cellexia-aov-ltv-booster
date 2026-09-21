@@ -584,6 +584,28 @@ body.customer--b2b .cx-sub-remove {
   color: inherit;
 }
 
+/* v30.2: the Trustpilot cell carries the review count + wordmark now — it
+   may wrap INTERNALLY on narrow phones (each piece stays whole via the
+   child nowrap), and the wordmark matches the strip's lockup: bold ink
+   plus the shared green brand star. */
+.cx-trust-row__item--tp {
+  white-space: normal;
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 3px;
+}
+
+.cx-trust-row__item--tp > span {
+  white-space: nowrap;
+}
+
+.cx-trust-row__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 700;
+}
+
 /* ------------------------------------------------------------- trust badges */
 
 .cx-badges {
@@ -752,14 +774,63 @@ body.customer--b2b .cx-sub-remove {
   text-underline-offset: 2px;
 }
 
+/* v30: every metric of the PDP strip is authored as
+   calc(var(--cxtp, 1) * Npx) — the v28 award-strip technique — so the ONE
+   inline `--cxtp` custom property cxTpScale writes on the root (only when
+   the merchant raises Trustpilot size above 100%) scales stars, score,
+   count and the wordmark proportionally. Unset var = factor 1 = the exact
+   pre-v30 values. Margin/padding stay fixed on purpose (page rhythm, not
+   row size); the base .cx-trustpilot rules stay untouched so the other
+   strip variants keep their designed sizes. */
 .cx-trustpilot--pdp {
   margin-block-start: 10px;
   padding-block: 6px;
+  gap: calc(var(--cxtp, 1) * 8px) calc(var(--cxtp, 1) * 16px);
+}
+
+.cx-trustpilot--pdp .cx-trustpilot__main {
+  gap: calc(var(--cxtp, 1) * 8px);
+}
+
+.cx-trustpilot--pdp .cx-stars {
+  gap: calc(var(--cxtp, 1) * 2px);
+}
+
+.cx-trustpilot--pdp .cx-stars__star {
+  width: calc(var(--cxtp, 1) * 16px);
+  height: calc(var(--cxtp, 1) * 16px);
+}
+
+.cx-trustpilot--pdp .cx-trustpilot__rating {
+  font-size: calc(var(--cxtp, 1) * 13px);
+}
+
+.cx-trustpilot--pdp .cx-trustpilot__brand {
+  gap: calc(var(--cxtp, 1) * 3px);
+  font-size: calc(var(--cxtp, 1) * 13px);
+}
+
+.cx-trustpilot--pdp .cx-trustpilot__brand-star {
+  width: calc(var(--cxtp, 1) * 14px);
+  height: calc(var(--cxtp, 1) * 14px);
 }
 
 .cx-trustpilot--pdp .cx-trustpilot__count,
 .cx-trustpilot--pdp .cx-trustpilot__link {
-  font-size: 11px;
+  font-size: calc(var(--cxtp, 1) * 11px);
+}
+
+/* An ENLARGED strip wraps whole pieces on narrow phones instead of
+   squeezing the count mid-phrase or clipping the wordmark. The attribute
+   selector matches ONLY rows cxTpScale stamped with the inline custom
+   property, so the default (100%) render keeps today's exact layout. */
+.cx-trustpilot--pdp[style*="--cxtp"] .cx-trustpilot__main {
+  flex-wrap: wrap;
+}
+
+.cx-trustpilot--pdp[style*="--cxtp"] .cx-trustpilot__rating,
+.cx-trustpilot--pdp[style*="--cxtp"] .cx-trustpilot__count {
+  white-space: nowrap;
 }
 
 .cx-stars {

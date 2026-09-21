@@ -140,8 +140,6 @@ assign threshold = cfg.global.freeShippingThreshold | default: 150
 assign cx_fs = cfg.freeShipping.byMarket[cx_market]
 assign guarantee_days = cfg.guarantee.days | default: 60
 assign tp_rating = cfg.trustpilot.rating | default: 4.8
-assign tp_rating_rounded = tp_rating | round: 1
-assign tp_url = cfg.trustpilot.profileUrl | default: 'https://www.trustpilot.com/review/cellexia.com'
 assign cx_live_cart = false
 if cfg.cartUpsell.enabled == true
 assign cx_live_cart = true
@@ -413,8 +411,9 @@ if tp_stars < 0
 assign tp_stars = 0.0
 endif
 assign tp_stars_label = tp_stars | round: 1
+assign tp_count = cfg.trustpilot.reviewCount | default: 1000
 -%}
-"tpr": {"aria": {{ 'a11y.rating_out_of_5' | t: rating: tp_stars_label | json }}, "label": {{ tp_rating_rounded | append: '' | replace: '.', tp_sep | append: '/5' | json }}, "r": {{ tp_stars | json }}, "url": {{ tp_url | json }}, "link": {% if cfg.trustpilot.showLink == false %}false{% else %}true{% endif %}},
+"tpr": {"aria": {{ 'a11y.rating_out_of_5' | t: rating: tp_stars_label | json }}, "label": {{ tp_rating | round: 1 | append: '' | replace: '.', tp_sep | append: '/5' | json }}, "cnt": {{ 'trustpilot.reviews_count' | t: count: tp_count | json }}, "r": {{ tp_stars | json }}, "url": {{ cfg.trustpilot.profileUrl | json }}, "link": {% if cfg.trustpilot.showLink == false %}false{% else %}true{% endif %}},
 {%- endif %}
 {%- if cx_eff_azfree or cx_draft_azfree %}
 "af": 1,
