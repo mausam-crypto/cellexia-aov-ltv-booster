@@ -474,7 +474,7 @@ endif
 "ab": {"live": {{ cx_abl }}},
 {%- endif %}
 {%- if cx_qy %}
-"qy": {"live": {{ cx_qyl }}{% if cfg.quantitySync.volume == true %}, "vd": 1{% endif %}},
+"qy": {"live": {{ cx_qyl }}{% if cfg.quantitySync.volumeLive == true %}, "vd": 1{% endif %}},
 {%- endif %}
 "placement": {{ block.settings.proof_placement | default: 'above_tabs' | json }}
 {%- if cx_prev_armed -%}

@@ -9,11 +9,11 @@
 # template): the export value maps to the camelCase named export of
 # src/index.js.
 api_version = "2025-10"
-uid = "5e67cff0-d9a2-2358-51ff-215227a8295e1bede325"
 
 [[extensions]]
 name = "Cellexia volume pricing"
 handle = "cellexia-volume"
+uid = "5e67cff0-d9a2-2358-51ff-215227a8295e1bede325"
 type = "function"
 description = "Automatic top-tier per-unit pricing at 4+ units for Cellexia AOV & LTV Booster."
 

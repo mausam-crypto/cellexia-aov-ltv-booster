@@ -16,7 +16,7 @@ import {
 } from "../models/settings.server";
 import { gateDigestPair } from "../models/gate-digest";
 import { marketCountryMap } from "./markets.server";
-import { projectVolumeScope } from "./volume-pricing.server";
+import { commitVolumePlan, planVolumeScope, type VolumePlan } from "./volume-pricing.server";
 
 /**
  * Mirrors the settings blob to the two places extensions read it from:
@@ -624,8 +624,29 @@ export async function syncSettingsToMetafields(
   const draftConfig = effectivePreview.armed
     ? effectivePreview.draftConfig
     : {};
+  // v32.1: the storefront must gate the widget's 4+ volume mode on the
+  // VERIFIED armed verdict (the volume metafield's `on`), never the raw
+  // admin switch — the v32.0 field incident was the widget showing/adding
+  // discounted counts while arming had been refused. The plan is computed
+  // here so `quantitySync.volumeLive` in BOTH mirrors states what checkout
+  // will actually honor; step 3 commits the plan's re-projection.
+  let volumePlan: VolumePlan | null = null;
+  if (shopDomain) {
+    try {
+      volumePlan = await planVolumeScope(admin, shopDomain, settings);
+    } catch (error) {
+      volumePlan = null;
+      // Recorded again as a step-3 warning below; volumeLive fails CLOSED.
+      void error;
+    }
+  }
+  const quantitySyncMirror = {
+    ...settings.quantitySync,
+    volumeLive: volumePlan?.on === true,
+  };
   const liquidValue = JSON.stringify({
     ...settings,
+    quantitySync: quantitySyncMirror,
     // v22: digests only — the raw param/token stay in the app database.
     paramGates: projectGates(settings.paramGates),
     preview: { armed: effectivePreview.armed, draftFlags, draftConfig },
@@ -636,6 +657,7 @@ export async function syncSettingsToMetafields(
   // it (v6.0) to honor a previewed delivery format, exactly like Liquid does.
   const checkoutValue = JSON.stringify({
     ...settings,
+    quantitySync: quantitySyncMirror,
     // v22: checkout has no gated surface, but the same projection applies so
     // the raw pair cannot reach Shopify through this mirror either.
     paramGates: projectGates(settings.paramGates),
@@ -750,9 +772,9 @@ export async function syncSettingsToMetafields(
     );
   }
 
-  // STEP 3 (v32): the volume-pricing CHEAP re-projection
-  // (docs/SPEC-v32-volume-pricing.md §2.5) — re-derives the `on` flag and
-  // the market-scope country filter over the ALREADY-mirrored prices, so a
+  // STEP 3 (v32/v32.1): commit the volume-pricing CHEAP re-projection
+  // planned above (docs/SPEC-v32-volume-pricing.md §2.5) — the `on` flag +
+  // market-scope country filter over the ALREADY-mirrored prices, so a
   // feature toggle or a Markets-matrix scope flip from ANY admin page is
   // honored in the same save (no price fetch here; full refreshes belong
   // to the Quantity page / webhook / TTL paths). Best-effort like step 2:
@@ -760,7 +782,13 @@ export async function syncSettingsToMetafields(
   // entirely while the volume config has never been synced.
   if (shopDomain) {
     try {
-      warnings.push(...(await projectVolumeScope(admin, shopDomain, settings)));
+      if (volumePlan) {
+        warnings.push(...(await commitVolumePlan(admin, volumePlan)));
+      } else {
+        warnings.push(
+          "Volume pricing re-projection skipped: the volume config could not be read (volumeLive mirrored as OFF).",
+        );
+      }
     } catch (error) {
       warnings.push(
         `Volume pricing re-projection failed: ${

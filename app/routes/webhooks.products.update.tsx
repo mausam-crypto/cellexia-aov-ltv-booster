@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import { getSettings } from "../models/settings.server";
 import { refreshVolumePricing } from "../services/volume-pricing.server";
+import { syncSettingsToMetafields } from "../services/metafields.server";
 
 /**
  * v32 volume pricing — price-change watcher
@@ -33,6 +34,13 @@ async function runRefresh(
     const result = await refreshVolumePricing(admin, shop, settings, { force: false });
     if (!result.ok) {
       console.warn(`[cellexia-volume] price refresh for ${shop}: ${result.errors.join("; ")}`);
+    }
+    // v32.1: mirror the storefront's volumeLive verdict from the refreshed
+    // volume config (best-effort like everything in this route).
+    try {
+      await syncSettingsToMetafields(admin, settings);
+    } catch (error) {
+      console.warn(`[cellexia-volume] post-refresh sync for ${shop}:`, error);
     }
   } catch (error) {
     console.error(`[cellexia-volume] price refresh crashed for ${shop}:`, error);

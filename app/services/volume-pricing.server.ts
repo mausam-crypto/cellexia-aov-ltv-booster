@@ -60,8 +60,9 @@ export const VOLUME_FUNCTION_HANDLE = "cellexia-volume";
 export const VOLUME_DISCOUNT_TITLE = "Cellexia volume pricing";
 /** Full refreshes older than this are re-run lazily from the admin loader. */
 export const VOLUME_SYNC_TTL_MS = 24 * 60 * 60 * 1000;
-/** Aliases per contextualPricing call (the rewards CONTEXTUAL_BATCH twin). */
-const CONTEXTUAL_BATCH = 40;
+/** Aliases per contextualPricing call — 20 (half the rewards batch): the
+ *  cost per call stays well under the throttle bucket even mid-burst. */
+const CONTEXTUAL_BATCH = 20;
 /** Variant-title unit parse, the qselQty server twin (leading int 1..24). */
 export function unitCount(title: string | undefined): number {
   const m = /^\s*(\d{1,2})(?!\d)/.exec(typeof title === "string" ? title : "");
@@ -92,7 +93,11 @@ export interface VolumeConfig {
   v: 1;
   on: boolean;
   p: Record<string, { k: number; v1: string; cc: Record<string, VolumeCountryEntry> }>;
-  _s: { h: string; t: string; d: string };
+  /** Server state (the function ignores it): inputs hash, synced ISO time,
+   *  discount GID, last refresh outcome + reasons (v32.1 — so the admin
+   *  page can SAY why arming was refused instead of leaving the merchant
+   *  to guess). */
+  _s: { h: string; t: string; d: string; ok?: boolean; e?: string[] };
 }
 
 export interface VolumeStatus {
@@ -105,6 +110,8 @@ export interface VolumeStatus {
   /** in-scope countries that have NO mirrored prices yet (await a full refresh) */
   missingCountries: string[];
   stale: boolean;
+  /** v32.1 — the persisted reasons of the last refresh (empty = clean). */
+  lastErrors: string[];
 }
 
 export interface VolumeResult {
@@ -281,9 +288,30 @@ export async function deriveTierProducts(admin: AdminGraphqlClient): Promise<Tie
 
 // ------------------------------------------------------- country pricing
 
+/** Pause between pricing calls — aliased contextualPricing is cost-heavy
+ *  and the v32.0 field failure was exactly this: unpaced bursts hit the
+ *  GraphQL throttle mid-run and left silent per-country gaps. */
+const PRICE_CALL_SPACING_MS = 250;
+const THROTTLE_RETRIES = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isThrottled(errors: { message?: string; extensions?: { code?: string } }[] | undefined): boolean {
+  for (const e of errors ?? []) {
+    if (e?.extensions?.code === "THROTTLED") return true;
+    if (typeof e?.message === "string" && e.message.toLowerCase().includes("throttl")) return true;
+  }
+  return false;
+}
+
 /**
- * contextualPricing for one variant across many countries, aliased 40 per
- * call (the v18 gifts pattern). Returns ISO2 -> {currency, amount}.
+ * contextualPricing for one variant across many countries, aliased
+ * CONTEXTUAL_BATCH per call (the v18 gifts pattern), PACED and
+ * throttle-retried (v32.1). Throws on a batch that still fails after the
+ * retries — a silent gap must never masquerade as "no price for that
+ * country" (the caller decides per product what a failure means).
  */
 async function fetchVariantCountryPrices(
   admin: AdminGraphqlClient,
@@ -297,16 +325,29 @@ async function fetchVariantCountryPrices(
       (code, n) =>
         `c${n}: productVariant(id: $id) { contextualPricing(context: {country: ${code}}) { price { amount currencyCode } } }`,
     );
-    const json = await gql<{
-      data?: Record<
-        string,
-        { contextualPricing?: { price?: { amount?: string; currencyCode?: string } | null } | null } | null
-      >;
-    }>(admin, `query cellexiaVolumePrices($id: ID!) { ${aliases.join(" ")} }`, {
-      id: variantGid,
-    });
+    let json:
+      | {
+          data?: Record<
+            string,
+            { contextualPricing?: { price?: { amount?: string; currencyCode?: string } | null } | null } | null
+          >;
+          errors?: { message?: string; extensions?: { code?: string } }[];
+        }
+      | null = null;
+    for (let attempt = 0; attempt <= THROTTLE_RETRIES; attempt += 1) {
+      if (i > 0 || attempt > 0) await sleep(attempt === 0 ? PRICE_CALL_SPACING_MS : 1000 * Math.pow(2, attempt - 1));
+      json = await gql(admin, `query cellexiaVolumePrices($id: ID!) { ${aliases.join(" ")} }`, {
+        id: variantGid,
+      });
+      if (!isThrottled(json?.errors)) break;
+      json = null;
+    }
+    if (!json || (json.errors && json.errors.length && !json.data)) {
+      const msg = json?.errors?.map((e) => e.message).join("; ") || "throttled after retries";
+      throw new Error(`contextualPricing batch failed: ${msg}`);
+    }
     slice.forEach((code, n) => {
-      const price = json.data?.[`c${n}`]?.contextualPricing?.price;
+      const price = json?.data?.[`c${n}`]?.contextualPricing?.price;
       if (price?.amount && price.currencyCode) {
         out.set(code, { currency: price.currencyCode, amount: price.amount });
       }
@@ -512,14 +553,18 @@ export async function refreshVolumePricing(
     errors.push("The quantity-sync market scope admits no countries.");
   }
 
+  // v32.1: PER-PRODUCT arming (the v32.0 all-or-nothing refused the whole
+  // feature over one transient failure; every anchor in the function is
+  // per line, so a product with clean data is safe to arm regardless of a
+  // sibling's fetch trouble). Fetches run SEQUENTIALLY and paced; a
+  // product whose fetch still fails after the throttle retries is skipped
+  // WITH a recorded reason, never silently.
   const p: VolumeConfig["p"] = {};
-  let priceFailures = 0;
+  const skipped: string[] = [];
   for (const product of tierProducts) {
     try {
-      const [ones, tops] = await Promise.all([
-        fetchVariantCountryPrices(admin, product.v1Gid, countries),
-        fetchVariantCountryPrices(admin, product.vTopGid, countries),
-      ]);
+      const ones = await fetchVariantCountryPrices(admin, product.v1Gid, countries);
+      const tops = await fetchVariantCountryPrices(admin, product.vTopGid, countries);
       const cc: Record<string, VolumeCountryEntry> = {};
       for (const code of countries) {
         const one = ones.get(code);
@@ -535,38 +580,45 @@ export async function refreshVolumePricing(
       }
       if (Object.keys(cc).length > 0) {
         p[product.pid] = { k: product.k, v1: product.v1, cc };
+      } else {
+        skipped.push(`${product.title}: no usable price points in the scoped countries.`);
       }
     } catch (error) {
-      priceFailures += 1;
-      errors.push(`Prices for ${product.title}: ${errorMessage(error)}`);
+      skipped.push(`${product.title}: ${errorMessage(error)}`);
     }
   }
+  errors.push(...skipped);
 
-  const buildComplete = errors.length === 0 && priceFailures === 0 && Object.keys(p).length > 0;
-  const on = armed && buildComplete;
-  if (armed && !buildComplete) {
+  const on = armed && Object.keys(p).length > 0;
+  if (armed && Object.keys(p).length === 0) {
     errors.push(
-      "Volume pricing was NOT armed: the price sync did not complete cleanly. Fix the errors above and save again.",
+      "Volume pricing was NOT armed: no product ended up with usable prices. Fix the reasons above and press Refresh prices now.",
     );
   }
 
   const hash = sha256Hex(
     JSON.stringify({ p, on, countries, scope: settings.marketScopes.quantity_sync }),
   );
-  if (!options.force && previous && previous._s?.h === hash && previous._s?.d) {
+  if (!options.force && previous && previous._s?.h === hash && previous._s?.d && previous._s?.ok === (errors.length === 0)) {
     return { ok: errors.length === 0, errors, notes: ["Volume config unchanged — nothing to write."] };
   }
 
   const discountId = await ensureVolumeDiscount(admin, previous?._s?.d ?? "", errors);
+  if (on && !discountId) {
+    errors.push("Volume pricing was NOT armed: the automatic discount could not be created.");
+  }
   const cfg: VolumeConfig = {
     v: 1,
     on: on && !!discountId,
     p,
-    _s: { h: hash, t: new Date().toISOString(), d: discountId },
+    _s: {
+      h: hash,
+      t: new Date().toISOString(),
+      d: discountId,
+      ok: errors.length === 0,
+      e: errors.slice(0, 8).map((e) => e.slice(0, 200)),
+    },
   };
-  if (on && !discountId) {
-    errors.push("Volume pricing was NOT armed: the automatic discount could not be created.");
-  }
   try {
     const writeErrors = await writeVolumeConfig(admin, shopId, cfg);
     if (writeErrors.length) {
@@ -586,48 +638,77 @@ export async function refreshVolumePricing(
 
 // ------------------------------------------------------ cheap re-projection
 
+export interface VolumePlan {
+  shopId: string;
+  current: VolumeConfig | null;
+  /** The re-projected config to write (null when nothing was ever mirrored). */
+  next: VolumeConfig | null;
+  /**
+   * The VERIFIED armed verdict — what the storefront blob mirrors as
+   * `quantitySync.volumeLive` (v32.1). This is the fix for the v32.0 field
+   * incident: the widget's 4+ mode must follow what checkout will actually
+   * honor, never the raw admin switch, so a refused/incomplete arming can
+   * only ever fall back to the v31 whole-packs composition (correct
+   * charges, no function needed) instead of showing a discount that never
+   * applies.
+   */
+  on: boolean;
+  warnings: string[];
+}
+
 /**
- * The settings-sync hook: re-derives `on` and the scope filter over the
+ * The settings-sync half 1: re-derives `on` and the scope filter over the
  * ALREADY-mirrored prices (no Admin price fetch), so a scope flip or a
  * feature toggle from any admin page is honored in the same save. Newly
  * scoped countries without mirrored prices stay excluded (fail closed)
- * until the next full refresh; volumeStatus() surfaces them.
+ * until the next full refresh; volumeStatus() surfaces them. Pure
+ * read+compute — commitVolumePlan() writes.
  */
-export async function projectVolumeScope(
+export async function planVolumeScope(
   admin: AdminGraphqlClient,
   shop: string,
   settings: BoosterSettings,
-): Promise<string[]> {
-  const warnings: string[] = [];
-  let shopId = "";
-  let cfg: VolumeConfig | null = null;
+): Promise<VolumePlan> {
+  const plan: VolumePlan = { shopId: "", current: null, next: null, on: false, warnings: [] };
   try {
     const read = await readVolumeConfig(admin);
-    shopId = read.shopId;
-    cfg = read.cfg;
+    plan.shopId = read.shopId;
+    plan.current = read.cfg;
   } catch (error) {
-    return [`Volume re-projection read failed: ${errorMessage(error)}`];
+    plan.warnings.push(`Volume re-projection read failed: ${errorMessage(error)}`);
+    return plan;
   }
-  if (!cfg || !shopId) return warnings; // never synced: nothing to re-project
+  if (!plan.current || !plan.shopId) return plan; // never synced
   let wanted: Set<string>;
   try {
     wanted = new Set(await scopedCountries(admin, shop, settings));
   } catch (error) {
-    return [`Volume re-projection scope failed: ${errorMessage(error)}`];
+    plan.warnings.push(`Volume re-projection scope failed: ${errorMessage(error)}`);
+    return plan;
   }
   const p: VolumeConfig["p"] = {};
-  for (const [pid, entry] of Object.entries(cfg.p)) {
+  for (const [pid, entry] of Object.entries(plan.current.p)) {
     const cc: Record<string, VolumeCountryEntry> = {};
     for (const [code, ce] of Object.entries(entry.cc)) {
       if (wanted.has(code)) cc[code] = ce;
     }
     if (Object.keys(cc).length > 0) p[pid] = { k: entry.k, v1: entry.v1, cc };
   }
-  const on = volumeArmed(settings) && Object.keys(p).length > 0 && !!cfg._s?.d;
-  const next: VolumeConfig = { v: 1, on, p, _s: cfg._s };
-  if (JSON.stringify(next) === JSON.stringify(cfg)) return warnings;
+  plan.on = volumeArmed(settings) && Object.keys(p).length > 0 && !!plan.current._s?.d;
+  plan.next = { v: 1, on: plan.on, p, _s: plan.current._s };
+  return plan;
+}
+
+/** The settings-sync half 2: write the plan's next config when it differs. */
+export async function commitVolumePlan(
+  admin: AdminGraphqlClient,
+  plan: VolumePlan,
+): Promise<string[]> {
+  const warnings = [...plan.warnings];
+  if (!plan.next || !plan.shopId || !plan.current) return warnings;
+  if (JSON.stringify(plan.next) === JSON.stringify(plan.current)) return warnings;
   try {
-    const writeErrors = await writeVolumeConfig(admin, shopId, next);
+    const writeErrors = await writeVolumeConfig(admin, plan.shopId, plan.next);
     warnings.push(...writeErrors.map((e) => `Volume re-projection write: ${e}`));
   } catch (error) {
     warnings.push(`Volume re-projection write: ${errorMessage(error)}`);
@@ -652,6 +733,7 @@ export async function volumeStatus(
     countries: 0,
     missingCountries: [],
     stale: false,
+    lastErrors: [],
   };
   let cfg: VolumeConfig | null = null;
   try {
@@ -664,6 +746,7 @@ export async function volumeStatus(
   status.on = cfg.on === true;
   status.discountId = cfg._s?.d ?? "";
   status.syncedAt = cfg._s?.t ?? "";
+  status.lastErrors = Array.isArray(cfg._s?.e) ? cfg._s.e.filter((e) => typeof e === "string") : [];
   status.products = Object.keys(cfg.p).length;
   const covered = new Set<string>();
   for (const entry of Object.values(cfg.p)) {

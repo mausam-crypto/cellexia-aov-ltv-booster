@@ -1561,8 +1561,15 @@ const EVIDENCE = {
 
   // Paths legitimately absent from DEFAULT_SETTINGS, each pinned to the
   // code that injects them into the metafield emission at write time.
+  // Keys may be a top-level member or a FULL dotted path (v32.1).
   const INJECTED = {
     preview: { file: "app/services/metafields.server.ts", has: "preview: {" },
+    // v32.1: the VERIFIED volume-armed verdict, computed from the volume
+    // config metafield at sync time — never a stored setting.
+    "quantitySync.volumeLive": {
+      file: "app/services/metafields.server.ts",
+      has: "volumeLive: volumePlan?.on === true,",
+    },
   };
 
   const liquidPaths = new Set();
@@ -1574,10 +1581,11 @@ const EVIDENCE = {
   ok(liquidPaths.size >= 80, `config paths: Liquid read surface visible (${liquidPaths.size} paths)`);
   for (const p of liquidPaths) {
     const top = p.split(".")[0];
-    if (INJECTED[top]) {
+    const injected = INJECTED[p] || INJECTED[top];
+    if (injected) {
       ok(
-        read(INJECTED[top].file).includes(INJECTED[top].has),
-        `config paths: injected member '${top}' still written by ${INJECTED[top].file}`,
+        read(injected.file).includes(injected.has),
+        `config paths: injected member '${INJECTED[p] ? p : top}' still written by ${injected.file}`,
       );
       continue;
     }
@@ -5691,12 +5699,14 @@ const EVIDENCE = {
     "v32: round-half-up(n x p3 / K) is the shared formula (function logic.js == widget vd arm)",
   );
 
-  // ---- Liquid: the vd flag rides the qy member, gated on the sub-flag ----
+  // ---- Liquid: the vd flag rides the qy member, gated on the VERIFIED
+  // armed verdict (v32.1 — the field incident: the raw switch let the
+  // widget show discounts a refused arming never charged) ----
   ok(
     read(`${EXT}/blocks/pdp-booster.liquid`).includes(
-      '"qy": {"live": {{ cx_qyl }}{% if cfg.quantitySync.volume == true %}, "vd": 1{% endif %}},',
+      '"qy": {"live": {{ cx_qyl }}{% if cfg.quantitySync.volumeLive == true %}, "vd": 1{% endif %}},',
     ),
-    "v32: the island emits vd only while the volume sub-flag is on",
+    "v32.1: the island emits vd only on the VERIFIED volumeLive verdict, never the raw switch",
   );
 
   // ---- widget: vd mode never intercepts; the capture pin still holds ----
@@ -5714,15 +5724,21 @@ const EVIDENCE = {
   );
   const vMeta = read("app/services/metafields.server.ts");
   ok(
-    vMeta.includes("projectVolumeScope(admin, shopDomain, settings)"),
-    "v32: every settings sync re-projects the volume scope/on flag (cheap, no price fetch)",
+    vMeta.includes("volumePlan = await planVolumeScope(admin, shopDomain, settings);") &&
+      vMeta.includes("volumeLive: volumePlan?.on === true,") &&
+      vMeta.includes("commitVolumePlan(admin, volumePlan)"),
+    "v32.1: every settings sync PLANS the volume verdict, mirrors quantitySync.volumeLive into the blob(s), and commits the re-projection",
+  );
+  ok(
+    vMeta.includes("quantitySync: quantitySyncMirror,") &&
+      vMeta.split("quantitySync: quantitySyncMirror,").length === 3,
+    "v32.1: BOTH mirrors (Liquid + checkout) carry the volumeLive verdict",
   );
   const vService = read("app/services/volume-pricing.server.ts");
   ok(
     vService.includes("if (p1 <= 0 || p3 <= 0 || p3 >= product.k * p1) continue;") &&
-      vService.includes("const on = armed && buildComplete;") &&
       vService.includes('startsAt: "2026-01-01T00:00:00Z"'),
-    "v32: the mirror sanity-gates every price point and arms only on a CLEAN build (created active, inert until on)",
+    "v32: the mirror sanity-gates every price point (created active, inert until on)",
   );
   ok(
     vService.includes("combinesWith: COMBINES_WITH_ALL") &&
@@ -5732,6 +5748,34 @@ const EVIDENCE = {
   ok(
     vService.includes("if (unitCount(variants[i].title) !== i + 1) {"),
     "v32: tier eligibility is the qselQty server twin (consecutive 1..K by position)",
+  );
+  // ---- v32.1 field fixes: throttle discipline + per-product arming +
+  // persisted reasons + the post-refresh volumeLive re-sync ----
+  ok(
+    vService.includes('if (e?.extensions?.code === "THROTTLED") return true;') &&
+      vService.includes("const PRICE_CALL_SPACING_MS = 250;") &&
+      vService.includes("const THROTTLE_RETRIES = 3;"),
+    "v32.1: pricing calls are paced and throttle-retried (the unpaced burst was the field failure)",
+  );
+  ok(
+    vService.includes("const on = armed && Object.keys(p).length > 0;") &&
+      vService.includes("skipped.push(`${product.title}: ${errorMessage(error)}`);"),
+    "v32.1: arming is PER PRODUCT — one product's fetch trouble never refuses the rest, and every skip is recorded",
+  );
+  ok(
+    vService.includes("e: errors.slice(0, 8).map((e) => e.slice(0, 200)),"),
+    "v32.1: the last refresh's reasons persist in the config (_s.e) so the admin page can SAY why",
+  );
+  const vQtyRoute = read("app/routes/app.features.quantity.tsx");
+  ok(
+    vQtyRoute.includes("Volume pricing is ON but NOT armed") &&
+      vQtyRoute.includes("volume.lastErrors"),
+    "v32.1: an on-but-not-armed state is a CRITICAL banner with the persisted reasons, not a subdued line",
+  );
+  ok(
+    vQtyRoute.split("await syncSettingsToMetafields(admin,").length >= 3 &&
+      read("app/routes/webhooks.products.update.tsx").includes("await syncSettingsToMetafields(admin, settings);"),
+    "v32.1: every refresh caller re-syncs the settings mirrors so volumeLive flips in the same pass",
   );
 
   // ---- webhook pair ----

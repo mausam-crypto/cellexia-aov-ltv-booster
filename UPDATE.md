@@ -289,11 +289,40 @@ runs the price sync and arms the discount — watch for the green "Armed"
 status). After go-live, place one 4-unit test order to see the discount
 line end to end.
 
+### v32.1 (2026-09-22, after your live test) — why "created but not applying" happened, and the fixes
+
+Your field report: 4 units went into the cart as one line, the discount
+existed in the admin, but the cart charged full price. Two causes, both
+fixed in this build:
+
+1. **The storefront trusted the switch instead of the sync.** "Discount
+   created" is not "discount armed": arming needs the per-country price
+   sync to complete, and the widget was switching to its 4+ mode off the
+   raw checkbox. Now the storefront follows a `volumeLive` verdict that is
+   true ONLY when the sync verified the discount will actually apply — if
+   arming is refused for any reason, 4+ silently falls back to the v31
+   whole-packs composition, which charges correctly on its own. A shown
+   price checkout won't honor can no longer happen.
+2. **The price sync could be silently wrecked by Shopify's rate limit.**
+   Your store prices ~85 countries; the sync's bursts could get throttled
+   mid-run and either refuse arming or leave gaps. It now paces itself,
+   retries throttled calls, arms product-by-product (one product's trouble
+   never blocks the rest), and REMEMBERS why anything was skipped: if the
+   feature is on but not armed, the Quantity page shows a red banner with
+   the exact reasons and a "Refresh prices now" button.
+
+**To get it working:** deploy BOTH halves of v32.1, open the Quantity
+page, turn the 4+ switch back on, Save, and wait for the green
+"Armed: N products across M countries" line (first sync takes up to a
+minute for your country count). If a red banner appears instead, it now
+tells you exactly what to fix. Then re-test a 4-unit cart — the "Volume
+discount" line appears in cart and checkout.
+
 ### Liquid budget
 
-+~50 B (the `vd` flag on the qy island member), paid by further schema
-trims: total 99,467 / 99,500. Zero locale-file keys (the discount label
-ships inside the function).
++~50 B (the `vd` flag on the qy island member; v32.1 renamed the gate to
+`volumeLive`), paid by further schema trims: total 99,471 / 99,500. Zero
+locale-file keys (the discount label ships inside the function).
 
 ## 3b. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
 

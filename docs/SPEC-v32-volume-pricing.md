@@ -105,6 +105,35 @@ sims/volume-function.mjs + the sims/quantity-sync.cjs vd block.
     `add_to_cart` beacon now rides the native add path only when
     intercepting — i.e. never in vd mode — impressions/clicks unchanged).
 
+## 2b. v32.1 — the field fixes (2026-09-22, after the merchant's live test)
+
+The v32.0 build shipped and the merchant hit exactly the failure class §2.1
+was supposed to prevent: the widget ran vd mode (4 singles in the cart, a
+discounted total on the button) while the discount never applied. Two
+defects, both fixed and now BINDING:
+
+11. **The widget follows the VERIFIED armed verdict, never the raw
+    switch.** `syncSettingsToMetafields` computes `quantitySync.volumeLive`
+    (= the volume metafield's `on` via `planVolumeScope`) and injects it
+    into BOTH config mirrors; the island gates `vd` on `volumeLive`. A
+    refused/incomplete arming therefore degrades to the v31 whole-packs
+    composition (correct charges, no function involved) — a shown discount
+    that checkout won't honor is now structurally impossible. Every
+    refresh caller (Quantity save, the refresh button, the webhook, the
+    lazy TTL) re-syncs the mirrors afterwards so volumeLive flips in the
+    same pass. volumeLive is computed-only: never stored in settings,
+    registered as an INJECTED path in the harness emission check.
+12. **The price sync survives Shopify's throttle and arms per product.**
+    contextualPricing batches are 20 aliases, paced 250 ms apart, retried
+    up to 3 times with backoff on THROTTLED, and a batch that still fails
+    THROWS (a silent per-country gap must never masquerade as "no price").
+    Arming is per product: one product's fetch trouble records a reason
+    and skips THAT product; the rest arm (every function anchor is per
+    line, so partial configs are safe by construction). The last refresh's
+    reasons persist in the config (`_s.e`, capped) and an on-but-not-armed
+    state renders as a CRITICAL banner with those reasons on the Quantity
+    page — never a subdued line.
+
 ## 3. What this deliberately does NOT do
 
 - No discount on 2..K (those ARE the tier variants; the pills/cards handle

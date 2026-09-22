@@ -135,7 +135,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       .catch(() => []),
   ]);
   if (volume && volume.configured && volume.stale && settings.quantitySync.volume) {
-    void refreshVolumePricing(admin, session.shop, settings).catch(() => undefined);
+    void refreshVolumePricing(admin, session.shop, settings)
+      .then(() => syncSettingsToMetafields(admin, settings))
+      .catch(() => undefined);
   }
   return {
     volume,
@@ -162,8 +164,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const intent = String(formData.get("intent") ?? "");
   if (intent === "volume_refresh") {
     // v32: the explicit "Refresh prices now" button — a forced full sync.
+    // v32.1: followed by a settings re-sync so the storefront's volumeLive
+    // verdict flips in the same click.
     const settings = await getSettings(session.shop);
     const result = await refreshVolumePricing(admin, session.shop, settings, { force: true });
+    try {
+      await syncSettingsToMetafields(admin, settings);
+    } catch (error) {
+      result.errors.push(
+        error instanceof Error ? error.message : "Storefront sync after the refresh failed.",
+      );
+    }
     return {
       intent: "volume_refresh" as const,
       ok: result.ok,
@@ -216,6 +227,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const fresh = await getSettings(session.shop);
         const result = await refreshVolumePricing(admin, session.shop, fresh);
         saved.syncErrors.push(...result.errors);
+        // v32.1: mirror the storefront's volumeLive verdict from the
+        // just-written volume config in the same save.
+        await syncSettingsToMetafields(admin, fresh);
       } catch (error) {
         saved.syncErrors.push(
           error instanceof Error ? error.message : "Volume pricing refresh failed.",
@@ -702,6 +716,27 @@ export default function QuantityFeaturePage() {
                     but stay dormant: the discount arms only while both
                     switches are on.
                   </Text>
+                ) : null}
+                {volume && volume.configured && !volume.on && state.syncVolume ? (
+                  <Banner
+                    tone="critical"
+                    title="Volume pricing is ON but NOT armed — shoppers pay full price at 4+"
+                  >
+                    <BlockStack gap="100">
+                      <Text as="p">
+                        The discount exists but stays inert until a price
+                        sync completes. Reasons from the last sync:
+                      </Text>
+                      {(volume.lastErrors.length > 0
+                        ? volume.lastErrors
+                        : ["No reasons recorded — press Refresh prices now."]
+                      ).map((error) => (
+                        <Text as="p" key={error}>
+                          {error}
+                        </Text>
+                      ))}
+                    </BlockStack>
+                  </Banner>
                 ) : null}
                 {volume && volume.configured ? (
                   <BlockStack gap="100">

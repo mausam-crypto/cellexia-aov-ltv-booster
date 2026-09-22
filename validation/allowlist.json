@@ -283,7 +283,7 @@
   },
   {
    "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
-   "reason": "v32 volume pricing (docs/SPEC-v32-volume-pricing.md): the qy member gains a gated `\"vd\": 1` while quantitySync.volume is on — the widget's switch from bundle composition to the one discounted line the cellexia-volume Function prices. Paid by a further amazon-booster schema trim.",
+   "reason": "v32 volume pricing (docs/SPEC-v32-volume-pricing.md): the qy member gains a gated `\"vd\": 1` — the widget's switch from bundle composition to the one discounted line the cellexia-volume Function prices. v32.1 (field incident): the gate reads quantitySync.volumeLive, the VERIFIED armed verdict the sync computes from the volume metafield's on flag, never the raw admin switch. Paid by a further amazon-booster schema trim.",
    "wave": "v32"
   },
   {
