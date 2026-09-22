@@ -86,6 +86,8 @@ const FEATURE_LABELS: Record<string, string> = {
   research_band: "Research band",
   award_strip: "Award strip",
   quantity_selector: "Quantity selector cards",
+  atc_button: "Add-to-cart button v2",
+  quantity_sync: "Quantity stepper sync",
 };
 
 function formatMoney(value: number, currency: string | null): string {

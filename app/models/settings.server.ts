@@ -107,7 +107,11 @@ export type FeatureKey =
   // band and the award strip become their OWN features so each has its
   // own flag, market scope, Preview Center draft flag and beacon.
   | "research_band"
-  | "award_strip";
+  | "award_strip"
+  // v31 buy-box pair (docs/SPEC-v31-qty-sync-atc.md) — appended at the
+  // END for the same reason.
+  | "atc_button"
+  | "quantity_sync";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "cart_volume_upsell",
@@ -161,6 +165,9 @@ export const FEATURE_KEYS: FeatureKey[] = [
   // v29 proof-block split — appended last (43 → 45 keys).
   "research_band",
   "award_strip",
+  // v31 buy-box pair — appended last (45 → 47 keys).
+  "atc_button",
+  "quantity_sync",
 ];
 
 /**
@@ -1378,6 +1385,44 @@ export interface BoosterSettings {
     freeShipTag: boolean;
   };
   /**
+   * v31 — the "add to cart button v2" restyle (docs/SPEC-v31-qty-sync-atc.md):
+   * the theme's own `[sm-rc-add-to-cart]` button gains a cart icon, a
+   * bigger Gobold label and the live price re-seated in its own right slot
+   * behind a hairline divider. Presentation only: the button's node, its
+   * jQuery handlers, the theme's `[sm-rc-current-price]` writes and the
+   * OOS toggle all keep working on the exact same elements. The layout is
+   * fixed by the spec — the only knob is the master switch.
+   */
+  atcButton: {
+    enabled: boolean;
+  };
+  /**
+   * v31 — quantity stepper sync (docs/SPEC-v31-qty-sync-atc.md): replaces
+   * the theme's dead-end `.qty` stepper (its value never touched the price
+   * or the tier pills) with a stepper that counts UNITS and drives the
+   * SAME hidden pill buttons the v26 cards relay into: 1/2/3 select the
+   * matching tier at line-quantity 1; 4+ stays on the top tier and buys
+   * whole top-tier bundles plus a best-tier remainder line (added in one
+   * `/cart/add.js` items call), so every extra unit keeps the deepest
+   * bundle discount the catalog offers. Mounts only on the store's
+   * consecutive 1..K-unit tier shape and only while the input's MOQ is 1;
+   * anywhere else the theme's stepper stays untouched.
+   */
+  quantitySync: {
+    enabled: boolean;
+    /**
+     * v32 — exact volume pricing at 4+ units
+     * (docs/SPEC-v32-volume-pricing.md): the app-owned Discount Function
+     * charges the top tier's per-unit rate on a 1-unit line at quantity
+     * K+1 and up, per country, computed from the store's own prices. The
+     * widget's 4+ arm switches from bundle composition to one discounted
+     * line while this is on (island `qy.vd`). Arming is `enabled &&
+     * volume` AND a clean price sync — the config metafield's `on` flag
+     * is what the function obeys (inert otherwise, the v14 pattern).
+     */
+    volume: boolean;
+  };
+  /**
    * Amazon-pattern features (v6.1; eleven flags since the v6.8
    * stock/ships-from split) — independent flags plus the
    * language-neutral "Ships from" warehouse config. We model Amazon's
@@ -1971,6 +2016,13 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
   quantitySelector: {
     enabled: false,
     freeShipTag: true,
+  },
+  atcButton: {
+    enabled: false,
+  },
+  quantitySync: {
+    enabled: false,
+    volume: false,
   },
   amazon: {
     buyBox: false,
@@ -3769,6 +3821,12 @@ export function sanitizeSettings(
   // only an explicit false switches it off).
   next.quantitySelector.freeShipTag = next.quantitySelector.freeShipTag !== false;
 
+  // v31: two more default-OFF standalone switches — strict === true.
+  next.atcButton.enabled = next.atcButton.enabled === true;
+  next.quantitySync.enabled = next.quantitySync.enabled === true;
+  // v32: the volume-pricing sub-flag — same strict-boolean discipline.
+  next.quantitySync.volume = next.quantitySync.volume === true;
+
   next.clinicalResults.stats = (next.clinicalResults.stats ?? [])
     .filter(
       (stat) =>
@@ -4693,6 +4751,23 @@ export const FEATURE_DEFS: Record<FeatureKey, FeatureDef> = {
     },
     siblings: [],
   },
+  // v31 buy-box pair.
+  atc_button: {
+    label: "Add-to-cart button v2",
+    get: (s) => s.atcButton.enabled,
+    set: (s, on) => {
+      s.atcButton.enabled = on;
+    },
+    siblings: [],
+  },
+  quantity_sync: {
+    label: "Quantity stepper sync",
+    get: (s) => s.quantitySync.enabled,
+    set: (s, on) => {
+      s.quantitySync.enabled = on;
+    },
+    siblings: [],
+  },
   cart_overlay_fix: {
     label: "Cart overlay fix",
     get: (s) => s.overlayFix.scrollFix,
@@ -5054,6 +5129,9 @@ export const STANDALONE_SECTION_FIELDS = [
   // v29 proof-block split.
   "researchBand",
   "awardStrip",
+  // v31 buy-box pair.
+  "atcButton",
+  "quantitySync",
 ] as const;
 export type StandaloneSectionField = (typeof STANDALONE_SECTION_FIELDS)[number];
 
@@ -5119,6 +5197,9 @@ export const FEATURE_RAW_FIELD: Record<
   // v29 proof-block split.
   research_band: { kind: "section", field: "researchBand" },
   award_strip: { kind: "section", field: "awardStrip" },
+  // v31 buy-box pair.
+  atc_button: { kind: "section", field: "atcButton" },
+  quantity_sync: { kind: "section", field: "quantitySync" },
 };
 
 /**

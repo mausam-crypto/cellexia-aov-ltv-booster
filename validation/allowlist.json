@@ -262,9 +262,39 @@
    "wave": "v26"
   },
   {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v31 buy-box pair (docs/SPEC-v31-qty-sync-atc.md): the qsync* stepper-sync module (consecutive-1..K tier map, unit counter driving the cards' choose channel, composed top-tier-bundles + remainder add via one items[] call, composed-price ownership of [sm-rc-current-price] past the catalog, sub-mode clamp via azSubPlanId, MOQ>1 bail) + the atcb* ATC restyle (label wrap from the theme's own text, price span MOVED not cloned, drift bails before mutating) + the cart glyph in CX_AZ_ICONS + qty/inc/dec aria strings in CX_QSEL_STR + qselBind's silent choose param and the published qselApi channel + the three init() wiring lines. Pinned by sims/quantity-sync.cjs and the harness v31 block.",
+   "wave": "v31"
+  },
+  {
    "file": "extensions/cellexia-booster/snippets/cx-trustpilot-stars.liquid",
    "reason": "v30.1 Trustpilot display rounding (merchant: 'if it's 4.8/5, all 5 stars should be full just like on trustpilot'): the star IMAGE snaps to the nearest half star via `assign cx_rating = cx_rating | times: 2 | round | divided_by: 2.0`, inserted AFTER cx_rating_label so the aria keeps the raw score. The JS twins in cellexia-pdp.js/cellexia-cart.js snap identically (Math.round(r*2)/2; pinned by buy-box-proof D15 + mutant m16 and the checkout-trust shape table + mutant m13).",
    "wave": "v30.1"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v31 buy-box pair (docs/SPEC-v31-qty-sync-atc.md): atc_button + quantity_sync live/draft gates (the v26 idiom verbatim), the tiny ab/qy island members, the qs DATA member emission widened to `cx_qs or cx_qy` (the sync needs the variant cents even while the cards are off), and the paid-for diet: the {%- assign -%} head merged into the liquid block, the brace-literals comment moved to docs/liquid-notes.md, four schema labels shortened and the guarantee-facts paragraph trimmed.",
+   "wave": "v31"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
+   "reason": "v31 Liquid diet only (slim before you spend): five schema info strings shortened (admin-facing theme-editor copy, no storefront change) to pay for the v31 gates under the 99,500 budget.",
+   "wave": "v31"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/pdp-booster.liquid",
+   "reason": "v32 volume pricing (docs/SPEC-v32-volume-pricing.md): the qy member gains a gated `\"vd\": 1` while quantitySync.volume is on — the widget's switch from bundle composition to the one discounted line the cellexia-volume Function prices. Paid by a further amazon-booster schema trim.",
+   "wave": "v32"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/amazon-booster.liquid",
+   "reason": "v32 Liquid diet only: three more schema info strings shortened to pay for the qy member's vd flag.",
+   "wave": "v32"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v32 volume pricing: qselApi gains paint (qselPaint exposure), qsyncSplit gains the vd arm (one 1-unit line at quantity n, cents = round(n x p3 / K) — the function logic.js twin), qsyncApply relays the MECHANICAL 1-unit selection past the catalog while painting the TOP card, the ATC capture steps aside in vd mode, and qsyncState carries the island's vd verdict. Pinned by sims/quantity-sync.cjs S17/S18 + mutants m15-m18 and sims/volume-function.mjs F8 (the rounding twin).",
+   "wave": "v32"
   }
  ]
 }

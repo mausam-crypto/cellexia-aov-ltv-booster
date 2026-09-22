@@ -540,6 +540,39 @@ for pre-migration metafields. Also fixes the beacon allowlist, which had
 been dropping every `buy_box_proof` impression since v19. Full contract:
 `docs/SPEC-v29-proof-split.md`.
 
+## v31 quantity stepper sync + add-to-cart button v2
+
+`quantity_sync` + `atc_button` (46th/47th keys, both ship OFF, own
+sections `quantitySync`/`atcButton`, members `qy`/`ab`, admin on the
+Quantity page). The sync turns the theme's dead-end PDP stepper into a
+UNIT counter riding the v26 selection chain: 1..K select the matching
+tier at line-quantity 1; past K the order composes as whole top-tier
+bundles + one best-tier remainder in a single `items[]` add, the theme
+input holds whole bundles (fail = under-buy, never oversell), the
+composed price owns `[sm-rc-current-price]` only past the catalog, a
+selected subscription clamps at the top tier, and MOQ>1 / non-1..K
+shapes never mount. The restyle reflows the theme's own `.is-text`
+(cart glyph + Gobold label + the price span MOVED into a divided right
+slot) and bails before mutating on any drift. Zero locale-file keys
+(aria strings ride CX_QSEL_STR). Full contract:
+`docs/SPEC-v31-qty-sync-atc.md`.
+
+## v32 exact volume pricing at 4+
+
+`quantitySync.volume` (sub-flag, no new FeatureKey) + the
+`cellexia-volume` Discount Function (target
+`cart.lines.discounts.generate.run`) + the shop metafield
+`$app:cellexia/volume` written by `volume-pricing.server.ts`. A 1-unit
+line at quantity K+1 and up is reduced to exactly
+`round_half_up(n × p3 / K)` minor units — a per-line fixedAmount from
+per-COUNTRY mirrored prices (contextualPricing), so the widget's vd-mode
+display (island `qy.vd`) and the charge share one integer formula.
+Inert-until-on discount (created active), p1 staleness tripwire,
+subscription/gift/currency anchors, 60% clamp, market-scope filtering,
+products/update webhook + 24 h lazy re-sync, stacking allowed
+(combinesWith all-true, merchant decision). Full contract:
+`docs/SPEC-v32-volume-pricing.md`.
+
 ## v20 image badges on mobile
 
 `image_badges` — the SIZE of the award/certification badges the THEME lays

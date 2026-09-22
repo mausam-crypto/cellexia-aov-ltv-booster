@@ -10,6 +10,7 @@ import {
   Badge,
   Banner,
   BlockStack,
+  Button,
   Card,
   Checkbox,
   ChoiceList,
@@ -32,6 +33,12 @@ import {
 import { syncSettingsToMetafields } from "../services/metafields.server";
 import { listMarkets } from "../services/markets.server";
 import {
+  readVolumeConfig,
+  refreshVolumePricing,
+  volumeRateRows,
+  volumeStatus,
+} from "../services/volume-pricing.server";
+import {
   QSEL_UNIT_TYPES,
   isQselUnitType,
   listProductsWithBoosterStatus,
@@ -52,6 +59,13 @@ import { FeaturePageHeader } from "../components/FeaturePageHeader";
  * labels compose as "{n} {unit}" with curated native plural forms in all 18
  * languages once a product is mapped; unmapped products keep their variant
  * titles (already localized via Translate & Adapt).
+ *
+ * v31 (docs/SPEC-v31-qty-sync-atc.md) adds the two buy-box companions to
+ * this page, each its own FeatureKey + market scope (the v21 cart-page
+ * precedent): `quantity_sync` (the theme's +/- stepper counts units and
+ * drives the same hidden tier pills the cards relay into; 4+ composes
+ * whole top-tier bundles plus the best remaining tier in one add) and
+ * `atc_button` (the ATC restyle: icon + bigger label + price slot).
  */
 
 interface AdminGraphqlClient {
@@ -110,7 +124,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // if the store ever outgrows it.
     listProductsWithBoosterStatus(admin, ""),
   ]);
+  // v32: volume-pricing status + the per-market rate table, read-only from
+  // the mirrored config (never a price fetch on page load). A stale sync
+  // (>24 h) is refreshed lazily in the background here — fire and forget,
+  // the page renders with whatever is mirrored now.
+  const [volume, volumeRates] = await Promise.all([
+    volumeStatus(admin, session.shop, settings).catch(() => null),
+    readVolumeConfig(admin)
+      .then(({ cfg }) => volumeRateRows(admin, session.shop, cfg))
+      .catch(() => []),
+  ]);
+  if (volume && volume.configured && volume.stale && settings.quantitySync.volume) {
+    void refreshVolumePricing(admin, session.shop, settings).catch(() => undefined);
+  }
   return {
+    volume,
+    volumeRates,
     settings,
     markets,
     headerEnabled: resolveFeatureFlag(settings, "quantity_selector"),
@@ -131,6 +160,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = String(formData.get("intent") ?? "");
+  if (intent === "volume_refresh") {
+    // v32: the explicit "Refresh prices now" button — a forced full sync.
+    const settings = await getSettings(session.shop);
+    const result = await refreshVolumePricing(admin, session.shop, settings, { force: true });
+    return {
+      intent: "volume_refresh" as const,
+      ok: result.ok,
+      errors: result.errors,
+      notes: result.notes,
+    };
+  }
   if (intent === "save_unit_type") {
     const productId = String(formData.get("productId") ?? "");
     const rawUnit = String(formData.get("unitType") ?? "");
@@ -154,9 +194,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       productId,
     };
   }
+  const saved = await applySettingsPatch(session.shop, admin, formData.get("patch"));
+  // v32: a save that touches the sync feature or its scope runs the FULL
+  // volume refresh (price fetch + discount ensure + metafield write) with
+  // the freshly saved settings, so flipping the sub-flag on this page arms
+  // or disarms the discount in the same click. Refresh problems ride the
+  // same banner as sync errors.
+  if (saved.ok) {
+    let touchesVolume = false;
+    try {
+      const raw = formData.get("patch");
+      const parsed = typeof raw === "string" ? (JSON.parse(raw) as Record<string, unknown>) : {};
+      const scopes = parsed.marketScopes as Record<string, unknown> | undefined;
+      touchesVolume =
+        parsed.quantitySync !== undefined || (scopes ? scopes.quantity_sync !== undefined : false);
+    } catch {
+      touchesVolume = false;
+    }
+    if (touchesVolume) {
+      try {
+        const fresh = await getSettings(session.shop);
+        const result = await refreshVolumePricing(admin, session.shop, fresh);
+        saved.syncErrors.push(...result.errors);
+      } catch (error) {
+        saved.syncErrors.push(
+          error instanceof Error ? error.message : "Volume pricing refresh failed.",
+        );
+      }
+    }
+  }
   return {
     intent: "save_settings" as const,
-    ...(await applySettingsPatch(session.shop, admin, formData.get("patch"))),
+    ...saved,
   };
 };
 
@@ -296,6 +365,14 @@ interface QuantityFormState {
   enabled: boolean;
   freeShipTag: boolean;
   scope: ScopeState;
+  /** v31 — quantity stepper sync (own FeatureKey + scope). */
+  syncEnabled: boolean;
+  syncScope: ScopeState;
+  /** v32 — automatic 4+ pricing via the app-owned discount. */
+  syncVolume: boolean;
+  /** v31 — add-to-cart button v2 (own FeatureKey + scope). */
+  atcEnabled: boolean;
+  atcScope: ScopeState;
 }
 
 function initialFormState(settings: BoosterSettings): QuantityFormState {
@@ -303,6 +380,11 @@ function initialFormState(settings: BoosterSettings): QuantityFormState {
     enabled: settings.quantitySelector.enabled,
     freeShipTag: settings.quantitySelector.freeShipTag !== false,
     scope: toScopeState(settings.marketScopes.quantity_selector),
+    syncEnabled: settings.quantitySync.enabled,
+    syncScope: toScopeState(settings.marketScopes.quantity_sync),
+    syncVolume: settings.quantitySync.volume === true,
+    atcEnabled: settings.atcButton.enabled,
+    atcScope: toScopeState(settings.marketScopes.atc_button),
   };
 }
 
@@ -315,6 +397,8 @@ export default function QuantityFeaturePage() {
     productErrors,
     productListCapped,
     unitTypes,
+    volume,
+    volumeRates,
   } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const submit = useSubmit();
@@ -322,6 +406,9 @@ export default function QuantityFeaturePage() {
   // interferes with the page's Save button (the v8.11 dedicated-fetcher
   // rule). Optimistic value = the in-flight submission for that row.
   const unitFetcher = useFetcher<typeof action>();
+  // v32: the volume "Refresh prices now" button rides its own fetcher for
+  // the same isolation reason.
+  const volumeFetcher = useFetcher<typeof action>();
   const unitLabel = (unit: string) =>
     unit.charAt(0).toUpperCase() + unit.slice(1);
   const unitOptions = [
@@ -359,8 +446,12 @@ export default function QuantityFeaturePage() {
         enabled: state.enabled,
         freeShipTag: state.freeShipTag,
       },
+      quantitySync: { enabled: state.syncEnabled, volume: state.syncVolume },
+      atcButton: { enabled: state.atcEnabled },
       marketScopes: {
         quantity_selector: toScopePatch(state.scope),
+        quantity_sync: toScopePatch(state.syncScope),
+        atc_button: toScopePatch(state.atcScope),
       } as BoosterSettings["marketScopes"],
     };
     const formData = new FormData();
@@ -372,7 +463,7 @@ export default function QuantityFeaturePage() {
   return (
     <Page
       title="Quantity selector"
-      subtitle="Picture cards instead of the theme's text-pill size picker — per-unit prices, the struck 1-jar baseline and a computed saving on every tier."
+      subtitle="Picture cards instead of the theme's text-pill size picker, plus the stepper sync and the restyled add-to-cart button (each its own switch and market scope)."
       primaryAction={{
         content: "Save",
         onAction: handleSave,
@@ -394,6 +485,11 @@ export default function QuantityFeaturePage() {
             <FeaturePageHeader
               featureKey="quantity_selector"
               enabled={headerEnabled}
+              previewFeatureKeys={[
+                "quantity_selector",
+                "quantity_sync",
+                "atc_button",
+              ]}
             />
           </Card>
         </Layout.Section>
@@ -565,6 +661,166 @@ export default function QuantityFeaturePage() {
               scope={state.scope}
               onChange={(scope) =>
                 setState((previous) => ({ ...previous, scope }))
+              }
+            />
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Quantity stepper sync
+                </Text>
+                <Checkbox
+                  label="Connect the +/- stepper to the quantity tiers"
+                  helpText="The theme's stepper today never changes the price or the selected tier. With this on it counts units: 1, 2 and 3 select the matching tier (the add-to-cart price follows instantly), and 4+ keeps the 3-pack price per unit by buying whole 3-packs plus the best remaining tier in one add. Picking a tier card moves the stepper too."
+                  checked={state.syncEnabled}
+                  onChange={(syncEnabled) =>
+                    setState((previous) => ({ ...previous, syncEnabled }))
+                  }
+                />
+                <Text as="p" tone="subdued" variant="bodySm">
+                  A small “Save …” tag on the stepper mirrors the cards’ own
+                  savings chip (same wording, all 18 languages) whenever the
+                  chosen count carries a discount. Shows only on products
+                  whose variants are consecutive 1..N unit tiers and while
+                  the minimum order quantity is 1; anywhere else (including
+                  B2B minimums) the theme’s own stepper stays untouched.
+                  While a subscription is selected the stepper caps at the
+                  top tier, so plan pricing always stays exact.
+                </Text>
+
+                <Checkbox
+                  label="Charge the top-tier rate automatically at 4 and up"
+                  helpText="Creates one automatic Shopify discount the app owns. At 4+ the cart carries one line of the single-unit product and the discount reduces it to exactly the 3-pack price per unit — computed per market from your own live prices, so what the button shows is what checkout charges, in every currency. Discount codes may stack on top (your decision, 2026-09-21). Without this, 4+ is composed from whole packs instead."
+                  checked={state.syncVolume}
+                  onChange={(syncVolume) =>
+                    setState((previous) => ({ ...previous, syncVolume }))
+                  }
+                />
+                {state.syncVolume && !state.syncEnabled ? (
+                  <Text as="p" tone="caution" variant="bodySm">
+                    The stepper sync above is off, so this will sync prices
+                    but stay dormant: the discount arms only while both
+                    switches are on.
+                  </Text>
+                ) : null}
+                {volume && volume.configured ? (
+                  <BlockStack gap="100">
+                    <Text as="p" tone="subdued" variant="bodySm">
+                      {volume.on
+                        ? `Armed: ${volume.products} products across ${volume.countries} countries.`
+                        : "Synced but not armed (discount inert)."}
+                      {volume.syncedAt
+                        ? ` Prices last synced ${new Date(volume.syncedAt).toLocaleString()}.`
+                        : ""}
+                      {" Prices re-sync automatically when you edit products."}
+                    </Text>
+                    {volume.missingCountries.length > 0 ? (
+                      <Text as="p" tone="caution" variant="bodySm">
+                        {`${volume.missingCountries.length} in-scope countries have no synced prices yet (${volume.missingCountries.slice(0, 6).join(", ")}${volume.missingCountries.length > 6 ? "…" : ""}) — shoppers there simply pay full price at 4+ until the next sync. Use “Refresh prices now”.`}
+                      </Text>
+                    ) : null}
+                  </BlockStack>
+                ) : (
+                  <Text as="p" tone="subdued" variant="bodySm">
+                    Never synced yet — turn it on and Save to run the first
+                    price sync and create the discount.
+                  </Text>
+                )}
+                {volumeRates.length > 0 ? (
+                  <BlockStack gap="050">
+                    <Text as="span" variant="bodySm" fontWeight="semibold">
+                      Effective 4+ discount per market (from your live prices)
+                    </Text>
+                    {volumeRates.slice(0, 10).map((row) => (
+                      <Text
+                        as="span"
+                        tone="subdued"
+                        variant="bodySm"
+                        key={row.market + row.country + row.currency}
+                      >
+                        {`${row.market || row.country} (${row.currency}): ${row.pct}% off each unit at 4+`}
+                      </Text>
+                    ))}
+                    {volumeRates.length > 10 ? (
+                      <Text as="span" tone="subdued" variant="bodySm">
+                        {`…and ${volumeRates.length - 10} more market price points.`}
+                      </Text>
+                    ) : null}
+                  </BlockStack>
+                ) : null}
+                <InlineStack gap="200">
+                  <Button
+                    onClick={() => {
+                      const formData = new FormData();
+                      formData.set("intent", "volume_refresh");
+                      volumeFetcher.submit(formData, { method: "post" });
+                    }}
+                    loading={volumeFetcher.state !== "idle"}
+                    disabled={volumeFetcher.state !== "idle"}
+                  >
+                    Refresh prices now
+                  </Button>
+                </InlineStack>
+                {volumeFetcher.data && volumeFetcher.data.intent === "volume_refresh" ? (
+                  <Banner
+                    tone={volumeFetcher.data.ok ? "success" : "critical"}
+                    title={
+                      volumeFetcher.data.ok
+                        ? volumeFetcher.data.notes.join(" ") || "Prices synced."
+                        : "The price sync reported problems"
+                    }
+                  >
+                    {volumeFetcher.data.errors.length > 0 ? (
+                      <BlockStack gap="100">
+                        {volumeFetcher.data.errors.map((error) => (
+                          <Text as="p" key={error}>
+                            {error}
+                          </Text>
+                        ))}
+                      </BlockStack>
+                    ) : null}
+                  </Banner>
+                ) : null}
+              </BlockStack>
+            </Card>
+
+            <MarketScopeCard
+              title="Markets — Quantity stepper sync"
+              markets={markets}
+              scope={state.syncScope}
+              onChange={(syncScope) =>
+                setState((previous) => ({ ...previous, syncScope }))
+              }
+            />
+
+            <Card>
+              <BlockStack gap="300">
+                <Text as="h2" variant="headingMd">
+                  Add-to-cart button v2
+                </Text>
+                <Checkbox
+                  label="Restyle the add-to-cart button"
+                  helpText="Same button, new face: a cart icon, a bigger label in the heading font, and the live price seated at the right behind a thin divider. The theme keeps writing the price and the sold-out state into the exact same elements, so nothing about adding to cart changes."
+                  checked={state.atcEnabled}
+                  onChange={(atcEnabled) =>
+                    setState((previous) => ({ ...previous, atcEnabled }))
+                  }
+                />
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Products that show the notify-me button instead of
+                  add-to-cart keep it exactly as it is. Works with or without
+                  the stepper sync; with both on, the button price always
+                  reflects the chosen unit count.
+                </Text>
+              </BlockStack>
+            </Card>
+
+            <MarketScopeCard
+              title="Markets — Add-to-cart button v2"
+              markets={markets}
+              scope={state.atcScope}
+              onChange={(atcScope) =>
+                setState((previous) => ({ ...previous, atcScope }))
               }
             />
           </BlockStack>

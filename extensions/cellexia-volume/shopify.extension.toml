@@ -1,0 +1,34 @@
+# v32 volume pricing — Discount Function (docs/SPEC-v32-volume-pricing.md).
+# One target: cart lines. For a tier product's 1-unit line at quantity
+# >= K+1 (one-time, no gift marker) it charges EXACTLY the top tier's
+# per-unit rate — a fixedAmount computed in integer minor units from the
+# server-mirrored per-country prices ($app:cellexia/volume), so checkout
+# always matches the storefront's own cents formula. Inert until the
+# config metafield says on (the v14 rewards pattern).
+# Layout follows extensions/cellexia-rewards (the official JS discount
+# template): the export value maps to the camelCase named export of
+# src/index.js.
+api_version = "2025-10"
+
+[[extensions]]
+name = "Cellexia volume pricing"
+handle = "cellexia-volume"
+type = "function"
+description = "Automatic top-tier per-unit pricing at 4+ units for Cellexia AOV & LTV Booster."
+
+  [[extensions.targeting]]
+  target = "cart.lines.discounts.generate.run"
+  input_query = "src/cart_lines_discounts_generate_run.graphql"
+  export = "cart-lines-discounts-generate-run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"
+  watch = ["src/**/*.js"]
+  # Same typegen note as cellexia-rewards: the run module uses string
+  # literals and never imports generated types, so the CLI's JS typegen
+  # (which needs a locally fetched schema.graphql via a Partner login) is
+  # skipped with a cross-platform no-op. To regenerate types for local
+  # editing: `npx shopify app function schema --path
+  # extensions/cellexia-volume` then `npm run typegen` in this folder.
+  typegen_command = "node -e 0"

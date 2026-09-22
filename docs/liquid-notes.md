@@ -963,3 +963,12 @@ has a plural object. en.default.json must carry every category any
 locale uses (extra categories on the English side are harmless: CLDR
 selection never picks them for en). The harness v8.20 superset check
 enforces this for every extensions/*/locales dir.
+
+## Brace literals in output-tag filters (moved from pdp-booster.liquid, v31)
+
+`{{ some | replace: '{name}', x }}` breaks on live Shopify when the brace
+literal is written inline in an output tag — the `{name}` token must ride an
+assigned variable (`assign cx_name_token = '{name}'`) and the filter reference
+that variable. The note used to live as a `comment` block beside the assign in
+`pdp-booster.liquid`; it moved here in the v31 byte diet (the v19 precedent:
+Liquid bytes buy shopper-facing markup, docs hold the why).

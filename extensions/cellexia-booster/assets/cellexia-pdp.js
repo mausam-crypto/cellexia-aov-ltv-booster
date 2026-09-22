@@ -5308,7 +5308,10 @@
     // v19 buy-box proof block: the parcel on the "Get it by" row. JS-only
     // (the Liquid cx-icons snippet is at its byte budget and no Liquid
     // block renders this one).
-    package: ['1.5', '<path d="M3 6.4 10 3l7 3.4v7.2L10 17l-7-3.4Z"/><path d="M3 6.4 10 9.9l7-3.5"/><path d="M10 9.9V17"/><path d="m6.5 4.7 7 3.4"/>']
+    package: ['1.5', '<path d="M3 6.4 10 3l7 3.4v7.2L10 17l-7-3.4Z"/><path d="M3 6.4 10 9.9l7-3.5"/><path d="M10 9.9V17"/><path d="m6.5 4.7 7 3.4"/>'],
+    // v31 add-to-cart button v2: the cart glyph on the restyled ATC. JS-only
+    // for the same byte reason.
+    cart: ['1.7', '<path d="M1.8 3h2.4l2 9.4h8.9l1.9-6.7H5.3"/><circle cx="7.6" cy="16" r="1.45"/><circle cx="13.9" cy="16" r="1.45"/>']
   };
 
   function cxIcon(name, size) {
@@ -7126,7 +7129,7 @@
   // locale comes from the island ("l") ONLY: the <html> lang attribute is
   // BANNED as a source here — this theme stamps shop.locale there (always
   // the primary language, verified live), never the page language.
-  var CX_QSEL_STR = {"en":{"title":"Choose quantity","each":"{amount} each","save":"Save {amount}","b2":"Most popular","b3":"Best value","fs":"Free shipping"},"fr":{"title":"Choisissez la quantité","each":"{amount} l'unité","save":"Économisez {amount}","b2":"Le plus populaire","b3":"Meilleure offre","fs":"Livraison gratuite"},"de":{"title":"Menge wählen","each":"je {amount}","save":"{amount} sparen","b2":"Am beliebtesten","b3":"Größte Ersparnis","fs":"Kostenloser Versand"},"es":{"title":"Elige la cantidad","each":"{amount}/ud.","save":"Ahorra {amount}","b2":"El más popular","b3":"Mejor oferta","fs":"Envío gratis"},"it":{"title":"Scegli la quantità","each":"{amount} l'uno","save":"Risparmia {amount}","b2":"Il più scelto","b3":"Più conveniente","fs":"Spedizione gratuita"},"nl":{"title":"Kies je aantal","each":"{amount} per stuk","save":"Bespaar {amount}","b2":"Meest gekozen","b3":"Voordeligste keuze","fs":"Gratis verzending"},"pt-PT":{"title":"Escolha a quantidade","each":"{amount}/un.","save":"Poupe {amount}","b2":"O mais popular","b3":"Mais vantajoso","fs":"Envio gratuito"},"da":{"title":"Vælg antal","each":"{amount} pr. stk.","save":"Spar {amount}","b2":"Mest populær","b3":"Bedste værdi","fs":"Gratis fragt"},"sv":{"title":"Välj antal","each":"{amount}/st","save":"Spara {amount}","b2":"Mest populär","b3":"Bästa värdet","fs":"Fri frakt"},"nb":{"title":"Velg antall","each":"{amount} per stk.","save":"Spar {amount}","b2":"Mest populær","b3":"Best verdi","fs":"Fri frakt"},"no":{"title":"Velg antall","each":"{amount} per stk.","save":"Spar {amount}","b2":"Mest populær","b3":"Best verdi","fs":"Fri frakt"},"fi":{"title":"Valitse määrä","each":"{amount}/kpl","save":"Säästä {amount}","b2":"Suosituin","b3":"Paras arvo","fs":"Ilmainen toimitus"},"pl":{"title":"Wybierz ilość","each":"{amount}/szt.","save":"Oszczędź {amount}","b2":"Najczęściej wybierany","b3":"Najbardziej opłacalny","fs":"Darmowa dostawa"},"ro":{"title":"Alege cantitatea","each":"{amount}/buc.","save":"Economisește {amount}","b2":"Cel mai popular","b3":"Cel mai avantajos","fs":"Livrare gratuită"},"hu":{"title":"Válassz mennyiséget","each":"{amount}/db","save":"Megtakarítás: {amount}","b2":"Legnépszerűbb","b3":"Legjobb ár-érték arány","fs":"Ingyenes szállítás"},"el":{"title":"Επίλεξε ποσότητα","each":"{amount}/τεμ.","save":"Εξοικονόμησε {amount}","b2":"Το πιο δημοφιλές","b3":"Το πιο συμφέρον","fs":"Δωρεάν μεταφορικά"},"ja":{"title":"数量を選択","each":"各{amount}","save":"{amount}お得","b2":"一番人気","b3":"一番お得","fs":"送料無料"},"ar":{"title":"اختر الكمية","each":"{amount} للقطعة","save":"وفّر {amount}","b2":"الأكثر طلبًا","b3":"أفضل قيمة","fs":"شحن مجاني"}};
+  var CX_QSEL_STR = {"en":{"title":"Choose quantity","each":"{amount} each","save":"Save {amount}","b2":"Most popular","b3":"Best value","fs":"Free shipping","qty":"Quantity","inc":"Increase quantity","dec":"Decrease quantity"},"fr":{"title":"Choisissez la quantité","each":"{amount} l'unité","save":"Économisez {amount}","b2":"Le plus populaire","b3":"Meilleure offre","fs":"Livraison gratuite","qty":"Quantité","inc":"Augmenter la quantité","dec":"Réduire la quantité"},"de":{"title":"Menge wählen","each":"je {amount}","save":"{amount} sparen","b2":"Am beliebtesten","b3":"Größte Ersparnis","fs":"Kostenloser Versand","qty":"Menge","inc":"Menge erhöhen","dec":"Menge verringern"},"es":{"title":"Elige la cantidad","each":"{amount}/ud.","save":"Ahorra {amount}","b2":"El más popular","b3":"Mejor oferta","fs":"Envío gratis","qty":"Cantidad","inc":"Aumentar la cantidad","dec":"Reducir la cantidad"},"it":{"title":"Scegli la quantità","each":"{amount} l'uno","save":"Risparmia {amount}","b2":"Il più scelto","b3":"Più conveniente","fs":"Spedizione gratuita","qty":"Quantità","inc":"Aumenta la quantità","dec":"Riduci la quantità"},"nl":{"title":"Kies je aantal","each":"{amount} per stuk","save":"Bespaar {amount}","b2":"Meest gekozen","b3":"Voordeligste keuze","fs":"Gratis verzending","qty":"Aantal","inc":"Aantal verhogen","dec":"Aantal verlagen"},"pt-PT":{"title":"Escolha a quantidade","each":"{amount}/un.","save":"Poupe {amount}","b2":"O mais popular","b3":"Mais vantajoso","fs":"Envio gratuito","qty":"Quantidade","inc":"Aumentar a quantidade","dec":"Reduzir a quantidade"},"da":{"title":"Vælg antal","each":"{amount} pr. stk.","save":"Spar {amount}","b2":"Mest populær","b3":"Bedste værdi","fs":"Gratis fragt","qty":"Antal","inc":"Øg antallet","dec":"Mindsk antallet"},"sv":{"title":"Välj antal","each":"{amount}/st","save":"Spara {amount}","b2":"Mest populär","b3":"Bästa värdet","fs":"Fri frakt","qty":"Antal","inc":"Öka antalet","dec":"Minska antalet"},"nb":{"title":"Velg antall","each":"{amount} per stk.","save":"Spar {amount}","b2":"Mest populær","b3":"Best verdi","fs":"Fri frakt","qty":"Antall","inc":"Øk antallet","dec":"Reduser antallet"},"no":{"title":"Velg antall","each":"{amount} per stk.","save":"Spar {amount}","b2":"Mest populær","b3":"Best verdi","fs":"Fri frakt","qty":"Antall","inc":"Øk antallet","dec":"Reduser antallet"},"fi":{"title":"Valitse määrä","each":"{amount}/kpl","save":"Säästä {amount}","b2":"Suosituin","b3":"Paras arvo","fs":"Ilmainen toimitus","qty":"Määrä","inc":"Lisää määrää","dec":"Vähennä määrää"},"pl":{"title":"Wybierz ilość","each":"{amount}/szt.","save":"Oszczędź {amount}","b2":"Najczęściej wybierany","b3":"Najbardziej opłacalny","fs":"Darmowa dostawa","qty":"Ilość","inc":"Zwiększ ilość","dec":"Zmniejsz ilość"},"ro":{"title":"Alege cantitatea","each":"{amount}/buc.","save":"Economisește {amount}","b2":"Cel mai popular","b3":"Cel mai avantajos","fs":"Livrare gratuită","qty":"Cantitate","inc":"Mărește cantitatea","dec":"Micșorează cantitatea"},"hu":{"title":"Válassz mennyiséget","each":"{amount}/db","save":"Megtakarítás: {amount}","b2":"Legnépszerűbb","b3":"Legjobb ár-érték arány","fs":"Ingyenes szállítás","qty":"Mennyiség","inc":"Mennyiség növelése","dec":"Mennyiség csökkentése"},"el":{"title":"Επίλεξε ποσότητα","each":"{amount}/τεμ.","save":"Εξοικονόμησε {amount}","b2":"Το πιο δημοφιλές","b3":"Το πιο συμφέρον","fs":"Δωρεάν μεταφορικά","qty":"Ποσότητα","inc":"Αύξηση ποσότητας","dec":"Μείωση ποσότητας"},"ja":{"title":"数量を選択","each":"各{amount}","save":"{amount}お得","b2":"一番人気","b3":"一番お得","fs":"送料無料","qty":"数量","inc":"数量を増やす","dec":"数量を減らす"},"ar":{"title":"اختر الكمية","each":"{amount} للقطعة","save":"وفّر {amount}","b2":"الأكثر طلبًا","b3":"أفضل قيمة","fs":"شحن مجاني","qty":"الكمية","inc":"زيادة الكمية","dec":"تقليل الكمية"}};
 
   // v27 unit-type catalog: per-language plural forms for the label a mapped
   // product composes instead of its variant titles ("2 Syringes",
@@ -7138,6 +7141,11 @@
   var CX_QSEL_UNITS = {"en":{"jar":{"one":"{n} Jar","other":"{n} Jars"},"syringe":{"one":"{n} Syringe","other":"{n} Syringes"},"tube":{"one":"{n} Tube","other":"{n} Tubes"},"dropper":{"one":"{n} Dropper","other":"{n} Droppers"},"stick":{"one":"{n} Stick","other":"{n} Sticks"},"pump":{"one":"{n} Pump","other":"{n} Pumps"},"bottle":{"one":"{n} Bottle","other":"{n} Bottles"}},"fr":{"jar":{"one":"{n} Pot","other":"{n} Pots"},"syringe":{"one":"{n} Seringue","other":"{n} Seringues"},"tube":{"one":"{n} Tube","other":"{n} Tubes"},"dropper":{"one":"{n} Pipette","other":"{n} Pipettes"},"stick":{"one":"{n} Stick","other":"{n} Sticks"},"pump":{"one":"{n} Flacon-pompe","other":"{n} Flacons-pompes"},"bottle":{"one":"{n} Flacon","other":"{n} Flacons"}},"de":{"jar":{"one":"{n} Tiegel","other":"{n} Tiegel"},"syringe":{"one":"{n} Spritze","other":"{n} Spritzen"},"tube":{"one":"{n} Tube","other":"{n} Tuben"},"dropper":{"one":"{n} Pipette","other":"{n} Pipetten"},"stick":{"one":"{n} Stick","other":"{n} Sticks"},"pump":{"one":"{n} Pumpspender","other":"{n} Pumpspender"},"bottle":{"one":"{n} Flasche","other":"{n} Flaschen"}},"es":{"jar":{"one":"{n} Tarro","other":"{n} Tarros"},"syringe":{"one":"{n} Jeringa","other":"{n} Jeringas"},"tube":{"one":"{n} Tubo","other":"{n} Tubos"},"dropper":{"one":"{n} Gotero","other":"{n} Goteros"},"stick":{"one":"{n} Stick","other":"{n} Sticks"},"pump":{"one":"{n} Dosificador","other":"{n} Dosificadores"},"bottle":{"one":"{n} Frasco","other":"{n} Frascos"}},"it":{"jar":{"one":"{n} Vasetto","other":"{n} Vasetti"},"syringe":{"one":"{n} Siringa","other":"{n} Siringhe"},"tube":{"one":"{n} Tubetto","other":"{n} Tubetti"},"dropper":{"one":"{n} Contagocce","other":"{n} Contagocce"},"stick":{"one":"{n} Stick","other":"{n} Stick"},"pump":{"one":"{n} Dispenser","other":"{n} Dispenser"},"bottle":{"one":"{n} Flacone","other":"{n} Flaconi"}},"nl":{"jar":{"one":"{n} Pot","other":"{n} Potten"},"syringe":{"one":"{n} Spuit","other":"{n} Spuiten"},"tube":{"one":"{n} Tube","other":"{n} Tubes"},"dropper":{"one":"{n} Pipet","other":"{n} Pipetten"},"stick":{"one":"{n} Stick","other":"{n} Sticks"},"pump":{"one":"{n} Pompje","other":"{n} Pompjes"},"bottle":{"one":"{n} Flesje","other":"{n} Flesjes"}},"pt-PT":{"jar":{"one":"{n} Boião","other":"{n} Boiões"},"syringe":{"one":"{n} Seringa","other":"{n} Seringas"},"tube":{"one":"{n} Bisnaga","other":"{n} Bisnagas"},"dropper":{"one":"{n} Conta-gotas","other":"{n} Conta-gotas"},"stick":{"one":"{n} Stick","other":"{n} Sticks"},"pump":{"one":"{n} Doseador","other":"{n} Doseadores"},"bottle":{"one":"{n} Frasco","other":"{n} Frascos"}},"da":{"jar":{"one":"{n} Krukke","other":"{n} Krukker"},"syringe":{"one":"{n} Sprøjte","other":"{n} Sprøjter"},"tube":{"one":"{n} Tube","other":"{n} Tuber"},"dropper":{"one":"{n} Pipette","other":"{n} Pipetter"},"stick":{"one":"{n} Stick","other":"{n} Sticks"},"pump":{"one":"{n} Pumpeflaske","other":"{n} Pumpeflasker"},"bottle":{"one":"{n} Flaske","other":"{n} Flasker"}},"sv":{"jar":{"one":"{n} Burk","other":"{n} Burkar"},"syringe":{"one":"{n} Spruta","other":"{n} Sprutor"},"tube":{"one":"{n} Tub","other":"{n} Tuber"},"dropper":{"one":"{n} Pipett","other":"{n} Pipetter"},"stick":{"one":"{n} Stift","other":"{n} Stift"},"pump":{"one":"{n} Pumpflaska","other":"{n} Pumpflaskor"},"bottle":{"one":"{n} Flaska","other":"{n} Flaskor"}},"nb":{"jar":{"one":"{n} Krukke","other":"{n} Krukker"},"syringe":{"one":"{n} Sprøyte","other":"{n} Sprøyter"},"tube":{"one":"{n} Tube","other":"{n} Tuber"},"dropper":{"one":"{n} Pipette","other":"{n} Pipetter"},"stick":{"one":"{n} Stift","other":"{n} Stifter"},"pump":{"one":"{n} Pumpeflaske","other":"{n} Pumpeflasker"},"bottle":{"one":"{n} Flaske","other":"{n} Flasker"}},"no":{"jar":{"one":"{n} Krukke","other":"{n} Krukker"},"syringe":{"one":"{n} Sprøyte","other":"{n} Sprøyter"},"tube":{"one":"{n} Tube","other":"{n} Tuber"},"dropper":{"one":"{n} Pipette","other":"{n} Pipetter"},"stick":{"one":"{n} Stift","other":"{n} Stifter"},"pump":{"one":"{n} Pumpeflaske","other":"{n} Pumpeflasker"},"bottle":{"one":"{n} Flaske","other":"{n} Flasker"}},"fi":{"jar":{"one":"{n} Purkki","other":"{n} Purkkia"},"syringe":{"one":"{n} Ruisku","other":"{n} Ruiskua"},"tube":{"one":"{n} Tuubi","other":"{n} Tuubia"},"dropper":{"one":"{n} Pipetti","other":"{n} Pipettiä"},"stick":{"one":"{n} Puikko","other":"{n} Puikkoa"},"pump":{"one":"{n} Pumppupullo","other":"{n} Pumppupulloa"},"bottle":{"one":"{n} Pullo","other":"{n} Pulloa"}},"pl":{"jar":{"one":"{n} Słoiczek","few":"{n} Słoiczki","many":"{n} Słoiczków"},"syringe":{"one":"{n} Strzykawka","few":"{n} Strzykawki","many":"{n} Strzykawek"},"tube":{"one":"{n} Tubka","few":"{n} Tubki","many":"{n} Tubek"},"dropper":{"one":"{n} Pipeta","few":"{n} Pipety","many":"{n} Pipet"},"stick":{"one":"{n} Sztyft","few":"{n} Sztyfty","many":"{n} Sztyftów"},"pump":{"one":"{n} Dozownik","few":"{n} Dozowniki","many":"{n} Dozowników"},"bottle":{"one":"{n} Butelka","few":"{n} Butelki","many":"{n} Butelek"}},"ro":{"jar":{"one":"{n} Borcan","few":"{n} Borcane"},"syringe":{"one":"{n} Seringă","few":"{n} Seringi"},"tube":{"one":"{n} Tub","few":"{n} Tuburi"},"dropper":{"one":"{n} Pipetă","few":"{n} Pipete"},"stick":{"one":"{n} Stick","few":"{n} Stickuri"},"pump":{"one":"{n} Dozator","few":"{n} Dozatoare"},"bottle":{"one":"{n} Flacon","few":"{n} Flacoane"}},"hu":{"jar":{"other":"{n} tégely"},"syringe":{"other":"{n} fecskendő"},"tube":{"other":"{n} tubus"},"dropper":{"other":"{n} pipetta"},"stick":{"other":"{n} stift"},"pump":{"other":"{n} pumpás flakon"},"bottle":{"other":"{n} flakon"}},"el":{"jar":{"one":"{n} Βάζο","other":"{n} Βάζα"},"syringe":{"one":"{n} Σύριγγα","other":"{n} Σύριγγες"},"tube":{"one":"{n} Σωληνάριο","other":"{n} Σωληνάρια"},"dropper":{"one":"{n} Σταγονόμετρο","other":"{n} Σταγονόμετρα"},"stick":{"one":"{n} Στικ","other":"{n} Στικ"},"pump":{"one":"{n} Αντλία","other":"{n} Αντλίες"},"bottle":{"one":"{n} Φιαλίδιο","other":"{n} Φιαλίδια"}},"ja":{"jar":{"other":"ジャー{n}個"},"syringe":{"other":"シリンジ{n}本"},"tube":{"other":"チューブ{n}本"},"dropper":{"other":"スポイト{n}本"},"stick":{"other":"スティック{n}本"},"pump":{"other":"ポンプボトル{n}本"},"bottle":{"other":"ボトル{n}本"}},"ar":{"jar":{"one":"عبوة واحدة","two":"عبوتان","few":"{n} عبوات"},"syringe":{"one":"حقنة واحدة","two":"حقنتان","few":"{n} حقن"},"tube":{"one":"أنبوب واحد","two":"أنبوبان","few":"{n} أنابيب"},"dropper":{"one":"قطارة واحدة","two":"قطارتان","few":"{n} قطارات"},"stick":{"one":"قلم واحد","two":"قلمان","few":"{n} أقلام"},"pump":{"one":"مضخة واحدة","two":"مضختان","few":"{n} مضخات"},"bottle":{"one":"زجاجة واحدة","two":"زجاجتان","few":"{n} زجاجات"}}};
 
   var qselMounted = false;
+  // v31: a successful card mount publishes its cards + choose here so the
+  // stepper sync drives the SAME selection chain a card tap uses (paint +
+  // theme-pill relay in one place). null while the cards are not mounted —
+  // the sync then relays straight to the theme pills.
+  var qselApi = null;
 
   function qselData() {
     return pdpMember('qs');
@@ -7413,7 +7421,7 @@
   }
 
   function qselBind(cards, group) {
-    function choose(idx, focus) {
+    function choose(idx, focus, silent) {
       var picked = cards[idx];
       if (!picked) return;
       var already = picked.card.getAttribute('aria-checked') === 'true';
@@ -7425,6 +7433,9 @@
       // always did (SPEC v26 §1.1). Native .click() fires jQuery listeners
       // even while the pill group is display:none.
       try { picked.btn.click(); } catch (e) { /* noop */ }
+      // v31: a stepper-driven selection (silent) beacons under its OWN key
+      // in the sync module — one shopper action, one beacon.
+      if (silent) return;
       track('quantity_selector', 'click', 'q' + (picked.q > 0 ? picked.q : idx + 1));
     }
     for (var i = 0; i < cards.length; i++) {
@@ -7447,6 +7458,7 @@
       ev.preventDefault();
       choose(next, true);
     });
+    return choose;
   }
 
   function qselMount() {
@@ -7496,7 +7508,7 @@
       for (var s = 0; s < cards.length; s++) {
         if ((' ' + cards[s].btn.className + ' ').indexOf(' active ') !== -1) { selected = s; break; }
       }
-      qselBind(cards, group);
+      var choose = qselBind(cards, group);
       if (!wrap.parentNode || !wrap.parentNode.insertBefore) return;
       wrap.parentNode.insertBefore(root, wrap);
       // Never hide without inserting (the v6.6 rule): only AFTER the cards
@@ -7506,6 +7518,7 @@
       wrap.className += ' cx-qsel-src';
       wrap.setAttribute('aria-hidden', 'true');
       qselPaint(cards, selected);
+      qselApi = { cards: cards, choose: choose, paint: function (idx) { qselPaint(cards, idx); } };
       qselMounted = true;
       track('quantity_selector');
     } catch (e) { /* never break the theme */ }
@@ -7518,7 +7531,463 @@
       if (!(window.Shopify && window.Shopify.designMode)) return;
       document.addEventListener('shopify:section:load', function () {
         qselMounted = false;
+        qselApi = null;
         qselMount();
+      });
+    } catch (e) { /* noop */ }
+  }
+
+  // ------------------------------------------------ v31 quantity stepper sync
+  //
+  // docs/SPEC-v31-qty-sync-atc.md. The theme's PDP stepper is a dead end
+  // (its handler only rewrites the input; the value never reaches the price
+  // or the tier pills until add time, where it MULTIPLIES the selected
+  // bundle). This module replaces it with a UNIT counter wired into the
+  // v26 selection chain: 1..K select the matching tier at line-quantity 1,
+  // and counts past the top tier stay on it as whole bundles plus one
+  // best-tier remainder line, composed at add time in a single items[]
+  // call. The theme's own input keeps holding the SUBMIT quantity (whole
+  // bundles of the selected tier), so a dead interceptor can only
+  // under-buy — never oversell.
+
+  var QSYNC_CAP = 24; // matches qselQty's own unit-count cap
+  var qsyncState = null;
+  var qsyncDocWired = false;
+
+  function qsyncData() {
+    return pdpMember('qy');
+  }
+
+  function qsyncAllowed(d) {
+    // The house live/draft gate — preview shows exactly what going live
+    // will show.
+    return !!d && pdpMemberAllowed(d, 'quantity_sync');
+  }
+
+  function qsyncTiers() {
+    // The ONLY shape the sync mounts on: consecutive 1..K unit tiers
+    // (K >= 2) with usable presentment cents and an id-matched theme pill
+    // for every tier. Anything else (mixed sizes, missing pills, unknown
+    // money) keeps the theme's stepper untouched.
+    var qs = pdpMember('qs');
+    if (!qs || !Array.isArray(qs.v) || qs.v.length < 2 || qs.v.length > 6) return null;
+    var wrap = qselWrap();
+    if (!wrap) return null;
+    var btns = qselButtons(wrap);
+    if (!btns || btns.length !== qs.v.length) return null;
+    var byId = {};
+    for (var b = 0; b < btns.length; b++) byId[btns[b].id] = btns[b];
+    var tiers = [];
+    for (var i = 0; i < qs.v.length; i++) {
+      var v = qs.v[i];
+      if (!v || (typeof v.id !== 'number' && typeof v.id !== 'string')) return null;
+      if (!(typeof v.p === 'number' && isFinite(v.p) && v.p > 0)) return null;
+      if (qselQty(v.t) !== i + 1) return null;
+      var pair = byId[String(v.id)];
+      if (!pair) return null;
+      tiers.push({ q: i + 1, p: v.p, id: String(v.id), btn: pair.el, idx: i });
+    }
+    return tiers;
+  }
+
+  function qsyncSplit(n, tiers, vd) {
+    // n units decomposed as whole TOP-tier bundles + at most one smaller
+    // tier: every unit past the catalog keeps the deepest bundle price the
+    // catalog offers, and the shown total is exactly what checkout charges.
+    if (n <= tiers.length) {
+      return { tier: tiers[n - 1], qty: 1, rem: null, cents: tiers[n - 1].p };
+    }
+    var top = tiers[tiers.length - 1];
+    if (vd) {
+      // v32 volume mode (docs/SPEC-v32-volume-pricing.md): ONE line of the
+      // 1-unit variant at quantity n — the app-owned discount prices it to
+      // round(n x p3 / K), the SAME half-up minor-units formula the
+      // function's logic.js applies, so the shown figure IS the charge.
+      return { tier: tiers[0], qty: n, rem: null, cents: Math.round(n * top.p / top.q) };
+    }
+    var bundles = Math.floor(n / top.q);
+    var r = n % top.q;
+    return {
+      tier: top,
+      qty: bundles,
+      rem: r > 0 ? tiers[r - 1] : null,
+      cents: bundles * top.p + (r > 0 ? tiers[r - 1].p : 0)
+    };
+  }
+
+  function qsyncSubActive() {
+    // v17.1's fail-closed buy-box probe: only a REAL selected subscription
+    // (CellexiaSubs live state, never B2B) clamps the stepper at the top
+    // tier — plan allocations price single tiers, so composed counts stay
+    // one-time territory and the shown price never drifts from the charge.
+    try { return azSubPlanId() !== null; } catch (e) { return false; }
+  }
+
+  function qsyncActiveIdx(tiers) {
+    for (var i = 0; i < tiers.length; i++) {
+      if ((' ' + tiers[i].btn.className + ' ').indexOf(' active ') !== -1) return i;
+    }
+    return -1;
+  }
+
+  function qsyncChip(split) {
+    // The stepper's own save tag — the SAME wording and math rules as the
+    // cards' chip (baseline x n minus the composed total, shown only when
+    // genuinely positive). Zero new claims: computed from live cents.
+    var st = qsyncState;
+    var diff = st.tiers[0].p * st.n - split.cents;
+    var base = (' ' + st.root.className + ' ').replace(' cx-qsync--deal ', ' ').replace(/^\s+|\s+$/g, '');
+    if (st.n >= 2 && diff > 0) {
+      st.chip.textContent = qselTpl(st.d, 'save', qselMoney(diff, st.d));
+      st.chip.hidden = false;
+      st.root.className = base + ' cx-qsync--deal';
+    } else {
+      st.chip.hidden = true;
+      st.chip.textContent = '';
+      st.root.className = base;
+    }
+  }
+
+  function qsyncPriceRestore() {
+    // Back inside the catalog: hand the [sm-rc-current-price] text back to
+    // the theme. renderVariables is the sub-branch's global; the plain
+    // branch keeps its renderer behind the hidden variant select's change
+    // handler, which a NATIVE change event reaches through jQuery.
+    try {
+      if (typeof window.renderVariables === 'function') {
+        window.renderVariables();
+        return;
+      }
+      var sel = document.querySelector('select[sm-rc-variant-selector]');
+      if (sel && typeof Event === 'function') {
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    } catch (e) { /* noop */ }
+  }
+
+  function qsyncPriceWrite() {
+    var st = qsyncState;
+    if (!st || !st.lastPrice) return;
+    var els = document.querySelectorAll('[sm-rc-current-price]');
+    for (var i = 0; i < els.length; i++) {
+      if (els[i].textContent !== st.lastPrice) els[i].textContent = st.lastPrice;
+    }
+  }
+
+  var qsyncPricePending = false;
+  function qsyncSchedulePriceWrite() {
+    if (qsyncPricePending) return;
+    qsyncPricePending = true;
+    Promise.resolve().then(function () {
+      qsyncPricePending = false;
+      qsyncPriceWrite();
+    });
+  }
+
+  function qsyncPrice(split) {
+    // At or under the top tier the pill relay already made the theme write
+    // that tier's own price — the composed figure only exists PAST the
+    // catalog, so only there does the sync own the ATC price text
+    // (presentment-correct via the v26 money twin, never parsed strings).
+    var st = qsyncState;
+    if (st.n <= st.top.q) {
+      if (st.lastPrice) {
+        st.lastPrice = null;
+        qsyncPriceRestore();
+      }
+      return;
+    }
+    st.lastPrice = qselMoney(split.cents, st.d);
+    qsyncPriceWrite();
+  }
+
+  function qsyncPulse(tier) {
+    // One highlight beat on the card the stepper just chose — the visual
+    // thread between the two controls. Cards only (the pills are the
+    // hidden channel); reduced-motion shoppers get the selection state
+    // alone (the animation is CSS-gated).
+    try {
+      if (!qselApi) return;
+      var card = null;
+      for (var i = 0; i < qselApi.cards.length; i++) {
+        if (qselApi.cards[i].btn === tier.btn) { card = qselApi.cards[i].card; break; }
+      }
+      if (!card) return;
+      card.className = (' ' + card.className + ' ').replace(' cx-qsel__card--pulse ', ' ').replace(/^\s+|\s+$/g, '');
+      void card.offsetWidth;
+      card.className += ' cx-qsel__card--pulse';
+    } catch (e) { /* noop */ }
+  }
+
+  function qsyncApply(n, fromPill) {
+    // The one writer: clamps, mirrors the tier selection (through the
+    // cards' own choose so paint + theme relay stay a single chain), owns
+    // the native input's submit quantity and repaints count/chip/price.
+    var st = qsyncState;
+    if (!st) return;
+    var cap = qsyncSubActive() ? st.top.q : QSYNC_CAP;
+    if (n < 1) n = 1;
+    if (n > cap) n = cap;
+    st.n = n;
+    var split = qsyncSplit(n, st.tiers, st.vd);
+    // vd past the catalog: the MECHANICAL selection is the 1-unit variant
+    // (the line the discount prices) while the cards keep the TOP tier
+    // painted — the rate promise — so that relay bypasses choose's paint.
+    var vdTop = st.vd && n > st.top.q;
+    var paintIdx = vdTop ? st.top.idx : split.tier.idx;
+    if (!fromPill && qsyncActiveIdx(st.tiers) !== split.tier.idx) {
+      st.relaying = true;
+      try {
+        if (vdTop) st.tiers[split.tier.idx].btn.click();
+        else if (qselApi) qselApi.choose(split.tier.idx, false, true);
+        else st.tiers[split.tier.idx].btn.click();
+      } catch (e) { /* noop */ }
+      st.relaying = false;
+      qsyncPulse(st.tiers[paintIdx]);
+    }
+    if (st.vd && qselApi && qselApi.paint) {
+      try { qselApi.paint(paintIdx); } catch (e) { /* noop */ }
+    }
+    try { st.input.value = String(split.qty); } catch (e) { /* noop */ }
+    st.count.textContent = String(n);
+    qsyncChip(split);
+    qsyncPrice(split);
+  }
+
+  function qsyncStep(dir) {
+    var st = qsyncState;
+    if (!st) return;
+    var before = st.n;
+    qsyncApply(st.n + dir, false);
+    if (st.n !== before) track('quantity_sync', 'click', 'q' + st.n);
+  }
+
+  function qsyncComposedAdd(split) {
+    // Mirrors the theme's own success flow (add -> successState -> fresh
+    // cart.js -> refreshMiniCart): ONE items[] call so the composed order
+    // lands atomically. Any failure leaves the cart untouched and the
+    // button usable — the theme's own error path is a console line too.
+    var st = qsyncState;
+    var items = [{ id: parseInt(split.tier.id, 10), quantity: split.qty }];
+    if (split.rem) items.push({ id: parseInt(split.rem.id, 10), quantity: 1 });
+    track('quantity_sync', 'add_to_cart', 'q' + st.n);
+    var root = routeRoot();
+    window.fetch(root + 'cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ items: items })
+    }).then(function (res) {
+      if (!res.ok) throw new Error('cart/add ' + res.status);
+      if (typeof window.successState === 'function') {
+        window.successState();
+        return null;
+      }
+      return window.fetch(root + 'cart.js', { headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (cart) {
+          if (typeof window.refreshMiniCart === 'function') window.refreshMiniCart(cart);
+        });
+    }).catch(function (err) {
+      try { console.log('Error: ' + err + '!'); } catch (e) { /* noop */ }
+    });
+  }
+
+  function qsyncAtcCapture(ev) {
+    // Document-capture so it runs BEFORE the theme's jQuery add handler.
+    // It steps aside (native add stays exact) unless the count needs a
+    // remainder line; a throw anywhere lets the theme add run untouched.
+    try {
+      var st = qsyncState;
+      if (!st) return;
+      var t = ev.target;
+      var btn = t && t.closest ? t.closest('[sm-rc-add-to-cart]') : null;
+      if (!btn || btn.disabled) return;
+      if (qsyncSubActive()) {
+        if (st.n > st.top.q) qsyncApply(st.top.q, false);
+        return;
+      }
+      // v32 volume mode: the native add IS the whole order (quantity n of
+      // the 1-unit line); the app-owned discount prices it at checkout.
+      if (st.vd) return;
+      var split = qsyncSplit(st.n, st.tiers);
+      if (!split.rem) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      qsyncComposedAdd(split);
+    } catch (e) { /* let the theme add run */ }
+  }
+
+  function qsyncMount() {
+    try {
+      if (qsyncState) return;
+      var d = qsyncData();
+      if (!d || !qsyncAllowed(d)) return;
+      var qs = pdpMember('qs');
+      var tiers = qsyncTiers();
+      if (!tiers) return;
+      var qtyBox = document.querySelector('.pdp__actions .action--qty .qty');
+      if (!qtyBox || qtyBox.getAttribute('data-cx-qsync') === '1') return;
+      var input = qtyBox.querySelector('input[sm-rc-quantity-selector]') || qtyBox.querySelector('input[name="quantity"]');
+      if (!input) return;
+      // A B2B minimum-order quantity stepper steps by its own min — unit
+      // semantics would corrupt it. Theme stepper stays.
+      if ((parseInt(input.getAttribute('min') || '1', 10) || 1) > 1) return;
+      var root = cxEl('div', 'cx-qsync', ['data-cx-feature', 'quantity_sync']);
+      root.setAttribute('role', 'group');
+      root.setAttribute('aria-label', qselStr(qs, 'qty'));
+      var minus = cxEl('button', 'cx-qsync__btn cx-qsync__btn--minus');
+      minus.type = 'button';
+      minus.textContent = '−';
+      minus.setAttribute('aria-label', qselStr(qs, 'dec'));
+      var count = cxEl('span', 'cx-qsync__count');
+      count.setAttribute('aria-live', 'polite');
+      var plus = cxEl('button', 'cx-qsync__btn cx-qsync__btn--plus');
+      plus.type = 'button';
+      plus.textContent = '+';
+      plus.setAttribute('aria-label', qselStr(qs, 'inc'));
+      var chip = cxEl('span', 'cx-qsync__save');
+      chip.hidden = true;
+      root.appendChild(minus);
+      root.appendChild(count);
+      root.appendChild(plus);
+      root.appendChild(chip);
+      // Initial count mirrors the theme's own .active pill (the first by
+      // default; deep links inherit exactly the theme behavior, v26 §1.7).
+      var startIdx = qsyncActiveIdx(tiers);
+      var n0 = startIdx >= 0 ? tiers[startIdx].q : 1;
+      count.textContent = String(n0);
+      if (!qtyBox.parentNode || !qtyBox.parentNode.insertBefore) return;
+      qtyBox.parentNode.insertBefore(root, qtyBox);
+      // Never hide without inserting (the v6.6 rule). The theme's stepper
+      // stays in the DOM: its input keeps being the submit quantity every
+      // add path reads.
+      qtyBox.setAttribute('data-cx-qsync', '1');
+      qtyBox.className += ' cx-qsync-src';
+      qtyBox.setAttribute('aria-hidden', 'true');
+      qsyncState = {
+        n: n0,
+        tiers: tiers,
+        top: tiers[tiers.length - 1],
+        input: input,
+        count: count,
+        chip: chip,
+        root: root,
+        d: qs,
+        // v32: the island's volume verdict — 4+ becomes one discounted
+        // 1-unit line instead of composed bundles.
+        vd: d.vd === 1,
+        relaying: false,
+        lastPrice: null
+      };
+      minus.addEventListener('click', function () { qsyncStep(-1); });
+      plus.addEventListener('click', function () { qsyncStep(1); });
+      // Tier taps flow back: a card tap relays a native pill click, so the
+      // pill is the ONE place every selection passes through — direct pill
+      // taps (cards off) are caught by the same listeners.
+      for (var t = 0; t < tiers.length; t++) {
+        (function (tier) {
+          tier.btn.addEventListener('click', function () {
+            var st = qsyncState;
+            if (!st || st.relaying) return;
+            qsyncApply(tier.q, true);
+          });
+        })(tiers[t]);
+      }
+      if (!qsyncDocWired) {
+        qsyncDocWired = true;
+        document.addEventListener('click', qsyncAtcCapture, true);
+        // The theme rewrites [sm-rc-current-price] on its own events; while
+        // a composed price is owned here, write it back after every theme
+        // write (idempotence breaks the observer loop: equal text, no write).
+        if (typeof MutationObserver === 'function') {
+          var mo = new MutationObserver(function () {
+            var st = qsyncState;
+            if (!st || !st.lastPrice) return;
+            var els = document.querySelectorAll('[sm-rc-current-price]');
+            for (var i = 0; i < els.length; i++) {
+              if (els[i].textContent !== st.lastPrice) { qsyncSchedulePriceWrite(); return; }
+            }
+          });
+          var spans = document.querySelectorAll('[sm-rc-current-price]');
+          for (var s = 0; s < spans.length; s++) {
+            mo.observe(spans[s], { childList: true, characterData: true, subtree: true });
+          }
+        }
+        // Switching INTO a subscription mid-browse clamps a composed count
+        // back to the top tier (the v17.1 buy-box event).
+        document.addEventListener('cx:buybox:change', function () {
+          var st = qsyncState;
+          if (st && st.n > st.top.q && qsyncSubActive()) qsyncApply(st.top.q, false);
+        });
+      }
+      // Align the submit quantity with the mirrored start state.
+      try { input.value = '1'; } catch (e) { /* noop */ }
+      track('quantity_sync');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  // ------------------------------------------------ v31 add-to-cart button v2
+  //
+  // Presentation only: the theme's own [sm-rc-add-to-cart] button gains a
+  // cart glyph, a bigger label and the live price re-seated in its own
+  // right slot. The price span MOVES as the same node, so the theme's
+  // jQuery writes (and the sync's composed price) keep landing; the
+  // .oos-text toggle and the disabled state are untouched. A product whose
+  // buy area is the notify-me button (no .is-text/price span) bails out
+  // before any mutation.
+
+  function atcbMount() {
+    try {
+      var d = pdpMember('ab');
+      if (!d || !pdpMemberAllowed(d, 'atc_button')) return;
+      var btn = document.querySelector('button[sm-rc-add-to-cart]');
+      if (!btn || btn.getAttribute('data-cx-feature') === 'atc_button') return;
+      var isText = btn.querySelector('.is-text');
+      var price = isText ? isText.querySelector('[sm-rc-current-price]') : null;
+      if (!isText || !price || price.parentNode !== isText) return;
+      // The label is the theme's OWN localized text minus the " - " joiner
+      // — nothing is invented. Any unexpected child = theme drift: bail
+      // BEFORE mutating.
+      var label = '';
+      var strays = [];
+      for (var i = 0; i < isText.childNodes.length; i++) {
+        var node = isText.childNodes[i];
+        if (node === price) continue;
+        if (node.nodeType === 3) {
+          label += node.nodeValue;
+          strays.push(node);
+          continue;
+        }
+        return;
+      }
+      label = label.replace(/\s*[-–—]\s*$/, '').replace(/^\s+|\s+$/g, '');
+      if (!label) return;
+      for (var r = 0; r < strays.length; r++) isText.removeChild(strays[r]);
+      var main = cxEl('span', 'cx-atcb__main');
+      main.appendChild(cxIcon('cart', 20));
+      var labelEl = cxEl('span', 'cx-atcb__label');
+      labelEl.textContent = label;
+      main.appendChild(labelEl);
+      var priceWrap = cxEl('span', 'cx-atcb__price');
+      priceWrap.appendChild(price);
+      isText.appendChild(main);
+      isText.appendChild(priceWrap);
+      btn.className += ' cx-atcb';
+      btn.setAttribute('data-cx-feature', 'atc_button');
+      track('atc_button');
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function v31DesignBind() {
+    // Theme-editor section reloads rebuild the buy area (design mode only)
+    // — remount both v31 pieces so the merchant's editor view stays
+    // truthful. Fresh nodes make the id guards re-admit the mounts.
+    try {
+      if (!(window.Shopify && window.Shopify.designMode)) return;
+      document.addEventListener('shopify:section:load', function () {
+        qsyncState = null;
+        qsyncMount();
+        atcbMount();
       });
     } catch (e) { /* noop */ }
   }
@@ -7536,6 +8005,13 @@
       // mounts below) ---
       qselMount();
       qselDesignBind();
+
+      // --- v31 stepper sync + ATC restyle: the sync consumes the cards'
+      // published choose channel, so it mounts right after them; the
+      // button restyle is independent presentation on the theme's ATC ---
+      qsyncMount();
+      atcbMount();
+      v31DesignBind();
 
       // v10: the synchronous state half (stored choice + fresh geo
       // cache) must be resolved BEFORE any mount below decides to paint

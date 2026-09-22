@@ -1,0 +1,55 @@
+# v32 volume pricing — input for cart.lines.discounts.generate.run
+# (docs/SPEC-v32-volume-pricing.md §2). Selects exactly what the pricer
+# needs: per-line quantity / gift marker / pre-discount subtotal /
+# variant+product ids / subscription flag, the discount classes of the
+# node being evaluated, the buyer's COUNTRY (the config key — prices vary
+# per country even inside one market) and LANGUAGE (the localized message
+# table), and the server-written config metafield. The deprecated
+# localization.market field is deliberately not used.
+query CartInput {
+  cart {
+    lines {
+      id
+      quantity
+      attribute(key: "_cellexia_gift") {
+        value
+      }
+      cost {
+        subtotalAmount {
+          amount
+          currencyCode
+        }
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            id
+          }
+        }
+      }
+      sellingPlanAllocation {
+        sellingPlan {
+          id
+        }
+      }
+    }
+  }
+  discount {
+    discountClasses
+  }
+  localization {
+    country {
+      isoCode
+    }
+    language {
+      isoCode
+    }
+  }
+  shop {
+    metafield(namespace: "$app:cellexia", key: "volume") {
+      jsonValue
+    }
+  }
+}

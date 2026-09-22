@@ -225,6 +225,21 @@
       "file": "validation/sims/quantity-selector.cjs",
       "floorBytes": 14000,
       "phase": "required"
+    },
+    {
+      "file": "validation/sims/quantity-sync.cjs",
+      "floorBytes": 20000,
+      "phase": "required"
+    },
+    {
+      "file": "validation/sims/volume-function.mjs",
+      "floorBytes": 10000,
+      "phase": "required"
+    },
+    {
+      "file": "extensions/cellexia-volume/src/logic.js",
+      "floorBytes": 5000,
+      "phase": "required"
     }
   ]
 }

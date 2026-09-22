@@ -1012,6 +1012,17 @@ export function featureReadiness(
     reason:
       "Placed as a theme-editor block — not shown in the app's live preview. Use the theme editor preview for placement; market toggles still apply.",
   };
+  // --- v31 buy-box pair ---------------------------------------------------
+  readiness.atc_button = {
+    ready: true,
+    reason:
+      "Restyles the theme's own Add-to-cart button in place (icon, bigger label, price in its own right slot). Products that show the notify-me button instead keep it unchanged.",
+  };
+  readiness.quantity_sync = {
+    ready: true,
+    reason:
+      "Connects the +/- stepper to the tier picker: 1-3 select the matching tier, 4+ keeps the top-tier price per unit by combining bundles. Shows only on products whose variants are consecutive 1..N unit tiers; every other product keeps the theme's stepper.",
+  };
   readiness.dispatch_countdown = withExclusionNote(
     dispatchReadiness(settings.dispatch),
     settings.dispatch.excludedByMarket,

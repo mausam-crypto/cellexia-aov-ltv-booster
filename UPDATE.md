@@ -235,7 +235,129 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v30 — Trustpilot star color in checkout + PDP Trustpilot size + star rounding + cart row completion — what this release changes
+## 3a. v32 — exact volume pricing at 4+ (app-owned Shopify discount, ships OFF) — what this release changes
+
+Your decisions (2026-09-21): match each market's REAL 3-pack per-unit rate,
+computed from your own prices; discount codes may stack; the app creates and
+owns the discount. Full spec: `docs/SPEC-v32-volume-pricing.md`.
+
+### ⚠️ One manual step: add the webhook to your real shopify.app.toml
+
+This release ships a NEW extension (`cellexia-volume`, a Discount Function)
+and a NEW webhook. The zip does not touch your real toml (§1), so add this
+block next to the existing webhook subscriptions before `npm run deploy`:
+
+```
+  [[webhooks.subscriptions]]
+  topics = [ "products/update" ]
+  uri = "/webhooks/products/update"
+```
+
+It keeps the discount's price mirror in step when you edit product prices.
+(Even without it you are safe: a price change simply pauses the discount on
+that product until the next sync — it can never mischarge.)
+
+### What it does
+
+With **Quantity stepper sync** AND its new **"Charge the top-tier rate
+automatically at 4 and up"** switch both on (Quantity page):
+
+- At 4+ the stepper keeps ONE cart line of the single-unit product, and the
+  app's automatic discount reduces that line to exactly `round(n x 3-pack
+  price / 3)` — the same cents formula the button displays, so what the
+  shopper sees is what checkout charges, in every market and currency.
+  4 jars at US prices: $344.00 becomes $273.33, exactly 4 x $68.33.
+- The rate is derived per COUNTRY from your live prices (the US works out
+  to 20.5%, the UK to 24.1% — automatically, including every converted
+  currency), re-synced on save, on product edits (the webhook) and daily.
+  The Quantity page shows the effective per-market table.
+- The discounted line shows a localized "Volume discount" label (18
+  languages) in cart and checkout; discount codes can stack on top.
+- Safety: the discount is created ACTIVE but INERT until both switches are
+  on and a price sync completed cleanly; a changed price fail-closes that
+  product's discount (full price, never a wrong charge) until re-sync; a
+  subscription selection still caps the stepper at 3; gift lines and tier
+  variants are never touched.
+- Without the new switch, v31's behavior is unchanged (4+ composed from
+  whole packs) — you can deploy everything and decide later.
+
+### Go-live and the preview caveat
+
+Preview shows the discounted 4+ prices as soon as the draft flag is armed,
+but checkout only honors them once BOTH switches are saved on (that save
+runs the price sync and arms the discount — watch for the green "Armed"
+status). After go-live, place one 4-unit test order to see the discount
+line end to end.
+
+### Liquid budget
+
++~50 B (the `vd` flag on the qy island member), paid by further schema
+trims: total 99,467 / 99,500. Zero locale-file keys (the discount label
+ships inside the function).
+
+## 3b. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
+
+Two independent buy-box features you asked for, each with its own switch,
+market scope, Preview Center draft flag and analytics line. Both live on the
+**Quantity selector** feature page (`/app/features/quantity`). Full spec:
+`docs/SPEC-v31-qty-sync-atc.md`.
+
+### Quantity stepper sync (`quantity_sync`, ships OFF)
+
+Today the theme's +/- stepper is a dead end: pressing it never changes the
+add-to-cart price, never touches the tier picker, and at add time it silently
+MULTIPLIES the selected bundle (qty 2 with "3 Jars" selected adds 6 jars).
+With the sync on, the stepper counts JARS and drives the same tier machinery
+a card tap uses:
+
+- **1, 2, 3** select the matching tier — the add-to-cart price updates
+  instantly (it is the tier's own price), and picking a tier card moves the
+  stepper too (fully two-way).
+- **4 and above** stays on the 3-pack: the order is composed as whole
+  3-packs plus the best remaining tier (4 = 3-pack + 1 jar, 5 = 3-pack +
+  2-pack, 6 = two 3-packs…), added in ONE call, so every jar past three
+  keeps the deepest bundle discount the catalog offers and the button shows
+  the exact charged total. (A flat 3-pack per-jar price on 4 or 5 jars is
+  not expressible with your variant-based tiers — no such variant exists;
+  if you ever want a true flat per-unit rate there, that is a Shopify
+  volume-pricing discount project, not a theme widget.)
+- A small **"Save …" tag** floats off the stepper (the cards' own wording,
+  all 18 languages, computed from live prices — never shown when the saving
+  is zero), and the chosen card gives one soft highlight pulse: the visual
+  thread between the two controls. No layout shift, phone-first.
+- Safety rails: mounts ONLY on products whose variants are consecutive
+  1..N unit tiers with a minimum order quantity of 1 (B2B MOQ steppers are
+  never replaced); while a subscription is selected the stepper caps at the
+  top tier so plan pricing stays exact; if the sync's add path ever fails,
+  the theme's own add still buys whole bundles — it can under-buy a
+  remainder jar, never oversell.
+
+### Add-to-cart button v2 (`atc_button`, ships OFF)
+
+The same button, restyled in place: a cart icon, a bigger label in the
+heading font, and the live price seated at the right behind a thin divider
+(the reference look you sent). The theme keeps writing the price and the
+sold-out state into the exact same elements — nothing about adding to cart
+changes, and the notify-me buttons are left untouched. Works with or
+without the sync; with both on, the price slot always shows the chosen
+jar-count total.
+
+### Try them before they go live
+
+Preview Center → arm a draft with "Quantity stepper sync" and/or
+"Add-to-cart button v2" → open any product page through the preview link.
+Both ship OFF for real visitors until you enable them (globally or per
+market) on the Quantity selector page or the Markets matrix.
+
+### Liquid budget
+
+The two gates + members cost ~660 B, paid for FIRST by a diet (schema help
+text trims in the PDP + Amazon blocks, the PDP head merged into one liquid
+tag, one comment moved to docs): total Liquid 99,452 / 99,500. Zero new
+locale-file keys (the three new aria strings ride the JS table; el/ar stay
+at their byte walls).
+
+## 3c. v30 — Trustpilot star color in checkout + PDP Trustpilot size + star rounding + cart row completion — what this release changes
 
 Two small display options plus two requested rendering corrections (full
 contract: `docs/SPEC-v30-trustpilot-tuning.md`). Deploy BOTH halves per §3 —
@@ -293,7 +415,7 @@ byte-identical to before this release. Suite: 11,396 checks green
 block pin the byte-identical-by-default guarantees, the rounding rule and
 the cross-file wiring).
 
-## 3b. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
+## 3d. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
 
 Two things landed together in this build:
 
@@ -354,7 +476,7 @@ on the storefront config; until then the legacy path keeps today's look.
 
 Full contracts: `docs/SPEC-v28-award-strip.md`, `docs/SPEC-v29-proof-split.md`.
 
-## 3c. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
+## 3e. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
 
 A new 43rd feature, `Quantity selector cards` (`quantity_selector`), for the product
 page. While it is on, the theme's text-pill size picker ("1 Jar / 2 Jars - 15% Off /
@@ -438,7 +560,7 @@ lever is still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but n
 the deploy-safety island expander does not expand `{% render %}` inside islands, so
 that dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
 
-## 3d. v25 — before/after gallery: clinical trust redesign — what this release changes
+## 3f. v25 — before/after gallery: clinical trust redesign — what this release changes
 
 Merchant ask (2026-09-18, with two reference designs): redesign the
 before/after results widget and its click-to-enlarge overlay for maximum
@@ -524,7 +646,7 @@ win and should be cleared.
 - To see it before enabling: arm a preview (§ preview) with the
   before/after draft flag, or enable + market-scope it to a test market.
 
-## 3e. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
+## 3g. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
 
 **The ask (2026-09-17):** restyle the PDP clinical study widget to match the
 reference design (letterspaced "PUBLISHED CLINICAL RESEARCH" eyebrow, big
@@ -575,7 +697,7 @@ BEFORE saving study content. Spec: `docs/SPEC-v24-study-redesign.md`.
 Pinned by `sims/survey-methodology.cjs` T2-T8 + mutants m13-m15 and the
 harness v24 pin updates.
 
-## 3f. v23 — subscription card prices now require the app to be LIVE — what this release changes
+## 3h. v23 — subscription card prices now require the app to be LIVE — what this release changes
 
 **The bug this fixes (reported by the merchant):** while the NEW subscription
 app is still in setup (or live in only some markets), theme product cards on
@@ -613,7 +735,7 @@ run). Spec: `docs/SPEC-v23-subs-live-gate.md`. Pinned by the harness (v23
 tripwires) and by `sims/badge-cards` (setup-mode and missing-member
 scenarios) + `sims/subscribed-upgrade` (setup fallback refusal).
 
-## 3g. v21 cart overlay features — what this release changes
+## 3i. v21 cart overlay features — what this release changes
 
 ### v21.2 (2026-09-14, after your field test) — five fixes in this build
 
@@ -749,7 +871,7 @@ collapsed into two loops that mirror the file's own `bought_count` loop
 precedent (identical keys and values; JSON member order is parser-neutral).
 The release leaves 244 B of per-file headroom where it found 87 B.
 
-## 3h. v20 image badges on mobile — what this release changes
+## 3j. v20 image badges on mobile — what this release changes
 
 **No database migration. No new API scopes. No webhook changes. No new
 translated strings.** Deploy the app server and the extensions exactly as §3
@@ -791,7 +913,7 @@ mechanically and proved byte-identical for every icon before it landed, so the
 five legacy blocks that render those icons are unchanged on the page. The
 release LEAVES 1,371 B of headroom where it found 207 B.
 
-## 3i. v18 free gifts V2 — what this release changes
+## 3k. v18 free gifts V2 — what this release changes
 
 **No database migration. No new API scopes. No webhook changes.** Deploy the
 app server and the extensions exactly as §3 describes; nothing extra is needed
@@ -1005,7 +1127,7 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - New FeatureKey `quantity_selector` (42 -> 43, appended at the end), settings
   section `quantitySelector` {enabled false}, own admin page
   `/app/features/quantity`, previewable, market-scoped, analytics-labeled.
-  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3c above.
+  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3e above.
 - Storefront: gated `qs` member in the #cx-pdp-config island (live flag, page
   locale, shop money format, per-variant id/title/cents/image) + the `qsel*`
   module and `CX_QSEL_STR` 18-locale table in `cellexia-pdp.js` + the
@@ -1020,14 +1142,14 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - v26.1 (2026-09-19): free-shipping micro-line on qualifying tiers —
   `quantitySelector.freeShipTag` (default ON, tick box on the feature page),
   island `fst` = the trust badges' per-market safe threshold as presentment
-  cents, storefront tags only tiers whose own price clears it (§3c).
+  cents, storefront tags only tiers whose own price clears it (§3e).
 
 v20 — IMAGE BADGES ON MOBILE (2026-09-11):
 
 - New FeatureKey `image_badges` (38 -> 39, appended at the end), settings
   section `imageBadges` {enabled false, scale 140}, configured on Trust &
   badges, previewable, market-scoped. Full contract:
-  `docs/SPEC-v20-image-badges.md`; deploy notes in §3h above.
+  `docs/SPEC-v20-image-badges.md`; deploy notes in §3j above.
 - Storefront surface is ONE CSS declaration: the width of the theme's own
   `.pdp .badges .badge` on phones, from a custom property the PDP asset
   writes after measuring the live product image. No node, no copy, no locale

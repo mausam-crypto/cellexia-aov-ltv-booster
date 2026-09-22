@@ -150,6 +150,9 @@ const MATRIX_GROUPS: { title: string; features: MatrixFeature[] }[] = [
       // v26: replaces the theme's size pills with picture cards (see
       // docs/SPEC-v26-quantity-selector.md).
       { key: "quantity_selector", label: "Quantity selector cards" },
+      // v31 buy-box pair (see docs/SPEC-v31-qty-sync-atc.md).
+      { key: "quantity_sync", label: "Quantity stepper sync" },
+      { key: "atc_button", label: "Add-to-cart button v2" },
       { key: "trust_badges", label: "Trust badges" },
       // v20: not a widget of ours — the SIZE of the theme's own image
       // badges on phones (see docs/SPEC-v20-image-badges.md).
@@ -612,6 +615,8 @@ export default function MarketsPage() {
       ["award_strip", "awardStrip"],
       ["image_badges", "imageBadges"],
       ["quantity_selector", "quantitySelector"],
+      ["atc_button", "atcButton"],
+      ["quantity_sync", "quantitySync"],
     ] as const;
     for (const [key, section] of SIMPLE_SECTIONS) {
       if (state[key].on !== initial[key].on) {

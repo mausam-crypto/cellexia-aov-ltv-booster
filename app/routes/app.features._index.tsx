@@ -104,6 +104,10 @@ const CONFIGURE_URL: Record<FeatureKey, string> = {
   cart_pinned_checkout: "/app/features/cart",
   // v26 quantity selector cards: own page (SPEC v26).
   quantity_selector: "/app/features/quantity",
+  // v31 buy-box pair: both configure on the Quantity page next to the
+  // selector cards they extend (the v21 cart-page precedent).
+  atc_button: "/app/features/quantity",
+  quantity_sync: "/app/features/quantity",
   // v29 proof-block split: each piece has its own page (SPEC v29).
   research_band: "/app/features/research-band",
   award_strip: "/app/features/award-strip",
@@ -132,6 +136,8 @@ const GROUPS: { title: string; description: string; keys: FeatureKey[] }[] = [
       "Trust and conversion widgets on product pages — badge rows, social proof, clinical evidence and per-product trust boosters.",
     keys: [
       "quantity_selector",
+      "quantity_sync",
+      "atc_button",
       "buy_box_proof",
       "award_strip",
       "research_band",

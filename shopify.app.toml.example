@@ -58,6 +58,14 @@ api_version = "2025-10"
   topics = [ "inventory_levels/update" ]
   uri = "/webhooks/inventory/update"
 
+  # v32 volume pricing: price-change watcher (debounced per shop; acts only
+  # while the volume sub-flag is on) — keeps the discount's per-country
+  # price mirror in step with catalog edits. ADD THIS BLOCK to your real
+  # shopify.app.toml when upgrading to v32 (UPDATE.md §3a).
+  [[webhooks.subscriptions]]
+  topics = [ "products/update" ]
+  uri = "/webhooks/products/update"
+
 # ⚠️ CRITICAL — the App Proxy powers preview links, analytics beacons and the
 # cart-data endpoint (everything under https://<store>/apps/cellexia/*).
 # `url` MUST be your production app host + "/proxy" (same host as

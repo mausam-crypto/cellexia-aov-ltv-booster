@@ -112,6 +112,8 @@ const FEATURE_GROUPS: { title: string; keys: FeatureKey[] }[] = [
     title: "Product page",
     keys: [
       "quantity_selector",
+      "quantity_sync",
+      "atc_button",
       "buy_box_proof",
       "award_strip",
       "research_band",

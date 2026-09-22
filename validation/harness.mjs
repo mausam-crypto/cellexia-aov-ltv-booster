@@ -127,7 +127,8 @@ const FEATURE_KEYS = parseFeatureKeys();
 // v20 (2026-09-11): 38 -> 39 (image_badges appended at the END).
 // v21 (2026-09-14): 39 -> 42 (cart_overlay_fix + cart_compact + cart_pinned_checkout appended at the END).
 // v29 (2026-09-19): 43 -> 45 (research_band + award_strip appended at the END).
-ok(FEATURE_KEYS.length === 45, `FEATURE_KEYS parsed live: 45 keys (got ${FEATURE_KEYS.length})`);
+// v31 (2026-09-21): 45 -> 47 (atc_button + quantity_sync appended at the END).
+ok(FEATURE_KEYS.length === 47, `FEATURE_KEYS parsed live: 47 keys (got ${FEATURE_KEYS.length})`);
 
 /**
  * Evidence map: every FeatureKey -> at least one verified pattern in a real
@@ -208,6 +209,13 @@ const EVIDENCE = {
   // v26: the selector root carries the marker; one impression per mount plus
   // click beacons per tier change (sims/quantity-selector pins the module).
   quantity_selector: [{ file: PDP_JS, has: MARK("quantity_selector") }],
+  // v31: the sync stepper root carries the marker (one impression per
+  // mount, a click per unit change, an add_to_cart per composed add).
+  quantity_sync: [{ file: PDP_JS, has: MARK("quantity_sync") }],
+  // v31: the restyle decorates the THEME's own button — the marker is
+  // stamped as a plain attribute at the mount site (the az_cta_count
+  // decorating precedent), one impression per decorated button.
+  atc_button: [{ file: PDP_JS, has: "setAttribute('data-cx-feature', 'atc_button')" }],
 };
 
 {
@@ -4318,8 +4326,8 @@ const EVIDENCE = {
     "v20: the member is emitted only when the feature is live or drafted",
   );
   ok(
-    /or show_bbp or cx_ibs > 0 or cx_qs or cx_rb or cx_aw or cx_draft_any -%\}/.test(ibLiquid),
-    "v20/v26/v29: the island/CSS/JS emission gate admits image_badges, quantity_selector, the research band and the award strip each ALONE (no other feature needed)",
+    /or show_bbp or cx_ibs > 0 or cx_qs or cx_rb or cx_aw or cx_ab or cx_qy or cx_draft_any -%\}/.test(ibLiquid),
+    "v20/v26/v29/v31: the island/CSS/JS emission gate admits image_badges, quantity_selector, the proof pieces and the v31 pair each ALONE (no other feature needed)",
   );
 
   const ibCss = read(CSS);
@@ -4352,8 +4360,8 @@ const EVIDENCE = {
 
   const ibSettings = read("app/models/settings.server.ts");
   ok(
-    ibSettings.includes('"image_badges",\n  // v21 cart overlay features — appended last (39 → 42 keys).\n  "cart_overlay_fix",\n  "cart_compact",\n  "cart_pinned_checkout",\n  // v26 quantity selector cards — appended last (42 → 43 keys).\n  "quantity_selector",\n  // v29 proof-block split — appended last (43 → 45 keys).\n  "research_band",\n  "award_strip",\n];'),
-    "v20/v21/v29: the post-v20 keys close FEATURE_KEYS in append order (never inserted)",
+    ibSettings.includes('"image_badges",\n  // v21 cart overlay features — appended last (39 → 42 keys).\n  "cart_overlay_fix",\n  "cart_compact",\n  "cart_pinned_checkout",\n  // v26 quantity selector cards — appended last (42 → 43 keys).\n  "quantity_selector",\n  // v29 proof-block split — appended last (43 → 45 keys).\n  "research_band",\n  "award_strip",\n  // v31 buy-box pair — appended last (45 → 47 keys).\n  "atc_button",\n  "quantity_sync",\n];'),
+    "v20/v21/v29/v31: the post-v20 keys close FEATURE_KEYS in append order (never inserted)",
   );
   ok(
     ibSettings.includes("image_badges: { kind: \"section\", field: \"imageBadges\" }"),
@@ -4923,10 +4931,10 @@ const EVIDENCE = {
     "v26: draft preview flag widens the emission gate (live stays cx_qsl)",
   );
   ok(
-    /\{%- if cx_qs %\}\n"qs": \{"live": \{\{ cx_qsl \}\}, "l": \{\{ request\.locale\.iso_code \| json \}\}, "mf": \{\{ shop\.money_format \| json \}\}, "u": \{\{ cx_pdp_flags\.unitType \| json \}\}, \{% if cx_fs_cents > 0 and cfg\.quantitySelector\.freeShipTag != false %\}"fst": \{\{ cx_fs_cents \}\}, \{% endif %\}"v": \[/.test(
+    /\{%- if cx_qs or cx_qy %\}\n"qs": \{"live": \{\{ cx_qsl \}\}, "l": \{\{ request\.locale\.iso_code \| json \}\}, "mf": \{\{ shop\.money_format \| json \}\}, "u": \{\{ cx_pdp_flags\.unitType \| json \}\}, \{% if cx_fs_cents > 0 and cfg\.quantitySelector\.freeShipTag != false %\}"fst": \{\{ cx_fs_cents \}\}, \{% endif %\}"v": \[/.test(
       qsLiquid,
     ),
-    "v26/v26.1/v27: qs member emits live + page locale + shop money format + the per-product unit type (null when unmapped) + the gated fst threshold + the variant array",
+    "v26/v26.1/v27 (+v31 emission widen): qs member emits live + page locale + shop money format + the per-product unit type (null when unmapped) + the gated fst threshold + the variant array — for the cards OR the stepper sync",
   );
   ok(
     /assign cx_fs_cents = cx_fs\.amount \| times: 100 \| round\n/.test(qsLiquid) &&
@@ -5067,8 +5075,8 @@ const EVIDENCE = {
     "v26: FEATURE_RAW_FIELD routes the key through the generic section arm",
   );
   ok(
-    /"imageBadges",\n  "quantitySelector",\n  \/\/ v29 proof-block split\.\n  "researchBand",\n  "awardStrip",\n\] as const;/.test(qsSettings),
-    "v26/v29: quantitySelector then the two v29 sections close STANDALONE_SECTION_FIELDS (snapshot/restore/flip ride the generic arm)",
+    /"imageBadges",\n  "quantitySelector",\n  \/\/ v29 proof-block split\.\n  "researchBand",\n  "awardStrip",\n  \/\/ v31 buy-box pair\.\n  "atcButton",\n  "quantitySync",\n\] as const;/.test(qsSettings),
+    "v26/v29/v31: quantitySelector then the v29 and v31 sections close STANDALONE_SECTION_FIELDS (snapshot/restore/flip ride the generic arm)",
   );
   ok(
     qsSettings.includes("next.quantitySelector.enabled = next.quantitySelector.enabled === true;"),
@@ -5488,6 +5496,278 @@ const EVIDENCE = {
       tpCartJs.includes("typeof tp.url !== 'string' || !/\\S/.test(tp.url)"),
     "v30.2: the cart cell renders count + wordmark and guards a blank url like the PDP twins",
   );
+}
+
+// ======================================= v31 QUANTITY SYNC + ATC BUTTON V2
+// docs/SPEC-v31-qty-sync-atc.md — the stepper that counts UNITS through the
+// v26 selection chain (module behavior pinned in sims/quantity-sync.cjs)
+// and the ATC restyle. Pinned HERE: the cross-file wiring a sandbox cannot
+// see — Liquid gates/members, the widened qs data emission, the settings /
+// beacon / admin surfaces, and the init() order.
+{
+  const qyLiquid = read(`${EXT}/blocks/pdp-booster.liquid`);
+  const qyJs = read(PDP_JS);
+  const qySettings = read("app/models/settings.server.ts");
+
+  // ---- Liquid: the v26 gate idiom verbatim for both keys ----
+  ok(
+    /assign cx_s = cfg\.marketScopes\.atc_button\nif cx_s\.mode != 'selected' or cx_s\.markets contains cx_market\nif cfg\.atcButton\.enabled == true\nassign cx_abl = true\nendif\nendif/.test(
+      qyLiquid,
+    ) &&
+      /assign cx_s = cfg\.marketScopes\.quantity_sync\nif cx_s\.mode != 'selected' or cx_s\.markets contains cx_market\nif cfg\.quantitySync\.enabled == true\nassign cx_qyl = true\nendif\nendif/.test(
+        qyLiquid,
+      ),
+    "v31: Liquid live gates = market scope + master flag (the v26 idiom verbatim, both keys)",
+  );
+  ok(
+    qyLiquid.includes("if cx_abl or cx_prev_flags.atc_button == true\nassign cx_ab = true\nendif") &&
+      qyLiquid.includes("if cx_qyl or cx_prev_flags.quantity_sync == true\nassign cx_qy = true\nendif"),
+    "v31: draft preview flags widen the emission gates (live stays cx_abl/cx_qyl)",
+  );
+  ok(
+    qyLiquid.includes('"ab": {"live": {{ cx_abl }}},') &&
+      qyLiquid.includes('"qy": {"live": {{ cx_qyl }}'),
+    "v31: both island members emit their own live verdicts (qy's tail carries the v32 vd flag)",
+  );
+  ok(
+    qyLiquid.includes("{%- if cx_qs or cx_qy %}\n\"qs\":"),
+    "v31: the qs DATA member also emits for the sync alone (variant cents while the cards are off)",
+  );
+  ok(
+    qyLiquid.includes("or cx_ab or cx_qy or cx_draft_any -%}"),
+    "v31: the CSS/island wrapper gate admits each new key ALONE",
+  );
+
+  // ---- storefront module: the contracts the sim's sandbox rides on ----
+  ok(
+    qyJs.includes("return !!d && pdpMemberAllowed(d, 'quantity_sync');") &&
+      qyJs.includes("if (!d || !pdpMemberAllowed(d, 'atc_button')) return;"),
+    "v31: both mounts ride the house pdpMemberAllowed gate",
+  );
+  ok(
+    qyJs.includes("if (qselQty(v.t) !== i + 1) return null;"),
+    "v31: the sync mounts ONLY on consecutive 1..K unit tiers (anything else keeps the theme stepper)",
+  );
+  ok(
+    qyJs.includes("if ((parseInt(input.getAttribute('min') || '1', 10) || 1) > 1) return;"),
+    "v31: a B2B minimum-order-quantity stepper is never replaced",
+  );
+  ok(
+    qyJs.includes("if (qselApi) qselApi.choose(split.tier.idx, false, true);") &&
+      qyJs.includes("else st.tiers[split.tier.idx].btn.click();"),
+    "v31: tier moves relay through the cards' own choose (silent), pills directly when cards are off",
+  );
+  ok(
+    qyJs.includes("try { st.input.value = String(split.qty); } catch (e) { /* noop */ }"),
+    "v31: the theme input holds the SUBMIT quantity (whole bundles) — a dead interceptor under-buys, never oversells",
+  );
+  ok(
+    qyJs.includes("if (!split.rem) return;") && qyJs.includes("qsyncComposedAdd(split);"),
+    "v31: the ATC capture steps aside unless the count needs a remainder line",
+  );
+  ok(
+    qyJs.includes("var items = [{ id: parseInt(split.tier.id, 10), quantity: split.qty }];") &&
+      qyJs.includes("if (split.rem) items.push({ id: parseInt(split.rem.id, 10), quantity: 1 });"),
+    "v31: the composed add is ONE items[] call (bundles + at most one remainder line)",
+  );
+  ok(
+    qyJs.includes("var cap = qsyncSubActive() ? st.top.q : QSYNC_CAP;"),
+    "v31: a selected subscription clamps the stepper at the top tier (composed counts stay one-time)",
+  );
+  ok(
+    qyJs.includes("if (st.n <= st.top.q) {") && qyJs.includes("st.lastPrice = qselMoney(split.cents, st.d);"),
+    "v31: the sync owns the ATC price text only PAST the catalog, via the v26 money twin",
+  );
+  ok(
+    qyJs.includes("if (!isText || !price || price.parentNode !== isText) return;") &&
+      qyJs.includes("priceWrap.appendChild(price);"),
+    "v31: the restyle MOVES the live price span (same node — theme writes keep landing) and bails on drift",
+  );
+  ok(
+    qyJs.includes("track('quantity_sync');") &&
+      qyJs.includes("track('quantity_sync', 'click', 'q' + st.n);") &&
+      qyJs.includes("track('quantity_sync', 'add_to_cart', 'q' + st.n);") &&
+      qyJs.includes("track('atc_button');"),
+    "v31: impression + unit-change click + composed add_to_cart beacons, and the restyle impression",
+  );
+  ok(
+    /qselMount\(\);\s*\n\s*qselDesignBind\(\);[\s\S]{0,400}qsyncMount\(\);\s*\n\s*atcbMount\(\);\s*\n\s*v31DesignBind\(\);/.test(qyJs),
+    "v31: init() mounts the sync AFTER the cards (the choose channel must exist first), then the restyle",
+  );
+
+  // ---- settings/model surfaces ----
+  ok(
+    qySettings.includes("next.atcButton.enabled = next.atcButton.enabled === true;") &&
+      qySettings.includes("next.quantitySync.enabled = next.quantitySync.enabled === true;"),
+    "v31: strict-boolean sanitize (junk lands OFF, never on)",
+  );
+  ok(
+    qySettings.includes('atc_button: { kind: "section", field: "atcButton" }') &&
+      qySettings.includes('quantity_sync: { kind: "section", field: "quantitySync" }'),
+    "v31: the experiment/restore path knows where both flags live",
+  );
+  ok(
+    read("app/services/analytics.server.ts").includes('"atc_button",\n  "quantity_sync",'),
+    "v31: both keys are in the beacon allowlist (the v19 buy_box_proof omission, never again)",
+  );
+  ok(
+    read("app/routes/app.analytics.tsx").includes('atc_button: "Add-to-cart button v2",') &&
+      read("app/routes/app.analytics.tsx").includes('quantity_sync: "Quantity stepper sync",'),
+    "v31: the analytics page labels both keys",
+  );
+
+  // ---- admin surfaces ----
+  const qyHub = read("app/routes/app.features._index.tsx");
+  ok(
+    qyHub.includes('atc_button: "/app/features/quantity"') &&
+      qyHub.includes('quantity_sync: "/app/features/quantity"'),
+    "v31: the features hub sends both keys to the Quantity page",
+  );
+  const qyRoute = read("app/routes/app.features.quantity.tsx");
+  ok(
+    qyRoute.includes("quantitySync: { enabled: state.syncEnabled, volume: state.syncVolume },") &&
+      qyRoute.includes("atcButton: { enabled: state.atcEnabled },") &&
+      qyRoute.includes("quantity_sync: toScopePatch(state.syncScope),") &&
+      qyRoute.includes("atc_button: toScopePatch(state.atcScope),"),
+    "v31/v32: the Quantity page saves both flags (+ the volume sub-flag) AND both market scopes",
+  );
+  ok(
+    qyRoute.includes('title="Markets — Quantity stepper sync"') &&
+      qyRoute.includes('title="Markets — Add-to-cart button v2"'),
+    "v31: each new feature has its own market-scope card",
+  );
+  const qyMarkets = read("app/routes/app.markets.tsx");
+  ok(
+    qyMarkets.includes('{ key: "quantity_sync", label: "Quantity stepper sync" }') &&
+      qyMarkets.includes('{ key: "atc_button", label: "Add-to-cart button v2" }') &&
+      qyMarkets.includes('["atc_button", "atcButton"],') &&
+      qyMarkets.includes('["quantity_sync", "quantitySync"],'),
+    "v31: Markets matrix rows + changed-only save mappers",
+  );
+  ok(
+    read("app/routes/app.preview.tsx").includes('"quantity_selector",\n      "quantity_sync",\n      "atc_button",'),
+    "v31: the Preview Center offers both draft flags on the product-page group",
+  );
+}
+
+// ============================================= v32 VOLUME PRICING FUNCTION
+// docs/SPEC-v32-volume-pricing.md — the exact top-tier per-unit rate at
+// 4+ units, priced by the app-owned cellexia-volume Discount Function
+// (module behavior pinned in sims/volume-function.mjs; the widget's vd arm
+// in sims/quantity-sync.cjs S17/S18). Pinned HERE: the cross-file wiring —
+// the extension's toml target, the island's vd emission, the settings
+// sub-flag, the metafield-sync re-projection step, the webhook pair, the
+// admin surfaces, and the two structural facts the design leans on.
+{
+  const vToml = read("extensions/cellexia-volume/shopify.extension.toml");
+  ok(
+    vToml.includes('target = "cart.lines.discounts.generate.run"') &&
+      vToml.includes('handle = "cellexia-volume"') &&
+      vToml.includes('export = "cart-lines-discounts-generate-run"') &&
+      vToml.includes('typegen_command = "node -e 0"'),
+    "v32: the function extension targets cart lines under the cellexia-volume handle (typegen no-op, the rewards trap)",
+  );
+  const vGraphql = read("extensions/cellexia-volume/src/cart_lines_discounts_generate_run.graphql");
+  ok(
+    vGraphql.includes('metafield(namespace: "$app:cellexia", key: "volume")') &&
+      vGraphql.includes("country {") &&
+      vGraphql.includes("language {") &&
+      !vGraphql.includes("market {"),
+    "v32: the input reads the volume config + country + language and avoids the deprecated market field",
+  );
+  const vLogic = read("extensions/cellexia-volume/src/logic.js");
+  ok(
+    vLogic.includes("if (cfg.on !== true) return null;") &&
+      vLogic.includes("if (subMinor !== qty * p1) return null;") &&
+      vLogic.includes("if (line.sellingPlanAllocation) return null;") &&
+      vLogic.includes("appliesToEachItem: false,"),
+    "v32: the function is inert-until-on, staleness-anchored, subscription-safe and line-scoped",
+  );
+  // The ONE rounding rule, twinned verbatim between the function and the
+  // widget (cents-exact display/charge parity is the whole feature).
+  ok(
+    vLogic.includes("return Math.round((qty * p3) / k);") &&
+      read(PDP_JS).includes("return { tier: tiers[0], qty: n, rem: null, cents: Math.round(n * top.p / top.q) };"),
+    "v32: round-half-up(n x p3 / K) is the shared formula (function logic.js == widget vd arm)",
+  );
+
+  // ---- Liquid: the vd flag rides the qy member, gated on the sub-flag ----
+  ok(
+    read(`${EXT}/blocks/pdp-booster.liquid`).includes(
+      '"qy": {"live": {{ cx_qyl }}{% if cfg.quantitySync.volume == true %}, "vd": 1{% endif %}},',
+    ),
+    "v32: the island emits vd only while the volume sub-flag is on",
+  );
+
+  // ---- widget: vd mode never intercepts; the capture pin still holds ----
+  const vJs = read(PDP_JS);
+  ok(
+    vJs.includes("if (st.vd) return;") && vJs.includes("vd: d.vd === 1,"),
+    "v32: the widget's vd verdict comes from the island and disables the composed-add capture",
+  );
+
+  // ---- settings + sync plumbing ----
+  const vSettings = read("app/models/settings.server.ts");
+  ok(
+    vSettings.includes("next.quantitySync.volume = next.quantitySync.volume === true;"),
+    "v32: strict-boolean sanitize for the volume sub-flag",
+  );
+  const vMeta = read("app/services/metafields.server.ts");
+  ok(
+    vMeta.includes("projectVolumeScope(admin, shopDomain, settings)"),
+    "v32: every settings sync re-projects the volume scope/on flag (cheap, no price fetch)",
+  );
+  const vService = read("app/services/volume-pricing.server.ts");
+  ok(
+    vService.includes("if (p1 <= 0 || p3 <= 0 || p3 >= product.k * p1) continue;") &&
+      vService.includes("const on = armed && buildComplete;") &&
+      vService.includes('startsAt: "2026-01-01T00:00:00Z"'),
+    "v32: the mirror sanity-gates every price point and arms only on a CLEAN build (created active, inert until on)",
+  );
+  ok(
+    vService.includes("combinesWith: COMBINES_WITH_ALL") &&
+      vService.includes("orderDiscounts: true"),
+    "v32: stacking allowed (merchant decision 2026-09-21) — combinesWith all-true",
+  );
+  ok(
+    vService.includes("if (unitCount(variants[i].title) !== i + 1) {"),
+    "v32: tier eligibility is the qselQty server twin (consecutive 1..K by position)",
+  );
+
+  // ---- webhook pair ----
+  ok(
+    read("shopify.app.toml.example").includes('topics = [ "products/update" ]') &&
+      read("shopify.app.toml.example").includes('uri = "/webhooks/products/update"'),
+    "v32: the toml template subscribes products/update (UPDATE.md tells the merchant to merge it)",
+  );
+  ok(
+    read("app/routes/webhooks.products.update.tsx").includes("refreshVolumePricing(admin, shop, settings, { force: false })"),
+    "v32: the products webhook runs the debounced full refresh",
+  );
+
+  // ---- admin ----
+  const vRoute = read("app/routes/app.features.quantity.tsx");
+  ok(
+    vRoute.includes('quantitySync: { enabled: state.syncEnabled, volume: state.syncVolume },') &&
+      vRoute.includes('intent === "volume_refresh"') &&
+      vRoute.includes("refreshVolumePricing(admin, session.shop, fresh)"),
+    "v32: the Quantity page saves the sub-flag, refreshes on touch and offers the manual refresh",
+  );
+
+  // ---- the two structural facts the design leans on ----
+  ok(
+    read(CART_JS).includes("if (Number(item.quantity) !== 1) return [];"),
+    "v32: the volume-upgrade tile fires only on quantity-1 lines — a discounted 4+ line can never grow a tile (change this and re-open SPEC v32 §3)",
+  );
+  {
+    // Shopper-facing messages only (comments may dash): scan the
+    // VOLUME_MSG literal's string VALUES for the banned dashes.
+    const msgBlock = /export const VOLUME_MSG = \{([\s\S]*?)\};/.exec(vLogic);
+    ok(
+      !!msgBlock && !/—|–/.test(msgBlock[1]),
+      "v32: no em/en dashes in any localized shopper-facing message",
+    );
+  }
 }
 
 finish();

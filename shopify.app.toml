@@ -26,6 +26,13 @@ api_version = "2025-10"
   topics = [ "inventory_levels/update" ]
   uri = "/webhooks/inventory/update"
 
+  # v32 volume pricing: re-sync the discount price mirror when a product's
+  # prices change. A missed event fail-closes that product (full price)
+  # until the next sync — it cannot mischarge.
+  [[webhooks.subscriptions]]
+  topics = [ "products/update" ]
+  uri = "/webhooks/products/update"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_files,read_inventory,read_locales,read_locations,read_markets,read_metaobject_definitions,read_metaobjects,read_orders,read_products,read_publications,read_shipping,read_themes,read_translations,write_discounts,write_files,write_markets,write_metaobject_definitions,write_metaobjects,write_products,write_publications,write_translations"

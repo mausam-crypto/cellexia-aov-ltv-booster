@@ -16,6 +16,7 @@ import {
 } from "../models/settings.server";
 import { gateDigestPair } from "../models/gate-digest";
 import { marketCountryMap } from "./markets.server";
+import { projectVolumeScope } from "./volume-pricing.server";
 
 /**
  * Mirrors the settings blob to the two places extensions read it from:
@@ -747,6 +748,26 @@ export async function syncSettingsToMetafields(
         error instanceof Error ? error.message : String(error)
       }`,
     );
+  }
+
+  // STEP 3 (v32): the volume-pricing CHEAP re-projection
+  // (docs/SPEC-v32-volume-pricing.md §2.5) — re-derives the `on` flag and
+  // the market-scope country filter over the ALREADY-mirrored prices, so a
+  // feature toggle or a Markets-matrix scope flip from ANY admin page is
+  // honored in the same save (no price fetch here; full refreshes belong
+  // to the Quantity page / webhook / TTL paths). Best-effort like step 2:
+  // failures are warnings, never a blocked settings sync. Skips itself
+  // entirely while the volume config has never been synced.
+  if (shopDomain) {
+    try {
+      warnings.push(...(await projectVolumeScope(admin, shopDomain, settings)));
+    } catch (error) {
+      warnings.push(
+        `Volume pricing re-projection failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
   return { ok: true, errors: [], warnings };
 }

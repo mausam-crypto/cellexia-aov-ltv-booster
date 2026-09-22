@@ -91,6 +91,12 @@ const ALLOWED_FEATURES = new Set([
   "buy_box_proof",
   "research_band",
   "award_strip",
+  // v31 buy-box pair: the restyled ATC button beacons one impression per
+  // decorated button; the stepper sync beacons one impression per mount
+  // plus a click per unit-count change (meta "q<units>", the same free-text
+  // dimension the v26 cards use).
+  "atc_button",
+  "quantity_sync",
   // Site-wide session beacon (one per browser session) — powers the
   // experiment tracker's conversion-rate denominator.
   "site",

@@ -104,6 +104,32 @@ The picker the v26 quantity-selector cards replace lives in `.pdp__info > .pdp__
 
 ## PDP structure (`sections/pdp.liquid` + `templates/product.liquid`)
 - ATC button: `button[sm-rc-add-to-cart].btn.btn--primary.btn--atc` inside `.pdp__grey > .pdp__actions--flex`; stock row `.stock-msg` follows inside `.pdp__grey`.
+- **ATC button internals (v31 facts):** the button holds `span.oos-text` +
+  `span.is-text` ("{'products.product.add_to_cart' | t} - " text node +
+  `span[sm-rc-current-price]`). The sm-rc widget's `renderVariables()`
+  (exposed as `window.renderVariables` ONLY in the has-selling-plans
+  branch; the plain branch keeps it behind the hidden
+  `select[sm-rc-variant-selector]`'s jQuery change handler) writes the
+  price span's TEXT (naive `'$'/'€' + toFixed` — NOT shop money format)
+  and show/hides the two state spans + `disabled` — it never rebuilds the
+  button's structure, which is why the v31 `atc_button` restyle can
+  re-parent the price span once and keep every later write. For
+  product 15422184718711 in most countries the button is replaced by a
+  notify-me button / login link with NO `.is-text` at all (the restyle's
+  bail shape).
+- **PDP qty stepper (v31 facts):** `.pdp__actions .action--qty .qty` =
+  `.js-qty--minus` + `input#quantity-select-pdp[sm-rc-quantity-selector]
+  [name="quantity"]` (min/data-qty-min from `quantity_rule` — B2B MOQ can
+  be > 1) + `.js-qty--plus`. The bundle-JS handler
+  (`.js-qty:not(.js-qty--cart):not(.js-qty--mini)`) only rewrites the
+  input value (± min, floor min) and fires NO event — nothing re-renders
+  on qty change. At add time BOTH sm-rc branches read
+  `$('[sm-rc-quantity-selector]').val()` and `CartJS.addItem(variantId,
+  qty, …)` — i.e. qty MULTIPLIES the selected bundle variant. `≤576px`
+  the `.action--atc` wraps to full width BELOW the qty row. The v31
+  `quantity_sync` feature replaces the stepper's face (theme `.qty`
+  hidden as `.cx-qsync-src`, input kept as the submit-quantity holder)
+  and composes 4+ units as bundle + remainder lines itself.
 - **Trust badge injection point: inside `.pdp__grey`, immediately after `.stock-msg`** (grey `#f4f4f4` panel).
 - Buy-box column `.pdp__info` child order: `.pdp__heading` → `.pdp__blurb` → `.pdp__reviews` → `.pdp__price` → `.pdp__images--mobile` (a full DUPLICATE gallery rendered inside the info column; the desktop gallery `.pdp__images--desktop` sits before `.pdp__info`; the theme flips them at 768px) → `#persona-description.pdp__description` → `.pdp__options` → `.pdp__grey` → `.pdp__accordions`.
 - **Endorsement-badge injection point (v8.17): before `.pdp__info .pdp__images--mobile`** (fallbacks: before `#persona-description`/`.pdp__info .pdp__description`, then after `.pdp__info .pdp__price`) — one spot that is "after the price, before the photos" on mobile and "right above the description" on desktop. Anchoring on the mobile gallery is deliberate: az_buy_box MOVES `.pdp__price` into `.pdp__grey` but never touches the gallery.
