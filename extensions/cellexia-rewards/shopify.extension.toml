@@ -11,8 +11,8 @@ api_version = "2025-10"
 [[extensions]]
 name = "Cellexia rewards"
 handle = "cellexia-rewards"
-uid = "f7ee5967-6a19-15ab-06e2-81dc9b6faa9fb7cca9c6"
 type = "function"
+uid = "f7ee5967-6a19-15ab-06e2-81dc9b6faa9fb7cca9c6"
 description = "Set savings (KIT tiers), free gift lines and the free-shipping guarantee for Cellexia AOV & LTV Booster."
 
   [[extensions.targeting]]

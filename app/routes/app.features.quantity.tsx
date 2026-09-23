@@ -795,6 +795,10 @@ export default function QuantityFeaturePage() {
                   >
                     Refresh prices now
                   </Button>
+                  <Text as="span" tone="subdued" variant="bodySm">
+                    The first sync takes up to a minute (it prices every
+                    selling country).
+                  </Text>
                 </InlineStack>
                 {volumeFetcher.data && volumeFetcher.data.intent === "volume_refresh" ? (
                   <Banner

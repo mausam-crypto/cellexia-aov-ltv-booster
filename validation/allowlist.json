@@ -293,7 +293,7 @@
   },
   {
    "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-   "reason": "v32 volume pricing: qselApi gains paint (qselPaint exposure), qsyncSplit gains the vd arm (one 1-unit line at quantity n, cents = round(n x p3 / K) — the function logic.js twin), qsyncApply relays the MECHANICAL 1-unit selection past the catalog while painting the TOP card, the ATC capture steps aside in vd mode, and qsyncState carries the island's vd verdict. Pinned by sims/quantity-sync.cjs S17/S18 + mutants m15-m18 and sims/volume-function.mjs F8 (the rounding twin).",
+   "reason": "v32 volume pricing: qselApi gains paint (qselPaint exposure), qsyncSplit gains the vd arm (one 1-unit line at quantity n, cents = round(n x p3 / K) — the function logic.js twin), qsyncApply relays the MECHANICAL 1-unit selection past the catalog while painting the TOP card, the ATC capture steps aside in vd mode, and qsyncState carries the island's vd verdict. v32.2: vd:0 (volume wanted, unverified) caps the stepper at the top tier via st.vw — the merchant rejected the composed 3+1 fallback. Pinned by sims/quantity-sync.cjs S17/S18/S19 + mutants m15-m19 and sims/volume-function.mjs F8 (the rounding twin).",
    "wave": "v32"
   }
  ]

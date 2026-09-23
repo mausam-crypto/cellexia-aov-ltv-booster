@@ -318,11 +318,38 @@ minute for your country count). If a red banner appears instead, it now
 tells you exactly what to fix. Then re-test a 4-unit cart — the "Volume
 discount" line appears in cart and checkout.
 
+### v32.2 (2026-09-22, after your second test) — "Title must be unique", and the 3+1 cart
+
+Your report nailed both remaining problems:
+
+1. **"Title must be unique" root cause:** the app could not read back its
+   own saved volume config through the Admin API (a Shopify namespace
+   quirk on reads; writes and checkout reads were fine). So every sync
+   believed it was the first one and tried to CREATE the discount again,
+   colliding with the one it made the day before. Fixed twice over: the
+   read now falls back to the fully spelled namespace, and even with no
+   memory at all the app now finds its existing discount by its exact
+   title and updates it instead of creating a duplicate. You do NOT need
+   to delete the existing "Cellexia volume pricing" discount — the app
+   adopts it. (The "deploy the extensions" hint you rightly called wrong
+   now only appears when the error is actually about a missing function.)
+2. **The 3+1 cart is retired.** While the 4+ switch is on but the
+   discount is not yet verified, the stepper now simply stops at 3
+   (exactly like it does for subscriptions) instead of composing a 3-pack
+   plus a full-price single. Once the sync verifies the discount, 4+
+   unlocks with the discounted single-line behavior. The pack composition
+   only exists for stores that never turn volume pricing on.
+
+Also: the price sync runs about twice as fast (the "loads indefinitely"
+feel was it working through your ~85 countries sequentially), and a small
+note under the button says the first sync takes up to a minute.
+
 ### Liquid budget
 
-+~50 B (the `vd` flag on the qy island member; v32.1 renamed the gate to
-`volumeLive`), paid by further schema trims: total 99,471 / 99,500. Zero
-locale-file keys (the discount label ships inside the function).
++~50 B for the qy member's `vd` flag across v32.1/v32.2 (verified
+`volumeLive` = 1, wanted-but-unverified = 0), paid by further schema
+trims: total 99,454 / 99,500. Zero locale-file keys (the discount label
+ships inside the function).
 
 ## 3b. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
 

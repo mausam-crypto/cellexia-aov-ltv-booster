@@ -78,11 +78,7 @@ function pickSchema() {
 }
 
 function run(args) {
-  execFileSync("npx", ["prisma", ...args], {
-    cwd: ROOT,
-    stdio: "inherit",
-    shell: process.platform === "win32",
-  });
+    execFileSync("npx", ["prisma", ...args], { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" });
 }
 
 const command = process.argv[2];

@@ -5579,8 +5579,8 @@ const EVIDENCE = {
     "v31: the composed add is ONE items[] call (bundles + at most one remainder line)",
   );
   ok(
-    qyJs.includes("var cap = qsyncSubActive() ? st.top.q : QSYNC_CAP;"),
-    "v31: a selected subscription clamps the stepper at the top tier (composed counts stay one-time)",
+    qyJs.includes("var cap = qsyncSubActive() || st.vw ? st.top.q : QSYNC_CAP;"),
+    "v31/v32.2: a selected subscription OR an unverified volume clamps the stepper at the top tier",
   );
   ok(
     qyJs.includes("if (st.n <= st.top.q) {") && qyJs.includes("st.lastPrice = qselMoney(split.cents, st.d);"),
@@ -5704,9 +5704,9 @@ const EVIDENCE = {
   // widget show discounts a refused arming never charged) ----
   ok(
     read(`${EXT}/blocks/pdp-booster.liquid`).includes(
-      '"qy": {"live": {{ cx_qyl }}{% if cfg.quantitySync.volumeLive == true %}, "vd": 1{% endif %}},',
+      '"qy": {"live": {{ cx_qyl }}{% if cfg.quantitySync.volumeLive == true %}, "vd": 1{% elsif cfg.quantitySync.volume == true %}, "vd": 0{% endif %}},',
     ),
-    "v32.1: the island emits vd only on the VERIFIED volumeLive verdict, never the raw switch",
+    "v32.1/v32.2: vd:1 only on the VERIFIED volumeLive verdict; vd:0 (cap, never compose) while volume is wanted but unverified",
   );
 
   // ---- widget: vd mode never intercepts; the capture pin still holds ----
@@ -5753,9 +5753,31 @@ const EVIDENCE = {
   // persisted reasons + the post-refresh volumeLive re-sync ----
   ok(
     vService.includes('if (e?.extensions?.code === "THROTTLED") return true;') &&
-      vService.includes("const PRICE_CALL_SPACING_MS = 250;") &&
+      vService.includes("const PRICE_CALL_SPACING_MS = 150;") &&
       vService.includes("const THROTTLE_RETRIES = 3;"),
     "v32.1: pricing calls are paced and throttle-retried (the unpaced burst was the field failure)",
+  );
+  // ---- v32.2 field fixes (round 2: 'Title must be unique' + blind read) ----
+  ok(
+    vService.includes("async function findVolumeDiscountByTitle(") &&
+      vService.includes('if (d.title !== VOLUME_DISCOUNT_TITLE) continue;') &&
+      vService.includes("if (ours.size > 0 && fid && !ours.has(fid)) continue; // another app's — never touch"),
+    "v32.2: a lost discount id is healed by exact-title adoption, guarded to OUR function-backed node",
+  );
+  ok(
+    vService.includes("if (/unique/i.test(joined)) {") &&
+      vService.includes('Delete "${VOLUME_DISCOUNT_TITLE}" in Shopify Admin -> Discounts'),
+    "v32.2: the unique-title create error re-adopts, and the last resort is an HONEST manual path",
+  );
+  ok(
+    vService.includes("const hint = /function/i.test(joined)") &&
+      !vService.includes('no id returned"}. ` +\n          "Deploy the extensions first'),
+    "v32.2: the deploy hint is CONDITIONAL on a function-shaped error (the blanket hint misled the merchant)",
+  );
+  ok(
+    vService.includes("concreteNamespaceCache = `app--${num}--cellexia`;") &&
+      vService.includes("if (concrete) cfg = await tryRead(concrete);"),
+    "v32.2: the config read falls back to the concrete app-reserved namespace (the shorthand read came back empty live)",
   );
   ok(
     vService.includes("const on = armed && Object.keys(p).length > 0;") &&

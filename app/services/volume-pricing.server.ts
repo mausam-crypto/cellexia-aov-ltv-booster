@@ -154,15 +154,48 @@ const SHOP_ID_QUERY = `#graphql
 `;
 
 const VOLUME_METAFIELD_QUERY = `#graphql
-  query cellexiaVolumeMetafield {
+  query cellexiaVolumeMetafield($ns: String!) {
     shop {
       id
-      metafield(namespace: "${VOLUME_NS}", key: "${VOLUME_KEY}") {
+      metafield(namespace: $ns, key: "${VOLUME_KEY}") {
         value
       }
     }
   }
 `;
+
+const APP_NS_QUERY = `#graphql
+  query cellexiaVolumeAppNs {
+    currentAppInstallation { app { id } }
+  }
+`;
+
+/**
+ * v32.2 (field incident 2): the "$app:cellexia" shorthand is PROVEN for
+ * writes (metafieldsSet) and for function/checkout reads, but the Admin
+ * API READ of the same namespace came back empty on the live store — the
+ * app could not see its own config, treated every sync as the first one,
+ * and died on "Title must be unique" re-creating its own discount. The
+ * concrete reserved form ("app--{numeric app id}--cellexia") is resolved
+ * once per process and used as the read fallback.
+ */
+let concreteNamespaceCache: string | null = null;
+async function concreteVolumeNamespace(admin: AdminGraphqlClient): Promise<string | null> {
+  if (concreteNamespaceCache) return concreteNamespaceCache;
+  try {
+    const json = await gql<{
+      data?: { currentAppInstallation?: { app?: { id?: string } | null } | null };
+    }>(admin, APP_NS_QUERY);
+    const num = numericId(json.data?.currentAppInstallation?.app?.id ?? "");
+    if (num) {
+      concreteNamespaceCache = `app--${num}--cellexia`;
+      return concreteNamespaceCache;
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
 
 const METAFIELDS_SET = `#graphql
   mutation cellexiaVolumeMetafieldSet($metafields: [MetafieldsSetInput!]!) {
@@ -215,6 +248,31 @@ const DISCOUNT_NODE_QUERY = `#graphql
           ... on DiscountAutomaticApp { title status }
         }
       }
+    }
+  }
+`;
+
+const AUTO_LIST_QUERY = `#graphql
+  query cellexiaVolumeAutoList {
+    automaticDiscountNodes(first: 50) {
+      nodes {
+        id
+        automaticDiscount {
+          __typename
+          ... on DiscountAutomaticApp {
+            title
+            appDiscountType { functionId }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const OWN_FUNCTIONS_QUERY = `#graphql
+  query cellexiaVolumeFunctions {
+    shopifyFunctions(first: 25) {
+      nodes { id title apiType }
     }
   }
 `;
@@ -290,8 +348,10 @@ export async function deriveTierProducts(admin: AdminGraphqlClient): Promise<Tie
 
 /** Pause between pricing calls — aliased contextualPricing is cost-heavy
  *  and the v32.0 field failure was exactly this: unpaced bursts hit the
- *  GraphQL throttle mid-run and left silent per-country gaps. */
-const PRICE_CALL_SPACING_MS = 250;
+ *  GraphQL throttle mid-run and left silent per-country gaps. (v32.2:
+ *  150 ms with the per-product variant PAIR in parallel — the v32.1
+ *  fully-sequential 250 ms run felt like the button hung.) */
+const PRICE_CALL_SPACING_MS = 150;
 const THROTTLE_RETRIES = 3;
 
 function sleep(ms: number): Promise<void> {
@@ -384,21 +444,32 @@ export function volumeArmed(settings: BoosterSettings): boolean {
 export async function readVolumeConfig(
   admin: AdminGraphqlClient,
 ): Promise<{ shopId: string; cfg: VolumeConfig | null }> {
-  const json = await gql<{
-    data?: { shop?: { id?: string; metafield?: { value?: string } | null } };
-  }>(admin, VOLUME_METAFIELD_QUERY);
-  const shopId = json.data?.shop?.id ?? "";
-  const raw = json.data?.shop?.metafield?.value;
-  if (!raw) return { shopId, cfg: null };
-  try {
-    const parsed = JSON.parse(raw) as VolumeConfig;
-    if (parsed && typeof parsed === "object" && parsed.v === 1 && parsed.p) {
-      return { shopId, cfg: parsed };
+  let shopId = "";
+  const tryRead = async (ns: string): Promise<VolumeConfig | null> => {
+    const json = await gql<{
+      data?: { shop?: { id?: string; metafield?: { value?: string } | null } };
+    }>(admin, VOLUME_METAFIELD_QUERY, { ns });
+    shopId = json.data?.shop?.id || shopId;
+    const raw = json.data?.shop?.metafield?.value;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as VolumeConfig;
+      if (parsed && typeof parsed === "object" && parsed.v === 1 && parsed.p) {
+        return parsed;
+      }
+    } catch {
+      /* malformed = absent */
     }
-  } catch {
-    /* malformed = absent */
+    return null;
+  };
+  let cfg = await tryRead(VOLUME_NS);
+  if (!cfg) {
+    // v32.2: the shorthand read came back empty on the live store — retry
+    // with the concrete reserved namespace before concluding "never synced".
+    const concrete = await concreteVolumeNamespace(admin);
+    if (concrete) cfg = await tryRead(concrete);
   }
-  return { shopId, cfg: null };
+  return { shopId, cfg };
 }
 
 async function writeVolumeConfig(
@@ -428,17 +499,8 @@ async function writeVolumeConfig(
 
 // ------------------------------------------------------------- discount
 
-/**
- * Finds (by the id recorded in `_s.d`) or creates the automatic app
- * discount. Created ACTIVE but inert until cfg.on (the v14 pattern);
- * nothing else in the store's discounts is ever read or touched.
- */
-async function ensureVolumeDiscount(
-  admin: AdminGraphqlClient,
-  knownId: string,
-  errors: string[],
-): Promise<string> {
-  const input = {
+function volumeDiscountInput(): Record<string, unknown> {
+  return {
     title: VOLUME_DISCOUNT_TITLE,
     functionHandle: VOLUME_FUNCTION_HANDLE,
     startsAt: "2026-01-01T00:00:00Z",
@@ -450,31 +512,110 @@ async function ensureVolumeDiscount(
     appliesOnOneTimePurchase: true,
     recurringCycleLimit: 1,
   };
+}
+
+async function updateVolumeDiscount(
+  admin: AdminGraphqlClient,
+  id: string,
+  errors: string[],
+): Promise<string> {
+  const upd = await gql<{
+    data?: {
+      discountAutomaticAppUpdate?: {
+        automaticAppDiscount?: { discountId: string } | null;
+        userErrors?: { message: string }[];
+      };
+    };
+  }>(admin, AUTO_APP_UPDATE, { id, automaticAppDiscount: volumeDiscountInput() });
+  const updErrors = (upd.data?.discountAutomaticAppUpdate?.userErrors ?? []).map((e) => e.message);
+  if (updErrors.length) {
+    errors.push(`${VOLUME_DISCOUNT_TITLE}: update failed — ${updErrors.join("; ")}`);
+    return id;
+  }
+  return upd.data?.discountAutomaticAppUpdate?.automaticAppDiscount?.discountId ?? id;
+}
+
+/**
+ * v32.2 (field incident 2): find OUR discount by its exact title when the
+ * recorded id is missing/stale — the live store hit "Title must be unique"
+ * because the config read came back empty and the app re-created its own
+ * discount blind. Adoption is guarded: only a function-backed
+ * DiscountAutomaticApp node with the EXACT title, and when the shop's
+ * function list resolves, only one backed by THIS app's functions.
+ * Anything else in the store's discounts is never touched.
+ */
+async function findVolumeDiscountByTitle(
+  admin: AdminGraphqlClient,
+  notes: string[],
+): Promise<string> {
+  const [list, fns] = await Promise.all([
+    gql<{
+      data?: {
+        automaticDiscountNodes?: {
+          nodes?: {
+            id: string;
+            automaticDiscount?: {
+              __typename?: string;
+              title?: string;
+              appDiscountType?: { functionId?: string } | null;
+            } | null;
+          }[];
+        };
+      };
+    }>(admin, AUTO_LIST_QUERY),
+    gql<{ data?: { shopifyFunctions?: { nodes?: { id: string }[] } } }>(admin, OWN_FUNCTIONS_QUERY).catch(
+      () => ({ data: undefined }),
+    ),
+  ]);
+  const ours = new Set((fns.data?.shopifyFunctions?.nodes ?? []).map((n) => n.id));
+  for (const node of list.data?.automaticDiscountNodes?.nodes ?? []) {
+    const d = node.automaticDiscount;
+    if (d?.__typename !== "DiscountAutomaticApp") continue;
+    if (d.title !== VOLUME_DISCOUNT_TITLE) continue;
+    const fid = d.appDiscountType?.functionId ?? "";
+    if (ours.size > 0 && fid && !ours.has(fid)) continue; // another app's — never touch
+    if (ours.size === 0 || !fid) {
+      notes.push("Existing volume discount adopted by its exact title (function id not verifiable).");
+    }
+    return node.id;
+  }
+  return "";
+}
+
+/**
+ * Finds (by the id recorded in `_s.d`, then by exact title) or creates the
+ * automatic app discount. Created ACTIVE but inert until cfg.on (the v14
+ * pattern); nothing else in the store's discounts is ever read or touched.
+ */
+async function ensureVolumeDiscount(
+  admin: AdminGraphqlClient,
+  knownId: string,
+  errors: string[],
+  notes: string[],
+): Promise<string> {
   if (knownId) {
     try {
       const found = await gql<{
         data?: { node?: { id?: string; automaticDiscount?: { title?: string } | null } | null };
       }>(admin, DISCOUNT_NODE_QUERY, { id: knownId });
       if (found.data?.node?.id === knownId) {
-        const upd = await gql<{
-          data?: {
-            discountAutomaticAppUpdate?: {
-              automaticAppDiscount?: { discountId: string } | null;
-              userErrors?: { message: string }[];
-            };
-          };
-        }>(admin, AUTO_APP_UPDATE, { id: knownId, automaticAppDiscount: input });
-        const updErrors = (upd.data?.discountAutomaticAppUpdate?.userErrors ?? []).map((e) => e.message);
-        if (updErrors.length) {
-          errors.push(`${VOLUME_DISCOUNT_TITLE}: update failed — ${updErrors.join("; ")}`);
-          return knownId;
-        }
-        return upd.data?.discountAutomaticAppUpdate?.automaticAppDiscount?.discountId ?? knownId;
+        return await updateVolumeDiscount(admin, knownId, errors);
       }
     } catch (error) {
       errors.push(`${VOLUME_DISCOUNT_TITLE}: lookup failed — ${errorMessage(error)}`);
       return knownId;
     }
+  }
+  // v32.2: BEFORE creating, adopt an existing node with our exact title —
+  // the id can be lost (a wiped config, a failed write) while the discount
+  // lives on, and a blind create dies on the unique-title rule.
+  try {
+    const adopted = await findVolumeDiscountByTitle(admin, notes);
+    if (adopted) {
+      return await updateVolumeDiscount(admin, adopted, errors);
+    }
+  } catch (error) {
+    errors.push(`${VOLUME_DISCOUNT_TITLE}: title lookup failed — ${errorMessage(error)}`);
   }
   try {
     const created = await gql<{
@@ -484,14 +625,32 @@ async function ensureVolumeDiscount(
           userErrors?: { message: string }[];
         };
       };
-    }>(admin, AUTO_APP_CREATE, { automaticAppDiscount: input });
+    }>(admin, AUTO_APP_CREATE, { automaticAppDiscount: volumeDiscountInput() });
     const createErrors = (created.data?.discountAutomaticAppCreate?.userErrors ?? []).map((e) => e.message);
     const id = created.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId;
     if (createErrors.length || !id) {
-      errors.push(
-        `${VOLUME_DISCOUNT_TITLE}: create failed — ${createErrors.join("; ") || "no id returned"}. ` +
-          "Deploy the extensions first (npm run deploy) so the cellexia-volume function exists, then save again.",
-      );
+      const joined = createErrors.join("; ") || "no id returned";
+      if (/unique/i.test(joined)) {
+        // The unique-title rule proves the discount EXISTS — one more
+        // adoption pass (search lag), then an honest manual path.
+        try {
+          const retry = await findVolumeDiscountByTitle(admin, notes);
+          if (retry) return await updateVolumeDiscount(admin, retry, errors);
+        } catch {
+          /* fall through to the honest error */
+        }
+        errors.push(
+          `${VOLUME_DISCOUNT_TITLE}: a discount with this title already exists but could not be looked up. ` +
+            `Delete "${VOLUME_DISCOUNT_TITLE}" in Shopify Admin -> Discounts, then press Refresh prices now.`,
+        );
+        return "";
+      }
+      // The deploy hint ONLY when the error is actually about the function
+      // (the v32.1 blanket hint misled the merchant).
+      const hint = /function/i.test(joined)
+        ? " Deploy the extensions first (npm run deploy) so the cellexia-volume function exists, then save again."
+        : "";
+      errors.push(`${VOLUME_DISCOUNT_TITLE}: create failed — ${joined}.${hint}`);
       return "";
     }
     return id;
@@ -563,8 +722,10 @@ export async function refreshVolumePricing(
   const skipped: string[] = [];
   for (const product of tierProducts) {
     try {
-      const ones = await fetchVariantCountryPrices(admin, product.v1Gid, countries);
-      const tops = await fetchVariantCountryPrices(admin, product.vTopGid, countries);
+      const [ones, tops] = await Promise.all([
+        fetchVariantCountryPrices(admin, product.v1Gid, countries),
+        fetchVariantCountryPrices(admin, product.vTopGid, countries),
+      ]);
       const cc: Record<string, VolumeCountryEntry> = {};
       for (const code of countries) {
         const one = ones.get(code);
@@ -603,7 +764,7 @@ export async function refreshVolumePricing(
     return { ok: errors.length === 0, errors, notes: ["Volume config unchanged — nothing to write."] };
   }
 
-  const discountId = await ensureVolumeDiscount(admin, previous?._s?.d ?? "", errors);
+  const discountId = await ensureVolumeDiscount(admin, previous?._s?.d ?? "", errors, notes);
   if (on && !discountId) {
     errors.push("Volume pricing was NOT armed: the automatic discount could not be created.");
   }

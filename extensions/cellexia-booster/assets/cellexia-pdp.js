@@ -7725,7 +7725,10 @@
     // the native input's submit quantity and repaints count/chip/price.
     var st = qsyncState;
     if (!st) return;
-    var cap = qsyncSubActive() ? st.top.q : QSYNC_CAP;
+    // v32.2: volume WANTED but not verified armed (vd:0) caps at the top
+    // tier like sub mode — the merchant rejected the composed fallback for
+    // 4+, and a count the discount cannot price must simply not be offered.
+    var cap = qsyncSubActive() || st.vw ? st.top.q : QSYNC_CAP;
     if (n < 1) n = 1;
     if (n > cap) n = cap;
     st.n = n;
@@ -7874,8 +7877,11 @@
         root: root,
         d: qs,
         // v32: the island's volume verdict — 4+ becomes one discounted
-        // 1-unit line instead of composed bundles.
+        // 1-unit line instead of composed bundles. v32.2: vd:0 = volume
+        // WANTED but not verified armed -> the stepper caps at the top
+        // tier (vw) instead of composing packs.
         vd: d.vd === 1,
+        vw: d.vd === 0,
         relaying: false,
         lastPrice: null
       };
