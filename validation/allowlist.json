@@ -295,6 +295,11 @@
    "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
    "reason": "v32 volume pricing: qselApi gains paint (qselPaint exposure), qsyncSplit gains the vd arm (one 1-unit line at quantity n, cents = round(n x p3 / K) — the function logic.js twin), qsyncApply relays the MECHANICAL 1-unit selection past the catalog while painting the TOP card, the ATC capture steps aside in vd mode, and qsyncState carries the island's vd verdict. v32.2: vd:0 (volume wanted, unverified) caps the stepper at the top tier via st.vw — the merchant rejected the composed 3+1 fallback. Pinned by sims/quantity-sync.cjs S17/S18/S19 + mutants m15-m19 and sims/volume-function.mjs F8 (the rounding twin).",
    "wave": "v32"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+   "reason": "v33 results gallery (docs/SPEC-v33-results-slider.md): resultsValidItems gains the lab-belted combined member c (pfHttps-gated, gate widened to before||after||combined); NEW builders resultsUiFlags (strict ===1 payload.ui reads, fail closed), resultsAfterTag (study week stamp via aw), resultsComboTag/resultsComboFrame (ONE combined figure, joint Before/After tag), resultsSliderPct/resultsSliderSet (pure clamped divider math, inline clip-path, physical geometry), resultsSlider (compare stage for the pair AND the composite halves, pointer/mouse/touch + keyboard, guarded for the mini-DOM), resultsStudyHead/resultsDisclaim (lab-only study band + footnote); resultsBuildCard/Lightbox thread the flags (slider media becomes a div + zoom button owning pfLbOpen and the click beacon; study cards suppress the duplicate lab pill); resultsApplyCopy whitelist grows to ten codes; resultsParams adds the preview-only per-minute pv cache-buster. Pinned by sims/proof-gallery.cjs R25-R32 + mutants m38-m42 and the harness v33 block.",
+   "wave": "v33"
   }
  ]
 }

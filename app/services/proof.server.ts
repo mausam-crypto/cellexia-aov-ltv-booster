@@ -202,6 +202,10 @@ export interface ResultInput {
   verified: boolean;
   beforeUrl: string;
   afterUrl: string;
+  /** v33: ONE combined before+after photo (lab entries only — silently
+   *  cleared for customer entries, the v25 clearing pattern). When present
+   *  it REPLACES the separate pair: saveResult stores the pair as null. */
+  combinedUrl: string;
   ageRange: string;
   skinType: string;
   concern: string;
@@ -856,11 +860,24 @@ export async function saveResult(
   assertProofModels();
   const errors: string[] = [];
   const source = cleanEnum(input.source, RESULT_SOURCES, "customer");
+  const isLab = source === "lab";
   const beforeUrl = cleanHttpsUrl(input.beforeUrl, "Before image", errors);
   const afterUrl = cleanHttpsUrl(input.afterUrl, "After image", errors);
+  // v33: ONE combined before+after photo — a LAB-ONLY layout (the clinical
+  // single-figure option). Flipping the entry to customer clears it (the
+  // v25 measurement-clearing pattern; the admin hides the picker there).
+  const combinedUrl = isLab
+    ? cleanHttpsUrl(input.combinedUrl, "Combined before/after image", errors)
+    : "";
   const videoUrl = cleanHttpsUrl(input.videoUrl, "Video URL", errors);
   const testimonial = cleanText(input.testimonial, MULTI_LINE_MAX);
-  if (beforeUrl === "" && afterUrl === "" && testimonial === "" && videoUrl === "") {
+  if (
+    beforeUrl === "" &&
+    afterUrl === "" &&
+    combinedUrl === "" &&
+    testimonial === "" &&
+    videoUrl === ""
+  ) {
     errors.push("Add at least an image, a testimonial or a video");
   }
   const ageRange = cleanEnum(input.ageRange, [...AGE_RANGES, ""], "");
@@ -886,7 +903,7 @@ export async function saveResult(
   // v25 clinical fields. Measurements and trust marks are LAB-ONLY claims:
   // switching an entry to customer-submitted clears them (the admin hides
   // the editor for customer entries, so nothing user-visible is lost).
-  const isLab = source === "lab";
+  // isLab is declared next to `source` above (v33 needs it earlier).
   const measurements = isLab ? cleanMeasurements(input.measurements, errors) : [];
   if (measurements.length > 0 && (durationWeeks === null || durationWeeks < 1)) {
     errors.push(
@@ -900,8 +917,11 @@ export async function saveResult(
   const data = {
     source,
     verified: Boolean(input.verified),
-    beforeUrl: beforeUrl === "" ? null : beforeUrl,
-    afterUrl: afterUrl === "" ? null : afterUrl,
+    // v33: combined wins — a row never carries both photo layouts, so the
+    // renderer can never show the same result twice.
+    beforeUrl: beforeUrl === "" || combinedUrl !== "" ? null : beforeUrl,
+    afterUrl: afterUrl === "" || combinedUrl !== "" ? null : afterUrl,
+    combinedUrl: combinedUrl === "" ? null : combinedUrl,
     ageRange: ageRange === "" ? null : ageRange,
     skinType: skinType === "" ? null : skinType,
     concern: concern === "" ? null : concern,
@@ -1146,6 +1166,10 @@ export interface PublicResult {
   verified: boolean;
   beforeUrl: string | null;
   afterUrl: string | null;
+  /** v33 — the ONE combined before+after photo. Lab rows only: a customer
+   *  row ALWAYS serves null, whatever the column holds (belt over the
+   *  save-time clearing, the measurements precedent). */
+  combinedUrl: string | null;
   ageRange: string | null;
   skinType: string | null;
   concern: string | null;
@@ -1339,7 +1363,13 @@ export async function getPublicResults(
   // otherwise totals, pagination and the empty state drift from what the
   // client can actually render (v8 review finding).
   const renderable = rows.filter(
-    (row) => row.beforeUrl !== null || row.afterUrl !== null,
+    (row) =>
+      row.beforeUrl !== null ||
+      row.afterUrl !== null ||
+      // v33: the combined figure counts only where it will actually serve
+      // (lab rows — the belt below nulls it for customer rows, and a row
+      // counted here but never rendered would drift totals/pagination).
+      (row.source === "lab" && row.combinedUrl !== null),
   );
   const scoped = prioritiseForProduct(renderable, productGid);
   // Facets + verifiedTotal come from the UNfiltered product-scoped set so
@@ -1369,6 +1399,7 @@ export async function getPublicResults(
         verified: row.verified,
         beforeUrl: row.beforeUrl,
         afterUrl: row.afterUrl,
+        combinedUrl: lab ? row.combinedUrl : null,
         ageRange: row.ageRange,
         skinType: row.skinType,
         concern: row.concern,

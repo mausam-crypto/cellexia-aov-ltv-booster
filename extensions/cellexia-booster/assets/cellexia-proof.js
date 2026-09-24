@@ -1698,7 +1698,8 @@
   // v25 clinical redesign — stroke icon set (createElementNS only, the
   // no-innerHTML discipline). Keys: chart (panel header), down/up (metric
   // arrows), flask (clinical badge), scope/person/camera (trust marks),
-  // info (tile toggle), x (lightbox close).
+  // info (tile toggle), x (lightbox close), drag (v33 slider handle
+  // chevrons), zoom (v33 slider-mode lightbox trigger).
   var RESULTS_ICON_PATHS = {
     chart: ['M4.5 16.5v-7', 'M10 16.5v-11', 'M15.5 16.5v-6'],
     down: ['M10 4.5v11', 'M5.8 11.3 10 15.5l4.2-4.2'],
@@ -1708,7 +1709,9 @@
     person: ['M4.5 16.5c0-2.8 2.5-4.5 5.5-4.5s5.5 1.7 5.5 4.5'],
     camera: ['M7.2 6 8.4 4.2h3.2L12.8 6'],
     info: ['M10 9.2v4.3'],
-    x: ['M5.5 5.5l9 9', 'M14.5 5.5l-9 9']
+    x: ['M5.5 5.5l9 9', 'M14.5 5.5l-9 9'],
+    drag: ['M7.5 6.5 4 10l3.5 3.5', 'M12.5 6.5 16 10l-3.5 3.5'],
+    zoom: ['M12.4 12.4 16.5 16.5', 'M9 7v4', 'M7 9h4']
   };
 
   function resultsIcon(kind, size) {
@@ -1725,6 +1728,7 @@
       svg.appendChild(pfSvg('circle', null, ['cx', '10', 'cy', '10', 'r', '7.2']));
       svg.appendChild(pfSvg('circle', null, ['cx', '10', 'cy', '6.6', 'r', '0.5']));
     }
+    if (kind === 'zoom') svg.appendChild(pfSvg('circle', null, ['cx', '9', 'cy', '9', 'r', '5.2']));
     return svg;
   }
 
@@ -1736,11 +1740,23 @@
     // island strings and entry text are untouched. Raw-read convention:
     // these never pass Liquid's t-filter escaping (v8.22 precedent).
     if (!conf || !conf.str || !data || !data.copy || typeof data.copy !== 'object') return;
-    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu'];
+    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm'];
     for (var i = 0; i < keys.length; i++) {
       var value = data.copy[keys[i]];
       if (typeof value === 'string' && /\S/.test(value)) conf.str[keys[i]] = value;
     }
+  }
+
+  function resultsUiFlags(data) {
+    // v33: the two display options ride the FIRST proxy response as
+    // payload.ui — cs 1 = clinical-study design for lab entries, sl 1 =
+    // compare slider. Strict === 1 reads; anything else (absent member,
+    // wrong type, old server) fails closed to the classic gallery. The
+    // Liquid island cannot carry these (byte budget), and refetched pages
+    // reuse the flags read here.
+    var ui = data && data.ui;
+    if (!ui || typeof ui !== 'object') return { cs: false, sl: false };
+    return { cs: ui.cs === 1, sl: ui.sl === 1 };
   }
 
   // v26.2: decimal percents ("34.2") print with the page language's
@@ -1806,14 +1822,23 @@
   function resultsParams(conf, st) {
     // Filter state → query params (pfQuery serializes; empty values are
     // skipped there, so cleared filters vanish from the URL).
-    return pfProductParams(conf, {
+    var p = {
       concern: st.concern,
       age: st.age,
       skin: st.skin,
       duration: st.duration,
       page: st.page,
       per: 12
-    });
+    };
+    // v33: while the MERCHANT previews, a per-minute token busts the
+    // proxy's 60s/300s cache so display-option flips show up promptly.
+    // Shoppers never send it (pfPreviewVerified is the preview gate).
+    try {
+      if (typeof pfPreviewVerified === 'function' && pfPreviewVerified()) {
+        p.pv = Math.floor(Date.now() / 60000);
+      }
+    } catch (e) { /* never block the fetch */ }
+    return pfProductParams(conf, p);
   }
 
   function resultsValidItems(data) {
@@ -1823,11 +1848,16 @@
       var it = data.items[i] && typeof data.items[i] === 'object' ? data.items[i] : {};
       var before = pfHttps(it.beforeUrl);
       var after = pfHttps(it.afterUrl);
-      if (!before && !after) continue; // a visual gallery card needs at least one image
       var lab = it.source === 'lab';
+      // v33: the ONE combined before+after photo — LAB ROWS ONLY (the
+      // measurements gate pattern: the server already serves null for
+      // customer rows, this is the redundant client belt).
+      var combined = lab ? pfHttps(it.combinedUrl) : '';
+      if (!before && !after && !combined) continue; // a visual gallery card needs at least one image
       out.push({
         b: before,
         a: after,
+        c: combined,
         video: pfHttps(it.videoUrl),
         age: typeof it.ageRange === 'string' && /\S/.test(it.ageRange) ? it.ageRange : '',
         skin: typeof it.skinType === 'string' && /\S/.test(it.skinType) ? it.skinType : '',
@@ -1869,10 +1899,11 @@
     return bits.join(' · ');
   }
 
-  function resultsBadges(item, s) {
+  function resultsBadges(item, s, noLab) {
     // Verified-purchase / lab badges — shared by card and lightbox; null
     // when the item earns none. v25: the lab badge carries the flask
-    // icon (the mock's "clinical study result" pill).
+    // icon (the mock's "clinical study result" pill). v33: noLab skips
+    // the lab pill where the study band already states it (card only).
     var wrap = null;
     function add(mod, label, icon) {
       if (!/\S/.test(label)) return;
@@ -1888,7 +1919,7 @@
       pfSp(wrap);
     }
     if (item.verified) add('cx-results__badge--verified', pfStr(s, 'vb'), null);
-    if (item.lab) add('cx-results__badge--lab', pfStr(s, 'lb'), 'flask');
+    if (item.lab && !noLab) add('cx-results__badge--lab', pfStr(s, 'lb'), 'flask');
     return wrap;
   }
 
@@ -1906,6 +1937,35 @@
       role.textContent = ', ' + item.ar;
       p.appendChild(role);
     }
+    return p;
+  }
+
+  function resultsStudyHead(item, s, o) {
+    // v33 clinical-study design: an ink document band ("CLINICAL STUDY
+    // RESULT", the lab-badge string) heads each LAB card — the dossier
+    // treatment. Study design only, lab entries only, and it replaces the
+    // lab pill in the badges row (one credential, never two).
+    if (!o || !o.cs || !item.lab) return null;
+    var label = pfStr(s, 'lb');
+    if (!/\S/.test(label)) return null;
+    var head = pfEl('div', 'cx-results__study');
+    var ic = pfEl('span', 'cx-results__study-ic', ['aria-hidden', 'true']);
+    ic.appendChild(resultsIcon('flask', 12));
+    head.appendChild(ic);
+    var t = pfEl('span', 'cx-results__study-t');
+    t.textContent = label;
+    head.appendChild(t);
+    return head;
+  }
+
+  function resultsDisclaim(item, s, o) {
+    // v33 study design: the honest-clinical footnote ("Individual results
+    // may vary.") under lab cards — proxy-carried copy, fails soft.
+    if (!o || !o.cs || !item.lab) return null;
+    var text = pfStrRaw(s, 'iv');
+    if (!/\S/.test(text)) return null;
+    var p = pfEl('p', 'cx-results__disclaim');
+    p.textContent = text;
     return p;
   }
 
@@ -2033,29 +2093,323 @@
     return frame;
   }
 
-  function resultsBuildCard(item, s) {
-    var card = pfEl('div', 'cx-results__card');
+  function resultsAfterTag(item, s, o) {
+    // v33 study design: the After tag carries the week stamp ("After 8
+    // weeks", proxy code aw) when the lab entry has a duration — the
+    // reference clinical look. Everything else (classic design, no weeks,
+    // missing copy) falls back to the plain After label.
+    if (o && o.cs && item.lab && item.weeks) {
+      var t = pfStrRaw(s, 'aw');
+      if (/\S/.test(t) && t.indexOf('@@N@@') !== -1) {
+        return t.replace('@@N@@', String(item.weeks));
+      }
+    }
+    return pfStr(s, 'aft');
+  }
+
+  function resultsComboTag(s) {
+    // Joint label for the ONE combined figure ("Before / After") — built
+    // from the two existing island strings, no new locale bytes.
+    var bef = pfStr(s, 'bef');
+    var aft = pfStr(s, 'aft');
+    if (/\S/.test(bef) && /\S/.test(aft)) return bef + ' / ' + aft;
+    return /\S/.test(bef) ? bef : aft;
+  }
+
+  function resultsComboFrame(item, s) {
+    // v33: the ONE combined before+after figure as a static frame —
+    // full-width, natural aspect (the pair's 1:1 crop would cut both
+    // outer halves off a landscape composite), one joint tag.
+    var frame = pfEl('div', 'cx-results__frame cx-results__frame--combo');
+    var img = pfEl('img', 'cx-results__thumb cx-results__thumb--combo', ['alt', '', 'loading', 'lazy']);
+    img.src = item.c;
+    frame.appendChild(img);
+    var tag = resultsComboTag(s);
+    if (/\S/.test(tag)) {
+      var t = pfEl('span', 'cx-results__tag');
+      t.textContent = tag;
+      frame.appendChild(t);
+    }
+    return frame;
+  }
+
+  function resultsSliderPct(rect, x) {
+    // Pure divider math (sim-tested): pointer X → 0..100 percent of the
+    // stage box, clamped. null when the box is unmeasurable (display:none,
+    // mini-DOM) — the caller keeps the current position.
+    if (!rect || !(rect.width > 0) || typeof x !== 'number') return null;
+    var p = ((x - rect.left) / rect.width) * 100;
+    if (p < 0) p = 0;
+    if (p > 100) p = 100;
+    return p;
+  }
+
+  function resultsSliderSet(parts, pct) {
+    // Applies a divider position: the top (Before) layer is clipped to
+    // the LEFT pct% of the stage — inline clip-path with stage-relative
+    // percentages, so the same math serves the separate pair AND the
+    // combined composite. PHYSICAL geometry on purpose: a photo's left
+    // half stays its left half under RTL (the [dir=rtl] clip precedent);
+    // only the text tags follow the reading direction.
+    var v = Math.round(pct * 10) / 10;
+    if (!(v >= 0 && v <= 100)) return;
+    // the complement re-rounds — 100-62.3 is 37.700000000000003 in IEEE754
+    var r = Math.round((100 - v) * 10) / 10;
+    parts.pct = v;
+    parts.top.style.clipPath = 'inset(0 ' + r + '% 0 0)';
+    parts.line.style.left = v + '%';
+    parts.handle.style.left = v + '%';
+    parts.handle.setAttribute('aria-valuenow', String(Math.round(v)));
+  }
+
+  function resultsSlider(item, s, o) {
+    // v33 compare slider — one stage, two feeds: the separate pair
+    // (base = After, clipped top = Before) or the ONE combined photo
+    // (base = its RIGHT half, top = its LEFT half — 200%-wide layers over
+    // the same box). Returns null (caller renders the classic media)
+    // whenever the images are missing; every DOM/geometry call that the
+    // sim's mini-DOM lacks is guarded.
+    var combo = item.c;
+    if (!combo && !(item.b && item.a)) return null;
+    // Capability gate (review C4): the stage is sized by aspect-ratio and
+    // revealed by clip-path — a browser without either (Safari <= 14)
+    // would render a zero-height pile, strictly worse than the classic
+    // media. CSS.supports absent (the sim's vm, pre-2013 relics outside
+    // the support envelope) proceeds; a present-but-negative answer
+    // fails closed to the classic media. Side effect: every browser that
+    // passes this gate has PointerEvent, so the mouse/touch fallback
+    // below is a belt, never the primary path.
+    try {
+      if (window.CSS && window.CSS.supports &&
+          (!window.CSS.supports('aspect-ratio', '1 / 1') ||
+            !window.CSS.supports('clip-path', 'inset(0 50% 0 0)'))) {
+        return null;
+      }
+    } catch (e) { /* proceed — worst case is the pre-gate behavior */ }
+    var stage = pfEl('div', combo ? 'cx-results__ba cx-results__ba--combo' : 'cx-results__ba');
+    var base = pfEl('img', combo ? 'cx-results__ba-img cx-results__ba-img--r' : 'cx-results__ba-img', ['alt', '', 'loading', 'lazy', 'draggable', 'false']);
+    base.src = combo || item.a;
+    stage.appendChild(base);
+    var top = pfEl('div', 'cx-results__ba-top');
+    var over = pfEl('img', combo ? 'cx-results__ba-img cx-results__ba-img--l' : 'cx-results__ba-img', ['alt', '', 'draggable', 'false']);
+    over.src = combo || item.b;
+    top.appendChild(over);
+    stage.appendChild(top);
+    var befT = pfStr(s, 'bef');
+    if (/\S/.test(befT)) {
+      var bt = pfEl('span', 'cx-results__tag cx-results__tag--ba');
+      bt.textContent = befT;
+      stage.appendChild(bt);
+    }
+    var aftT = resultsAfterTag(item, s, o);
+    if (/\S/.test(aftT)) {
+      var at = pfEl('span', 'cx-results__tag cx-results__tag--after cx-results__tag--ba cx-results__tag--ba-after');
+      at.textContent = aftT;
+      stage.appendChild(at);
+    }
+    var line = pfEl('div', 'cx-results__ba-line', ['aria-hidden', 'true']);
+    stage.appendChild(line);
+    var hintText = pfStrRaw(s, 'dr');
+    var handle = pfEl('div', 'cx-results__ba-handle', ['role', 'slider', 'tabindex', '0', 'aria-orientation', 'horizontal', 'aria-valuemin', '0', 'aria-valuemax', '100', 'aria-valuenow', '50', 'aria-label', /\S/.test(hintText) ? hintText : resultsComboTag(s)]);
+    handle.appendChild(resultsIcon('drag', 14));
+    stage.appendChild(handle);
+    var hint = null;
+    if (/\S/.test(hintText)) {
+      hint = pfEl('span', 'cx-results__ba-hint');
+      hint.textContent = hintText;
+      stage.appendChild(hint);
+    }
+    var parts = { top: top, line: line, handle: handle, pct: 50 };
+    resultsSliderSet(parts, 50);
+    if (combo) {
+      // The stage adopts the HALF image's aspect once its size is known;
+      // the CSS 1:1 default serves until then (and forever in the sim).
+      var setRatio = function () {
+        try {
+          if (base.naturalWidth > 1 && base.naturalHeight > 0) {
+            stage.style.aspectRatio = (base.naturalWidth / 2) + ' / ' + base.naturalHeight;
+          }
+        } catch (e) { /* keep the CSS default */ }
+      };
+      base.addEventListener('load', setRatio);
+      if (base.complete) setRatio();
+    }
+    function hideHint() {
+      if (hint && !hint.hasAttribute('hidden')) hint.setAttribute('hidden', '');
+    }
+    function moveTo(x) {
+      var rect = null;
+      try {
+        if (stage.getBoundingClientRect) rect = stage.getBoundingClientRect();
+      } catch (e) { /* unmeasurable — keep position */ }
+      var p = resultsSliderPct(rect, x);
+      if (p !== null) resultsSliderSet(parts, p);
+      hideHint();
+    }
+    function pointOf(ev) {
+      if (ev && typeof ev.clientX === 'number') return ev.clientX;
+      if (ev && ev.touches && ev.touches[0] && typeof ev.touches[0].clientX === 'number') {
+        return ev.touches[0].clientX;
+      }
+      return null;
+    }
+    // The ACTIVE drag's pointerId (review C2): a second finger, or the
+    // browser reassigning ids after taking a pan, must never cross-drive
+    // this stage. undefined means "no id semantics" (mouse fallback).
+    var dragId;
+    function samePointer(ev) {
+      if (!ev || typeof ev.pointerId !== 'number' || typeof dragId !== 'number') return true;
+      return ev.pointerId === dragId;
+    }
+    function dragMove(ev) {
+      if (!samePointer(ev)) return;
+      var x = pointOf(ev);
+      if (x === null) return;
+      moveTo(x);
+      // The drag owns the horizontal gesture (rail snap must not fight it).
+      if (ev.preventDefault) ev.preventDefault();
+    }
+    function dragEnd(ev) {
+      if (ev && !samePointer(ev)) return;
+      dragId = undefined;
+      if (!document.removeEventListener) return;
+      document.removeEventListener('pointermove', dragMove);
+      document.removeEventListener('pointerup', dragEnd);
+      document.removeEventListener('pointercancel', dragEnd);
+      document.removeEventListener('mousemove', dragMove);
+      document.removeEventListener('mouseup', dragEnd);
+      document.removeEventListener('touchmove', dragMove);
+      document.removeEventListener('touchend', dragEnd);
+      document.removeEventListener('touchcancel', dragEnd);
+    }
+    function dragStart(ev) {
+      var x = pointOf(ev);
+      if (x === null) return;
+      dragId = ev && typeof ev.pointerId === 'number' ? ev.pointerId : undefined;
+      moveTo(x); // jump to the press point (the juxtapose convention)
+      // Capture the pointer (review C1): pointerup — and the click the
+      // browser synthesizes from it — then retarget to the stage, whose
+      // click suppressor below eats it. Without capture, a drag released
+      // over the lightbox backdrop clicks the .cx-lightbox ROOT and the
+      // backdrop closer slams the dialog shut mid-comparison.
+      try {
+        if (typeof dragId === 'number' && stage.setPointerCapture) {
+          stage.setPointerCapture(dragId);
+        }
+      } catch (e) { /* capture is an enhancement */ }
+      // Cancelling pointerdown/mousedown suppresses the compatibility
+      // mouse events (and text/image selection). touchstart is NOT
+      // cancelled — CSS touch-action: pan-y keeps vertical scrolling
+      // alive on the stage.
+      if (ev.type !== 'touchstart' && ev.preventDefault) ev.preventDefault();
+      if (!document.addEventListener) return; // sim mini-DOM: the jump above still ran
+      if (window.PointerEvent) {
+        document.addEventListener('pointermove', dragMove);
+        document.addEventListener('pointerup', dragEnd);
+        // A browser-taken vertical pan ends in pointercancel, never
+        // pointerup (review C2) — without this the leaked document
+        // listeners make the divider chase every later scroll gesture.
+        document.addEventListener('pointercancel', dragEnd);
+      } else {
+        document.addEventListener('mousemove', dragMove);
+        document.addEventListener('mouseup', dragEnd);
+        document.addEventListener('touchmove', dragMove);
+        document.addEventListener('touchend', dragEnd);
+        document.addEventListener('touchcancel', dragEnd);
+      }
+    }
+    if (window.PointerEvent) {
+      stage.addEventListener('pointerdown', dragStart);
+    } else {
+      stage.addEventListener('mousedown', dragStart);
+      stage.addEventListener('touchstart', dragStart);
+    }
+    handle.addEventListener('keydown', function (ev) {
+      var k = ev.key;
+      var next = null;
+      if (k === 'ArrowLeft' || k === 'Left') next = parts.pct - 5;
+      else if (k === 'ArrowRight' || k === 'Right') next = parts.pct + 5;
+      else if (k === 'Home') next = 0;
+      else if (k === 'End') next = 100;
+      if (next === null) return;
+      if (next < 0) next = 0;
+      if (next > 100) next = 100;
+      resultsSliderSet(parts, next);
+      hideHint();
+      if (ev.preventDefault) ev.preventDefault();
+    });
+    stage.addEventListener('click', function (ev) {
+      // A tap that ended a drag must never reach the card/lightbox click
+      // handlers (media open, backdrop close).
+      if (ev.stopPropagation) ev.stopPropagation();
+      if (ev.preventDefault) ev.preventDefault();
+    });
+    return stage;
+  }
+
+  function resultsBuildCard(item, s, o) {
+    // v33: o carries the display flags from resultsUiFlags ({cs, sl});
+    // absent o (old call sites, sims) keeps the exact v25 card.
+    var study = !!(o && o.cs && item.lab);
+    var card = pfEl('div', study ? 'cx-results__card cx-results__card--study' : 'cx-results__card');
     pfSp(card);
-    var media = pfEl('button', 'cx-results__media', ['type', 'button']);
-    if (item.b) media.appendChild(resultsBuildFrame(item.b, pfStr(s, 'bef'), false));
-    if (item.a) media.appendChild(resultsBuildFrame(item.a, pfStr(s, 'aft'), true));
+    var head = resultsStudyHead(item, s, o);
+    if (head) {
+      card.appendChild(head);
+      pfSp(card);
+    }
+    var slider = o && o.sl ? resultsSlider(item, s, o) : null;
+    var media;
+    if (slider) {
+      // Slider media: a plain wrapper (a drag control may not nest inside
+      // a <button>) + a dedicated zoom control that keeps the lightbox
+      // (and its click beacon) reachable.
+      media = pfEl('div', 'cx-results__media cx-results__media--slider');
+      media.appendChild(slider);
+    } else {
+      media = pfEl('button', 'cx-results__media', ['type', 'button']);
+      if (item.c) {
+        media.appendChild(resultsComboFrame(item, s));
+      } else {
+        if (item.b) media.appendChild(resultsBuildFrame(item.b, pfStr(s, 'bef'), false));
+        if (item.a) media.appendChild(resultsBuildFrame(item.a, resultsAfterTag(item, s, o), true));
+      }
+    }
     if (item.video) {
+      // Decorative chip in both modes (review C3): in slider media it is
+      // pointer-events:none CSS-side (a tap falls through to the stage)
+      // and its sr text rides the ZOOM button below — a div's stray
+      // sr-only span is announced by nothing.
       var play = pfEl('span', 'cx-results__play', ['aria-hidden', 'true']);
       var svg = pfSvg('svg', null, ['viewBox', '0 0 20 20', 'width', '12', 'height', '12', 'fill', 'currentColor', 'focusable', 'false', 'aria-hidden', 'true']);
       svg.appendChild(pfSvg('path', null, ['d', 'M7 4.5 15.5 10 7 15.5Z']));
       play.appendChild(svg);
       media.appendChild(play);
       var vidLabel = pfStr(s, 'vid');
-      if (/\S/.test(vidLabel)) {
+      if (!slider && /\S/.test(vidLabel)) {
         var vidSr = pfEl('span', 'sr-only');
         vidSr.textContent = vidLabel;
         media.appendChild(vidSr);
       }
     }
-    media.addEventListener('click', function () {
-      pfLbOpen(resultsBuildLightbox(item, s), media);
-      pfTrack('verified_before_after', 'click');
-    });
+    if (slider) {
+      var zoomLabel = pfStrRaw(s, 'zm');
+      var zoomVid = item.video ? pfStr(s, 'vid') : '';
+      var zoomText = /\S/.test(zoomLabel) ? zoomLabel : pfStr(s, 'close');
+      if (/\S/.test(zoomVid)) zoomText = zoomText + ' · ' + zoomVid;
+      var zoom = pfEl('button', 'cx-results__zoom', ['type', 'button', 'aria-label', zoomText]);
+      zoom.appendChild(resultsIcon('zoom', 14));
+      zoom.addEventListener('click', function () {
+        pfLbOpen(resultsBuildLightbox(item, s, o), zoom);
+        pfTrack('verified_before_after', 'click');
+      });
+      media.appendChild(zoom);
+    } else {
+      media.addEventListener('click', function () {
+        pfLbOpen(resultsBuildLightbox(item, s, o), media);
+        pfTrack('verified_before_after', 'click');
+      });
+    }
     card.appendChild(media);
     pfSp(card);
     var clin = resultsClinical(item, s);
@@ -2063,7 +2417,7 @@
       card.appendChild(clin);
       pfSp(card);
     }
-    var badges = resultsBadges(item, s);
+    var badges = resultsBadges(item, s, study);
     if (badges) {
       card.appendChild(badges);
       pfSp(card);
@@ -2086,10 +2440,15 @@
       card.appendChild(attr);
       pfSp(card);
     }
+    var disc = resultsDisclaim(item, s, o);
+    if (disc) {
+      card.appendChild(disc);
+      pfSp(card);
+    }
     return card;
   }
 
-  function resultsBuildLightbox(item, s) {
+  function resultsBuildLightbox(item, s, o) {
     var root = pfEl('div', 'cx-lightbox');
     pfSp(root);
     root.appendChild(pfEl('div', 'cx-lightbox__backdrop', ['data-cx-lb-close', '']));
@@ -2104,9 +2463,9 @@
     card.appendChild(close);
     pfSp(card);
     var imgs = pfEl('div', 'cx-lightbox__imgs');
-    function fig(url, capText) {
+    function fig(url, capText, combo) {
       var f = pfEl('figure', 'cx-lightbox__fig');
-      var img = pfEl('img', 'cx-lightbox__img', ['alt', '', 'loading', 'lazy']);
+      var img = pfEl('img', combo ? 'cx-lightbox__img cx-lightbox__img--combo' : 'cx-lightbox__img', ['alt', '', 'loading', 'lazy']);
       img.src = url;
       f.appendChild(img);
       if (/\S/.test(capText)) {
@@ -2116,8 +2475,17 @@
       }
       return f;
     }
-    if (item.b) imgs.appendChild(fig(item.b, pfStr(s, 'bef')));
-    if (item.a) imgs.appendChild(fig(item.a, pfStr(s, 'aft')));
+    // v33: slider mode replaces the figures with the shared compare stage;
+    // a combined entry without the slider shows ONE full-width figure.
+    var slider = o && o.sl ? resultsSlider(item, s, o) : null;
+    if (slider) {
+      imgs.appendChild(slider);
+    } else if (item.c) {
+      imgs.appendChild(fig(item.c, resultsComboTag(s), true));
+    } else {
+      if (item.b) imgs.appendChild(fig(item.b, pfStr(s, 'bef')));
+      if (item.a) imgs.appendChild(fig(item.a, resultsAfterTag(item, s, o)));
+    }
     card.appendChild(imgs);
     pfSp(card);
     if (item.video) {
@@ -2144,6 +2512,11 @@
     var clin = resultsClinical(item, s);
     if (clin) {
       card.appendChild(clin);
+      pfSp(card);
+    }
+    var disc = resultsDisclaim(item, s, o);
+    if (disc) {
+      card.appendChild(disc);
       pfSp(card);
     }
     // v25 foot: quote + attribution on the inline-start side, the meta
@@ -2317,6 +2690,9 @@
     // built later (filters, Show more) read the same conf.str object.
     resultsApplyCopy(conf, data);
     var s = conf.str || {};
+    // v33 display flags — read once from the init response; every later
+    // card and lightbox (filters, Show more) reuses this same object.
+    var o = resultsUiFlags(data);
     var banner = resultsBannerData(s, data ? data.total : 0, data ? data.verifiedTotal : 0);
     if (!banner) return null; // 0 total → the whole module fails closed
     var items = resultsValidItems(data);
@@ -2367,7 +2743,7 @@
     var moreBtn = null;
 
     function appendCards(list) {
-      for (var i = 0; i < list.length; i++) rail.appendChild(resultsBuildCard(list[i], s));
+      for (var i = 0; i < list.length; i++) rail.appendChild(resultsBuildCard(list[i], s, o));
     }
 
     function renderList(list) {

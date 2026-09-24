@@ -292,6 +292,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         } catch {
           // chrome copy is an enhancement — the gallery itself still serves
         }
+        // v33: the two results display options (clinical-study design +
+        // compare slider) ride the payload as `ui` — the Liquid island sits
+        // against the byte budget, and the widget reads flags only from the
+        // FIRST (page 1) response, so refetches skip the settings read (the
+        // endorsements page-1 precedent). Own try/catch: a settings failure
+        // serves the classic gallery, never a 500.
+        if (page === 1) {
+          try {
+            const ba = (await getSettings(shop)).beforeAfter;
+            const ui: Record<string, number> = {};
+            if (ba.labDesign === "study") ui.cs = 1;
+            if (ba.slider === true) ui.sl = 1;
+            (payload as Record<string, unknown>).ui = ui;
+          } catch {
+            // display flags are an enhancement — the gallery itself serves
+          }
+        }
         return jsonResponse(payload, true);
       }
       default:

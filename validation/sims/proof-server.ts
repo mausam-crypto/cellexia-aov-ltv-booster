@@ -331,6 +331,7 @@ function seedResult(shop: string, over: StubRow): StubRow {
     verified: false,
     beforeUrl: null,
     afterUrl: null,
+    combinedUrl: null,
     ageRange: null,
     skinType: null,
     concern: null,
@@ -520,10 +521,10 @@ function pubs(res: { items: { publication: string }[] }): string[] {
   ok(!!item, "PR4: the full fixture row is served");
   ok(
     Object.keys(item).sort().join(",") ===
-      "afterUrl,ageRange,attributionName,attributionRole,beforeUrl,concern,country," +
+      "afterUrl,ageRange,attributionName,attributionRole,beforeUrl,combinedUrl,concern,country," +
       "durationWeeks,id,markInstrument,markSamePatient,markUnretouched,measurements," +
       "skinType,source,testimonial,verified,videoUrl",
-    "PR4: public result items carry EXACTLY the eighteen public fields (v25)",
+    "PR4: public result items carry EXACTLY the nineteen public fields (v25 + v33 combinedUrl)",
   );
   for (const leak of ["shop", "status", "featured", "sortWeight", "productGids", "marketHandles", "legacyGid", "createdAt"]) {
     ok(!(leak in item), `PR4: result projection never leaks ${leak}`);
@@ -580,6 +581,7 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     verified: false,
     beforeUrl: "https://cdn/b.jpg",
     afterUrl: "https://cdn/a.jpg",
+    combinedUrl: "",
     ageRange: "",
     skinType: "",
     concern: "",
@@ -686,6 +688,85 @@ function pubs(res: { items: { publication: string }[] }): string[] {
   ok(capPct.ok === false, "SR4: percent above 500 is refused");
 }
 
+// =========== SR5/PR12: v33 combined before/after photo (lab-only layout)
+
+{
+  const shop = "combined.myshopify.com";
+  const base = {
+    source: "lab",
+    verified: true,
+    beforeUrl: "",
+    afterUrl: "",
+    combinedUrl: "https://cdn/combo.jpg",
+    ageRange: "",
+    skinType: "",
+    concern: "",
+    durationWeeks: 8,
+    country: "",
+    testimonial: "",
+    videoUrl: "",
+    measurements: [] as unknown[],
+    markInstrument: false,
+    markSamePatient: false,
+    markUnretouched: false,
+    attributionName: "",
+    attributionRole: "",
+    productGids: [] as string[],
+    featured: false,
+    status: "approved",
+  };
+  const saved = await P.saveResult(shop, base);
+  ok(saved.ok === true, "SR5: a combined-only lab entry meets the image requirement");
+  const served = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(served.total === 1 && served.items[0].combinedUrl === "https://cdn/combo.jpg",
+    "PR12: a combined-only lab row is renderable and serves combinedUrl");
+
+  // combined WINS: the separate pair is cleared, never served alongside
+  const both = await P.saveResult(shop, {
+    ...base, beforeUrl: "https://cdn/b.jpg", afterUrl: "https://cdn/a.jpg",
+  }, saved.id);
+  ok(both.ok === true, "SR5: pair + combined together still saves");
+  const servedBoth = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(servedBoth.items[0].combinedUrl === "https://cdn/combo.jpg" &&
+    servedBoth.items[0].beforeUrl === null && servedBoth.items[0].afterUrl === null,
+    "SR5: combined wins — the pair stores as null (one layout per row)");
+
+  // lab-only, layer 1 (save): a customer flip drops the combined photo
+  const flipped = await P.saveResult(shop, { ...base, source: "customer" }, saved.id);
+  ok(flipped.ok === false && flipped.errors.some((e: string) => e.includes("at least an image")),
+    "SR5: the flip clears the combined photo, so an otherwise-empty flip is refused");
+  const flipKept = await P.saveResult(shop, {
+    ...base, source: "customer", beforeUrl: "https://cdn/b.jpg",
+  }, saved.id);
+  ok(flipKept.ok === true, "SR5: the flip saves once a pair image replaces it");
+  const servedFlip = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(servedFlip.items[0].combinedUrl === null &&
+    servedFlip.items[0].beforeUrl === "https://cdn/b.jpg",
+    "SR5: after the flip the combined column serves null");
+
+  const badUrl = await P.saveResult(shop, { ...base, combinedUrl: "http://cdn/x.jpg" });
+  ok(badUrl.ok === false &&
+    badUrl.errors.some((e: string) => e.includes("Combined before/after image")),
+    "SR5: the combined URL passes the https gate or errors");
+
+  // layer 2 (serve belt) + the lab-aware renderable gate: a drifted
+  // CUSTOMER row with ONLY a combined photo would never render, so it
+  // must not enter items/totals/facets at all.
+  seedResult(shop, { combinedUrl: "https://cdn/drift-combo.jpg" });
+  const drift = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(drift.total === 1 &&
+    !drift.items.some((r: { combinedUrl: string | null }) => r.combinedUrl === "https://cdn/drift-combo.jpg"),
+    "PR12: a customer row with only a drifted combined photo is fully excluded");
+  seedResult(shop, { source: "lab", combinedUrl: "https://cdn/lab-drift.jpg" });
+  seedResult(shop, { beforeUrl: "https://cdn/pairb.jpg", combinedUrl: "https://cdn/cust-drift.jpg" });
+  const drift2 = await P.getPublicResults(shop, null, {}, 1, 12);
+  const labDrift = drift2.items.find((r: { combinedUrl: string | null }) => r.combinedUrl === "https://cdn/lab-drift.jpg");
+  const custDrift = drift2.items.find((r: { beforeUrl: string | null }) => r.beforeUrl === "https://cdn/pairb.jpg");
+  ok(drift2.total === 3 && !!labDrift, "PR12: a lab row's combined photo serves");
+  ok(!!custDrift && custDrift.combinedUrl === null,
+    "PR12: the serve belt nulls a customer row's drifted combined column");
+}
+
 // ===================== UC: v25 results-ui-copy table (18 native locales)
 
 {
@@ -704,7 +785,7 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     .sort();
   ok(locales.join(",") === catalogs.join(","),
     `UC1: copy table covers EXACTLY the 18 catalog languages (${locales.length})`);
-  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu"];
+  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu", "aw", "dr", "iv", "zm"];
   ok(JSON.stringify([...UC.RESULTS_UI_COPY_CODES]) === JSON.stringify(codes),
     "UC1: exported code list matches the storefront whitelist");
   for (const locale of locales) {
@@ -717,6 +798,8 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     }
     ok(table[locale].ma.includes("@@N@@"),
       `UC2: ${locale}.ma carries the @@N@@ weeks sentinel`);
+    ok(table[locale].aw.includes("@@N@@"),
+      `UC2: ${locale}.aw carries the @@N@@ weeks sentinel (v33)`);
   }
   ok(table.nb === table.no, "UC3: nb/no are twins (house convention)");
   ok(UC.resultsUiCopy("el") === table.el, "UC4: exact locale resolves");
@@ -731,6 +814,9 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     table.en.vsb === "vs. baseline" && table.en.mi === "Instrument measured" &&
     table.en.mp === "Same patient" && table.en.mu === "Unretouched images",
     "UC5: the English source strings are the mock's exact wording");
+  ok(table.en.aw === "After @@N@@ weeks" && table.en.dr === "Drag to compare" &&
+    table.en.iv === "Individual results may vary." && table.en.zm === "View larger",
+    "UC5: the v33 English source strings are pinned");
 }
 
 // ==================================== MH: market-handle clean/parse trips
@@ -892,7 +978,7 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
       },
       {
         name: "m2-imageless-served",
-        find: "  const renderable = rows.filter(\n    (row) => row.beforeUrl !== null || row.afterUrl !== null,\n  );",
+        find: "  const renderable = rows.filter(\n    (row) =>\n      row.beforeUrl !== null ||\n      row.afterUrl !== null ||\n      // v33: the combined figure counts only where it will actually serve\n      // (lab rows — the belt below nulls it for customer rows, and a row\n      // counted here but never rendered would drift totals/pagination).\n      (row.source === \"lab\" && row.combinedUrl !== null),\n  );",
         replace: "  const renderable = rows;",
       },
       {
@@ -923,6 +1009,27 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m7-clin-duration-req-dropped",
         find: "  if (measurements.length > 0 && (durationWeeks === null || durationWeeks < 1)) {",
         replace: "  if (false) {",
+      },
+      {
+        // v33: the combined serve belt dropped — a drifted customer row
+        // would serve its combined photo (PR12 catches).
+        name: "m8-combined-belt-dropped",
+        find: "        combinedUrl: lab ? row.combinedUrl : null,",
+        replace: "        combinedUrl: row.combinedUrl,",
+      },
+      {
+        // v33: the save-side lab gate dropped — customer entries could
+        // keep a combined photo (SR5's refused-flip catches).
+        name: "m9-combined-save-gate-dropped",
+        find: "  const combinedUrl = isLab\n    ? cleanHttpsUrl(input.combinedUrl, \"Combined before/after image\", errors)\n    : \"\";",
+        replace: "  const combinedUrl = cleanHttpsUrl(input.combinedUrl, \"Combined before/after image\", errors);",
+      },
+      {
+        // v33: "combined wins" dropped — a row could carry BOTH layouts
+        // and render twice (SR5's pair-null catch).
+        name: "m10-combined-wins-dropped",
+        find: "    beforeUrl: beforeUrl === \"\" || combinedUrl !== \"\" ? null : beforeUrl,\n    afterUrl: afterUrl === \"\" || combinedUrl !== \"\" ? null : afterUrl,",
+        replace: "    beforeUrl: beforeUrl === \"\" ? null : beforeUrl,\n    afterUrl: afterUrl === \"\" ? null : afterUrl,",
       },
     ],
   });

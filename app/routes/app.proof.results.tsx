@@ -172,6 +172,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         markets: [],
       },
     featureEnabled: settings.beforeAfter.enabled,
+    // v33 display options (LIVE settings; travel to shoppers via the
+    // results proxy, so flips can take the proxy cache ~5 min to land).
+    labDesign: settings.beforeAfter.labDesign,
+    sliderEnabled: settings.beforeAfter.slider,
     targetLocales,
     translationStatus,
     itemTranslations: Object.fromEntries(itemTranslations),
@@ -369,6 +373,7 @@ export const action = async ({
         verified: payload.verified === true,
         beforeUrl: String(payload.beforeUrl ?? ""),
         afterUrl: String(payload.afterUrl ?? ""),
+        combinedUrl: String(payload.combinedUrl ?? ""),
         ageRange: String(payload.ageRange ?? ""),
         skinType: String(payload.skinType ?? ""),
         concern: String(payload.concern ?? ""),
@@ -600,6 +605,10 @@ function itemToForm(item: CustomerResult): ResultFormValues {
     verified: item.verified,
     beforeUrl: item.beforeUrl ?? "",
     afterUrl: item.afterUrl ?? "",
+    combinedUrl: item.combinedUrl ?? "",
+    // v33: the layout choice is derived, never stored — a row with a
+    // combined photo opens in combined mode.
+    imageMode: item.combinedUrl ? "combined" : "pair",
     ageRange: item.ageRange ?? "",
     skinType: item.skinType ?? "",
     concern: item.concern ?? "",
@@ -627,12 +636,18 @@ function itemToForm(item: CustomerResult): ResultFormValues {
 
 function formToPayload(values: ResultFormValues, id: string | null) {
   const duration = values.durationWeeks.trim();
+  // v33: the layout choice picks which image fields ship — the unused
+  // layout's URLs are stripped here (and the server clears them again as
+  // a belt), so a hidden stale value can never resurface.
+  const combinedMode =
+    values.source === "lab" && values.imageMode === "combined";
   return JSON.stringify({
     ...(id ? { id } : {}),
     source: values.source,
     verified: values.verified,
-    beforeUrl: values.beforeUrl.trim(),
-    afterUrl: values.afterUrl.trim(),
+    beforeUrl: combinedMode ? "" : values.beforeUrl.trim(),
+    afterUrl: combinedMode ? "" : values.afterUrl.trim(),
+    combinedUrl: combinedMode ? values.combinedUrl.trim() : "",
     ageRange: values.ageRange,
     skinType: values.skinType,
     concern: values.concern.trim(),
@@ -691,6 +706,8 @@ export default function ProofResultsTab() {
     markets,
     scope,
     featureEnabled,
+    labDesign,
+    sliderEnabled,
     targetLocales,
     translationStatus,
     itemTranslations,
@@ -713,6 +730,9 @@ export default function ProofResultsTab() {
   const manualSaving = manualFetcher.state !== "idle";
   const scopeFetcher = useFetcher<ResultsActionResult>();
   const importFetcher = useFetcher<ResultsActionResult>();
+  // v33 display options get their OWN fetcher (the v8.11b isolation rule):
+  // a design flip must never disable moderation buttons or vice versa.
+  const displayFetcher = useFetcher<ResultsActionResult>();
 
   const [addOpen, setAddOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -817,6 +837,13 @@ export default function ProofResultsTab() {
     formData.set("intent", "save_settings");
     formData.set("patch", JSON.stringify({ beforeAfter: { enabled } }));
     rowFetcher.submit(formData, { method: "post" });
+  };
+
+  const submitDisplay = (patch: { labDesign?: string; slider?: boolean }) => {
+    const formData = new FormData();
+    formData.set("intent", "save_settings");
+    formData.set("patch", JSON.stringify({ beforeAfter: patch }));
+    displayFetcher.submit(formData, { method: "post" });
   };
 
   const submitTranslateAll = () => {
@@ -1056,16 +1083,28 @@ export default function ProofResultsTab() {
                     >
                       <InlineStack gap="300" blockAlign="center" wrap={false}>
                         <InlineStack gap="100" wrap={false}>
-                          <Thumbnail
-                            source={item.beforeUrl ?? ImageIcon}
-                            alt="Before"
-                            size="small"
-                          />
-                          <Thumbnail
-                            source={item.afterUrl ?? ImageIcon}
-                            alt="After"
-                            size="small"
-                          />
+                          {item.combinedUrl ? (
+                            // v33: a combined entry has ONE photo — a second
+                            // empty frame would read as a missing image.
+                            <Thumbnail
+                              source={item.combinedUrl}
+                              alt="Before/after"
+                              size="small"
+                            />
+                          ) : (
+                            <>
+                              <Thumbnail
+                                source={item.beforeUrl ?? ImageIcon}
+                                alt="Before"
+                                size="small"
+                              />
+                              <Thumbnail
+                                source={item.afterUrl ?? ImageIcon}
+                                alt="After"
+                                size="small"
+                              />
+                            </>
+                          )}
                         </InlineStack>
                         <BlockStack gap="100">
                           <InlineStack gap="200" blockAlign="center" wrap>
@@ -1087,6 +1126,7 @@ export default function ProofResultsTab() {
                             <Badge tone={item.source === "lab" ? "info" : undefined}>
                               {item.source === "lab" ? "Lab" : "Customer"}
                             </Badge>
+                            {item.combinedUrl ? <Badge>Combined photo</Badge> : null}
                             {item.verified ? (
                               <Badge tone="success">Verified</Badge>
                             ) : null}
@@ -1229,6 +1269,48 @@ export default function ProofResultsTab() {
               />
             </InlineStack>
           ) : null}
+        </BlockStack>
+      </Card>
+
+      <Card>
+        <BlockStack gap="300">
+          <BlockStack gap="100">
+            <Text as="h2" variant="headingMd">
+              Clinical display
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              How before/after entries render on the storefront. Live
+              settings — a change can take up to ~5 minutes to reach
+              shoppers (the results feed is cached).
+            </Text>
+          </BlockStack>
+          <ChoiceList
+            title="Clinical entry design"
+            choices={[
+              {
+                label: "Classic — the standard results card",
+                value: "classic",
+              },
+              {
+                label:
+                  "Clinical study — lab entries render as study figures: document band, week-stamped photo tags, results-may-vary footnote",
+                value: "study",
+              },
+            ]}
+            selected={[labDesign]}
+            onChange={(selected) => {
+              const next = selected[0] === "study" ? "study" : "classic";
+              if (next !== labDesign) submitDisplay({ labDesign: next });
+            }}
+            disabled={displayFetcher.state !== "idle"}
+          />
+          <Checkbox
+            label="Before/after comparison slider"
+            helpText="Shoppers drag a divider over the photos to compare before and after themselves — works with the separate pair and with a combined photo."
+            checked={sliderEnabled}
+            onChange={(checked) => submitDisplay({ slider: checked })}
+            disabled={displayFetcher.state !== "idle"}
+          />
         </BlockStack>
       </Card>
 

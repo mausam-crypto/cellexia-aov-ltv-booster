@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Checkbox,
+  ChoiceList,
   DropZone,
   InlineStack,
   Select,
@@ -94,6 +95,11 @@ interface ProofImageFieldProps {
   onChange: (url: string) => void;
   /** Optional guidance under the field (e.g. optimal-logo requirements). */
   helpText?: string;
+  /** v33: "contain" shows a wide combined composite uncropped (the default
+   *  "cover" crop would hide both outer halves). */
+  previewFit?: "cover" | "contain";
+  /** v33: widen the field for landscape composites. */
+  wide?: boolean;
 }
 
 export function ProofImageField({
@@ -102,6 +108,8 @@ export function ProofImageField({
   disabled,
   onChange,
   helpText,
+  previewFit,
+  wide,
 }: ProofImageFieldProps) {
   const shopify = useAppBridge();
   const upload = useFetcher<ProofFieldActionData>();
@@ -147,7 +155,7 @@ export function ProofImageField({
   const urlValid = HTTPS_PATTERN.test(urlText.trim());
 
   return (
-    <Box minWidth="220px" maxWidth="260px">
+    <Box minWidth="220px" maxWidth={wide ? "460px" : "260px"}>
       <BlockStack gap="200">
         <Text as="span" variant="bodySm" fontWeight="semibold">
           {label}
@@ -173,7 +181,7 @@ export function ProofImageField({
               style={{
                 width: "100%",
                 height: "100%",
-                objectFit: "cover",
+                objectFit: previewFit ?? "cover",
                 display: "block",
               }}
             />
@@ -929,6 +937,12 @@ export interface ResultFormValues {
   verified: boolean;
   beforeUrl: string;
   afterUrl: string;
+  /** v33: the ONE combined before/after photo (lab entries only). */
+  combinedUrl: string;
+  /** v33 client-only layout choice ("pair" | "combined") — derived from
+   *  combinedUrl when a row opens; formToPayload strips the unused
+   *  layout's URLs, so it is never stored. */
+  imageMode: string;
   ageRange: string;
   skinType: string;
   concern: string;
@@ -952,6 +966,8 @@ export const EMPTY_RESULT_FORM: ResultFormValues = {
   verified: false,
   beforeUrl: "",
   afterUrl: "",
+  combinedUrl: "",
+  imageMode: "pair",
   ageRange: "",
   skinType: "",
   concern: "",
@@ -1053,14 +1069,31 @@ export function ResultForm({
   const videoError = httpsUrlError(values.videoUrl);
   const countryError = iso2Error(values.country);
   const durationError = durationWeeksError(values.durationWeeks);
-  const hasContent =
-    values.beforeUrl !== "" ||
-    values.afterUrl !== "" ||
-    values.testimonial.trim() !== "" ||
-    values.videoUrl.trim() !== "";
   // v25 clinical editor state (lab entries only — the section is hidden
   // otherwise and the server clears clinical fields on a source flip).
   const isLab = values.source === "lab";
+  // v33: which photo layout ships. Combined is a lab-only option; in pair
+  // mode (or for customer entries) a stale combined URL never counts here
+  // and is stripped by formToPayload, so it cannot resurface.
+  const combinedMode = isLab && values.imageMode === "combined";
+  const hasContent =
+    (combinedMode
+      ? values.combinedUrl !== ""
+      : values.beforeUrl !== "" || values.afterUrl !== "") ||
+    values.testimonial.trim() !== "" ||
+    values.videoUrl.trim() !== "";
+  // v33 review C5: switching Photo format (or source) strips the OTHER
+  // layout's stored URLs on save. If the active layout has no photo while
+  // the inactive one still does, a save would silently delete the only
+  // image and the entry would vanish from the storefront (image-less rows
+  // never serve) — block it until the merchant adds a photo in the
+  // selected format or switches back.
+  const photoSwapLoss = combinedMode
+    ? values.combinedUrl === "" &&
+      (values.beforeUrl !== "" || values.afterUrl !== "")
+    : values.combinedUrl !== "" &&
+      values.beforeUrl === "" &&
+      values.afterUrl === "";
   const measurementErrors = values.measurements.map((m) => ({
     label: m.label.trim() === "" ? "Label is required" : undefined,
     pct: measurementPctError(m.pct),
@@ -1073,6 +1106,7 @@ export function ResultForm({
     !/^[1-9]\d*$/.test(values.durationWeeks.trim());
   const valid =
     hasContent &&
+    !photoSwapLoss &&
     !videoError &&
     !countryError &&
     !durationError &&
@@ -1116,20 +1150,59 @@ export function ResultForm({
 
   return (
     <BlockStack gap="300">
+      {isLab ? (
+        <ChoiceList
+          title="Photo format"
+          choices={[
+            { label: "Separate before and after photos", value: "pair" },
+            {
+              label:
+                "One combined before/after photo (before on the left, after on the right)",
+              value: "combined",
+            },
+          ]}
+          selected={[values.imageMode === "combined" ? "combined" : "pair"]}
+          onChange={(selected) =>
+            set("imageMode", selected[0] === "combined" ? "combined" : "pair")
+          }
+          disabled={busy}
+        />
+      ) : null}
       <InlineStack gap="300" wrap blockAlign="start">
-        <ProofImageField
-          label="Before image"
-          url={values.beforeUrl}
-          disabled={busy}
-          onChange={(beforeUrl) => set("beforeUrl", beforeUrl)}
-        />
-        <ProofImageField
-          label="After image"
-          url={values.afterUrl}
-          disabled={busy}
-          onChange={(afterUrl) => set("afterUrl", afterUrl)}
-        />
+        {combinedMode ? (
+          <ProofImageField
+            label="Combined before/after image"
+            url={values.combinedUrl}
+            disabled={busy}
+            onChange={(combinedUrl) => set("combinedUrl", combinedUrl)}
+            helpText="One side-by-side photo: before on the LEFT half, after on the RIGHT, same framing in both halves — the compare slider splits it exactly at the middle."
+            previewFit="contain"
+            wide
+          />
+        ) : (
+          <>
+            <ProofImageField
+              label="Before image"
+              url={values.beforeUrl}
+              disabled={busy}
+              onChange={(beforeUrl) => set("beforeUrl", beforeUrl)}
+            />
+            <ProofImageField
+              label="After image"
+              url={values.afterUrl}
+              disabled={busy}
+              onChange={(afterUrl) => set("afterUrl", afterUrl)}
+            />
+          </>
+        )}
       </InlineStack>
+      {photoSwapLoss ? (
+        <Text as="p" variant="bodySm" tone="caution">
+          {combinedMode
+            ? "This entry's stored photos are the separate before/after pair. Add the combined photo (or switch Photo format back) before saving — saving now would remove the pair."
+            : "This entry's stored photo is the combined before/after image. Add the separate photos (or switch to the combined format) before saving — saving now would remove it."}
+        </Text>
+      ) : null}
       {!hasContent ? (
         <Text as="p" variant="bodySm" tone="subdued">
           Add at least an image, a testimonial or a video.

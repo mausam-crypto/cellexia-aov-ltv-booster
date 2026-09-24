@@ -265,6 +265,18 @@ export const PROOF_DENSITIES = ["full", "compact", "ultra"] as const;
 export type ProofDensity = (typeof PROOF_DENSITIES)[number];
 
 /**
+ * v33: merchant-selected DESIGN for the results gallery's LAB (clinical)
+ * entries — a LIVE display setting (the v6.5/v8.3 no-draft-plumbing
+ * convention). "classic" is the v25 card; "study" renders every lab entry
+ * as a clinical-study figure: ink document band, week-stamped photo tags,
+ * "results may vary" footnote. Customer entries keep the classic card in
+ * both designs. Reaches the storefront through the results proxy payload
+ * (`payload.ui`), never the Liquid island (the byte wall).
+ */
+export const LAB_RESULT_DESIGNS = ["classic", "study"] as const;
+export type LabResultDesign = (typeof LAB_RESULT_DESIGNS)[number];
+
+/**
  * v8.8: merchant-selected DESIGN for the per-product dermatologist survey
  * widget (LIVE setting — the v6.5/v8.3 no-draft-plumbing convention).
  * "classic" is the v7 outcomes-forward layout and the only design the
@@ -871,6 +883,16 @@ export interface BoosterSettings {
     density: ProofDensity;
     /** v8.9 product-page placement (PROOF_PLACEMENTS). */
     placement: ProofPlacement;
+    /** v33 design for LAB entries (LAB_RESULT_DESIGNS — LIVE display
+     *  setting, the density precedent): "classic" keeps the v25 card,
+     *  "study" renders lab entries as clinical-study figures. Travels via
+     *  the results proxy (`payload.ui.cs`), not the Liquid island. */
+    labDesign: LabResultDesign;
+    /** v33 before/after compare slider (LIVE display setting): shoppers
+     *  drag a divider over the photos — works for the separate pair AND
+     *  for the single combined figure (left half = before, right half =
+     *  after). Travels via the results proxy (`payload.ui.sl`). */
+    slider: boolean;
   };
   batchTransparency: {
     enabled: boolean;
@@ -1857,6 +1879,8 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     compact: false,
     density: "full",
     placement: "below_tabs",
+    labDesign: "classic",
+    slider: false,
   },
   batchTransparency: {
     enabled: false,
@@ -4286,6 +4310,17 @@ export function sanitizeSettings(
   if (!PROOF_DENSITIES.includes(next.beforeAfter.density as ProofDensity)) {
     next.beforeAfter.density =
       next.beforeAfter.compact === true ? "ultra" : "full";
+  }
+  // v33 results display options — LIVE settings (the density precedent):
+  // a closed design enum and a plain boolean, both coerced to their
+  // defaults on any invalid stored value.
+  if (
+    !LAB_RESULT_DESIGNS.includes(next.beforeAfter.labDesign as LabResultDesign)
+  ) {
+    next.beforeAfter.labDesign = DEFAULT_SETTINGS.beforeAfter.labDesign;
+  }
+  if (typeof next.beforeAfter.slider !== "boolean") {
+    next.beforeAfter.slider = DEFAULT_SETTINGS.beforeAfter.slider;
   }
   // v8.17 endorsement badge flags + merchant copy overrides. Booleans keep
   // the typeof discipline; copy fields keep the methodology discipline

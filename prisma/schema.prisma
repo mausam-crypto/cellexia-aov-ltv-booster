@@ -171,6 +171,10 @@ model CustomerResult {
   verified      Boolean  @default(false)      // verified purchase
   beforeUrl     String?
   afterUrl      String?
+  // v33: ONE combined before+after photo (lab entries only — the clinical
+  // single-figure option; left half = before, right half = after). A row
+  // never carries both layouts: saveResult clears the pair when this is set.
+  combinedUrl   String?
   ageRange      String?  // "18-24" | "25-34" | "35-44" | "45-54" | "55-64" | "65+"
   skinType      String?  // "dry" | "oily" | "combination" | "sensitive" | "normal"
   concern       String?  // free-slug, e.g. "wrinkles", "firmness" (admin tags)

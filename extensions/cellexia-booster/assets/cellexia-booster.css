@@ -4790,6 +4790,196 @@ body.customer--b2b .cx-sub-remove {
   justify-content: center;
 }
 
+/* ---- v33 combined figure + compare slider --------------------------
+   The combined composite (left half = Before, right half = After) and
+   the drag-compare stage. PHYSICAL geometry on purpose in this block
+   (left/right, clip-path insets): a photo's left half is its left half
+   in every reading direction — deliberately NOT mirrored under
+   [dir="rtl"] (only the text tags reposition). The stage is a plain
+   div, never a button: the zoom control owns the lightbox. */
+
+.cx-results__frame--combo {
+  flex: 1 1 100%;
+}
+
+.cx-results__thumb--combo {
+  aspect-ratio: auto;
+}
+
+.cx-results__media--slider {
+  display: block;
+  cursor: default;
+  padding: 0;
+}
+
+/* a video entry's play chip in slider media: PHYSICAL bottom-left (the
+   zoom button owns physical bottom-right — a logical inset would stack
+   them on the same corner under RTL), and click-through: the chip is
+   decorative here, taps belong to the drag stage (the zoom button is
+   the lightbox/video opener and carries the sr video label). */
+.cx-results__media--slider .cx-results__play {
+  pointer-events: none;
+  inset-block-start: auto;
+  inset-block-end: auto;
+  inset-inline-start: auto;
+  inset-inline-end: auto;
+  top: auto;
+  bottom: 8px;
+  left: 8px;
+  right: auto;
+}
+
+.cx-results__ba {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  touch-action: pan-y;
+  cursor: ew-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cx-results__ba--combo {
+  /* pre-load guess for a side-by-side composite's half; JS refines it
+     from naturalWidth/2 x naturalHeight once the image arrives. */
+  aspect-ratio: 1 / 1;
+}
+
+.cx-results__ba-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  display: block;
+}
+
+.cx-results__ba-img--l {
+  width: 200%;
+  object-fit: fill;
+}
+
+.cx-results__ba-img--r {
+  width: 200%;
+  left: -100%;
+  object-fit: fill;
+}
+
+.cx-results__ba-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  clip-path: inset(0 50% 0 0);
+}
+
+.cx-results__ba-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(29, 29, 27, 0.35);
+  pointer-events: none;
+}
+
+.cx-results__ba-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  inline-size: 36px;
+  block-size: 36px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #e5e5e3;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  color: #1d1d1b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ew-resize;
+}
+
+.cx-results__ba-handle:focus-visible {
+  outline: 2px solid #1d1d1b;
+  outline-offset: 2px;
+}
+
+.cx-results__ba-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.94);
+  color: #1d1d1b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(29, 29, 27, 0.18);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.cx-results__ba-hint[hidden] {
+  display: none !important;
+}
+
+/* slider tags pin to the PHYSICAL photo sides (Before left, After
+   right) — the logical base positioning is neutralized. */
+.cx-results__tag--ba {
+  inset-inline-start: auto;
+  inset-inline-end: auto;
+  left: 10px;
+  right: auto;
+}
+
+.cx-results__tag--ba-after {
+  left: auto;
+  right: 10px;
+}
+
+.cx-results__zoom {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  inline-size: 32px;
+  block-size: 32px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #e5e5e3;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  color: #1d1d1b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-in;
+  padding: 0;
+}
+
+.cx-results__zoom:hover,
+.cx-results__zoom:focus-visible {
+  background: #f4f4f2;
+}
+
+@media (pointer: coarse) {
+  /* house 44px touch floor */
+  .cx-results__ba-handle,
+  .cx-results__zoom {
+    inline-size: 44px;
+    block-size: 44px;
+  }
+}
+
 .cx-results__badges {
   display: flex;
   flex-wrap: wrap;
@@ -5034,6 +5224,58 @@ body.customer--b2b .cx-sub-remove {
 
 .cx-results__clin-mark-t {
   min-inline-size: 0;
+}
+
+/* ---- v33 clinical-study design (beforeAfter.labDesign "study") -----
+   Lab cards read as study figures: an ink document band heads the card
+   (the v8.8 dossier language), photo tags turn documentary (ink chips,
+   the After tag week-stamped by JS), and an honest "results may vary"
+   footnote closes the card. Same DOM family, card-level modifier. */
+
+.cx-results__card--study {
+  border-color: #cfcfcb;
+  box-shadow: 0 10px 24px rgba(29, 29, 27, 0.07);
+}
+
+.cx-results__study {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1d1d1b;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.cx-results__study-ic {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: #b1cded;
+}
+
+.cx-results__study-t {
+  min-inline-size: 0;
+}
+
+.cx-results__card--study .cx-results__tag {
+  background: rgba(29, 29, 27, 0.78);
+  color: #fff;
+}
+
+.cx-results__card--study .cx-results__tag--after {
+  background: #14532f;
+  color: #fff;
+}
+
+.cx-results__disclaim {
+  margin: 2px 0 0;
+  padding-inline: 12px;
+  font-size: 11px;
+  font-style: italic;
+  color: #6f6f6c;
 }
 
 .cx-results__empty {
@@ -5282,6 +5524,44 @@ body.customer--b2b .cx-sub-remove {
   margin: 8px 0 0;
   padding-inline: 0;
   font-size: 13px;
+}
+
+/* v33 lightbox contexts: the combined figure spans the 2-col grid at
+   its natural aspect; the compare stage does the same. The pair stage
+   caps its height (cover-cropped like the old figures — the combo stage
+   never caps: its halves are object-fit fill and would distort); the
+   side tags drop to the BOTTOM corners so the after tag clears the
+   sticky close, and the drag hint yields (the card already taught it). */
+.cx-lightbox__img--combo {
+  aspect-ratio: auto;
+}
+
+.cx-lightbox .cx-results__ba {
+  grid-column: 1 / -1;
+  border-radius: 8px;
+  /* the height cap can shrink the aspect-locked stage below the card
+     width — keep it centered rather than start-hugging */
+  margin-inline: auto;
+  inline-size: 100%;
+  max-inline-size: 100%;
+}
+
+.cx-lightbox .cx-results__ba:not(.cx-results__ba--combo) {
+  max-block-size: 560px;
+}
+
+.cx-lightbox .cx-results__tag--ba {
+  inset-block-start: auto;
+  bottom: 12px;
+}
+
+.cx-lightbox .cx-results__ba-hint {
+  display: none;
+}
+
+.cx-lightbox .cx-results__disclaim {
+  padding-inline: 0;
+  margin: 10px 0 0;
 }
 
 @media (max-width: 640px) {
@@ -5626,6 +5906,22 @@ body.customer--b2b .cx-sub-remove {
   gap: 4px;
 }
 
+/* v33 additions under ultra: the study band and footnote compress, the
+   drag hint yields (240px cards leave it no room), touch targets keep
+   their coarse-pointer floor via the base rules. */
+.cx-results--ultra .cx-results__study {
+  padding: 5px 10px;
+  font-size: 9px;
+}
+
+.cx-results--ultra .cx-results__disclaim {
+  font-size: 10px;
+}
+
+.cx-results--ultra .cx-results__ba-hint {
+  display: none;
+}
+
 /* v25: Arabic joins letters — letterspaced uppercase chrome must not
    track (the v24 :lang(ar) catch, applied to the new pieces) */
 :lang(ar) .cx-results__tagline,
@@ -5633,6 +5929,8 @@ body.customer--b2b .cx-sub-remove {
 :lang(ar) .cx-results__badge,
 :lang(ar) .cx-results__clin-title,
 :lang(ar) .cx-results__clin-base,
+:lang(ar) .cx-results__study-t,
+:lang(ar) .cx-results__ba-hint,
 :lang(ar) .cx-lightbox__cap {
   letter-spacing: 0;
 }

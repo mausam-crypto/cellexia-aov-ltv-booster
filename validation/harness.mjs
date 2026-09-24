@@ -4868,8 +4868,8 @@ const EVIDENCE = {
   // ---- storefront: whitelist, raw reads, gates, close ---------------------
   const proofJs25 = read(PROOF_JS);
   ok(
-    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu'];"),
-    "v25: resultsApplyCopy whitelist is exactly the six chrome codes",
+    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm'];"),
+    "v25/v33: resultsApplyCopy whitelist is exactly the ten chrome codes",
   );
   for (const raw of ["pfStrRaw(s, 'rp')", "pfStrRaw(s, 'ma')", "pfStrRaw(s, 'vsb')", "pfStrRaw(s, 'mi')"]) {
     ok(proofJs25.includes(raw), `v25: proxy-only code read RAW (v8.22 convention): ${raw}`);
@@ -4916,6 +4916,154 @@ const EVIDENCE = {
   ok(
     read("app/routes/app.proof.results.tsx").includes("field: `m${index}l`"),
     "v25: the translations reviewer exposes the measurement fields",
+  );
+}
+
+// ============================== v33 RESULTS COMBINED + SLIDER + STUDY
+// docs/SPEC-v33-results-slider.md — ONE combined before+after photo for
+// lab entries (three-layer lab gate, "combined wins" exclusivity), the
+// clinical-study design option and the compare slider (both LIVE
+// beforeAfter settings travelling via the results proxy's payload.ui —
+// the Liquid island sits against the byte budget). Behavior lives in
+// proof-gallery R25–R32 (+m38–m42) and proof-server SR5/PR12 (+m8–m10);
+// the pins here hold the cross-file wiring.
+{
+  // ---- schema: both prisma files + the migration --------------------------
+  for (const schema of ["prisma/schema.prisma", "prisma/schema.postgres.prisma"]) {
+    ok(
+      read(schema).includes("combinedUrl   String?"),
+      `v33: ${schema} declares CustomerResult.combinedUrl`,
+    );
+  }
+  ok(
+    read("prisma/migrations/20260923090000_v33_results_combined/migration.sql")
+      .includes('ALTER TABLE "CustomerResult" ADD COLUMN "combinedUrl" TEXT;'),
+    "v33: the additive combinedUrl migration ships",
+  );
+
+  // ---- server: the three-layer lab gate + exclusivity ---------------------
+  const proofSrv33 = read("app/services/proof.server.ts");
+  ok(
+    proofSrv33.includes('const combinedUrl = isLab\n    ? cleanHttpsUrl(input.combinedUrl, "Combined before/after image", errors)\n    : "";'),
+    "v33: save layer — combined is https-cleaned for lab entries, cleared on a customer flip",
+  );
+  ok(
+    proofSrv33.includes("combinedUrl: lab ? row.combinedUrl : null,"),
+    "v33: serve belt — customer rows always serve combinedUrl null",
+  );
+  ok(
+    proofSrv33.includes('(row.source === "lab" && row.combinedUrl !== null),'),
+    "v33: the renderable gate counts the combined figure only where it serves (lab rows)",
+  );
+  ok(
+    proofSrv33.includes('beforeUrl: beforeUrl === "" || combinedUrl !== "" ? null : beforeUrl,'),
+    "v33: combined wins — a row never stores both photo layouts",
+  );
+
+  // ---- settings: the two LIVE display options -----------------------------
+  const settings33 = read("app/models/settings.server.ts");
+  ok(
+    settings33.includes('export const LAB_RESULT_DESIGNS = ["classic", "study"] as const;'),
+    "v33: the lab-design enum is closed",
+  );
+  ok(
+    settings33.includes("!LAB_RESULT_DESIGNS.includes(next.beforeAfter.labDesign as LabResultDesign)") &&
+      settings33.includes('if (typeof next.beforeAfter.slider !== "boolean") {'),
+    "v33: sanitize coerces labDesign (enum) and slider (boolean) to their defaults",
+  );
+  ok(
+    settings33.includes('labDesign: "classic",\n    slider: false,'),
+    "v33: both display options default OFF in DEFAULT_SETTINGS (classic, no slider)",
+  );
+
+  // ---- proxy: flags ride the FIRST results response -----------------------
+  const proxy33 = read("app/routes/proxy.proof.tsx");
+  ok(
+    proxy33.includes("const ba = (await getSettings(shop)).beforeAfter;") &&
+      proxy33.includes('if (ba.labDesign === "study") ui.cs = 1;') &&
+      proxy33.includes("if (ba.slider === true) ui.sl = 1;") &&
+      proxy33.includes("(payload as Record<string, unknown>).ui = ui;"),
+    "v33: the results proxy emits payload.ui from live settings (page 1, own try/catch)",
+  );
+
+  // ---- storefront: strict reads, belts, ARIA ------------------------------
+  const proofJs33 = read(PROOF_JS);
+  ok(
+    proofJs33.includes("return { cs: ui.cs === 1, sl: ui.sl === 1 };"),
+    "v33: payload.ui flags are strict === 1 reads (fail closed)",
+  );
+  ok(
+    proofJs33.includes("var combined = lab ? pfHttps(it.combinedUrl) : '';"),
+    "v33: the client combined belt twins the serve belt",
+  );
+  for (const raw of ["pfStrRaw(s, 'aw')", "pfStrRaw(s, 'dr')", "pfStrRaw(s, 'iv')", "pfStrRaw(s, 'zm')"]) {
+    ok(proofJs33.includes(raw), `v33: proxy-only code read RAW: ${raw}`);
+  }
+  ok(
+    proofJs33.includes("'aria-valuemin', '0', 'aria-valuemax', '100', 'aria-valuenow', '50'"),
+    "v33: the slider handle is a real ARIA slider control",
+  );
+  ok(
+    proofJs33.includes("stage.setPointerCapture(dragId);") &&
+      proofJs33.includes("document.addEventListener('pointercancel', dragEnd);") &&
+      proofJs33.includes("document.addEventListener('touchcancel', dragEnd);"),
+    "v33 review C1/C2: pointer capture (backdrop-close fix) + cancel-path listener cleanup",
+  );
+  ok(
+    proofJs33.includes("window.CSS.supports('aspect-ratio', '1 / 1')"),
+    "v33 review C4: the slider fails closed without aspect-ratio support",
+  );
+
+  // ---- CSS: slider geometry + study family styled -------------------------
+  const css33 = read(CSS);
+  for (const cls of [
+    ".cx-results__ba {", ".cx-results__ba-top {", ".cx-results__ba-handle {",
+    ".cx-results__ba-hint[hidden]", ".cx-results__card--study {",
+    ".cx-results__study {", ".cx-results__disclaim {",
+    ".cx-results__frame--combo {", ".cx-lightbox__img--combo {",
+  ]) {
+    ok(css33.includes(cls), `v33: CSS styles ${cls.replace(" {", "")}`);
+  }
+  const baIdx = css33.indexOf(".cx-results__ba {");
+  ok(
+    css33.slice(baIdx, css33.indexOf("}", baIdx)).includes("touch-action: pan-y"),
+    "v33: the stage yields vertical panning (mobile rail coexistence)",
+  );
+  ok(
+    css33.includes(":lang(ar) .cx-results__study-t,") &&
+      css33.includes(":lang(ar) .cx-results__ba-hint,"),
+    "v33: the new letterspaced chrome joins the Arabic letter-spacing reset",
+  );
+
+  // ---- admin: layout choice, stripped payload, display card ---------------
+  const forms33 = read("app/components/ProofForms.tsx");
+  ok(
+    forms33.includes('set("imageMode", selected[0] === "combined" ? "combined" : "pair")'),
+    "v33: the lab-only photo-format choice drives the combined field",
+  );
+  ok(
+    forms33.includes("const photoSwapLoss = combinedMode") &&
+      forms33.includes("!photoSwapLoss &&"),
+    "v33 review C5: a format/source switch never silently deletes the stored photos",
+  );
+  {
+    const cssPlay = read(CSS);
+    const playIdx = cssPlay.indexOf(".cx-results__media--slider .cx-results__play {");
+    ok(
+      playIdx !== -1 &&
+        cssPlay.slice(playIdx, cssPlay.indexOf("}", playIdx)).includes("pointer-events: none"),
+      "v33 review C3: the slider-mode play chip is decorative (physical corner, click-through)",
+    );
+  }
+  const results33 = read("app/routes/app.proof.results.tsx");
+  ok(
+    results33.includes('combinedUrl: combinedMode ? values.combinedUrl.trim() : "",'),
+    "v33: formToPayload strips the unused layout's URLs",
+  );
+  ok(
+    results33.includes("submitDisplay({ labDesign: next })") &&
+      results33.includes("submitDisplay({ slider: checked })"),
+    "v33: the Clinical display card saves both options through save_settings",
   );
 }
 

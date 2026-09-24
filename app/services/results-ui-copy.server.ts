@@ -24,6 +24,10 @@
  *   vsb panel header's comparison tag ("vs. baseline")
  *   mi/mp/mu  the three trust-mark labels (instrument / same patient /
  *             unretouched) — rendered only for marks the merchant checked
+ *   aw  v33 study-design photo tag; @@N@@ = the entry's durationWeeks
+ *   dr  v33 compare-slider handle hint + aria-label ("Drag to compare")
+ *   iv  v33 study-design footnote ("Individual results may vary.")
+ *   zm  v33 slider-mode lightbox trigger label ("View larger")
  */
 
 export interface ResultsUiCopy {
@@ -33,6 +37,10 @@ export interface ResultsUiCopy {
   mi: string;
   mp: string;
   mu: string;
+  aw: string;
+  dr: string;
+  iv: string;
+  zm: string;
 }
 
 export const RESULTS_UI_COPY_CODES = [
@@ -42,6 +50,10 @@ export const RESULTS_UI_COPY_CODES = [
   "mi",
   "mp",
   "mu",
+  "aw",
+  "dr",
+  "iv",
+  "zm",
 ] as const;
 
 const NO_TABLE: ResultsUiCopy = {
@@ -51,6 +63,10 @@ const NO_TABLE: ResultsUiCopy = {
   mi: "Målt med instrumenter",
   mp: "Samme person",
   mu: "Uretusjerte bilder",
+  aw: "Etter @@N@@ uker",
+  dr: "Dra for å sammenligne",
+  iv: "Resultatene kan variere fra person til person.",
+  zm: "Se større",
 };
 
 /** Keyed by NORMALIZED (lowercase) storefront locale — the proxy
@@ -64,6 +80,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Instrument measured",
     mp: "Same patient",
     mu: "Unretouched images",
+    aw: "After @@N@@ weeks",
+    dr: "Drag to compare",
+    iv: "Individual results may vary.",
+    zm: "View larger",
   },
   ar: {
     rp: "أشخاص حقيقيون. نتائج حقيقية.",
@@ -72,6 +92,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "قياس بالأجهزة",
     mp: "الشخص نفسه",
     mu: "صور غير معدلة",
+    aw: "بعد الأسبوع @@N@@",
+    dr: "اسحب للمقارنة",
+    iv: "قد تختلف النتائج من شخص إلى آخر.",
+    zm: "تكبير الصورة",
   },
   da: {
     rp: "Ægte mennesker. Ægte resultater.",
@@ -80,6 +104,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Målt med instrumenter",
     mp: "Samme person",
     mu: "Uretoucherede billeder",
+    aw: "Efter @@N@@ uger",
+    dr: "Træk for at sammenligne",
+    iv: "Resultaterne kan variere fra person til person.",
+    zm: "Se større",
   },
   de: {
     rp: "Echte Menschen. Echte Ergebnisse.",
@@ -88,6 +116,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Instrumentell gemessen",
     mp: "Dieselbe Person",
     mu: "Unretuschierte Bilder",
+    aw: "Nach @@N@@ Wochen",
+    dr: "Zum Vergleichen ziehen",
+    iv: "Ergebnisse können individuell abweichen.",
+    zm: "Größer ansehen",
   },
   el: {
     rp: "Αληθινοί άνθρωποι. Αληθινά αποτελέσματα.",
@@ -96,6 +128,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Μέτρηση με όργανα",
     mp: "Το ίδιο άτομο",
     mu: "Φωτογραφίες χωρίς ρετούς",
+    aw: "Μετά από @@N@@ εβδομάδες",
+    dr: "Σύρε για σύγκριση",
+    iv: "Τα αποτελέσματα διαφέρουν από άτομο σε άτομο.",
+    zm: "Μεγέθυνση",
   },
   es: {
     rp: "Personas reales. Resultados reales.",
@@ -104,6 +140,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Medido con instrumentos",
     mp: "La misma persona",
     mu: "Imágenes sin retocar",
+    aw: "Después de @@N@@ semanas",
+    dr: "Arrastra para comparar",
+    iv: "Los resultados pueden variar según la persona.",
+    zm: "Ampliar",
   },
   fi: {
     rp: "Aitoja ihmisiä. Aitoja tuloksia.",
@@ -112,6 +152,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Mitattu mittalaitteilla",
     mp: "Sama henkilö",
     mu: "Muokkaamattomat kuvat",
+    aw: "@@N@@ viikon jälkeen",
+    dr: "Vertaile vetämällä",
+    iv: "Tulokset voivat vaihdella henkilöittäin.",
+    zm: "Katso suurempana",
   },
   fr: {
     rp: "De vraies personnes. De vrais résultats.",
@@ -120,6 +164,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Mesuré par instruments",
     mp: "Même personne",
     mu: "Photos non retouchées",
+    aw: "Après @@N@@ sem.",
+    dr: "Faites glisser pour comparer",
+    iv: "Les résultats peuvent varier d'une personne à l'autre.",
+    zm: "Voir en grand",
   },
   hu: {
     rp: "Valódi emberek. Valódi eredmények.",
@@ -128,6 +176,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Műszeres mérés",
     mp: "Ugyanaz a személy",
     mu: "Retusálatlan képek",
+    aw: "@@N@@ hét után",
+    dr: "Húzd az összehasonlításhoz",
+    iv: "Az eredmények egyénenként eltérhetnek.",
+    zm: "Nagyobb nézet",
   },
   it: {
     rp: "Persone vere. Risultati veri.",
@@ -136,6 +188,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Misurato con strumenti",
     mp: "Stessa persona",
     mu: "Immagini non ritoccate",
+    aw: "Dopo @@N@@ settimane",
+    dr: "Trascina per confrontare",
+    iv: "I risultati possono variare da persona a persona.",
+    zm: "Ingrandisci",
   },
   ja: {
     rp: "実際の使用者による、本物の結果。",
@@ -144,6 +200,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "機器測定",
     mp: "同一人物",
     mu: "無加工の写真",
+    aw: "@@N@@週間後",
+    dr: "ドラッグして比較",
+    iv: "効果には個人差があります。",
+    zm: "拡大表示",
   },
   nb: NO_TABLE,
   nl: {
@@ -153,6 +213,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Instrumenteel gemeten",
     mp: "Dezelfde persoon",
     mu: "Onbewerkte foto's",
+    aw: "Na week @@N@@",
+    dr: "Sleep om te vergelijken",
+    iv: "Resultaten kunnen per persoon verschillen.",
+    zm: "Groter bekijken",
   },
   no: NO_TABLE,
   pl: {
@@ -162,6 +226,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Pomiar aparaturą",
     mp: "Ta sama osoba",
     mu: "Zdjęcia bez retuszu",
+    aw: "Po @@N@@ tyg.",
+    dr: "Przeciągnij, aby porównać",
+    iv: "Efekty mogą się różnić w zależności od osoby.",
+    zm: "Powiększ",
   },
   "pt-pt": {
     rp: "Pessoas reais. Resultados reais.",
@@ -170,6 +238,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Medido com instrumentos",
     mp: "A mesma pessoa",
     mu: "Imagens não retocadas",
+    aw: "Após @@N@@ semanas",
+    dr: "Arraste para comparar",
+    iv: "Os resultados podem variar de pessoa para pessoa.",
+    zm: "Ampliar",
   },
   ro: {
     rp: "Oameni reali. Rezultate reale.",
@@ -178,6 +250,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Măsurat cu instrumente",
     mp: "Aceeași persoană",
     mu: "Imagini neretușate",
+    aw: "Săptămâna @@N@@",
+    dr: "Trage pentru a compara",
+    iv: "Rezultatele pot varia de la o persoană la alta.",
+    zm: "Vezi mai mare",
   },
   sv: {
     rp: "Riktiga människor. Riktiga resultat.",
@@ -186,6 +262,10 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Uppmätt med instrument",
     mp: "Samma person",
     mu: "Oretuscherade bilder",
+    aw: "Efter @@N@@ veckor",
+    dr: "Dra för att jämföra",
+    iv: "Resultaten kan variera från person till person.",
+    zm: "Se större bild",
   },
 };
 

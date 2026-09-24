@@ -573,6 +573,16 @@ products/update webhook + 24 h lazy re-sync, stacking allowed
 (combinesWith all-true, merchant decision). Full contract:
 `docs/SPEC-v32-volume-pricing.md`.
 
+## v33 results gallery: combined clinical photo · study design · compare slider
+
+`beforeAfter.labDesign` ("classic" | "study") + `beforeAfter.slider` — two
+LIVE display sub-flags (no new FeatureKey) travelling via the results
+proxy's `payload.ui`, plus `CustomerResult.combinedUrl` (ONE side-by-side
+before/after composite, LAB entries only, three-layer gate, "combined
+wins" exclusivity) and four new proxy chrome codes (aw/dr/iv/zm, 18
+locales). Zero Liquid bytes, zero locale bytes; both options ship OFF.
+Full contract: `docs/SPEC-v33-results-slider.md`.
+
 ## v20 image badges on mobile
 
 `image_badges` — the SIZE of the award/certification badges the THEME lays
