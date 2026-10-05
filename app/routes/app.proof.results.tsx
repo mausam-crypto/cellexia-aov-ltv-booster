@@ -23,6 +23,7 @@ import {
   Divider,
   InlineStack,
   Pagination,
+  Select,
   Text,
   Thumbnail,
 } from "@shopify/polaris";
@@ -42,13 +43,19 @@ import { listProductsWithBoosterStatus } from "../services/pdp-content.server";
 import {
   bulkApprovePendingResults,
   deleteProofItem,
+  deleteResultPreset,
   importLegacyBeforeAfters,
+  listResultPresets,
   listResults,
   reorderProofItem,
   saveResult,
+  saveResultBatch,
+  saveResultPreset,
   setProofStatus,
   toggleProofFeatured,
+  type ResultBatchInput,
   type ResultInput,
+  type ResultPresetInput,
 } from "../services/proof.server";
 import {
   getProofSourceText,
@@ -73,6 +80,10 @@ import {
   type ProofProductHit,
   type ResultFormValues,
 } from "../components/ProofForms";
+import {
+  ResultBatchForm,
+  type ResultBatchFormValues,
+} from "../components/ResultBatchForm";
 
 /**
  * Results tab of the proof library (docs/SPEC-v8-proof-library.md §5): the
@@ -142,13 +153,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const pageParam = url.searchParams.get("page") ?? "";
   const page = /^\d+$/.test(pageParam) ? Number(pageParam) : 1;
 
-  const [list, settings, markets, locales, translationConfig] =
+  const [list, settings, markets, locales, translationConfig, presets] =
     await Promise.all([
       listResults(session.shop, { status, page }),
       getSettings(session.shop),
       listMarkets(admin),
       getTargetLocales(admin),
       getTranslationConfig(session.shop),
+      listResultPresets(session.shop),
     ]);
   const targetLocales = translatableProofTargets(
     locales.primary,
@@ -172,10 +184,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         markets: [],
       },
     featureEnabled: settings.beforeAfter.enabled,
-    // v33 display options (LIVE settings; travel to shoppers via the
+    // v33/v35 display options (LIVE settings; travel to shoppers via the
     // results proxy, so flips can take the proxy cache ~5 min to land).
     labDesign: settings.beforeAfter.labDesign,
     sliderEnabled: settings.beforeAfter.slider,
+    galleryOrder: settings.beforeAfter.galleryOrder,
+    desktopLayout: settings.beforeAfter.desktopLayout,
+    showStudy: settings.beforeAfter.showStudy,
+    hideLabQuotes: settings.beforeAfter.hideLabQuotes,
+    // v34 study presets (admin-only batch-entry templates).
+    presets,
     targetLocales,
     translationStatus,
     itemTranslations: Object.fromEntries(itemTranslations),
@@ -217,6 +235,16 @@ type ResultsActionResult =
       skipped: number;
     }
   | { intent: "bulk_approve"; ok: boolean; errors: string[]; approved: number }
+  | { intent: "save_result_preset"; ok: boolean; errors: string[]; id: string | null }
+  | { intent: "delete_result_preset"; ok: boolean; errors: string[] }
+  | {
+      intent: "save_result_batch";
+      ok: boolean;
+      errors: string[];
+      created: number;
+      total?: number;
+      presetSaved?: boolean;
+    }
   | { intent: "unknown"; ok: false; errors: string[] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -391,6 +419,7 @@ export const action = async ({
         markUnretouched: payload.markUnretouched === true,
         attributionName: String(payload.attributionName ?? ""),
         attributionRole: String(payload.attributionRole ?? ""),
+        study: String(payload.study ?? ""),
         productGids: Array.isArray(payload.productGids)
           ? payload.productGids.filter(
               (entry): entry is string => typeof entry === "string",
@@ -404,9 +433,110 @@ export const action = async ({
       const result = await saveResult(shop, input, itemId);
       return { intent: "save_item", ...result };
     }
+    case "save_result_batch": {
+      // v35: one study batch — the study constants once + one row per
+      // participant. Field coercion mirrors save_item; measurements and
+      // percents pass through verbatim (the server validators own them).
+      let payload: unknown;
+      try {
+        payload = JSON.parse(String(formData.get("payload") ?? ""));
+      } catch {
+        payload = undefined;
+      }
+      if (!isRecord(payload)) {
+        return {
+          intent: "save_result_batch",
+          ok: false,
+          errors: ["Invalid payload"],
+          created: 0,
+        };
+      }
+      const rawWeeks = payload.durationWeeks;
+      const input: ResultBatchInput = {
+        study: String(payload.study ?? ""),
+        testimonial: String(payload.testimonial ?? ""),
+        attributionName: String(payload.attributionName ?? ""),
+        attributionRole: String(payload.attributionRole ?? ""),
+        durationWeeks:
+          typeof rawWeeks === "number" && Number.isFinite(rawWeeks)
+            ? rawWeeks
+            : null,
+        measurements: payload.measurements,
+        markInstrument: payload.markInstrument === true,
+        markSamePatient: payload.markSamePatient === true,
+        markUnretouched: payload.markUnretouched === true,
+        verified: payload.verified === true,
+        country: String(payload.country ?? ""),
+        concern: String(payload.concern ?? ""),
+        productGids: Array.isArray(payload.productGids)
+          ? payload.productGids.filter(
+              (entry): entry is string => typeof entry === "string",
+            )
+          : [],
+        status: String(payload.status ?? "pending"),
+        savePreset: payload.savePreset === true,
+        rows: Array.isArray(payload.rows)
+          ? payload.rows.map((row) => {
+              const rec = isRecord(row) ? row : {};
+              return {
+                beforeUrl: String(rec.beforeUrl ?? ""),
+                afterUrl: String(rec.afterUrl ?? ""),
+                combinedUrl: String(rec.combinedUrl ?? ""),
+                pcts: Array.isArray(rec.pcts) ? rec.pcts : [],
+                ageRange: String(rec.ageRange ?? ""),
+                skinType: String(rec.skinType ?? ""),
+              };
+            })
+          : [],
+      };
+      const result = await saveResultBatch(shop, input);
+      return { intent: "save_result_batch", ...result };
+    }
     case "delete_item": {
       const result = await deleteProofItem(shop, "results", id);
       return { intent: "delete_item", ...result };
+    }
+    case "save_result_preset": {
+      let payload: unknown;
+      try {
+        payload = JSON.parse(String(formData.get("payload") ?? ""));
+      } catch {
+        payload = undefined;
+      }
+      if (!isRecord(payload)) {
+        return {
+          intent: "save_result_preset",
+          ok: false,
+          errors: ["Invalid payload"],
+          id: null,
+        };
+      }
+      const rawWeeks = payload.durationWeeks;
+      const input: ResultPresetInput = {
+        name: String(payload.name ?? ""),
+        testimonial: String(payload.testimonial ?? ""),
+        attributionName: String(payload.attributionName ?? ""),
+        attributionRole: String(payload.attributionRole ?? ""),
+        durationWeeks:
+          typeof rawWeeks === "number" && Number.isFinite(rawWeeks)
+            ? rawWeeks
+            : null,
+        // v34: passed through as-is — cleanPresetMeasurements is the validator
+        measurements: payload.measurements,
+        markInstrument: payload.markInstrument === true,
+        markSamePatient: payload.markSamePatient === true,
+        markUnretouched: payload.markUnretouched === true,
+      };
+      const result = await saveResultPreset(shop, input);
+      return { intent: "save_result_preset", ...result };
+    }
+    case "delete_result_preset": {
+      const result = await deleteResultPreset(shop, id);
+      return {
+        intent: "delete_result_preset",
+        ok: result.ok,
+        errors: result.errors,
+      };
     }
     case "toggle_featured": {
       const result = await toggleProofFeatured(shop, "results", id);
@@ -628,6 +758,7 @@ function itemToForm(item: CustomerResult): ResultFormValues {
     markUnretouched: item.markUnretouched,
     attributionName: item.attributionName ?? "",
     attributionRole: item.attributionRole ?? "",
+    study: item.study ?? "",
     productGids: parseProductGidList(item.productGids),
     featured: item.featured,
     status: item.status,
@@ -674,9 +805,52 @@ function formToPayload(values: ResultFormValues, id: string | null) {
     markUnretouched: values.markUnretouched,
     attributionName: values.attributionName.trim(),
     attributionRole: values.attributionRole.trim(),
+    study: values.study.trim(),
     productGids: values.productGids,
     featured: values.featured,
     status: values.status,
+  });
+}
+
+/** v35: the batch form's values → the save_result_batch payload. The same
+ *  coercions as formToPayload (duration digits, comma-decimal percents);
+ *  measurement DEFINITIONS carry no pct, each row carries its numbers. */
+function batchToPayload(values: ResultBatchFormValues): string {
+  const duration = values.durationWeeks.trim();
+  const combinedMode = values.imageMode === "combined";
+  return JSON.stringify({
+    study: values.study.trim(),
+    testimonial: values.testimonial.trim(),
+    attributionName: values.attributionName.trim(),
+    attributionRole: values.attributionRole.trim(),
+    durationWeeks: /^\d+$/.test(duration) ? Number(duration) : null,
+    measurements: values.measurements
+      .filter((m) => !(m.label.trim() === "" && m.info.trim() === ""))
+      .map((m) => ({
+        label: m.label.trim(),
+        dir: m.dir,
+        info: m.info.trim(),
+      })),
+    markInstrument: values.markInstrument,
+    markSamePatient: values.markSamePatient,
+    markUnretouched: values.markUnretouched,
+    verified: values.verified,
+    country: values.country.trim(),
+    concern: values.concern.trim(),
+    productGids: values.productGids,
+    status: values.status,
+    savePreset: values.savePreset,
+    rows: values.rows.map((row) => ({
+      beforeUrl: combinedMode ? "" : row.beforeUrl.trim(),
+      afterUrl: combinedMode ? "" : row.afterUrl.trim(),
+      combinedUrl: combinedMode ? row.combinedUrl.trim() : "",
+      pcts: row.pcts.map((p) => {
+        const pct = p.trim().replace(",", ".");
+        return /^\d+(\.\d)?$/.test(pct) ? Number(pct) : null;
+      }),
+      ageRange: row.ageRange,
+      skinType: row.skinType,
+    })),
   });
 }
 
@@ -686,6 +860,8 @@ function excerpt(text: string, max: number): string {
 
 function metaLine(item: CustomerResult): string {
   const parts: string[] = [];
+  // v35: the study tag leads — it is how a batch's rows read as one group.
+  if (item.study) parts.push(item.study);
   if (item.ageRange) parts.push(item.ageRange);
   if (item.skinType) parts.push(item.skinType);
   if (item.concern) parts.push(item.concern);
@@ -708,6 +884,11 @@ export default function ProofResultsTab() {
     featureEnabled,
     labDesign,
     sliderEnabled,
+    galleryOrder,
+    desktopLayout,
+    showStudy,
+    hideLabQuotes,
+    presets,
     targetLocales,
     translationStatus,
     itemTranslations,
@@ -733,8 +914,18 @@ export default function ProofResultsTab() {
   // v33 display options get their OWN fetcher (the v8.11b isolation rule):
   // a design flip must never disable moderation buttons or vice versa.
   const displayFetcher = useFetcher<ResultsActionResult>();
+  // v34 study presets — own fetcher for the same isolation reason.
+  const presetFetcher = useFetcher<ResultsActionResult>();
+  const presetBusy = presetFetcher.state !== "idle";
+  // v35 study batches — own fetcher (a dozens-row save must never freeze
+  // moderation, and its errors render beside its own form).
+  const batchFetcher = useFetcher<ResultsActionResult>();
+  const batchBusy = batchFetcher.state !== "idle";
 
   const [addOpen, setAddOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
+  // Remounting the batch form clears it after a successful save.
+  const [batchFormKey, setBatchFormKey] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [scopeState, setScopeState] = useState<ScopeState>(() =>
     toScopeState(scope),
@@ -839,12 +1030,107 @@ export default function ProofResultsTab() {
     rowFetcher.submit(formData, { method: "post" });
   };
 
-  const submitDisplay = (patch: { labDesign?: string; slider?: boolean }) => {
+  const submitDisplay = (patch: {
+    labDesign?: string;
+    slider?: boolean;
+    galleryOrder?: string;
+    desktopLayout?: string;
+    showStudy?: boolean;
+    hideLabQuotes?: boolean;
+  }) => {
     const formData = new FormData();
     formData.set("intent", "save_settings");
     formData.set("patch", JSON.stringify({ beforeAfter: patch }));
     displayFetcher.submit(formData, { method: "post" });
   };
+
+  // v35: the whole study batch is ONE post — the server validates every
+  // row before writing anything (all-or-nothing), so a partial import can
+  // never slip through unnoticed.
+  const submitBatch = (values: ResultBatchFormValues) => {
+    const formData = new FormData();
+    formData.set("intent", "save_result_batch");
+    formData.set("payload", batchToPayload(values));
+    batchFetcher.submit(formData, { method: "post" });
+  };
+
+  useEffect(() => {
+    const data = batchFetcher.data;
+    if (!data || data.intent !== "save_result_batch") return;
+    if (data.ok) {
+      shopify.toast.show(
+        `Added ${data.created} result${data.created === 1 ? "" : "s"}${
+          data.presetSaved ? " — study preset saved" : ""
+        }`,
+      );
+      // ok batches can still carry a non-fatal preset warning — a
+      // swallowed one would leave the merchant believing the preset
+      // exists (review catch).
+      if (data.errors.length > 0) {
+        shopify.toast.show(data.errors[0], { isError: true });
+      }
+      setBatchOpen(false);
+      setBatchFormKey((key) => key + 1); // fresh form next time
+      // The study quote/attribution repeat on every row — one bulk
+      // translate run covers them all (the translate-all path).
+      if (autoTranslate && hasDeeplKey && data.created > 0) {
+        const formData = new FormData();
+        formData.set("intent", "translate_proof");
+        translateFetcher.submit(formData, { method: "post" });
+      }
+    }
+    // Failures stay visible as the Banner beside the form (row-numbered
+    // errors are too long for a toast).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchFetcher.data]);
+
+  const submitSavePreset = (name: string, values: ResultFormValues) => {
+    const duration = values.durationWeeks.trim();
+    const payload = JSON.stringify({
+      name,
+      testimonial: values.testimonial.trim(),
+      attributionName: values.attributionName.trim(),
+      attributionRole: values.attributionRole.trim(),
+      durationWeeks: /^\d+$/.test(duration) ? Number(duration) : null,
+      // v34: percents deliberately dropped — they are the per-entry numbers
+      measurements: values.measurements
+        .filter((m) => m.label.trim() !== "")
+        .map((m) => ({ label: m.label.trim(), dir: m.dir, info: m.info.trim() })),
+      markInstrument: values.markInstrument,
+      markSamePatient: values.markSamePatient,
+      markUnretouched: values.markUnretouched,
+    });
+    const formData = new FormData();
+    formData.set("intent", "save_result_preset");
+    formData.set("payload", payload);
+    presetFetcher.submit(formData, { method: "post" });
+  };
+
+  const submitDeletePreset = (presetId: string) => {
+    const formData = new FormData();
+    formData.set("intent", "delete_result_preset");
+    formData.set("id", presetId);
+    presetFetcher.submit(formData, { method: "post" });
+  };
+
+  useEffect(() => {
+    const data = presetFetcher.data;
+    if (!data) return;
+    if (data.intent === "save_result_preset") {
+      if (data.ok) shopify.toast.show("Preset saved");
+      else
+        shopify.toast.show(data.errors[0] ?? "Could not save the preset", {
+          isError: true,
+        });
+    } else if (data.intent === "delete_result_preset") {
+      if (data.ok) shopify.toast.show("Preset deleted");
+      else
+        shopify.toast.show(data.errors[0] ?? "Could not delete the preset", {
+          isError: true,
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetFetcher.data]);
 
   const submitTranslateAll = () => {
     const formData = new FormData();
@@ -1007,6 +1293,12 @@ export default function ProofResultsTab() {
                 Translate into all languages
               </Button>
               <Button
+                onClick={() => setBatchOpen((previous) => !previous)}
+                disclosure={batchOpen ? "up" : "down"}
+              >
+                Add study batch
+              </Button>
+              <Button
                 variant="primary"
                 onClick={() => setAddOpen((previous) => !previous)}
                 disclosure={addOpen ? "up" : "down"}
@@ -1038,8 +1330,46 @@ export default function ProofResultsTab() {
                   submitLabel="Add result"
                   onSubmit={(values) => submitSave(values, null)}
                   onCancel={() => setAddOpen(false)}
+                  presets={presets}
+                  onSavePreset={submitSavePreset}
+                  presetSaving={presetBusy}
                 />
               ) : null}
+            </Box>
+          </Collapsible>
+
+          {/* v35: one study's worth of before/afters in one save — the
+              constants once, then photos + numbers per row. The form stays
+              MOUNTED while the disclosure is closed (unlike the single Add
+              form): a dozens-photo batch must survive a stray toggle click
+              — only a successful save resets it (the key bump). */}
+          <Collapsible id="cx-results-batch" open={batchOpen}>
+            <Box
+              padding="300"
+              background="bg-surface-secondary"
+              borderRadius="200"
+            >
+              <BlockStack gap="300">
+                {batchFetcher.data &&
+                batchFetcher.data.intent === "save_result_batch" &&
+                !batchFetcher.data.ok ? (
+                  <Banner tone="critical" title="The batch was not saved">
+                    <BlockStack gap="100">
+                      {batchFetcher.data.errors.map((error, index) => (
+                        <Text as="p" variant="bodySm" key={index}>
+                          {error}
+                        </Text>
+                      ))}
+                    </BlockStack>
+                  </Banner>
+                ) : null}
+                <ResultBatchForm
+                  key={batchFormKey}
+                  busy={batchBusy}
+                  presets={presets}
+                  onSubmit={submitBatch}
+                />
+              </BlockStack>
             </Box>
           </Collapsible>
 
@@ -1226,6 +1556,8 @@ export default function ProofResultsTab() {
                             submitLabel="Save changes"
                             onSubmit={(values) => submitSave(values, item.id)}
                             onCancel={() => setEditingId(null)}
+                            onSavePreset={submitSavePreset}
+                            presetSaving={presetBusy}
                           />
                         ) : null}
                         {editingId === item.id ? (
@@ -1311,6 +1643,117 @@ export default function ProofResultsTab() {
             onChange={(checked) => submitDisplay({ slider: checked })}
             disabled={displayFetcher.state !== "idle"}
           />
+          <Divider />
+          {/* v35 gallery options — same LIVE-setting plumbing. */}
+          <Select
+            label="Gallery order"
+            options={[
+              {
+                label: "Study variety — one result from each study first",
+                value: "mix",
+              },
+              {
+                label: "Manual — featured first, then your curated order",
+                value: "curated",
+              },
+              { label: "Newest first", value: "newest" },
+            ]}
+            value={galleryOrder}
+            onChange={(next) => {
+              if (next !== galleryOrder) submitDisplay({ galleryOrder: next });
+            }}
+            disabled={displayFetcher.state !== "idle"}
+            helpText="Study variety rotates through your study batches so the first cards span every study instead of one batch after another. Featured entries still pull their study to the front."
+          />
+          <Select
+            label="Desktop layout"
+            options={[
+              {
+                label: "Single row — cards scroll sideways (compact)",
+                value: "row",
+              },
+              {
+                label: "Grid — 4 columns, wraps to multiple rows (tall)",
+                value: "grid",
+              },
+            ]}
+            value={desktopLayout}
+            onChange={(next) => {
+              if (next !== desktopLayout)
+                submitDisplay({ desktopLayout: next });
+            }}
+            disabled={displayFetcher.state !== "idle"}
+            helpText="Phones always use the single swipeable row."
+          />
+          <Checkbox
+            label="Show the study name on cards"
+            helpText="A small tag naming the clinical study an entry came from — entries without a study name never show one."
+            checked={showStudy}
+            onChange={(checked) => submitDisplay({ showStudy: checked })}
+            disabled={displayFetcher.state !== "idle"}
+          />
+          <Checkbox
+            label="Hide testimonials on clinical entries"
+            helpText="Clinical (lab) cards show only the photos, measurements and badges — no quote or attribution. Customer entries always keep their testimonials."
+            checked={hideLabQuotes}
+            onChange={(checked) => submitDisplay({ hideLabQuotes: checked })}
+            disabled={displayFetcher.state !== "idle"}
+          />
+        </BlockStack>
+      </Card>
+
+      <Card>
+        <BlockStack gap="300">
+          <BlockStack gap="100">
+            <Text as="h2" variant="headingMd">
+              Study presets
+            </Text>
+            <Text as="p" variant="bodySm" tone="subdued">
+              Batch-entry templates for clinical results: a preset stores a
+              study&rsquo;s constants (source, quote, attribution, duration and
+              the measurement rows without their percents). Pick one in
+              &ldquo;Add result&rdquo; and only the photos and the numbers
+              remain to fill in.
+            </Text>
+          </BlockStack>
+          {presets.length === 0 ? (
+            <Text as="p" variant="bodySm" tone="subdued">
+              No presets yet — fill in a Lab / clinical entry (or open an
+              existing one) and click &ldquo;Save as study preset&rdquo; inside
+              the form. Re-using a preset name updates that preset.
+            </Text>
+          ) : (
+            <BlockStack gap="200">
+              {presets.map((preset) => (
+                <InlineStack
+                  key={preset.id}
+                  gap="300"
+                  align="space-between"
+                  blockAlign="center"
+                  wrap
+                >
+                  <BlockStack gap="050">
+                    <Text as="span" fontWeight="semibold">
+                      {preset.name}
+                    </Text>
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {[
+                        preset.fields.attributionName || "No attribution",
+                        preset.fields.durationWeeks !== null
+                          ? `${preset.fields.durationWeeks} weeks`
+                          : "no duration",
+                        `${preset.fields.measurements.length} measurement${preset.fields.measurements.length === 1 ? "" : "s"}`,
+                      ].join(" · ")}
+                    </Text>
+                  </BlockStack>
+                  <TwoClickDeleteButton
+                    disabled={presetBusy}
+                    onConfirmedDelete={() => submitDeletePreset(preset.id)}
+                  />
+                </InlineStack>
+              ))}
+            </BlockStack>
+          )}
         </BlockStack>
       </Card>
 

@@ -1,75 +1,63 @@
-import {useEffect, useMemo, useRef, useState} from 'react';
-import {
-  BlockStack,
-  Button,
-  Heading,
-  Image,
-  InlineLayout,
-  InlineStack,
-  SkeletonImage,
-  SkeletonText,
-  Text,
-  View,
-  reactExtension,
-  useApi,
-  useAppMetafields,
-  useApplyCartLinesChange,
-  useAttributeValues,
-  useCartLines,
-  useLocalizationCountry,
-  useLocalizationMarket,
-  useSettings,
-  useTranslate,
-} from '@shopify/ui-extensions-react/checkout';
+import {useEffect, useMemo, useRef, useState} from 'preact/hooks';
+import type {JSX} from 'preact';
 
 /**
- * Cellexia AOV & LTV Booster — Checkout Upsell ("Complete your routine").
+ * Cellexia AOV & LTV Booster — Checkout Upsell ("Complete your routine"),
+ * migrated to the Polaris web-components / global `shopify` object
+ * architecture (api_version 2026-04). Business logic and behavior are
+ * unchanged from the pre-migration React version. This file only replaces
+ * the rendering layer and the API-access pattern, mirroring the other
+ * three migrated extensions in this app.
  *
- * Reads `checkoutUpsell` from the shop metafield ($app:cellexia / config),
- * loads offer variants via the Storefront API, filters out variants that are
- * unavailable or already in the cart, and renders up to `maxOffers` compact
- * one-tap offer rows.
+ * API MAPPING NOTES (verified against the installed @shopify/ui-extensions
+ * package types):
+ * - useApi() -> removed; i18n/query/extension read off the `shopify`
+ *   global, same as checkout-protection.
+ * - useApplyCartLinesChange() -> shopify.applyCartLinesChange(...)
+ * - useAppMetafields() -> shopify.appMetafields.value
+ * - useAttributeValues(keys) -> shopify.attributes.value, found by key
+ * - useCartLines() -> shopify.lines.value
+ * - useLocalizationCountry() -> shopify.localization.country.value
+ * - useLocalizationMarket() -> shopify.localization.market.value
+ * - useSettings() -> shopify.settings.value
+ * - useTranslate() -> shopify.i18n.translate
  *
- * TWO SOURCING MODES (v4.9, `checkoutUpsell.mode`):
- *   - "auto" (default, also when the field is absent): seeds Shopify's
- *     `productRecommendations` Storefront field with the up-to-2
- *     highest-value cart lines' products (intent COMPLEMENTARY, falling
- *     back to RELATED when complementary returns nothing, and to an
- *     intent-less query if the argument is rejected), then maps each
- *     recommended product to its first in-stock variant. Products already
- *     in the cart and the Order Protection variant are never offered.
- *     Lines this app added itself (`_cellexia_upsell` /
- *     `_cellexia_protection` attributes) never seed recommendations, which
- *     also keeps the fetch stable after a buyer accepts an offer.
- *   - "manual": the hand-picked `variantIds` below, unchanged from v1.
- *
- * SAFE BY DEFAULT: a missing/unparsable config metafield, a missing
- * `checkoutUpsell` section, or anything but an explicit `enabled: true`
- * renders nothing. Market targeting (`marketScopes.checkout_upsell`) is
- * enforced against the checkout's localization market and FAILS CLOSED:
- * with mode "selected", an unknown market hides the block.
- *
- * PREVIEW (v5): the cart's `_cx_preview` attribute carries the SHA-256 HEX
- * digest of the preview token, computed server-side by the app — so the
- * preview gate is a plain synchronous string comparison against the
- * (non-empty) `preview.tokenHash` from the shop metafield. No SubtleCrypto
- * dependency (v4 hashed the raw token inside the extension; SubtleCrypto's
- * silent unavailability in some checkout sandboxes disabled preview
- * entirely). When the metafield carries `preview.armed: true` AND the
- * attribute equals the hash, the block additionally treats the feature as
- * enabled when `preview.draftFlags.checkout_upsell === true`, bypassing
- * market gating for that draft grant only (the preview cart belongs to the
- * merchant). Outside preview mode every gate is unchanged — all preview
- * logic sits behind the single `previewActive` boolean.
- *
- * PREVIEW DIAGNOSTICS: when `_cx_preview` is present (merchant preview
- * carts only — real buyers never carry it) and this block would otherwise
- * render nothing, it renders one subdued line explaining why. When the
- * attribute is absent, behavior is byte-identical to before: every
- * diagnostic path sits behind the attribute-present check.
+ * COMPONENT MAPPING NOTES:
+ * - BlockStack/InlineLayout/InlineStack -> <s-stack> for one-dimensional
+ *   layout (headings, vertical grouping). The old product-row
+ *   `columns={[60, 'fill', 'auto']}` fixed/fill/auto column sizing has NO
+ *   equivalent on s-stack (it's one-dimensional, no per-item track sizing)
+ *   -> ported to <s-grid gridTemplateColumns="60px 1fr auto">, which DOES
+ *   support exact per-column track sizing (verified against the installed
+ *   Grid component type — gridTemplateColumns is a plain CSS grid-template
+ *   string), restoring the original fixed-thumbnail/fill-title/auto-button
+ *   proportions exactly, for every product row (loading skeleton, editor
+ *   sample, and real offers).
+ * - Text -> <s-text>, same type/color/tone mapping as the other three
+ *   extensions (size="small" -> type="small"; emphasis="bold" ->
+ *   type="strong"; appearance="subdued" -> color="subdued";
+ *   appearance="accent" has NO "accent" tone on s-text (verified) -> no
+ *   tone override, type="strong" carries the emphasis alone;
+ *   appearance="critical" -> tone="critical", a direct, verified match).
+ * - Heading -> <s-heading>; the old `level={2}` prop has no equivalent
+ *   (verified — s-heading takes no level/size attribute) — dropped, no
+ *   behavioral impact (single heading per block).
+ * - Image -> <s-image>; prop renames (verified against the component's
+ *   type declaration): `source` -> `src`, `accessibilityDescription` ->
+ *   `alt`, `fit` -> `objectFit`, `cornerRadius` -> `borderRadius`.
+ * - View -> <s-box>; cornerRadius -> borderRadius (same as the other
+ *   extensions' box usage).
+ * - Button -> <s-button>; `kind` -> `variant`, `onPress` -> `onClick`
+ *   (event-based now, but the handler here takes no args either way, so
+ *   the call site is unchanged).
+ * - SkeletonText -> <s-skeleton-paragraph> (same as checkout-protection).
+ * - SkeletonImage -> NO equivalent exists in the new component set
+ *   (verified — only s-skeleton-paragraph exists, no image/thumbnail
+ *   skeleton). Reused this file's own existing "no image available"
+ *   fallback pattern (a plain bordered <s-box>) for the loading-state
+ *   thumbnail placeholder too, rather than inventing a new one.
  */
 
-/** Mirrors DEFAULT_SETTINGS.checkoutUpsell in app/models/settings.server.ts. */
 const DEFAULT_CONFIG: CheckoutUpsellConfig = {
   enabled: false,
   mode: 'auto',
@@ -78,8 +66,6 @@ const DEFAULT_CONFIG: CheckoutUpsellConfig = {
 };
 
 const MAX_OFFERS_CAP = 10;
-
-/** Auto mode: at most this many cart lines seed productRecommendations. */
 const MAX_SEED_PRODUCTS = 2;
 
 const VARIANTS_QUERY = /* GraphQL */ `
@@ -111,15 +97,6 @@ const VARIANTS_QUERY = /* GraphQL */ `
   }
 `;
 
-/**
- * Auto-mode recommendation queries. The selection set mirrors what the
- * manual VARIANTS_QUERY loads per variant, so both modes feed the same
- * OfferVariant shape. `productRecommendations(productId:, intent:)` and the
- * `ProductRecommendationIntent` enum (RELATED | COMPLEMENTARY) are verified
- * against the 2025-07 Storefront API schema; the intent-less variant exists
- * purely as a runtime fallback should the argument ever be rejected (the
- * field then defaults to RELATED).
- */
 const RECOMMENDATION_PRODUCT_FIELDS = /* GraphQL */ `
   id
   title
@@ -179,7 +156,6 @@ interface PreviewConfig {
   tokenHash: string;
 }
 
-/** Inert preview default: disarmed, no draft flags, empty (never-matching) token hash. */
 const DEFAULT_PREVIEW: PreviewConfig = {armed: false, draftFlags: {}, tokenHash: ''};
 
 interface MoneyLike {
@@ -227,12 +203,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/**
- * Locates the `config` JSON metafield among the app metafield entries.
- * The namespace is declared as `$app:cellexia`; at runtime it may surface as
- * `$app:cellexia`, `cellexia` or `app--<id>--cellexia`, so we match on the
- * `cellexia` suffix as the stable part.
- */
 function parseCellexiaConfig(
   entries: ReadonlyArray<{
     metafield: {namespace: string; key: string; value: string | number | boolean};
@@ -262,11 +232,7 @@ function parseCellexiaConfig(
 function resolveConfig(root: Record<string, unknown> | undefined): CheckoutUpsellConfig {
   if (!root || !isPlainObject(root.checkoutUpsell)) return DEFAULT_CONFIG;
   const section = root.checkoutUpsell;
-  // Safe default: the feature is ON only when the metafield explicitly says
-  // `enabled: true`. Missing, malformed or falsy values all mean OFF.
   const enabled = section.enabled === true;
-  // v4.9 contract: "auto" is the default — anything but an explicit
-  // "manual" (including an absent field on pre-4.9 configs) means auto.
   const mode: CheckoutUpsellConfig['mode'] =
     section.mode === 'manual' ? 'manual' : 'auto';
   const variantIds = Array.isArray(section.variantIds)
@@ -282,15 +248,6 @@ function resolveConfig(root: Record<string, unknown> | undefined): CheckoutUpsel
   return {enabled, mode, variantIds, maxOffers};
 }
 
-/**
- * Resolves the `preview` section from the shop metafield config (v5). Safe
- * default: preview is INERT (disarmed, no flags, empty token hash) whenever
- * the section is missing or malformed. Only the SHA-256 hex digest of the
- * preview token (`tokenHash`) ever reaches the checkout: the shop metafield
- * carries it here, and the merchant's `_cx_preview` cart attribute carries
- * the same digest (computed server-side) — the raw token never leaves the
- * app. A legacy `preview.token` field, if present, is ignored.
- */
 function resolvePreview(root: Record<string, unknown> | undefined): PreviewConfig {
   if (!root || !isPlainObject(root.preview)) return DEFAULT_PREVIEW;
   const section = root.preview;
@@ -306,13 +263,6 @@ function resolvePreview(root: Record<string, unknown> | undefined): PreviewConfi
   return {armed, draftFlags, tokenHash};
 }
 
-/**
- * Builds the merchant-facing reason shown when a preview cart (the
- * `_cx_preview` attribute is present) would otherwise see nothing here.
- * Checks run in order, most fundamental first. Hardcoded English on
- * purpose: this line renders only on merchant preview carts — real buyers
- * never carry the attribute — so it is a merchant tool, not buyer copy.
- */
 function upsellPreviewDiagnosis(input: {
   configFound: boolean;
   preview: PreviewConfig;
@@ -334,8 +284,6 @@ function upsellPreviewDiagnosis(input: {
     return 'the checkout upsell feature is not draft-enabled for this preview';
   }
   if (input.mode === 'auto') {
-    // Auto mode's only remaining nothing-to-show path: the recommendation
-    // engine produced no offerable products for this cart's seed lines.
     return 'no recommendations available for the current cart';
   }
   if (!input.hasVariantIds) {
@@ -344,37 +292,22 @@ function upsellPreviewDiagnosis(input: {
   return 'all selected upsell products are already in the cart or unavailable';
 }
 
-/** Single subdued diagnostic line, prefixed so merchants can spot it. */
 function PreviewDiagnostic({reason}: {reason: string}) {
   return (
-    <Text size="small" appearance="subdued">
+    <s-text type="small" color="subdued">
       {`Cellexia preview: ${reason}`}
-    </Text>
+    </s-text>
   );
 }
 
-/**
- * Caption rendered ONLY inside the checkout editor (`extension.editor` set),
- * under the editor preview of this block. Hardcoded English on purpose:
- * the checkout editor is a merchant-facing admin surface, not buyer copy.
- */
 function EditorPreviewCaption() {
   return (
-    <Text size="small" appearance="subdued">
+    <s-text type="small" color="subdued">
       Preview — buyers see this only when the feature is live for their market.
-    </Text>
+    </s-text>
   );
 }
 
-/**
- * Evaluates `cfg.marketScopes[featureKey]` against the buyer's market.
- * Mirrors `isFeatureOnForMarket` in app/models/settings.server.ts: a missing
- * or malformed scope, or mode "all", is visible everywhere (flags
- * permitting); mode "selected" is visible ONLY when the buyer's market
- * handle is known AND listed. Unknown market + "selected" FAILS CLOSED
- * (hidden) — Google Ads compliance: never show a feature in a market it
- * wasn't enabled for.
- */
 function isAllowedInMarket(
   root: Record<string, unknown> | undefined,
   featureKey: string,
@@ -404,11 +337,6 @@ function isOfferVariant(node: Partial<OfferVariant> | null | undefined): node is
   );
 }
 
-/**
- * Auto mode: maps one recommended product to the offer-row shape by picking
- * its first in-stock variant (of the first 5), skipping the Order
- * Protection variant. Returns undefined when nothing is offerable.
- */
 function toOfferVariant(
   product: RecommendedProductNode,
   excludedVariantId: string,
@@ -469,40 +397,29 @@ function savingsPercent(variant: OfferVariant): number | undefined {
   return percent >= 1 ? percent : undefined;
 }
 
-export default reactExtension('purchase.checkout.block.render', () => <Extension />);
+function attributeValue(
+  attributes: ReadonlyArray<{key: string; value: string}>,
+  key: string,
+): string | undefined {
+  return attributes.find((attribute) => attribute.key === key)?.value;
+}
 
-/**
- * Second placement (v4.9): the SAME UI statically anchored immediately
- * before the actions (Pay button) area — the merchant picks either
- * placement in the checkout editor. `reactExtension` registers the target
- * as a call-time side effect (`shopify.extend`), matching the second
- * `[[extensions.targeting]]` entry in shopify.extension.toml; target name
- * verified against RenderExtensionTargets in @shopify/ui-extensions.
- */
-export const checkoutActionsRenderBefore = reactExtension(
-  'purchase.checkout.actions.render-before',
-  () => <Extension />,
-);
-
-function Extension() {
-  const translate = useTranslate();
-  const {i18n, query, extension} = useApi();
-  const metafieldEntries = useAppMetafields();
-  const cartLines = useCartLines();
-  const applyCartLinesChange = useApplyCartLinesChange();
-  const settings = useSettings();
-  const country = useLocalizationCountry();
+export function Extension(): JSX.Element | null {
+  const translate = shopify.i18n.translate;
+  const formatCurrency = shopify.i18n.formatCurrency;
+  const query = shopify.query;
+  const metafieldEntries = shopify.appMetafields.value;
+  const cartLines = shopify.lines.value;
+  const applyCartLinesChange = shopify.applyCartLinesChange;
+  const settings = shopify.settings.value;
+  const country = shopify.localization.country.value;
   const countryCode = country?.isoCode;
-  const market = useLocalizationMarket();
+  const market = shopify.localization.market.value;
+  const attributes = shopify.attributes.value;
+  const previewAttributeValue = attributeValue(attributes, '_cx_preview');
 
-  // CHECKOUT EDITOR detection (v4.9): `extension.editor` is `{type:
-  // 'checkout'}` only while the merchant is inside the checkout editor and
-  // undefined in every live checkout (verified against StandardApi in
-  // @shopify/ui-extensions). In the editor this block ALWAYS renders a
-  // representative preview so the merchant can see, place and move it —
-  // every enabled/market/config/preview gate is bypassed strictly behind
-  // `inEditor`, so live render paths are byte-identical to before.
-  const inEditor = Boolean(extension.editor);
+  const editor = shopify.extension.editor;
+  const inEditor = Boolean(editor);
 
   const configRoot = useMemo(
     () => parseCellexiaConfig(metafieldEntries),
@@ -516,19 +433,12 @@ function Extension() {
   );
   const variantIdsKey = config.variantIds.join(',');
 
-  // Order Protection variant (same config blob) — never offered as an
-  // upsell, and protection lines never seed recommendations.
   const protectionVariantId = useMemo(() => {
     if (!configRoot || !isPlainObject(configRoot.checkoutProtection)) return '';
     const raw = configRoot.checkoutProtection.variantId;
     return typeof raw === 'string' && raw.startsWith('gid://') ? raw : '';
   }, [configRoot]);
 
-  // Auto-mode seeds: the up-to-2 highest-value cart lines' product ids.
-  // Protection lines and lines this app added itself (`_cellexia_upsell` /
-  // `_cellexia_protection` attributes) never seed — that also keeps the
-  // seed set (and therefore the fetch) stable when a buyer accepts an
-  // offer, so an "Added" row doesn't churn away mid-checkout.
   const seedProductIds = useMemo(() => {
     if (config.mode !== 'auto') return [] as string[];
     const bestLineValue = new Map<string, number>();
@@ -561,9 +471,6 @@ function Extension() {
   }, [config.mode, cartLines, protectionVariantId]);
   const seedKey = seedProductIds.join(',');
 
-  // Latest cart product ids, read at FETCH time through a ref so cart
-  // mutations don't re-trigger the recommendations fetch (the render-time
-  // filter below already handles products that enter the cart later).
   const cartProductIds = useMemo(() => {
     const ids = new Set<string>();
     for (const line of cartLines) {
@@ -575,34 +482,17 @@ function Extension() {
   const cartProductIdsRef = useRef(cartProductIds);
   cartProductIdsRef.current = cartProductIds;
 
-  // Whether the current mode has anything to offer from at all.
   const hasOfferSource =
     config.mode === 'auto' ? seedProductIds.length > 0 : config.variantIds.length > 0;
 
-  // v5 preview: the single gate for ALL preview behavior. The `_cx_preview`
-  // cart attribute (set by the merchant's preview hub) carries the SHA-256
-  // hex digest of the preview token, computed server-side — so the gate is
-  // a plain synchronous string comparison with no SubtleCrypto dependency.
-  // `useAttributeValues` yields `undefined` while the attribute is absent,
-  // which can never match a non-empty hash.
   const preview = useMemo(() => resolvePreview(configRoot), [configRoot]);
-  const [previewAttributeValue] = useAttributeValues(['_cx_preview']);
   const previewActive =
     preview.armed === true &&
     preview.tokenHash.length > 0 &&
     previewAttributeValue === preview.tokenHash;
-  // Draft grant: in preview mode the feature counts as enabled when its
-  // draft flag is explicitly true — market gating is bypassed for the draft
-  // grant only (the preview cart is the merchant's own). The live path is
-  // untouched: live stays live.
   const draftEnabled = previewActive && preview.draftFlags.checkout_upsell === true;
   const visible = (config.enabled && marketAllowed) || draftEnabled;
 
-  // Merchant preview diagnostics: `_cx_preview` present means a merchant
-  // preview cart (real buyers never carry it). Precompute the reason we
-  // would show if this block ends up rendering nothing; `undefined` when
-  // the attribute is absent keeps every diagnostic path unreachable for
-  // real checkouts (byte-identical to pre-diagnostics behavior).
   const previewAttributePresent =
     typeof previewAttributeValue === 'string' && previewAttributeValue.length > 0;
   const previewDiagnosis = previewAttributePresent
@@ -617,21 +507,15 @@ function Extension() {
     : undefined;
 
   const [variants, setVariants] = useState<OfferVariant[]>([]);
-  // In the editor the fetch also runs while the feature is not yet live
-  // (`inEditor` is false in every live checkout, so live is unchanged).
   const [loading, setLoading] = useState<boolean>(
     (visible || inEditor) && hasOfferSource,
   );
   const [offerStates, setOfferStates] = useState<Record<string, OfferState>>({});
   const [errorText, setErrorText] = useState<string | undefined>(undefined);
 
-  /** Prevents overlapping cart mutations (offer state updates async). */
   const addInFlightRef = useRef(false);
 
   useEffect(() => {
-    // Editor mode fetches through the normal pipeline too (so the merchant
-    // sees real offers when the pipeline yields them); live behavior is
-    // untouched because `inEditor` is always false outside the editor.
     if ((!visible && !inEditor) || !hasOfferSource) {
       setVariants([]);
       setLoading(false);
@@ -640,7 +524,6 @@ function Extension() {
     let cancelled = false;
     setLoading(true);
 
-    /** query() wrapper that folds thrown/`errors` failures into one flag. */
     async function runQuery<Data>(
       graphql: string,
       variables: Record<string, unknown>,
@@ -657,10 +540,7 @@ function Extension() {
       }
     }
 
-    /** Manual mode: the hand-picked variantIds path, unchanged from v1. */
     async function loadManualOffers(): Promise<OfferVariant[]> {
-      // `@inContext` localizes prices to the buyer's market; omit the
-      // variable entirely while the checkout country is still unknown.
       const result = await runQuery<VariantsQueryData>(VARIANTS_QUERY, {
         ids: config.variantIds,
         ...(countryCode ? {country: countryCode} : {}),
@@ -669,7 +549,6 @@ function Extension() {
       return nodes.filter(isOfferVariant);
     }
 
-    /** One productRecommendations call per seed product, in parallel. */
     async function fetchRecommendationLists(
       intent: 'COMPLEMENTARY' | 'RELATED' | undefined,
     ): Promise<{lists: RecommendedProductNode[][]; allErrored: boolean}> {
@@ -704,11 +583,6 @@ function Extension() {
       return {lists, allErrored};
     }
 
-    /**
-     * Auto mode: COMPLEMENTARY recommendations first ("goes well with"),
-     * RELATED when complementary has nothing, and an intent-less query
-     * (server default: RELATED) if the intent argument is ever rejected.
-     */
     async function loadAutoOffers(): Promise<OfferVariant[]> {
       let attempt = await fetchRecommendationLists('COMPLEMENTARY');
       if (attempt.allErrored) {
@@ -719,10 +593,6 @@ function Extension() {
           attempt = related;
         }
       }
-      // Interleave the per-seed lists (each seed's best recommendation
-      // first), dedupe by product id, drop products already in the cart,
-      // then map each product to its first sellable variant (never the
-      // protection variant).
       const excludedProductIds = cartProductIdsRef.current;
       const seenProductIds = new Set<string>();
       const offers: OfferVariant[] = [];
@@ -803,15 +673,13 @@ function Extension() {
     const value = Number.parseFloat(amount);
     if (!Number.isFinite(value)) return '';
     try {
-      return i18n.formatCurrency(value, {currency: currencyCode});
+      return formatCurrency(value, {currency: currencyCode});
     } catch {
       return `${value.toFixed(2)} ${currencyCode}`;
     }
   }
 
   async function handleAdd(variantId: string): Promise<void> {
-    // The ref guards synchronously against double-taps; `anyBusy` only
-    // updates on the next render, so it alone can't prevent re-entry.
     if (addInFlightRef.current) return;
     if (anyBusy || offerStates[variantId] === 'added') return;
     addInFlightRef.current = true;
@@ -838,15 +706,11 @@ function Extension() {
     }
   }
 
-  // Editor mode never bails out here: it falls through to the loading
-  // skeleton, real offers, or the representative sample row below.
   if ((!visible || !hasOfferSource) && !inEditor) {
     return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
   }
 
   if (loading) {
-    // Auto mode doesn't know the candidate count up front — show a full
-    // maxOffers skeleton; manual keeps the tighter selected-count bound.
     const skeletonRows = Math.max(
       1,
       config.mode === 'auto'
@@ -854,30 +718,28 @@ function Extension() {
         : Math.min(config.maxOffers, config.variantIds.length),
     );
     return (
-      <BlockStack spacing="base">
-        <BlockStack spacing="extraTight">
-          <Heading level={2}>{heading}</Heading>
-          <Text size="small" appearance="subdued">
+      <s-stack direction="block" gap="base">
+        <s-stack direction="block" gap="small-100">
+          <s-heading>{heading}</s-heading>
+          <s-text type="small" color="subdued">
             {translate('subtitle')}
-          </Text>
-        </BlockStack>
+          </s-text>
+        </s-stack>
         {Array.from({length: skeletonRows}, (_, index) => (
-          <InlineLayout
-            key={`skeleton-${index}`}
-            columns={[60, 'fill', 'auto']}
-            spacing="base"
-            blockAlignment="center"
-          >
-            <SkeletonImage aspectRatio={1} />
-            <BlockStack spacing="extraTight">
-              <SkeletonText inlineSize="large" />
-              <SkeletonText inlineSize="small" />
-            </BlockStack>
-            <SkeletonText inlineSize="small" />
-          </InlineLayout>
+          <s-grid key={`skeleton-${index}`} gridTemplateColumns="60px 1fr auto" gap="base" alignItems="center">
+            {/* No image-skeleton component exists in the new set — reuses
+                the plain bordered box pattern used below for "no image
+                available", see file header. */}
+            <s-box border="base" borderRadius="base" minBlockSize="60px" minInlineSize="60px" />
+            <s-stack direction="block" gap="small-100">
+              <s-skeleton-paragraph content="A representative longer line of placeholder text"></s-skeleton-paragraph>
+              <s-skeleton-paragraph content="Short"></s-skeleton-paragraph>
+            </s-stack>
+            <s-skeleton-paragraph content="Short"></s-skeleton-paragraph>
+          </s-grid>
         ))}
         {inEditor ? <EditorPreviewCaption /> : null}
-      </BlockStack>
+      </s-stack>
     );
   }
 
@@ -885,53 +747,46 @@ function Extension() {
     if (!inEditor) {
       return previewDiagnosis ? <PreviewDiagnostic reason={previewDiagnosis} /> : null;
     }
-    // Editor with nothing offerable: one representative sample row (real
-    // header/subtitle, skeleton thumb, hardcoded sample title, no price,
-    // disabled Add) so the merchant can always see and place the block.
     return (
-      <BlockStack spacing="base">
-        <BlockStack spacing="extraTight">
-          <Heading level={2}>{heading}</Heading>
-          <Text size="small" appearance="subdued">
+      <s-stack direction="block" gap="base">
+        <s-stack direction="block" gap="small-100">
+          <s-heading>{heading}</s-heading>
+          <s-text type="small" color="subdued">
             {translate('subtitle')}
-          </Text>
-        </BlockStack>
-        <InlineLayout
-          columns={[60, 'fill', 'auto']}
-          spacing="base"
-          blockAlignment="center"
-        >
-          <SkeletonImage aspectRatio={1} />
-          <BlockStack spacing="none">
-            <Text size="small" emphasis="bold">
+          </s-text>
+        </s-stack>
+        <s-grid gridTemplateColumns="60px 1fr auto" gap="base" alignItems="center">
+          <s-box border="base" borderRadius="base" minBlockSize="60px" minInlineSize="60px" />
+          <s-stack direction="block" gap="none">
+            <s-text type="strong">
               Example product — recommendations appear here
-            </Text>
-          </BlockStack>
-          <Button
-            kind="secondary"
+            </s-text>
+          </s-stack>
+          <s-button
+            variant="secondary"
             disabled
             accessibilityLabel={`${translate('add')} — example product`}
           >
             {translate('add')}
-          </Button>
-        </InlineLayout>
+          </s-button>
+        </s-grid>
         <EditorPreviewCaption />
-      </BlockStack>
+      </s-stack>
     );
   }
 
   return (
-    <BlockStack spacing="base">
-      <BlockStack spacing="extraTight">
-        <Heading level={2}>{heading}</Heading>
-        <Text size="small" appearance="subdued">
+    <s-stack direction="block" gap="base">
+      <s-stack direction="block" gap="small-100">
+        <s-heading>{heading}</s-heading>
+        <s-text type="small" color="subdued">
           {translate('subtitle')}
-        </Text>
-      </BlockStack>
+        </s-text>
+      </s-stack>
       {errorText ? (
-        <Text size="small" appearance="critical">
+        <s-text type="small" tone="critical">
           {errorText}
-        </Text>
+        </s-text>
       ) : null}
       {offers.map((variant) => {
         const title = offerTitle(variant);
@@ -956,61 +811,52 @@ function Extension() {
               ? translate('adding')
               : translate('add');
         return (
-          <InlineLayout
-            key={variant.id}
-            columns={[60, 'fill', 'auto']}
-            spacing="base"
-            blockAlignment="center"
-          >
+          <s-grid key={variant.id} gridTemplateColumns="60px 1fr auto" gap="base" alignItems="center">
             {imageUrl ? (
-              <Image
-                source={imageUrl}
-                accessibilityDescription={title}
-                aspectRatio={1}
-                fit="cover"
-                cornerRadius="base"
+              <s-image
+                src={imageUrl}
+                alt={title}
+                aspectRatio="1"
+                objectFit="cover"
+                borderRadius="base"
                 border="base"
               />
             ) : (
-              <View border="base" cornerRadius="base" minBlockSize={60} />
+              <s-box border="base" borderRadius="base" minBlockSize="60px" minInlineSize="60px" />
             )}
-            <BlockStack spacing="none">
-              <Text size="small" emphasis="bold">
+            <s-stack direction="block" gap="none">
+              <s-text type="strong">
                 {title}
-              </Text>
-              <InlineStack spacing="extraTight" blockAlignment="baseline">
-                <Text size="small">{priceText}</Text>
+              </s-text>
+              <s-stack direction="inline" gap="small-100" alignItems="center">
+                <s-text type="small">{priceText}</s-text>
                 {compareAtText ? (
-                  <Text
-                    size="small"
-                    appearance="subdued"
-                    accessibilityRole="deletion"
-                  >
+                  <s-text type="redundant" color="subdued">
                     {compareAtText}
-                  </Text>
+                  </s-text>
                 ) : null}
                 {percent !== undefined ? (
-                  <Text size="small" appearance="accent" emphasis="bold">
+                  <s-text type="strong">
                     {translate('save_pct', {percent})}
-                  </Text>
+                  </s-text>
                 ) : null}
-              </InlineStack>
-            </BlockStack>
-            <Button
-              kind="secondary"
+              </s-stack>
+            </s-stack>
+            <s-button
+              variant="secondary"
               loading={state === 'adding'}
               disabled={state === 'added' || anyBusy}
               accessibilityLabel={`${buttonLabel} — ${title}`}
-              onPress={() => {
+              onClick={() => {
                 void handleAdd(variant.id);
               }}
             >
               {buttonLabel}
-            </Button>
-          </InlineLayout>
+            </s-button>
+          </s-grid>
         );
       })}
       {inEditor ? <EditorPreviewCaption /> : null}
-    </BlockStack>
+    </s-stack>
   );
 }

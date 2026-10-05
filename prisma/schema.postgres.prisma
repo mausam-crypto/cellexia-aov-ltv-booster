@@ -206,6 +206,12 @@ model CustomerResult {
   markUnretouched Boolean @default(false)
   attributionName String?
   attributionRole String?
+  // v35: the clinical study this entry belongs to (the study-batch name,
+  // usually a preset's name). LAB-ONLY like measurements — saveResult
+  // clears it for customer entries. Shown as a small tag on the storefront
+  // card and grouping key for the gallery's one-per-study interleave.
+  // Plain text, never translated (proper noun, the attributionName rule).
+  study           String?
   productGids   String   @default("[]")
   // Source cellexia_before_after metaobject GID when this row was created by
   // the legacy import — the unique constraint makes the import exactly-once.
@@ -215,6 +221,27 @@ model CustomerResult {
 
   @@index([shop, status, featured, sortWeight])
   @@index([shop, status, concern])
+}
+
+// v34: admin-only "study presets" for batch-entering before/afters from the
+// same clinical study. A preset holds the per-STUDY constants (source is
+// implicitly lab; quote, attribution name/role, duration weeks, measurement
+// rows WITHOUT their percents, the three trust marks) as one JSON payload —
+// applying it in the Add form leaves exactly the photos and the numbers to
+// fill in. Never served to the storefront; the entry itself still passes
+// saveResult's full validation on save.
+model ResultPreset {
+  id        String   @id @default(cuid())
+  shop      String
+  name      String
+  payload   String   @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The same-name upsert's backing invariant: without it, concurrent
+  // saves could pile up duplicate "Study X" rows and later re-saves
+  // would refresh an arbitrary one.
+  @@unique([shop, name])
 }
 
 // v8.11: machine/manual translations for proof-library entry TEXT (press

@@ -1,21 +1,5 @@
-import {useEffect, useMemo, useState} from 'react';
-import {
-  BlockStack,
-  Icon,
-  InlineLayout,
-  InlineStack,
-  Link,
-  Text,
-  reactExtension,
-  useApi,
-  useAppMetafields,
-  useAttributeValues,
-  useCartLines,
-  useLanguage,
-  useLocalizationMarket,
-  useShippingAddress,
-  useTranslate,
-} from '@shopify/ui-extensions-react/checkout';
+import {useEffect, useMemo, useState} from 'preact/hooks';
+import type {JSX} from 'preact';
 import {
   computeDelivery,
   resolveDeliveryConfig,
@@ -33,125 +17,86 @@ import {
   type PreviewConfig,
   type TrustRowKey,
 } from './trust-logic';
-import type {ReactElement} from 'react';
 
 /**
- * Cellexia AOV & LTV Booster — Checkout Trust module V2 (v9).
+ * Cellexia AOV & LTV Booster — Checkout Trust module V2 (v9), migrated to
+ * the Polaris web-components / global `shopify` object architecture
+ * (api_version 2026-04). Business logic and behavior are unchanged from
+ * the pre-migration React version — see ./trust-logic.ts and
+ * ./delivery-engine.ts (both pure, framework-agnostic, untouched by this
+ * migration) for the full contract documentation. This file only replaces
+ * the rendering layer: reactExtension/JSX-from-@shopify/ui-extensions-react
+ * -> Preact + <s-*> web components + the `shopify` global's reactive
+ * properties, per
+ * https://shopify.dev/docs/apps/build/checkout/migrate-to-web-components.
  *
- * Display block: secure-checkout line, money-back guarantee, the two v9
- * per-market rows — customs-free delivery (checkout_customs) and tracked
- * delivery with the guaranteed-by date (checkout_tracked) — plus the
- * clinical claim and Trustpilot rating. No cart mutations, no network
- * calls. All pure logic lives in ./trust-logic.ts (sim-tested); the date
- * math for the tracked row comes from ./delivery-engine.ts, the
- * BYTE-IDENTICAL twin of checkout-delivery's engine, so the tracked row
- * always promises exactly the delivery_estimate guarantee date.
+ * ICON NOTE: the new reduced icon set has no exact equivalents for the old
+ * `success`, `orderBox` and `checkmark` icon sources. Mapped here to
+ * `check-circle`, `order` and `check` respectively (closest semantic
+ * match) — flagged for visual review, not a documented 1:1 rename like the
+ * star icons (`starFill`/`starHalf`/`star` -> `star-filled`/`star-half`/`star`).
  *
- * v11 ROW ORDER: the rows render in `checkoutTrust.rowOrder` (merchant-set
- * on the Checkout admin page, arrow reorder). resolveConfig normalizes the
- * order to a FULL permutation of the six row keys, so ordering can never
- * hide, duplicate or reveal a row — visibility stays with the show* flags
- * and the per-row market gates. Missing/pre-v11 config = default order =
- * the pre-v11 hardcoded sequence (byte-identical render).
- *
- * SAFE BY DEFAULT: a missing/unparsable config metafield, a missing
- * `checkoutTrust` section, or anything but an explicit `enabled: true`
- * renders nothing. Market targeting is enforced against the checkout's
- * localization market and FAILS CLOSED (mode "selected" + unknown market →
- * hidden). The module respects `marketScopes.checkout_trust`; the customs
- * and tracked ROWS additionally respect their OWN scopes
- * (`marketScopes.checkout_customs` / `marketScopes.checkout_tracked`), so
- * each can be turned on or off per market independently of the module.
- *
- * TRACKED ROW FAIL-CLOSED CHAIN: no shipping country yet, an uncomputable
- * delivery date, or an unformattable label each hide ONLY the tracked row —
- * the rest of the module renders normally. The row re-computes on a 30s
- * tick (crossing the warehouse cutoff mid-checkout shifts the date, and a
- * stale "guaranteed by" promise is worse than none).
- *
- * PREVIEW (v5 contract): the cart's `_cx_preview` attribute carries the
- * SHA-256 HEX digest of the preview token; the gate is a plain synchronous
- * string comparison against `preview.tokenHash` from the shop metafield.
- * When verified, `preview.draftFlags.checkout_trust` draft-enables the
- * module, and `checkout_customs` / `checkout_tracked` draft-enable their
- * rows (implying the module for the draft grant only — the preview cart
- * belongs to the merchant). Outside preview mode every gate is unchanged.
- *
- * PREVIEW DIAGNOSTICS: when `_cx_preview` is present (merchant preview
- * carts only — real buyers never carry it) and this module would otherwise
- * render nothing, it renders one subdued line explaining why. When the
- * attribute is absent, behavior is byte-identical to before: every
- * diagnostic path sits behind the attribute-present check.
+ * TEXT STYLING NOTE: the old `<Text size="small" emphasis="bold">` (the
+ * guarantee title) can't be expressed as a single `<s-text>` attribute —
+ * `type` is a single enum (small OR strong, not both) in the new component.
+ * Resolved here as `type="strong"` (hierarchy over size) for the guarantee
+ * title, and `color="subdued"` (not `type="small"`) for the rest of the
+ * module's body text, matching the old `appearance="subdued"` intent.
  */
 
-/**
- * Caption rendered ONLY inside the checkout editor (`extension.editor` set),
- * under the editor preview of this module. Hardcoded English on purpose:
- * the checkout editor is a merchant-facing admin surface, not buyer copy.
- */
 function EditorPreviewCaption() {
   return (
-    <Text size="small" appearance="subdued">
+    <s-text type="small" color="subdued">
       Preview — buyers see this only when the feature is live for their market.
-    </Text>
+    </s-text>
   );
 }
 
-/** Single subdued diagnostic line, prefixed so merchants can spot it. */
 function PreviewDiagnostic({reason}: {reason: string}) {
   return (
-    <Text size="small" appearance="subdued">
+    <s-text type="small" color="subdued">
       {`Cellexia preview: ${reason}`}
-    </Text>
+    </s-text>
   );
 }
 
-export default reactExtension('purchase.checkout.block.render', () => <Extension />);
+function attributeValue(
+  attributes: ReadonlyArray<{key: string; value: string}>,
+  key: string,
+): string | undefined {
+  return attributes.find((attribute) => attribute.key === key)?.value;
+}
 
-/**
- * Second placement: the SAME UI statically anchored immediately before the
- * actions (Pay button) area — the merchant picks either placement in the
- * checkout editor. `reactExtension` registers the target as a call-time
- * side effect (`shopify.extend`), matching the second
- * `[[extensions.targeting]]` entry in shopify.extension.toml (which
- * declares the target but renders nothing without this module-level
- * registration); target name verified against RenderExtensionTargets in
- * @shopify/ui-extensions. Mirrors checkout-upsell's pattern.
- */
-export const checkoutActionsRenderBefore = reactExtension(
-  'purchase.checkout.actions.render-before',
-  () => <Extension />,
-);
-
-function Extension() {
-  const translate = useTranslate();
-  const {i18n, extension} = useApi();
-  const metafieldEntries = useAppMetafields();
-  const market = useLocalizationMarket();
+export function Extension(): JSX.Element | null {
+  const translate = shopify.i18n.translate;
+  const formatNumber = shopify.i18n.formatNumber;
+  const metafieldEntries = shopify.appMetafields.value;
+  const market = shopify.localization.market.value;
   // v9 tracked row: the checkout's own localization language (reactive
   // isoCode like "fr" / "pt-PT") — the same source the delivery extension
   // uses. NOT the checkout i18n date formatter: the compact DATE_STYLE spec
   // needs structure control (see trustFormatDateCompact in trust-logic.ts).
-  const language = useLanguage();
+  const language = shopify.localization.language.value;
   // Buyer country comes ONLY from the shipping address — undefined means
   // "not entered yet" and the tracked row stays hidden (never guess a
   // country). v10: the US state rides the SAME contract (typed
   // provinceCode only) but fails OPEN in the engine — no/unknown state on
   // a US order keeps the US-wide promise. Same contract as
   // checkout-delivery.
-  const shippingAddress = useShippingAddress();
+  const shippingAddress = shopify.shippingAddress?.value;
   // v12 exclusions read the cart lines — product ids arrive as full GIDs
   // ("gid://shopify/Product/<id>"), the exact form the settings store.
-  const cartLines = useCartLines();
+  const cartLines = shopify.lines.value;
+  const attributes = shopify.attributes.value;
 
-  // CHECKOUT EDITOR detection (v4.9): `extension.editor` is `{type:
-  // 'checkout'}` only while the merchant is inside the checkout editor and
-  // undefined in every live checkout (verified against StandardApi in
-  // @shopify/ui-extensions). In the editor this module ALWAYS renders a
-  // representative preview so the merchant can see, place and move it —
-  // every enabled/market/config gate is bypassed strictly behind
-  // `inEditor`, so live render paths are byte-identical to before.
-  const inEditor = Boolean(extension.editor);
+  // CHECKOUT EDITOR detection (v4.9): `shopify.extension.editor` is
+  // `{type: 'checkout'}` only while the merchant is inside the checkout
+  // editor and undefined in every live checkout. In the editor this module
+  // ALWAYS renders a representative preview so the merchant can see, place
+  // and move it — every enabled/market/config gate is bypassed strictly
+  // behind `inEditor`, so live render paths are byte-identical to before.
+  const editor = shopify.extension.editor;
+  const inEditor = Boolean(editor);
 
   const configRoot = useMemo(
     () => parseCellexiaConfig(metafieldEntries),
@@ -213,16 +158,14 @@ function Extension() {
   // cart attribute (set by the merchant's preview hub) carries the SHA-256
   // hex digest of the preview token, computed server-side — so the gate is
   // a plain synchronous string comparison with no SubtleCrypto dependency.
-  // `useAttributeValues` yields `undefined` while the attribute is absent,
+  // `attributeValue` yields `undefined` while the attribute is absent,
   // which can never match a non-empty hash.
   const preview: PreviewConfig = useMemo(
     () => resolvePreview(configRoot),
     [configRoot],
   );
-  const [previewAttributeValue, usStateAttributeValue] = useAttributeValues([
-    '_cx_preview',
-    '_cx_us_state',
-  ]);
+  const previewAttributeValue = attributeValue(attributes, '_cx_preview');
+  const usStateAttributeValue = attributeValue(attributes, '_cx_us_state');
   const previewActive =
     preview.armed === true &&
     preview.tokenHash.length > 0 &&
@@ -370,7 +313,7 @@ function Extension() {
 
   function formatNumberSafe(value: number, options?: Intl.NumberFormatOptions): string {
     try {
-      return i18n.formatNumber(value, options);
+      return formatNumber(value, options);
     } catch {
       return String(value);
     }
@@ -394,18 +337,21 @@ function Extension() {
 
   // v30.1: star glyphs follow Trustpilot's own display rule — the image
   // rounds to the NEAREST HALF star (4.8 → five FULL stars, halves drawn
-  // with the starHalf icon) while the label keeps the raw score. Pure and
+  // with the star-half icon) while the label keeps the raw score. Pure and
   // sim-tested in trust-logic.ts, twinned with the storefront renderers.
   const starShapes = trustStarShapes(config.trustpilot.rating);
 
-  // v30: filled-star color. "accent" (the default — every pre-v30 config
-  // resolves to it) renders byte-identically to before; "green" uses the
-  // `success` appearance token, the closest checkout UI extensions allow to
-  // Trustpilot's own star green (extensions cannot use arbitrary hex —
-  // exact #00b67a would need an externally hosted image, a dependency this
-  // module deliberately avoids). Empty stars stay subdued either way.
-  const starAppearance =
-    config.checkoutTrust.trustpilotStars === 'green' ? 'success' : 'accent';
+  // v30: filled-star color. The merchant-facing config enum stays
+  // 'accent' | 'green' (unchanged — it's a stored metafield contract, not a
+  // UI attribute). "accent" maps to the `s-icon` `auto` tone (the closest
+  // available default/theme-following tone — `s-icon` has no literal
+  // "accent" tone); "green" maps to `success`, the closest checkout UI
+  // extensions allow to Trustpilot's own star green (extensions cannot use
+  // arbitrary hex — exact #00b67a would need an externally hosted image, a
+  // dependency this module deliberately avoids). Empty stars stay subdued
+  // either way.
+  const starTone =
+    config.checkoutTrust.trustpilotStars === 'green' ? 'success' : 'auto';
 
   // v11 MERCHANT-ORDERED ROWS: rowOrder is a normalized FULL permutation of
   // the six row keys (resolveConfig guarantees it — unknown keys dropped,
@@ -414,82 +360,88 @@ function Extension() {
   // can never hide, duplicate or reveal one. A config without rowOrder gets
   // the default order = the pre-v11 hardcoded sequence (byte-identical
   // render). The editor caption stays pinned after the rows.
-  const rowsByKey: Record<TrustRowKey, ReactElement | null> = {
+  const rowsByKey: Record<TrustRowKey, JSX.Element | null> = {
     badges: renderBadges ? (
-      <InlineLayout key="badges" columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
-        <Icon source="lock" appearance="subdued" size="small" />
-        <Text size="small">{translate('secure')}</Text>
-      </InlineLayout>
+      <s-stack key="badges" direction="inline" gap="small-200" alignItems="center">
+        <s-icon type="lock" tone="neutral" size="small" />
+        <s-text type="small" color="subdued">{translate('secure')}</s-text>
+      </s-stack>
     ) : null,
     guarantee: renderGuarantee ? (
-      <InlineLayout key="guarantee" columns={['auto', 'fill']} spacing="tight" blockAlignment="start">
-        <Icon source="success" appearance="subdued" size="small" />
-        <BlockStack spacing="none">
+      <s-stack key="guarantee" direction="inline" gap="small-200" alignItems="start">
+        {/* ICON NOTE: `success` has no exact new-set equivalent — mapped to
+            `check-circle` (closest semantic match), see file header. */}
+        <s-icon type="check-circle" tone="neutral" size="small" />
+        <s-stack direction="block" gap="none">
           {/* v9.1: `count` drives CLDR plural selection in the locales
               whose day-word inflects (ro/ar/pl/… ship plural objects);
               {{days}} stays the interpolated number in every form. */}
-          <Text size="small" emphasis="bold">
+          <s-text type="strong">
             {translate('guarantee_title', {
               days: config.guarantee.days,
               count: config.guarantee.days,
             })}
-          </Text>
-          <Text size="small" appearance="subdued">
+          </s-text>
+          <s-text type="small" color="subdued">
             {translate('guarantee_body', {
               days: config.guarantee.days,
               count: config.guarantee.days,
             })}
-          </Text>
-        </BlockStack>
-      </InlineLayout>
+          </s-text>
+        </s-stack>
+      </s-stack>
     ) : null,
     customs: renderCustoms ? (
-      <InlineLayout key="customs" columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
-        <Icon source="orderBox" appearance="subdued" size="small" />
-        <Text size="small">{translate('customs')}</Text>
-      </InlineLayout>
+      <s-stack key="customs" direction="inline" gap="small-200" alignItems="center">
+        {/* ICON NOTE: `orderBox` has no exact new-set equivalent — mapped to
+            `order` (closest match), see file header. */}
+        <s-icon type="order" tone="neutral" size="small" />
+        <s-text type="small" color="subdued">{translate('customs')}</s-text>
+      </s-stack>
     ) : null,
     tracked: renderTracked ? (
-      <InlineLayout key="tracked" columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
-        <Icon source="truck" appearance="subdued" size="small" />
-        <Text size="small">{translate('tracked', {date: trackedDateLabel})}</Text>
-      </InlineLayout>
+      <s-stack key="tracked" direction="inline" gap="small-200" alignItems="center">
+        <s-icon type="truck" tone="neutral" size="small" />
+        <s-text type="small" color="subdued">{translate('tracked', {date: trackedDateLabel})}</s-text>
+      </s-stack>
     ) : null,
     clinical: renderClinical ? (
-      <InlineLayout key="clinical" columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
-        <Icon source="checkmark" appearance="subdued" size="small" />
-        <Text size="small">{translate('clinical')}</Text>
-      </InlineLayout>
+      <s-stack key="clinical" direction="inline" gap="small-200" alignItems="center">
+        {/* ICON NOTE: `checkmark` has no exact new-set equivalent — mapped
+            to `check` (closest match), see file header. */}
+        <s-icon type="check" tone="neutral" size="small" />
+        <s-text type="small" color="subdued">{translate('clinical')}</s-text>
+      </s-stack>
     ) : null,
     trustpilot: renderTrustpilot ? (
-      <InlineLayout key="trustpilot" columns={['auto', 'fill']} spacing="tight" blockAlignment="center">
+      <s-stack key="trustpilot" direction="inline" gap="small-200" alignItems="center">
         {/* Decorative: unlabeled Icons are not announced, so screen
             readers only hear the rating text next to the stars. */}
-        <InlineStack spacing="none">
+        <s-stack direction="inline" gap="none">
           {starShapes.map((shape, index) => (
-            <Icon
+            <s-icon
               key={`star-${index}`}
-              source={shape === 'full' ? 'starFill' : shape === 'half' ? 'starHalf' : 'star'}
-              appearance={shape === 'empty' ? 'subdued' : starAppearance}
+              type={shape === 'full' ? 'star-filled' : shape === 'half' ? 'star-half' : 'star'}
+              tone={shape === 'empty' ? 'neutral' : starTone}
               size="small"
             />
           ))}
-        </InlineStack>
+        </s-stack>
         {profileUrl ? (
-          <Link to={profileUrl} external>
-            <Text size="small">{trustpilotLabel}</Text>
-          </Link>
+          <s-link href={profileUrl} target="_blank">
+            <s-text type="small" color="subdued">{trustpilotLabel}</s-text>
+          </s-link>
         ) : (
-          <Text size="small">{trustpilotLabel}</Text>
+          <s-text type="small" color="subdued">{trustpilotLabel}</s-text>
         )}
-      </InlineLayout>
+      </s-stack>
     ) : null,
   };
 
   return (
-    <BlockStack spacing="tight">
+    <s-stack direction="block" gap="small-200">
       {config.checkoutTrust.rowOrder.map((rowKey) => rowsByKey[rowKey])}
       {inEditor ? <EditorPreviewCaption /> : null}
-    </BlockStack>
+    </s-stack>
   );
 }

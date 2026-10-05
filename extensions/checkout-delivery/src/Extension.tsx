@@ -1,21 +1,5 @@
-import {useEffect, useMemo, useState} from 'react';
-import {
-  BlockStack,
-  Icon,
-  InlineLayout,
-  Pressable,
-  Text,
-  View,
-  reactExtension,
-  useApi,
-  useAppMetafields,
-  useAttributeValues,
-  useCartLines,
-  useLanguage,
-  useLocalizationMarket,
-  useShippingAddress,
-  useTranslate,
-} from '@shopify/ui-extensions-react/checkout';
+import {useEffect, useMemo, useState} from 'preact/hooks';
+import type {JSX} from 'preact';
 import {
   computeDelivery,
   deliveryFormatDate,
@@ -24,47 +8,32 @@ import {
 } from './delivery-engine';
 
 /**
- * Cellexia AOV & LTV Booster — Checkout Delivery module (v6.0).
+ * Cellexia AOV & LTV Booster — Checkout Delivery module (v6.0), migrated to
+ * the Polaris web-components / global `shopify` object architecture
+ * (api_version 2026-04). Business logic and behavior are unchanged from the
+ * pre-migration React version — see ./delivery-engine.ts (pure,
+ * framework-agnostic, untouched by this migration) for the full date-math
+ * contract. This file only replaces the rendering layer, mirroring the
+ * checkout-trust migration (../checkout-trust/src/Extension.tsx):
+ * reactExtension/JSX-from-@shopify/ui-extensions-react ->
+ * Preact + <s-*> web components + the `shopify` global's reactive
+ * properties.
  *
- * Checkout surface of the ONE delivery_estimate feature ("Delivery
- * guarantee"): the same date engine as the v5.9.1 storefront widget (see
- * src/delivery-engine.ts — the pure twin of cellexia-pdp.js), the same
- * translated strings (this extension's locale files MATCH the theme
- * extension's "delivery" group per language), rendered with native checkout
- * UI components in the merchant's chosen `formatCheckout` (line | range |
- * timeline | box). Two placements: statically under the shipping-option
- * list, or as a freely placeable block — the merchant picks in the editor.
+ * ICON NOTE (same gap as checkout-trust): the new reduced icon set has no
+ * exact equivalents for the old `success` and `checkmark` icon sources.
+ * Mapped here to `check-circle` and `check` respectively (closest semantic
+ * match) — flagged for visual review.
  *
- * SAFE BY DEFAULT / FAIL CLOSED: renders nothing unless
- * `deliveryEstimate.enabled === true` AND `showInCheckout !== false` AND the
- * market gate passes (`marketScopes.delivery_estimate`, unknown market +
- * "selected" = hidden), OR the feature is draft-granted inside a VERIFIED
- * preview (`preview.draftFlags.delivery_estimate === true`). The buyer
- * country comes ONLY from the shipping address — no address yet means no
- * widget (we never guess a country), and any invalid config / uncomputable
- * date renders nothing. The v10 US state promise reads the TYPED
- * provinceCode from the same address under the same never-guess rule, but
- * fails OPEN: no/unknown state on a US order keeps the US-wide promise.
+ * COMPONENT NOTE: `Pressable` -> `<s-clickable onClick={...}>` and
+ * `View` -> `<s-box>` (old `cornerRadius` prop is now `borderRadius` on
+ * `s-box`; `border`/`padding` keep the same prop names).
  *
- * GUARANTEE EXPLAINER — checkout has no hover tooltips, so instead of the
- * storefront's badge tooltip:
- *  - box format: the refund-or-replace sentence (`box_sub`) is an
- *    ALWAYS-VISIBLE subdued line inside the box (it is the widget's whole
- *    point there — hiding it behind a tap would gut the format);
- *  - line / range / timeline: a Pressable "Delivery guarantee" marker
- *    toggles the subdued explainer line (`tooltip`) underneath. Pressable
- *    was chosen over Disclosure because it renders plain button semantics
- *    (keyboard + screen-reader accessible via the visible text) with none
- *    of Disclosure's view-id plumbing — the most native, quiet fit.
- *
- * PREVIEW (same contract as checkout-trust): `_cx_preview` cart attribute
- * vs `preview.tokenHash`, plain string equality. When verified, the ARMED
- * payload's tokenless `preview.draftConfig.deliveryFormatCheckout` (when
- * valid) overrides the live format so the merchant can preview a draft
- * format without touching live buyers. Preview diagnostics render one
- * subdued line when the attribute is present and the module would
- * otherwise show nothing. In the checkout editor a representative preview
- * always renders (sample dates when real ones are not computable).
+ * TEXT STYLING NOTE (same gap as checkout-trust): the old
+ * `size="small" emphasis="bold"` combo can't be expressed as a single
+ * `<s-text>` attribute (`type` is a single enum). Resolved as
+ * `type="strong"` for titled/bold lines and `color="subdued"` (not
+ * `type="small"`) for subdued body text, matching the old
+ * `appearance="subdued"` intent.
  */
 
 const DELIVERY_FORMATS = ['line', 'range', 'timeline', 'box'] as const;
@@ -276,42 +245,24 @@ function deliveryPreviewDiagnosis(input: {
 /** Single subdued diagnostic line, prefixed so merchants can spot it. */
 function PreviewDiagnostic({reason}: {reason: string}) {
   return (
-    <Text size="small" appearance="subdued">
+    <s-text type="small" color="subdued">
       {`Cellexia preview: ${reason}`}
-    </Text>
+    </s-text>
   );
 }
 
 /**
- * Caption rendered ONLY inside the checkout editor (`extension.editor`
+ * Caption rendered ONLY inside the checkout editor (`shopify.extension.editor`
  * set). Hardcoded English on purpose: merchant-facing admin surface.
  */
 function EditorPreviewCaption() {
   return (
-    <Text size="small" appearance="subdued">
+    <s-text type="small" color="subdued">
       Preview — buyers see this only when the Delivery guarantee is live for
       their market and a delivery date is computable for their address.
-    </Text>
+    </s-text>
   );
 }
-
-export default reactExtension(
-  'purchase.checkout.shipping-option-list.render-after',
-  () => <Extension />,
-);
-
-/**
- * Second placement: the SAME UI as a freely placeable block — the merchant
- * picks either placement in the checkout editor. `reactExtension` registers
- * the target as a call-time side effect, matching the second
- * `[[extensions.targeting]]` entry in shopify.extension.toml (which
- * declares the target but renders nothing without this module-level
- * registration). Mirrors checkout-trust's pattern.
- */
-export const checkoutBlockRender = reactExtension(
-  'purchase.checkout.block.render',
-  () => <Extension />,
-);
 
 /**
  * The "Delivery guarantee" marker with its tap-to-reveal explainer (line /
@@ -327,51 +278,50 @@ function GuaranteeMarker({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <BlockStack spacing="extraTight">
-      <Pressable onPress={() => setOpen((value) => !value)}>
-        <InlineLayout
-          columns={['auto', 'fill']}
-          spacing="extraTight"
-          blockAlignment="center"
-        >
-          <Icon source="success" appearance="subdued" size="small" />
-          <Text size="small" appearance="subdued">
+    <s-stack direction="block" gap="small-100">
+      <s-clickable onClick={() => setOpen((value) => !value)}>
+        <s-stack direction="inline" gap="small-100" alignItems="center">
+          {/* ICON NOTE: `success` has no exact new-set equivalent — mapped
+              to `check-circle` (closest match), see file header. */}
+          <s-icon type="check-circle" tone="neutral" size="small" />
+          <s-text type="small" color="subdued">
             {label}
-          </Text>
-        </InlineLayout>
-      </Pressable>
+          </s-text>
+        </s-stack>
+      </s-clickable>
       {open ? (
-        <Text size="small" appearance="subdued">
+        <s-text type="small" color="subdued">
           {explainer}
-        </Text>
+        </s-text>
       ) : null}
-    </BlockStack>
+    </s-stack>
   );
 }
 
-function Extension() {
-  const translate = useTranslate();
-  const {extension} = useApi();
-  const metafieldEntries = useAppMetafields();
-  const market = useLocalizationMarket();
-  const shippingAddress = useShippingAddress();
+export function Extension(): JSX.Element | null {
+  const translate = shopify.i18n.translate;
+  const metafieldEntries = shopify.appMetafields.value;
+  const market = shopify.localization.market.value;
+  const shippingAddress = shopify.shippingAddress?.value;
   // v12 exclusions read the cart lines — product ids arrive as full GIDs
   // ("gid://shopify/Product/<id>"), the exact form the settings store.
-  const cartLines = useCartLines();
-  // v6.0.1: the CHECKOUT's own localization language (localization.language
-  // via useLanguage — reactive isoCode like "fr" / "pt-PT" / "fr-CA"), the
-  // checkout twin of the storefront's request.locale.iso_code pageLocale.
-  // NOT the checkout i18n date formatter: the DATE_STYLE spec needs per-base-language
-  // STRUCTURE control (the ja special case + verbatim-locale rule) and
-  // byte-equality with v601-date-fixtures.json, so the pure engine
-  // formatter calls Intl directly with this locale.
-  const language = useLanguage();
+  const cartLines = shopify.lines.value;
+  const attributes = shopify.attributes.value;
+  // v6.0.1: the CHECKOUT's own localization language (reactive isoCode like
+  // "fr" / "pt-PT" / "fr-CA"), the checkout twin of the storefront's
+  // request.locale.iso_code pageLocale. NOT the checkout i18n date
+  // formatter: the DATE_STYLE spec needs per-base-language STRUCTURE
+  // control (the ja special case + verbatim-locale rule) and byte-equality
+  // with v601-date-fixtures.json, so the pure engine formatter calls Intl
+  // directly with this locale.
+  const language = shopify.localization.language.value;
 
   // CHECKOUT EDITOR detection (v4.9 lesson): extensions rendering null when
   // disabled are UNPLACEABLE in the checkout editor — inside the editor
   // this module always renders a representative preview, strictly behind
   // `inEditor`, so live render paths are byte-identical.
-  const inEditor = Boolean(extension.editor);
+  const editor = shopify.extension.editor;
+  const inEditor = Boolean(editor);
 
   const configRoot = useMemo(
     () => parseCellexiaConfig(metafieldEntries),
@@ -385,14 +335,16 @@ function Extension() {
     marketHandle,
   );
 
+  function attributeValue(key: string): string | undefined {
+    return attributes.find((attribute) => attribute.key === key)?.value;
+  }
+
   // Verified-preview gate: plain string equality between the `_cx_preview`
   // cart attribute (SHA-256 hex of the token, computed server-side) and the
   // metafield's preview.tokenHash — the checkout-trust contract exactly.
   const preview = useMemo(() => resolvePreview(configRoot), [configRoot]);
-  const [previewAttributeValue, usStateAttributeValue] = useAttributeValues([
-    '_cx_preview',
-    '_cx_us_state',
-  ]);
+  const previewAttributeValue = attributeValue('_cx_preview');
+  const usStateAttributeValue = attributeValue('_cx_us_state');
   const previewActive =
     preview.armed === true &&
     preview.tokenHash.length > 0 &&
@@ -549,97 +501,82 @@ function Extension() {
   const badgeLabel = translate('badge');
   const tooltipText = translate('tooltip', {date: maxLabel});
 
-  let body;
+  let body: JSX.Element;
   if (format === 'range') {
     const rangeText =
       effective.min === effective.max
         ? translate('range_same', {date: maxLabel})
         : translate('range', {from: minLabel, to: maxLabel});
     body = (
-      <BlockStack spacing="extraTight">
-        <Text size="small">{rangeText}</Text>
+      <s-stack direction="block" gap="small-100">
+        <s-text type="small">{rangeText}</s-text>
         <GuaranteeMarker label={badgeLabel} explainer={tooltipText} />
-      </BlockStack>
+      </s-stack>
     );
   } else if (format === 'timeline') {
     body = (
-      <BlockStack spacing="extraTight">
-        <InlineLayout
-          columns={['auto', 'fill']}
-          spacing="tight"
-          blockAlignment="center"
-        >
-          <Icon source="checkmark" appearance="subdued" size="small" />
-          <Text size="small">{translate('timeline_order')}</Text>
-        </InlineLayout>
-        <InlineLayout
-          columns={['auto', 'fill']}
-          spacing="tight"
-          blockAlignment="center"
-        >
-          <Icon source="checkmark" appearance="subdued" size="small" />
-          <Text size="small">{translate('timeline_ship', {date: shipLabel})}</Text>
-        </InlineLayout>
-        <InlineLayout
-          columns={['auto', 'fill']}
-          spacing="tight"
-          blockAlignment="center"
-        >
-          <Icon source="checkmark" appearance="subdued" size="small" />
-          <Text size="small" emphasis="bold">
+      <s-stack direction="block" gap="small-100">
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          {/* ICON NOTE: `checkmark` has no exact new-set equivalent —
+              mapped to `check` (closest match), see file header. */}
+          <s-icon type="check" tone="neutral" size="small" />
+          <s-text type="small">{translate('timeline_order')}</s-text>
+        </s-stack>
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-icon type="check" tone="neutral" size="small" />
+          <s-text type="small">{translate('timeline_ship', {date: shipLabel})}</s-text>
+        </s-stack>
+        <s-stack direction="inline" gap="small-200" alignItems="center">
+          <s-icon type="check" tone="neutral" size="small" />
+          <s-text type="strong">
             {translate('timeline_delivered', {date: maxLabel})}
-          </Text>
-        </InlineLayout>
+          </s-text>
+        </s-stack>
         <GuaranteeMarker label={badgeLabel} explainer={tooltipText} />
-      </BlockStack>
+      </s-stack>
     );
   } else if (format === 'box') {
     // Guarantee box: subtle border, bold title, ALWAYS-VISIBLE refund
     // sentence (box_sub) — the explainer is the format's whole point, so it
     // is never hidden behind a tap here.
     body = (
-      <View border="base" cornerRadius="base" padding="base">
-        <BlockStack spacing="extraTight">
-          <InlineLayout
-            columns={['auto', 'fill']}
-            spacing="tight"
-            blockAlignment="center"
-          >
-            <Icon source="success" appearance="accent" size="small" />
-            <Text size="small" emphasis="bold">
+      <s-box border="base" borderRadius="base" padding="base">
+        <s-stack direction="block" gap="small-100">
+          <s-stack direction="inline" gap="small-200" alignItems="center">
+            {/* ICON NOTE: old `appearance="accent"` has no `s-icon`
+                equivalent — `auto` is the closest theme-following tone,
+                same mapping as checkout-trust's Trustpilot stars. */}
+            <s-icon type="check-circle" tone="auto" size="small" />
+            <s-text type="strong">
               {translate('box_title', {date: maxLabel})}
-            </Text>
-          </InlineLayout>
-          <Text size="small" appearance="subdued">
+            </s-text>
+          </s-stack>
+          <s-text type="small" color="subdued">
             {translate('box_sub')}
-          </Text>
-          <InlineLayout
-            columns={['auto', 'fill']}
-            spacing="extraTight"
-            blockAlignment="center"
-          >
-            <Icon source="success" appearance="subdued" size="small" />
-            <Text size="small" appearance="subdued">
+          </s-text>
+          <s-stack direction="inline" gap="small-100" alignItems="center">
+            <s-icon type="check-circle" tone="neutral" size="small" />
+            <s-text type="small" color="subdued">
               {badgeLabel}
-            </Text>
-          </InlineLayout>
-        </BlockStack>
-      </View>
+            </s-text>
+          </s-stack>
+        </s-stack>
+      </s-box>
     );
   } else {
     // "line" — the default single-line format.
     body = (
-      <BlockStack spacing="extraTight">
-        <Text size="small">{translate('line', {date: maxLabel})}</Text>
+      <s-stack direction="block" gap="small-100">
+        <s-text type="small">{translate('line', {date: maxLabel})}</s-text>
         <GuaranteeMarker label={badgeLabel} explainer={tooltipText} />
-      </BlockStack>
+      </s-stack>
     );
   }
 
   return (
-    <BlockStack spacing="extraTight">
+    <s-stack direction="block" gap="small-100">
       {body}
       {inEditor ? <EditorPreviewCaption /> : null}
-    </BlockStack>
+    </s-stack>
   );
 }

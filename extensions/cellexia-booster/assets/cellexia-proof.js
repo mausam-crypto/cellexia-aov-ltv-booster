@@ -1711,7 +1711,8 @@
     info: ['M10 9.2v4.3'],
     x: ['M5.5 5.5l9 9', 'M14.5 5.5l-9 9'],
     drag: ['M7.5 6.5 4 10l3.5 3.5', 'M12.5 6.5 16 10l-3.5 3.5'],
-    zoom: ['M12.4 12.4 16.5 16.5', 'M9 7v4', 'M7 9h4']
+    zoom: ['M12.4 12.4 16.5 16.5', 'M9 7v4', 'M7 9h4'],
+    chev: ['M5.5 8 10 12.5 14.5 8']
   };
 
   function resultsIcon(kind, size) {
@@ -1748,15 +1749,17 @@
   }
 
   function resultsUiFlags(data) {
-    // v33: the two display options ride the FIRST proxy response as
+    // v33/v35: the display options ride the FIRST proxy response as
     // payload.ui — cs 1 = clinical-study design for lab entries, sl 1 =
-    // compare slider. Strict === 1 reads; anything else (absent member,
-    // wrong type, old server) fails closed to the classic gallery. The
-    // Liquid island cannot carry these (byte budget), and refetched pages
-    // reuse the flags read here.
+    // compare slider, gr 1 = the old 4-column desktop grid (v35 default
+    // is the one-row rail), ns 1 = study tags OFF (default shows them),
+    // ht 1 = lab testimonials hidden. Strict === 1 reads; anything else
+    // (absent member, wrong type, old server) fails closed to the
+    // defaults. The Liquid island cannot carry these (byte budget), and
+    // refetched pages reuse the flags read here.
     var ui = data && data.ui;
-    if (!ui || typeof ui !== 'object') return { cs: false, sl: false };
-    return { cs: ui.cs === 1, sl: ui.sl === 1 };
+    if (!ui || typeof ui !== 'object') return { cs: false, sl: false, gr: false, ns: false, ht: false };
+    return { cs: ui.cs === 1, sl: ui.sl === 1, gr: ui.gr === 1, ns: ui.ns === 1, ht: ui.ht === 1 };
   }
 
   // v26.2: decimal percents ("34.2") print with the page language's
@@ -1876,7 +1879,10 @@
           mu: lab && it.markUnretouched === true
         },
         an: typeof it.attributionName === 'string' && /\S/.test(it.attributionName) ? it.attributionName : '',
-        ar: typeof it.attributionRole === 'string' && /\S/.test(it.attributionRole) ? it.attributionRole : ''
+        ar: typeof it.attributionRole === 'string' && /\S/.test(it.attributionRole) ? it.attributionRole : '',
+        // v35: the study tag — LAB ROWS ONLY (the measurements gate
+        // pattern; the server already serves null for customer rows).
+        st: lab && typeof it.study === 'string' && /\S/.test(it.study) ? it.study : ''
       });
     }
     return out;
@@ -1938,6 +1944,112 @@
       p.appendChild(role);
     }
     return p;
+  }
+
+  function resultsStudyTag(item, o) {
+    // v35: a small muted tag naming the clinical study an entry came from
+    // (its study-batch name) — raw merchant text via textContent, never a
+    // locale string (proper noun). Skipped when the merchant turned study
+    // tags off (ui.ns) or the entry carries none; item.st is already
+    // lab-gated in resultsValidItems.
+    if (!item.st || (o && o.ns)) return null;
+    var tag = pfEl('span', 'cx-results__study-name');
+    tag.textContent = item.st;
+    return tag;
+  }
+
+  function resultsHideQuote(item, o) {
+    // v35: ui.ht hides the testimonial quote AND its attribution on LAB
+    // (clinical) entries — card and lightbox — so clinical figures stand
+    // on the numbers. Customer entries always keep their quotes.
+    return !!(o && o.ht && item.lab);
+  }
+
+  function resultsQuoteClamped(q) {
+    // Overflow probe for the 3-line testimonial clamp: true only when the
+    // clamped box provably cut text off. The decorative ::before quote
+    // mark is a 32px glyph hung at -3px, so its box alone inflates
+    // scrollHeight past a ONE-LINE quote's clientHeight (real-browser
+    // catch: every short quote grew a pointless expander) — the probe
+    // class suppresses the mark for the two synchronous reads, which
+    // never paints (no frame boundary between the toggles). Non-numeric
+    // metrics (detached node, sim DOM) read as not-clamped — the
+    // expander simply stays hidden and the lightbox still carries the
+    // full text (fail soft).
+    if (!q) return false;
+    var base = q.className;
+    try { q.className = base + ' cx-results__quote--probe'; } catch (e) { /* metrics still read */ }
+    var sh = q.scrollHeight;
+    var ch = q.clientHeight;
+    try { q.className = base; } catch (e) { /* noop */ }
+    if (typeof sh !== 'number' || typeof ch !== 'number' || ch <= 0) return false;
+    return sh > ch + 1;
+  }
+
+  function resultsQuoteSync(q, btn) {
+    // One-shot visibility pass for a quote's expander button: the button
+    // is built [hidden] and only surfaces when the clamp actually cut the
+    // text. Never re-run after the shopper expanded (the open quote no
+    // longer overflows, which would hide the collapse control).
+    if (!q || !btn) return;
+    if (btn.getAttribute('aria-expanded') === 'true') return;
+    if (resultsQuoteClamped(q)) btn.removeAttribute('hidden');
+  }
+
+  // v35 review: an overflow verdict can go stale — the theme's web fonts
+  // (Argumentum body) swap in after first paint and a resize reflows the
+  // clamp — so every built pair re-syncs on window load and a debounced
+  // resize. The rescan only ever REVEALS (hiding a visible control under
+  // the pointer would be jarring; an expander on a no-longer-clamped
+  // quote is inert), open quotes are skipped by the sync guard, and
+  // detached pairs no-op (zero clientHeight fails the probe).
+  var resultsQuotePairs = [];
+  var resultsQuoteTimer = 0;
+  var resultsQuoteBound = false;
+
+  function resultsQuoteRescan() {
+    for (var i = 0; i < resultsQuotePairs.length; i++) {
+      resultsQuoteSync(resultsQuotePairs[i][0], resultsQuotePairs[i][1]);
+    }
+  }
+
+  function resultsQuoteBind() {
+    if (resultsQuoteBound) return;
+    resultsQuoteBound = true;
+    try {
+      window.addEventListener('load', resultsQuoteRescan);
+      window.addEventListener('resize', function () {
+        window.clearTimeout(resultsQuoteTimer);
+        resultsQuoteTimer = window.setTimeout(resultsQuoteRescan, 250);
+      });
+    } catch (e) { /* the one-shot probe serves */ }
+  }
+
+  function resultsQuoteMore(q, s) {
+    // v35: the testimonial expander — a small chevron button after the
+    // clamped quote (the cx-endo__more disclosure pattern, icon-sized).
+    // Built hidden; resultsQuoteSync surfaces it only when the text
+    // overflows. No island label → no accessible name → no button (the
+    // quote keeps today's clamp and the lightbox carries the full text).
+    var label = pfStr(s, 'more');
+    if (!label) return null;
+    var btn = pfEl('button', 'cx-results__quote-more', ['type', 'button', 'aria-expanded', 'false', 'aria-label', label, 'hidden', '']);
+    btn.appendChild(resultsIcon('chev', 12));
+    resultsQuotePairs.push([q, btn]);
+    resultsQuoteBind();
+    btn.addEventListener('click', function () {
+      var open = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      q.className = open ? 'cx-results__quote' : 'cx-results__quote cx-results__quote--open';
+      btn.className = open ? 'cx-results__quote-more' : 'cx-results__quote-more cx-results__quote-more--open';
+    });
+    // Defer the overflow probe until the card sits in the document (the
+    // section mounts synchronously after build; rAF lands after layout).
+    try {
+      var defer = window.requestAnimationFrame || function (fn) { return window.setTimeout(fn, 0); };
+      defer(function () { resultsQuoteSync(q, btn); });
+    } catch (e) { /* the hidden button stays hidden — fail soft */ }
+    return btn;
   }
 
   function resultsStudyHead(item, s, o) {
@@ -2418,6 +2530,14 @@
       pfSp(card);
     }
     var badges = resultsBadges(item, s, study);
+    // v35: the study-name tag rides the badges row (its own row when the
+    // entry earns no other badge).
+    var studyTag = resultsStudyTag(item, o);
+    if (studyTag) {
+      if (!badges) badges = pfEl('div', 'cx-results__badges');
+      badges.appendChild(studyTag);
+      pfSp(badges);
+    }
     if (badges) {
       card.appendChild(badges);
       pfSp(card);
@@ -2429,13 +2549,20 @@
       card.appendChild(m);
       pfSp(card);
     }
-    if (item.text) {
+    var hideQuote = resultsHideQuote(item, o);
+    if (item.text && !hideQuote) {
       var q = pfEl('p', 'cx-results__quote');
       q.textContent = item.text;
       card.appendChild(q);
       pfSp(card);
+      // v35: surface an expander when the 3-line clamp cut the text off.
+      var qMore = resultsQuoteMore(q, s);
+      if (qMore) {
+        card.appendChild(qMore);
+        pfSp(card);
+      }
     }
-    var attr = resultsAttr(item);
+    var attr = hideQuote ? null : resultsAttr(item);
     if (attr) {
       card.appendChild(attr);
       pfSp(card);
@@ -2505,6 +2632,13 @@
       pfSp(card);
     }
     var badges = resultsBadges(item, s);
+    // v35: the study-name tag joins the lightbox badges row too.
+    var studyTag = resultsStudyTag(item, o);
+    if (studyTag) {
+      if (!badges) badges = pfEl('div', 'cx-results__badges');
+      badges.appendChild(studyTag);
+      pfSp(badges);
+    }
     if (badges) {
       card.appendChild(badges);
       pfSp(card);
@@ -2522,8 +2656,11 @@
     // v25 foot: quote + attribution on the inline-start side, the meta
     // microline (weeks of use etc.) on the inline-end side — the mock's
     // closing row. Any part may be absent; an empty foot is skipped.
+    // v35: ui.ht hides the lab quote + attribution here too (one rule,
+    // both surfaces — a hidden card quote must not resurface on zoom).
+    var hideQuote = resultsHideQuote(item, o);
     var foot = null;
-    if (item.text || item.an) {
+    if (!hideQuote && (item.text || item.an)) {
       foot = pfEl('div', 'cx-lightbox__foot');
       var main = pfEl('div', 'cx-lightbox__foot-main');
       if (item.text) {
@@ -2712,7 +2849,10 @@
     // filters, same drawer, same lightbox in every tier.
     var ultra = conf.cm === 2;
     var compact = conf.cm === 1;
-    var root = pfEl('section', 'cx-proof cx-results' + (ultra ? ' cx-results--ultra' : compact ? ' cx-results--compact' : ''), ['data-cx-feature', 'verified_before_after']);
+    // v35: desktop default is the one-row rail (the vertical-space fix);
+    // ui.gr restores the old 4-column desktop grid. Pure CSS leverage on
+    // the root — ultra/compact densities out-cascade it and always rail.
+    var root = pfEl('section', 'cx-proof cx-results' + (ultra ? ' cx-results--ultra' : compact ? ' cx-results--compact' : '') + (o.gr ? ' cx-results--grid' : ''), ['data-cx-feature', 'verified_before_after']);
     pfSp(root);
 
     // Scale banner — the number rides its own <strong> so it can carry

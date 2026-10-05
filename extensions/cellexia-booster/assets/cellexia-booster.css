@@ -5294,7 +5294,12 @@ body.customer--b2b .cx-sub-remove {
   margin-block-start: 14px;
 }
 
-/* desktop ≥900px: inline filter panel + 4-col grid, no sheet, no scrim */
+/* desktop ≥900px: inline filter panel, no sheet, no scrim. v35: the
+   DEFAULT desktop layout is now the one-row sideways rail (full-size
+   cards on the mobile rail's flex/snap base — the ultra/compact
+   precedent), because the old always-on 4-column grid stacked a dozen
+   cards into three tall rows. The grid survives behind the merchant's
+   "Desktop layout: grid" option (`ui.gr` → .cx-results--grid). */
 @media (min-width: 900px) {
   .cx-results__scrim {
     display: none !important;
@@ -5316,6 +5321,15 @@ body.customer--b2b .cx-sub-remove {
   }
 
   .cx-results__rail {
+    gap: 16px;
+  }
+
+  .cx-results__card {
+    flex: 0 0 320px;
+    max-inline-size: none;
+  }
+
+  .cx-results--grid .cx-results__rail {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 20px;
@@ -5324,9 +5338,8 @@ body.customer--b2b .cx-sub-remove {
     padding-block-end: 0;
   }
 
-  .cx-results__card {
+  .cx-results--grid .cx-results__card {
     flex: none;
-    max-inline-size: none;
   }
 }
 
@@ -6183,6 +6196,115 @@ body.customer--b2b .cx-sub-remove {
     flex: 0 0 270px;
     max-inline-size: none;
   }
+}
+
+/* ============================================================== v35
+   Results gallery: study-name tag, testimonial expander, rail scrollbar.
+   Placed AFTER the density sections on purpose: the __quote--open lift
+   must out-cascade the ultra 1-line clamp (equal specificity, later
+   wins). */
+
+/* The default rail is now the desktop layout too — give it the compact
+   rail's discreet thin scrollbar so sideways overflow stays discoverable
+   on pointer devices (ultra/compact keep their own identical rules). */
+.cx-results__rail {
+  scrollbar-width: thin;
+  scrollbar-color: #d5d9d9 transparent;
+}
+
+.cx-results__rail::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cx-results__rail::-webkit-scrollbar-thumb {
+  background: #d5d9d9;
+  border-radius: 3px;
+}
+
+.cx-results__rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Study-name tag — a muted outline chip in the badges row naming the
+   clinical study an entry came from. Deliberately quieter than the
+   verified/lab pills (data, not a claim) and ellipsized so a long study
+   name can never stretch a card. */
+.cx-results__study-name {
+  display: inline-block;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border: 1px solid #e5e5e3;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  color: #808080;
+  background: #fafaf9;
+}
+
+.cx-results__card--study .cx-results__study-name {
+  border-color: rgba(29, 29, 27, 0.25);
+  color: #1d1d1b;
+  background: transparent;
+}
+
+/* The overflow probe's measuring class: the decorative ::before quote
+   mark is an absolutely positioned 32px glyph whose box alone inflates
+   scrollHeight past a one-line quote's clientHeight — the probe
+   suppresses it for the two synchronous metric reads (never painted). */
+.cx-results__quote--probe::before {
+  content: none;
+}
+
+/* Testimonial expander — a small chevron disclosure under the clamped
+   quote (the cx-endo__more pattern, icon-sized). Hidden until the
+   overflow probe proves the clamp cut text off. */
+.cx-results__quote-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 2px 0 0;
+  margin-inline-start: 32px;
+  padding: 2px;
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: #808080;
+  cursor: pointer;
+}
+
+.cx-results__quote-more:hover,
+.cx-results__quote-more:focus-visible {
+  color: #1d1d1b;
+  background: #f1f1ef;
+}
+
+.cx-results__quote-more[hidden] {
+  display: none !important;
+}
+
+.cx-results__quote-more svg {
+  transition: transform 0.15s ease;
+}
+
+.cx-results__quote-more--open svg {
+  transform: rotate(180deg);
+}
+
+/* The open quote lifts every clamp and honours the testimonial's
+   paragraph breaks (the endo --open convention). The .cx-results
+   ancestor matches the ultra override's two-class specificity, and this
+   rule sits after it, so --open wins in every density. */
+.cx-results .cx-results__quote--open {
+  display: block;
+  -webkit-line-clamp: none;
+  overflow: visible;
+  white-space: pre-line;
 }
 
 /* v8.7 proof band — the shared self-insertion container for the embed-based

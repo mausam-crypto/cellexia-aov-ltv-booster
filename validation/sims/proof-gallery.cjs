@@ -164,7 +164,11 @@ function ok(cond, label) {
 
 // ---------------------------------------------------------------- sandbox
 const EXTRACTED = extractAll(SRC, {
-  vars: ["RESULTS_SKIN_KEYS", "RESULTS_DURATION_KEYS", "RESULTS_ICON_PATHS", "RESULTS_COMMA_DECIMAL"],
+  vars: [
+    "RESULTS_SKIN_KEYS", "RESULTS_DURATION_KEYS", "RESULTS_ICON_PATHS", "RESULTS_COMMA_DECIMAL",
+    // v35 expander re-sync state
+    "resultsQuotePairs", "resultsQuoteTimer", "resultsQuoteBound",
+  ],
   functions: [
     "pfEl", "pfSp", "pfSvg", "pfDecode", "pfStr", "pfHttps", "pfVideoFile",
     "pfPosInt", "pfPageLocale", "pfRegionName", "pfQuery", "pfProductParams",
@@ -193,7 +197,16 @@ const EXTRACTED = extractAll(SRC, {
     "resultsUiFlags", "resultsAfterTag", "resultsComboTag",
     "resultsComboFrame", "resultsSliderPct", "resultsSliderSet",
     "resultsSlider", "resultsStudyHead", "resultsDisclaim",
+    // v35 study tag + quote expander + hide-lab-quotes
+    "resultsStudyTag", "resultsHideQuote", "resultsQuoteClamped",
+    "resultsQuoteSync", "resultsQuoteMore",
+    "resultsQuoteRescan", "resultsQuoteBind",
   ],
+  // extend the vars list separately below (extractAll takes each key once)
+});
+const EXTRACTED_V35_VARS = extractAll(SRC, {
+  vars: ["resultsQuotePairs", "resultsQuoteTimer", "resultsQuoteBound"],
+  functions: [],
 });
 
 // Deterministic stubs (declared before the extracted pieces; function
@@ -216,6 +229,10 @@ const doc = makeDocument();
 // matrix asserts pfWhenAllowed's SYNCHRONOUS path and the pfPreviewVerified
 // predicate — never the poll (deterministic, no timers).
 const INTERVALS = [];
+// v35: requestAnimationFrame records-but-never-fires (the setInterval
+// discipline) — the expander's deferred overflow probe is asserted by
+// firing the recorded callback explicitly, never by a real timer.
+const RAFS = [];
 const S = {
   console,
   document: doc,
@@ -225,6 +242,7 @@ const S = {
     Intl,
     setInterval(fn, ms) { INTERVALS.push({ fn, ms }); return INTERVALS.length; },
     clearInterval() { /* recorded timers never fire */ },
+    requestAnimationFrame(fn) { RAFS.push(fn); return RAFS.length; },
   },
 };
 vm.createContext(S);
@@ -1174,19 +1192,25 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
 // ================== v33 (combined figure · compare slider · study design)
 
 // --- R25: payload.ui flag reads are strict and fail closed ---------------------------
+// (v35 widened the object with gr/ns/ht — same strict-=== discipline.)
 {
-  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: 1, sl: 1 } })) === '{"cs":true,"sl":true}',
+  const OFF = '{"cs":false,"sl":false,"gr":false,"ns":false,"ht":false}';
+  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: 1, sl: 1 } })) ===
+      '{"cs":true,"sl":true,"gr":false,"ns":false,"ht":false}',
     "R25: cs/sl === 1 read as on");
-  ok(JSON.stringify(S.resultsUiFlags({ ui: {} })) === '{"cs":false,"sl":false}',
-    "R25: empty ui -> both off");
-  ok(JSON.stringify(S.resultsUiFlags({})) === '{"cs":false,"sl":false}',
-    "R25: absent ui (old server) -> both off");
-  ok(JSON.stringify(S.resultsUiFlags(null)) === '{"cs":false,"sl":false}',
-    "R25: null data -> both off");
-  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: "1", sl: true } })) === '{"cs":false,"sl":false}',
+  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: 1, sl: 1, gr: 1, ns: 1, ht: 1 } })) ===
+      '{"cs":true,"sl":true,"gr":true,"ns":true,"ht":true}',
+    "R25: all five flags read as on when === 1");
+  ok(JSON.stringify(S.resultsUiFlags({ ui: {} })) === OFF,
+    "R25: empty ui -> all off");
+  ok(JSON.stringify(S.resultsUiFlags({})) === OFF,
+    "R25: absent ui (old server) -> all off");
+  ok(JSON.stringify(S.resultsUiFlags(null)) === OFF,
+    "R25: null data -> all off");
+  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: "1", sl: true, gr: "1", ns: true, ht: [1] } })) === OFF,
     "R25: '1'/true are not the NUMBER 1 -> off (strict)");
-  ok(JSON.stringify(S.resultsUiFlags({ ui: "cs" })) === '{"cs":false,"sl":false}',
-    "R25: non-object ui -> both off");
+  ok(JSON.stringify(S.resultsUiFlags({ ui: "cs" })) === OFF,
+    "R25: non-object ui -> all off");
 }
 
 // --- R26: combined mapping — lab-gated (serve-belt twin) + https-gated ---------------
@@ -1406,6 +1430,147 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   const pqs = S.pfQuery(S.resultsParams({ ctx: "brand", pid: 0 }, { concern: "", age: "", skin: "", duration: "", page: 1 }));
   ok(/(&|\?)pv=\d+/.test(pqs), "R32: verified preview sends the per-minute pv token");
   delete S.window.CellexiaBooster;
+}
+
+// ========== v35 (study tag · quote expander · hide-lab-quotes · grid flag)
+
+// --- R34: study tag — lab-gated item map, badges-row chip, ns flag -------------------
+{
+  const items = S.resultsValidItems({ items: [
+    { beforeUrl: "https://cdn/1.jpg", source: "lab", study: "Helsinki Study" },
+    { beforeUrl: "https://cdn/2.jpg", source: "customer", study: "Drifted" },
+    { beforeUrl: "https://cdn/3.jpg", source: "lab", study: "   " },
+  ] });
+  ok(items[0].st === "Helsinki Study" && items[1].st === "" && items[2].st === "",
+    "R34: st maps LAB rows only (client belt) and blanks whitespace studies");
+  const card = S.resultsBuildCard(items[0], Object.assign({}, STR_CLIN));
+  const tag = card.querySelector(".cx-results__study-name");
+  ok(!!tag && tag.textContent === "Helsinki Study",
+    "R34: the study tag renders as plain text (raw merchant data, never a locale string)");
+  ok(!!card.querySelector(".cx-results__badges"),
+    "R34: the tag rides the badges row (its own row when no other badge)");
+  const cardNs = S.resultsBuildCard(items[0], Object.assign({}, STR_CLIN), { ns: true });
+  ok(!cardNs.querySelector(".cx-results__study-name"),
+    "R34: ui.ns hides study tags");
+  const cardStudy = S.resultsBuildCard(items[0], Object.assign({}, STR_CLIN), { cs: true });
+  ok(!!cardStudy.querySelector(".cx-results__study-name") &&
+    !cardStudy.querySelector(".cx-results__badge--lab"),
+    "R34: study design keeps the tag while the lab pill moves to the band");
+  const lb = S.resultsBuildLightbox(items[0], Object.assign({}, STR_CLIN));
+  ok(!!lb.querySelector(".cx-results__study-name"), "R34: the lightbox carries the tag too");
+  const lbNs = S.resultsBuildLightbox(items[0], Object.assign({}, STR_CLIN), { ns: true });
+  ok(!lbNs.querySelector(".cx-results__study-name"), "R34: the lightbox honours ns");
+  const plain = S.resultsBuildCard(items[1], Object.assign({}, STR_CLIN));
+  ok(!plain.querySelector(".cx-results__study-name"), "R34: no study -> no tag");
+}
+
+// --- R35: testimonial expander — built hidden, surfaces on PROVEN overflow -----------
+{
+  const item = S.resultsValidItems({ items: [RES_ITEM] })[0];
+  const rafsBefore = RAFS.length;
+  const card = S.resultsBuildCard(item, Object.assign({}, STR_CLIN));
+  const q = card.querySelector(".cx-results__quote");
+  const btn = card.querySelector(".cx-results__quote-more");
+  ok(!!btn && btn.tagName === "BUTTON" && btn.hasAttribute("hidden") &&
+    btn.getAttribute("aria-expanded") === "false" &&
+    btn.getAttribute("aria-label") === "Show more" &&
+    btn.getAttribute("type") === "button",
+    "R35: the expander is built [hidden] with the island's more label as its name");
+  ok(RAFS.length === rafsBefore + 1, "R35: the overflow probe defers to rAF");
+  RAFS[RAFS.length - 1]();
+  ok(btn.hasAttribute("hidden"),
+    "R35: an unmeasurable quote (sim DOM, detached node) never surfaces the expander");
+  q.scrollHeight = 120;
+  q.clientHeight = 54;
+  S.resultsQuoteSync(q, btn);
+  ok(!btn.hasAttribute("hidden"), "R35: proven overflow surfaces the button");
+  click(btn);
+  ok(q.className === "cx-results__quote cx-results__quote--open" &&
+    btn.getAttribute("aria-expanded") === "true" &&
+    btn.className === "cx-results__quote-more cx-results__quote-more--open",
+    "R35: click lifts the clamp (open classes + aria)");
+  click(btn);
+  ok(q.className === "cx-results__quote" &&
+    btn.getAttribute("aria-expanded") === "false" &&
+    btn.className === "cx-results__quote-more",
+    "R35: second click re-clamps");
+  // the open guard: sync never acts on an expanded quote
+  const openBtn = S.resultsQuoteMore(q, Object.assign({}, STR_CLIN));
+  openBtn.setAttribute("aria-expanded", "true");
+  S.resultsQuoteSync(q, openBtn);
+  ok(openBtn.hasAttribute("hidden"),
+    "R35: the one-shot probe never touches an already-open quote's control");
+  // pure clamp probe
+  ok(S.resultsQuoteClamped({ scrollHeight: 100, clientHeight: 40 }) === true,
+    "R35: clamp probe — real overflow");
+  ok(S.resultsQuoteClamped({ scrollHeight: 41, clientHeight: 40 }) === false,
+    "R35: clamp probe — 1px jitter is not overflow");
+  ok(S.resultsQuoteClamped({ scrollHeight: 100, clientHeight: 0 }) === false &&
+    S.resultsQuoteClamped({}) === false && S.resultsQuoteClamped(null) === false,
+    "R35: clamp probe fails closed on zero/missing metrics");
+  // stale island: no more label -> no button, quote stays reachable via lightbox
+  const bare = S.resultsBuildCard(item, { bef: "Before", aft: "After", vb: "V", lb: "L" });
+  ok(!!bare.querySelector(".cx-results__quote") && !bare.querySelector(".cx-results__quote-more"),
+    "R35: no island label -> no unnamed button (the quote keeps today's clamp)");
+  // the load/resize RE-SYNC (review catch: the theme's web font swaps in
+  // after the one-shot probe) — pairs are recorded and rescan re-probes
+  const pairCount = S.resultsQuotePairs.length;
+  ok(pairCount >= 2, "R35: built expanders record their (quote, button) pairs");
+  const lateQ = S.document.createElement("p");
+  const lateB = S.resultsQuoteMore(lateQ, Object.assign({}, STR_CLIN));
+  ok(S.resultsQuotePairs.length === pairCount + 1,
+    "R35: new buttons join the rescan set");
+  ok(lateB.hasAttribute("hidden"), "R35: still hidden before any probe");
+  lateQ.scrollHeight = 90;
+  lateQ.clientHeight = 40;
+  S.resultsQuoteRescan();
+  ok(!lateB.hasAttribute("hidden"),
+    "R35: rescan surfaces a LATE-clamping quote's expander (font-swap catch)");
+}
+
+// --- R36: ui.ht hides LAB testimonials — card AND lightbox, customer untouched -------
+{
+  const lab = S.resultsValidItems({ items: [RES_LAB] })[0];
+  const cust = S.resultsValidItems({ items: [RES_ITEM] })[0];
+  ok(S.resultsHideQuote(lab, { ht: true }) === true &&
+    S.resultsHideQuote(lab, {}) === false &&
+    S.resultsHideQuote(cust, { ht: true }) === false &&
+    S.resultsHideQuote(lab, null) === false,
+    "R36: the hide rule is ht AND lab, fail open on absent flags");
+  const card = S.resultsBuildCard(lab, Object.assign({}, STR_CLIN), { ht: true });
+  ok(!card.querySelector(".cx-results__quote") &&
+    !card.querySelector(".cx-results__attr") &&
+    !card.querySelector(".cx-results__quote-more"),
+    "R36: ht strips quote + attribution + expander from the lab card");
+  ok(!!card.querySelector(".cx-results__clin"),
+    "R36: the clinical panel stays — the card stands on the numbers");
+  const custCard = S.resultsBuildCard(cust, Object.assign({}, STR_CLIN), { ht: true });
+  ok(!!custCard.querySelector(".cx-results__quote") && !!custCard.querySelector(".cx-results__quote-more"),
+    "R36: customer cards keep their quotes (and the expander)");
+  const lb = S.resultsBuildLightbox(lab, Object.assign({}, STR_CLIN), { ht: true });
+  ok(!lb.querySelector(".cx-lightbox__quote") && !lb.querySelector(".cx-lightbox__foot") &&
+    !!lb.querySelector(".cx-lightbox__meta"),
+    "R36: the lightbox hides the foot too (a hidden quote must not resurface on zoom); meta stands alone");
+  const lbOn = S.resultsBuildLightbox(lab, Object.assign({}, STR_CLIN));
+  ok(!!lbOn.querySelector(".cx-lightbox__quote"),
+    "R36: without ht the lab quote serves as before");
+}
+
+// --- R37: ui.gr — the ONLY root-class flag (desktop grid back on) --------------------
+{
+  const fx = resultsFixture();
+  fx.ui = { gr: 1 };
+  const grid = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) }, fx);
+  ok(grid.className === "cx-proof cx-results cx-results--grid",
+    "R37: ui.gr adds the grid root modifier");
+  const plain = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) }, resultsFixture());
+  ok(plain.className === "cx-proof cx-results",
+    "R37: default root = the one-row rail (no modifier, the vertical-space fix)");
+  const fx3 = resultsFixture();
+  fx3.ui = { gr: 1 };
+  const ultra = S.resultsBuildSection({ ctx: "brand", pid: 0, cm: 2, str: Object.assign({}, STR_CLIN) }, fx3);
+  ok(ultra.className === "cx-proof cx-results cx-results--ultra cx-results--grid",
+    "R37: density + grid modifiers co-exist (ultra's rail wins the cascade)");
 }
 
 // ================================== ultra (U, v8.2 look — v8.3 "cm": 2)
@@ -2741,8 +2906,8 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         // v33: loosened flag reads would let a '1'/true-shaped payload
         // (or a poisoned cache) switch designs (R25's strict case).
         name: "m38-ui-flags-not-strict",
-        find: "    return { cs: ui.cs === 1, sl: ui.sl === 1 };",
-        replace: "    return { cs: !!ui.cs, sl: !!ui.sl };",
+        find: "    return { cs: ui.cs === 1, sl: ui.sl === 1, gr: ui.gr === 1, ns: ui.ns === 1, ht: ui.ht === 1 };",
+        replace: "    return { cs: !!ui.cs, sl: !!ui.sl, gr: !!ui.gr, ns: !!ui.ns, ht: !!ui.ht };",
       },
       {
         // v33: the combined column must never render for customer rows,
@@ -2778,6 +2943,48 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m43-slider-caps-gate-dropped",
         find: "      if (window.CSS && window.CSS.supports &&\n          (!window.CSS.supports('aspect-ratio', '1 / 1') ||\n            !window.CSS.supports('clip-path', 'inset(0 50% 0 0)'))) {\n        return null;\n      }",
         replace: "",
+      },
+      {
+        // v35: the tag's ns gate dropped — the merchant's "hide study
+        // names" switch would stop working (R34's ns case).
+        name: "m44-study-tag-ns-gate-dropped",
+        find: "    if (!item.st || (o && o.ns)) return null;",
+        replace: "    if (!item.st) return null;",
+      },
+      {
+        // v35: the hide rule's lab gate dropped — ht would strip CUSTOMER
+        // testimonials too (R36's customer case).
+        name: "m45-hide-quote-lab-gate-dropped",
+        find: "    return !!(o && o.ht && item.lab);",
+        replace: "    return !!(o && o.ht);",
+      },
+      {
+        // v35: the item map's lab gate dropped — a drifted customer study
+        // column would flaunt a study tag (R34's belt case).
+        name: "m46-st-lab-gate-dropped",
+        find: "        st: lab && typeof it.study === 'string' && /\\S/.test(it.study) ? it.study : ''",
+        replace: "        st: typeof it.study === 'string' && /\\S/.test(it.study) ? it.study : ''",
+      },
+      {
+        // v35: the overflow probe dropped — every short quote would grow
+        // a pointless expander (R35's unmeasurable case).
+        name: "m47-quote-sync-unconditional",
+        find: "    if (resultsQuoteClamped(q)) btn.removeAttribute('hidden');",
+        replace: "    btn.removeAttribute('hidden');",
+      },
+      {
+        // v35: the grid modifier always on — every store would snap back
+        // to the tall 4-column desktop grid (R37 + R30's root pin).
+        name: "m48-grid-class-always",
+        find: "(o.gr ? ' cx-results--grid' : '')",
+        replace: "' cx-results--grid'",
+      },
+      {
+        // v35: the lightbox's hide rule dropped — a hidden card quote
+        // would resurface on zoom (R36's lightbox case).
+        name: "m49-ht-lightbox-dropped",
+        find: "    var hideQuote = resultsHideQuote(item, o);\n    var foot = null;\n    if (!hideQuote && (item.text || item.an)) {",
+        replace: "    var hideQuote = false;\n    var foot = null;\n    if (!hideQuote && (item.text || item.an)) {",
       },
     ],
   });

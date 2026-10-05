@@ -173,6 +173,16 @@ root modifier is ever added for v33 — both features are card-level).
   format/source switch would otherwise silently delete the entry's only
   image and the row would vanish from the storefront — image-less rows
   never serve); a caution line explains the way out.
+- v33.1 (2026-09-25, merchant catch in the field): the Photo format
+  ChoiceList is ALWAYS rendered — v33 gated the whole control on
+  `isLab`, but Source sits BELOW the image fields and defaults to
+  Customer, so the Add form opened on the two separate upload areas with
+  no path to the combined option (the v8.6b hidden-control class). The
+  combined choice now carries `disabled: !isLab` plus help text pointing
+  at Source; `selected` shows the EFFECTIVE mode (`combinedMode`), so a
+  customer entry always displays "pair" while the hidden `imageMode`
+  state keeps the v25 flip-back convention. Admin-only: one TSX file,
+  no schema/proxy/storefront change.
 - Shop-wide: a "Clinical display" card (own displayFetcher, the v8.11b
   isolation rule) — the design ChoiceList (Classic | Clinical study) and
   the slider Checkbox, both posting `save_settings` patches; help text

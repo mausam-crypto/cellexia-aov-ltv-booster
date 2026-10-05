@@ -221,6 +221,10 @@ export interface ResultInput {
   markUnretouched: boolean;
   attributionName: string;
   attributionRole: string;
+  /** v35: the clinical study this entry belongs to (lab entries only —
+   *  silently cleared for customer entries, the measurements pattern).
+   *  Shown as a small storefront tag and the "mix" order's grouping key. */
+  study: string;
   productGids: string[];
   featured: boolean;
   status: string;
@@ -276,6 +280,9 @@ const MULTI_LINE_MAX = 5000;
 const URL_MAX = 512;
 export const MAX_PRODUCT_TAGS = 20;
 const MAX_DURATION_WEEKS = 520;
+/** v35: study-name cap — PRESET_NAME_MAX's twin (a study tag usually IS a
+ *  preset name; keep the two caps identical). */
+export const RESULT_STUDY_MAX = 80;
 
 const PRODUCT_GID_PATTERN = /^gid:\/\/shopify\/Product\/\d+$/;
 const HTTPS_URL_PATTERN = /^https:\/\/[^\s"'<>\\]+$/;
@@ -852,12 +859,39 @@ export async function saveEndorsement(
   }
 }
 
-export async function saveResult(
-  shop: string,
-  input: ResultInput,
-  id?: string | null,
-): Promise<ProofWriteResult> {
-  assertProofModels();
+/** Everything saveResult stores for one row (minus shop/sortWeight — the
+ *  create path adds those). v35 extracts the cleaning from saveResult so
+ *  saveResultBatch runs each batch row through the IDENTICAL rules —
+ *  a batch can never smuggle an entry past the lab gates. */
+interface CleanResultData {
+  source: string;
+  verified: boolean;
+  beforeUrl: string | null;
+  afterUrl: string | null;
+  combinedUrl: string | null;
+  ageRange: string | null;
+  skinType: string | null;
+  concern: string | null;
+  durationWeeks: number | null;
+  country: string | null;
+  testimonial: string | null;
+  videoUrl: string | null;
+  measurements: string;
+  markInstrument: boolean;
+  markSamePatient: boolean;
+  markUnretouched: boolean;
+  attributionName: string | null;
+  attributionRole: string | null;
+  study: string | null;
+  productGids: string;
+  featured: boolean;
+  status: string;
+}
+
+function cleanResultInput(input: ResultInput): {
+  errors: string[];
+  data: CleanResultData;
+} {
   const errors: string[] = [];
   const source = cleanEnum(input.source, RESULT_SOURCES, "customer");
   const isLab = source === "lab";
@@ -912,9 +946,11 @@ export async function saveResult(
   }
   const attributionName = cleanText(input.attributionName, 80);
   const attributionRole = cleanText(input.attributionRole, 120);
-  if (errors.length > 0) return { ok: false, id: id ?? null, errors };
+  // v35: the study name is a LAB-ONLY study constant (the measurements
+  // clearing pattern) — flipping an entry to customer drops its study tag.
+  const study = isLab ? cleanText(input.study, RESULT_STUDY_MAX) : "";
 
-  const data = {
+  const data: CleanResultData = {
     source,
     verified: Boolean(input.verified),
     // v33: combined wins — a row never carries both photo layouts, so the
@@ -935,10 +971,22 @@ export async function saveResult(
     markUnretouched: isLab && input.markUnretouched === true,
     attributionName: attributionName === "" ? null : attributionName,
     attributionRole: attributionRole === "" ? null : attributionRole,
+    study: study === "" ? null : study,
     productGids,
     featured: Boolean(input.featured),
     status,
   };
+  return { errors, data };
+}
+
+export async function saveResult(
+  shop: string,
+  input: ResultInput,
+  id?: string | null,
+): Promise<ProofWriteResult> {
+  assertProofModels();
+  const { errors, data } = cleanResultInput(input);
+  if (errors.length > 0) return { ok: false, id: id ?? null, errors };
   try {
     if (id) {
       const existing = await prisma.customerResult.findFirst({
@@ -963,6 +1011,478 @@ export async function saveResult(
       errors: [error instanceof Error ? error.message : "Could not save entry"],
     };
   }
+}
+
+// ---------------------------------------------------------------------------
+// v34: study presets — admin-only batch-entry templates for LAB results
+// ---------------------------------------------------------------------------
+//
+// A preset stores one study's constants (quote, attribution, duration,
+// measurement rows WITHOUT their percents, the three trust marks). Applying
+// it in the Add form leaves exactly the photos and the numbers to fill in.
+// Presets never reach the storefront: the entry built from one still goes
+// through saveResult's full validation (percents required, lab gates, the
+// works), so a preset can never smuggle an invalid entry past the rules.
+
+export const MAX_RESULT_PRESETS = 50;
+export const PRESET_NAME_MAX = 80;
+
+export interface ResultPresetMeasurement {
+  label: string;
+  dir: "down" | "up";
+  info?: string;
+}
+
+export interface ResultPresetFields {
+  testimonial: string;
+  attributionName: string;
+  attributionRole: string;
+  durationWeeks: number | null;
+  measurements: ResultPresetMeasurement[];
+  markInstrument: boolean;
+  markSamePatient: boolean;
+  markUnretouched: boolean;
+}
+
+export interface ResultPresetInput {
+  name: string;
+  testimonial: string;
+  attributionName: string;
+  attributionRole: string;
+  durationWeeks: number | null;
+  /** Rows as {label, dir, info?} — a sent pct is DELIBERATELY dropped: the
+   *  percent is the per-entry number, never a study constant. */
+  measurements: unknown;
+  markInstrument: boolean;
+  markSamePatient: boolean;
+  markUnretouched: boolean;
+}
+
+export interface ResultPresetRow {
+  id: string;
+  name: string;
+  fields: ResultPresetFields;
+}
+
+function assertPresetModel(): void {
+  if (!(prisma as unknown as Record<string, unknown>).resultPreset) {
+    throw new Error(
+      "The server is running a Prisma Client generated BEFORE the v34 schema — missing model resultPreset. " +
+        "Fix: rebuild with this version's scripts (the build regenerates the client from the right schema), then run " +
+        "`npx prisma db push --schema prisma/schema.postgres.prisma` against the production database and restart.",
+    );
+  }
+}
+
+/** Strict save-time cleaner (the cleanMeasurements discipline, minus the
+ *  percent): every problem is a reported error, nothing silently dropped. */
+function cleanPresetMeasurements(
+  value: unknown,
+  errors: string[],
+): ResultPresetMeasurement[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    errors.push("Preset measurements must be a list");
+    return [];
+  }
+  if (value.length > MAX_RESULT_MEASUREMENTS) {
+    errors.push(`No more than ${MAX_RESULT_MEASUREMENTS} clinical measurements`);
+    return [];
+  }
+  const out: ResultPresetMeasurement[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const nth = `Measurement ${i + 1}`;
+    if (typeof value[i] !== "object" || value[i] === null) {
+      errors.push(`${nth} is malformed`);
+      continue;
+    }
+    const row = value[i] as Record<string, unknown>;
+    const label = cleanText(row.label, MEASUREMENT_LABEL_MAX);
+    if (label === "") errors.push(`${nth} needs a label`);
+    const dir = row.dir;
+    if (dir !== "down" && dir !== "up") {
+      errors.push(`${nth} needs a direction (down or up)`);
+    }
+    if (label === "" || (dir !== "down" && dir !== "up")) continue;
+    const info = cleanText(row.info, MEASUREMENT_INFO_MAX);
+    out.push(info === "" ? { label, dir } : { label, dir, info });
+  }
+  return out;
+}
+
+/** Tolerant read-time parse (the parseResultMeasurements discipline):
+ *  corrupt or drifted payloads degrade to empty fields, never throw. */
+export function parseResultPresetFields(raw: string | null): ResultPresetFields {
+  const empty: ResultPresetFields = {
+    testimonial: "",
+    attributionName: "",
+    attributionRole: "",
+    durationWeeks: null,
+    measurements: [],
+    markInstrument: false,
+    markSamePatient: false,
+    markUnretouched: false,
+  };
+  if (typeof raw !== "string" || raw === "") return empty;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return empty;
+    const rec = parsed as Record<string, unknown>;
+    const measurements: ResultPresetMeasurement[] = [];
+    if (Array.isArray(rec.measurements)) {
+      for (const entry of rec.measurements) {
+        if (measurements.length >= MAX_RESULT_MEASUREMENTS) break;
+        if (typeof entry !== "object" || entry === null) continue;
+        const row = entry as Record<string, unknown>;
+        const label = cleanText(row.label, MEASUREMENT_LABEL_MAX);
+        const dir = row.dir === "down" || row.dir === "up" ? row.dir : null;
+        if (label === "" || !dir) continue;
+        const info = cleanText(row.info, MEASUREMENT_INFO_MAX);
+        measurements.push(info === "" ? { label, dir } : { label, dir, info });
+      }
+    }
+    const weeks = rec.durationWeeks;
+    return {
+      testimonial: cleanText(rec.testimonial, MULTI_LINE_MAX),
+      attributionName: cleanText(rec.attributionName, 80),
+      attributionRole: cleanText(rec.attributionRole, 120),
+      durationWeeks:
+        typeof weeks === "number" &&
+        Number.isInteger(weeks) &&
+        weeks >= 0 &&
+        weeks <= MAX_DURATION_WEEKS
+          ? weeks
+          : null,
+      measurements,
+      markInstrument: rec.markInstrument === true,
+      markSamePatient: rec.markSamePatient === true,
+      markUnretouched: rec.markUnretouched === true,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export async function listResultPresets(shop: string): Promise<ResultPresetRow[]> {
+  assertPresetModel();
+  const rows = await prisma.resultPreset.findMany({
+    where: { shop },
+    orderBy: { name: "asc" },
+    take: MAX_RESULT_PRESETS,
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    fields: parseResultPresetFields(row.payload),
+  }));
+}
+
+/** Create, or UPDATE the same-name preset in place — re-saving "Study X"
+ *  from a tweaked entry refreshes it instead of piling up duplicates. */
+export async function saveResultPreset(
+  shop: string,
+  input: ResultPresetInput,
+): Promise<ProofWriteResult> {
+  assertPresetModel();
+  const errors: string[] = [];
+  const name = cleanText(input.name, PRESET_NAME_MAX);
+  if (name === "") errors.push("Preset name is required");
+  const testimonial = cleanText(input.testimonial, MULTI_LINE_MAX);
+  const attributionName = cleanText(input.attributionName, 80);
+  const attributionRole = cleanText(input.attributionRole, 120);
+  let durationWeeks: number | null = null;
+  if (input.durationWeeks !== null && input.durationWeeks !== undefined) {
+    if (
+      !Number.isInteger(input.durationWeeks) ||
+      input.durationWeeks < 0 ||
+      input.durationWeeks > MAX_DURATION_WEEKS
+    ) {
+      errors.push(`Duration must be 0–${MAX_DURATION_WEEKS} weeks`);
+    } else {
+      durationWeeks = input.durationWeeks;
+    }
+  }
+  const measurements = cleanPresetMeasurements(input.measurements, errors);
+  if (errors.length > 0) return { ok: false, id: null, errors };
+  const payload = JSON.stringify({
+    testimonial,
+    attributionName,
+    attributionRole,
+    durationWeeks,
+    measurements,
+    markInstrument: input.markInstrument === true,
+    markSamePatient: input.markSamePatient === true,
+    markUnretouched: input.markUnretouched === true,
+  });
+  try {
+    const existing = await prisma.resultPreset.findFirst({
+      where: { shop, name },
+    });
+    if (existing) {
+      await prisma.resultPreset.update({
+        where: { id: existing.id },
+        data: { payload },
+      });
+      return { ok: true, id: existing.id, errors: [] };
+    }
+    const count = await prisma.resultPreset.count({ where: { shop } });
+    if (count >= MAX_RESULT_PRESETS) {
+      return {
+        ok: false,
+        id: null,
+        errors: [
+          `No more than ${MAX_RESULT_PRESETS} study presets — delete one first`,
+        ],
+      };
+    }
+    try {
+      const created = await prisma.resultPreset.create({
+        data: { shop, name, payload },
+      });
+      return { ok: true, id: created.id, errors: [] };
+    } catch (createError) {
+      // A concurrent same-name save won the race on the (shop, name)
+      // unique key — settle this one as the update it was meant to be.
+      const raced = await prisma.resultPreset.findFirst({
+        where: { shop, name },
+      });
+      if (raced) {
+        await prisma.resultPreset.update({
+          where: { id: raced.id },
+          data: { payload },
+        });
+        return { ok: true, id: raced.id, errors: [] };
+      }
+      throw createError;
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      id: null,
+      errors: [error instanceof Error ? error.message : "Could not save preset"],
+    };
+  }
+}
+
+export async function deleteResultPreset(
+  shop: string,
+  id: string,
+): Promise<ProofWriteResult> {
+  assertPresetModel();
+  try {
+    const existing = await prisma.resultPreset.findFirst({ where: { id, shop } });
+    if (!existing) return { ok: false, id, errors: ["Preset not found"] };
+    await prisma.resultPreset.delete({ where: { id: existing.id } });
+    return { ok: true, id, errors: [] };
+  } catch (error) {
+    return {
+      ok: false,
+      id,
+      errors: [error instanceof Error ? error.message : "Could not delete preset"],
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// v35: study batches — dozens of before/afters from ONE study in one save
+// ---------------------------------------------------------------------------
+//
+// One batch = one clinical study for one product set: the study constants
+// (name, quote, attribution, duration, measurement definitions WITHOUT
+// percents, trust marks — the v34 preset shape) are entered once, then each
+// row carries only its photos and its percents. Every row is expanded into
+// a full ResultInput and runs through cleanResultInput — the SAME rules as
+// a single save (lab gates, combined-wins, the one-decimal percent rule),
+// so a batch can never smuggle an invalid entry. Validation is
+// all-or-nothing: one bad row refuses the whole batch with row-numbered
+// errors, because a silently partial import is exactly the inaccuracy the
+// feature exists to prevent.
+
+export const MAX_RESULT_BATCH_ROWS = 100;
+/** Row-numbered validation messages are capped so a systematic mistake
+ *  (say, every percent blank) stays readable in the admin banner. */
+const BATCH_ERROR_CAP = 12;
+
+export interface ResultBatchRowInput {
+  beforeUrl: string;
+  afterUrl: string;
+  combinedUrl: string;
+  /** One percent per study measurement, aligned with the batch's
+   *  measurement definitions by index. */
+  pcts: unknown[];
+  ageRange: string;
+  skinType: string;
+}
+
+export interface ResultBatchInput {
+  /** Study name — required; becomes every row's study tag (and the
+   *  preset name when savePreset is on). */
+  study: string;
+  testimonial: string;
+  attributionName: string;
+  attributionRole: string;
+  durationWeeks: number | null;
+  /** Measurement DEFINITIONS as {label, dir, info?} — pct-free (the v34
+   *  preset rule: percents are the per-row numbers). */
+  measurements: unknown;
+  markInstrument: boolean;
+  markSamePatient: boolean;
+  markUnretouched: boolean;
+  verified: boolean;
+  country: string;
+  concern: string;
+  productGids: string[];
+  status: string;
+  /** Also upsert these study constants as a ResultPreset named after the
+   *  study (non-fatal: a preset problem never fails saved rows). */
+  savePreset: boolean;
+  rows: ResultBatchRowInput[];
+}
+
+export interface ResultBatchResult {
+  ok: boolean;
+  created: number;
+  total: number;
+  presetSaved: boolean;
+  errors: string[];
+}
+
+function capBatchErrors(errors: string[]): string[] {
+  if (errors.length <= BATCH_ERROR_CAP) return errors;
+  const extra = errors.length - BATCH_ERROR_CAP;
+  return [
+    ...errors.slice(0, BATCH_ERROR_CAP),
+    `…and ${extra} more problem${extra === 1 ? "" : "s"}`,
+  ];
+}
+
+export async function saveResultBatch(
+  shop: string,
+  input: ResultBatchInput,
+): Promise<ResultBatchResult> {
+  assertProofModels();
+  const errors: string[] = [];
+  const study = cleanText(input.study, RESULT_STUDY_MAX);
+  if (study === "") errors.push("Study name is required");
+  const defs = cleanPresetMeasurements(input.measurements, errors);
+  const rows = Array.isArray(input.rows) ? input.rows : [];
+  if (rows.length === 0) errors.push("Add at least one before/after row");
+  if (rows.length > MAX_RESULT_BATCH_ROWS) {
+    errors.push(`No more than ${MAX_RESULT_BATCH_ROWS} rows per batch`);
+  }
+  const total = rows.length;
+  if (errors.length > 0) {
+    return { ok: false, created: 0, total, presetSaved: false, errors };
+  }
+
+  // Expand + validate EVERY row before anything is written.
+  const cleaned: CleanResultData[] = [];
+  rows.forEach((row, index) => {
+    const pcts = Array.isArray(row?.pcts) ? row.pcts : [];
+    const rowInput: ResultInput = {
+      source: "lab",
+      verified: input.verified === true,
+      beforeUrl: typeof row?.beforeUrl === "string" ? row.beforeUrl : "",
+      afterUrl: typeof row?.afterUrl === "string" ? row.afterUrl : "",
+      combinedUrl: typeof row?.combinedUrl === "string" ? row.combinedUrl : "",
+      ageRange: typeof row?.ageRange === "string" ? row.ageRange : "",
+      skinType: typeof row?.skinType === "string" ? row.skinType : "",
+      concern: input.concern,
+      durationWeeks: input.durationWeeks,
+      country: input.country,
+      testimonial: input.testimonial,
+      videoUrl: "",
+      measurements: defs.map((def, i) => ({
+        label: def.label,
+        dir: def.dir,
+        info: def.info,
+        pct: pcts[i],
+      })),
+      markInstrument: input.markInstrument === true,
+      markSamePatient: input.markSamePatient === true,
+      markUnretouched: input.markUnretouched === true,
+      attributionName: input.attributionName,
+      attributionRole: input.attributionRole,
+      study,
+      productGids: input.productGids,
+      featured: false,
+      status: input.status,
+    };
+    const { errors: rowErrors, data } = cleanResultInput(rowInput);
+    // Batch rule on top of the shared validation: every row must carry its
+    // photo(s) — the study quote alone would pass the content-presence rule
+    // but an image-less row never serves, and a batch exists for photos.
+    if (data.combinedUrl === null && (data.beforeUrl === null || data.afterUrl === null)) {
+      rowErrors.push("needs both a before and an after photo (or one combined photo)");
+    }
+    for (const message of rowErrors) {
+      errors.push(`Row ${index + 1}: ${message}`);
+    }
+    cleaned.push(data);
+  });
+  if (errors.length > 0) {
+    return {
+      ok: false,
+      created: 0,
+      total,
+      presetSaved: false,
+      errors: capBatchErrors(errors),
+    };
+  }
+
+  // All rows valid — write them in order (one sortWeight run, so the batch
+  // keeps its on-screen order in the curated sequence).
+  let created = 0;
+  try {
+    const base = await nextSortWeight("results", shop);
+    for (let i = 0; i < cleaned.length; i++) {
+      await prisma.customerResult.create({
+        data: { ...cleaned[i], shop, sortWeight: base + i },
+      });
+      created += 1;
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      created,
+      total,
+      presetSaved: false,
+      errors: [
+        error instanceof Error ? error.message : "Could not save the batch",
+        `Saved ${created} of ${total} rows before the failure — they are in the list below`,
+      ],
+    };
+  }
+
+  // Preset upsert is a convenience on top of a SUCCESSFUL batch — report a
+  // problem, never fail the saved rows over it.
+  let presetSaved = false;
+  if (input.savePreset === true) {
+    try {
+      const preset = await saveResultPreset(shop, {
+        name: study,
+        testimonial: input.testimonial,
+        attributionName: input.attributionName,
+        attributionRole: input.attributionRole,
+        durationWeeks: input.durationWeeks,
+        measurements: defs,
+        markInstrument: input.markInstrument === true,
+        markSamePatient: input.markSamePatient === true,
+        markUnretouched: input.markUnretouched === true,
+      });
+      presetSaved = preset.ok;
+      if (!preset.ok) {
+        errors.push(
+          `Results saved, but the study preset could not be saved: ${preset.errors[0] ?? "unknown error"}`,
+        );
+      }
+    } catch (error) {
+      errors.push(
+        `Results saved, but the study preset could not be saved: ${error instanceof Error ? error.message : "unknown error"}`,
+      );
+    }
+  }
+  return { ok: true, created, total, presetSaved, errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -1186,6 +1706,10 @@ export interface PublicResult {
   markUnretouched: boolean;
   attributionName: string | null;
   attributionRole: string | null;
+  /** v35 — the study tag. Lab rows only: a customer row ALWAYS serves
+   *  null, whatever the column holds (belt over the save-time clearing).
+   *  A proper noun — never translated, rendered via textContent only. */
+  study: string | null;
 }
 
 export interface FacetCount {
@@ -1242,6 +1766,93 @@ function prioritiseForProduct<T extends TaggableRow>(
     // tagged for other products only -> excluded
   }
   return [...tagged, ...brand];
+}
+
+// ---------------------------------------------------------------------------
+// v35: results gallery serve order (beforeAfter.galleryOrder, LIVE setting)
+// ---------------------------------------------------------------------------
+
+/** Twin of settings.server.ts RESULTS_GALLERY_ORDERS — getPublicResults
+ *  coerces anything else to "curated" (the pre-v35 behaviour), so a junk
+ *  or missing setting can never scramble the gallery. */
+export const RESULTS_GALLERY_ORDERS = ["mix", "curated", "newest"] as const;
+export type ResultsGalleryOrder = (typeof RESULTS_GALLERY_ORDERS)[number];
+
+interface OrderableResultRow extends TaggableRow {
+  source: string;
+  study: string | null;
+  createdAt: Date;
+}
+
+/**
+ * "mix": round-robin across study batches — the first visible card from
+ * EVERY study (then every second, and so on), so shoppers see the breadth
+ * of results instead of one study's block after another. Grouping key is
+ * the lab row's study name; every study-less row shares ONE catch-all
+ * group (each would otherwise count as its own "study" and flood round
+ * one). Group sequence = first appearance in the curated order, so a
+ * featured entry still pulls its study to the front; rows inside a group
+ * keep their curated order. With one group (today's data) the output is
+ * byte-identical to curated.
+ */
+function interleaveByStudy<T extends OrderableResultRow>(rows: T[]): T[] {
+  const sequence: string[] = [];
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const key = row.source === "lab" && row.study ? `s:${row.study}` : "";
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else {
+      groups.set(key, [row]);
+      sequence.push(key);
+    }
+  }
+  if (sequence.length <= 1) return rows;
+  let longest = 0;
+  for (const group of groups.values()) {
+    if (group.length > longest) longest = group.length;
+  }
+  const out: T[] = [];
+  for (let round = 0; round < longest; round++) {
+    for (const key of sequence) {
+      const group = groups.get(key) as T[];
+      if (round < group.length) out.push(group[round]);
+    }
+  }
+  return out;
+}
+
+/** Stable (ties keep curated order), non-mutating. */
+function sortNewestFirst<T extends OrderableResultRow>(rows: T[]): T[] {
+  return [...rows].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
+}
+
+/**
+ * Applies the merchant's gallery order to the FILTERED serve sequence,
+ * inside each product band (the product-first contract from spec §2 is
+ * untouchable: reordering happens within "tagged for this product" and
+ * within "brand-level", never across). Rows here already passed
+ * prioritiseForProduct, so with a product every tagged row is tagged for
+ * THAT product. "curated" returns the sequence untouched (pre-v35).
+ */
+function applyGalleryOrder<T extends OrderableResultRow>(
+  rows: T[],
+  order: ResultsGalleryOrder,
+  productGid: string | null,
+): T[] {
+  if (order !== "mix" && order !== "newest") return rows;
+  const reorder = (band: T[]): T[] =>
+    order === "newest" ? sortNewestFirst(band) : interleaveByStudy(band);
+  if (!productGid) return reorder(rows);
+  const tagged: T[] = [];
+  const brand: T[] = [];
+  for (const row of rows) {
+    if (parseProductGids(row.productGids).length === 0) brand.push(row);
+    else tagged.push(row);
+  }
+  return [...reorder(tagged), ...reorder(brand)];
 }
 
 export async function getPublicPress(
@@ -1346,6 +1957,10 @@ export async function getPublicResults(
   filters: PublicResultsFilters,
   page: number,
   per: number,
+  /** v35 — beforeAfter.galleryOrder, passed on EVERY page request (the
+   *  serve sequence must agree across Show-more pages); junk coerces to
+   *  "curated". Defaults keep every pre-v35 caller byte-identical. */
+  order: string = "curated",
 ): Promise<{
   total: number;
   verifiedTotal: number;
@@ -1386,12 +2001,19 @@ export async function getPublicResults(
   };
   const verifiedTotal = scoped.filter((row) => row.verified).length;
   const filtered = scoped.filter((row) => matchesResultFilters(row, filters));
+  // v35: the merchant's gallery order, applied to the filtered sequence
+  // before pagination (facets/verifiedTotal above stay order-blind).
+  const served = applyGalleryOrder(
+    filtered,
+    cleanEnum(order, RESULTS_GALLERY_ORDERS, "curated") as ResultsGalleryOrder,
+    productGid,
+  );
   const start = (page - 1) * per;
   return {
     // Rows matching the current filters (no filters = the full scoped set).
-    total: filtered.length,
+    total: served.length,
     verifiedTotal,
-    items: filtered.slice(start, start + per).map((row) => {
+    items: served.slice(start, start + per).map((row) => {
       const lab = row.source === "lab";
       return {
         id: row.id,
@@ -1413,6 +2035,7 @@ export async function getPublicResults(
         markUnretouched: lab && row.markUnretouched === true,
         attributionName: row.attributionName,
         attributionRole: row.attributionRole,
+        study: lab ? row.study : null,
       };
     }),
     facets,

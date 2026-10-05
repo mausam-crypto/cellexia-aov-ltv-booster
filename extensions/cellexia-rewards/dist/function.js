@@ -1,4 +1,4 @@
-// ../../node_modules/@shopify/shopify_function/run.ts
+// node_modules/@shopify/shopify_function/run.ts
 function run_default(userfunction) {
   try {
     ShopifyFunction;
@@ -12,7 +12,7 @@ function run_default(userfunction) {
   ShopifyFunction.writeOutput(output_obj);
 }
 
-// src/logic.js
+// extensions/cellexia-rewards/src/logic.js
 var SHOP_CURRENCY = "EUR";
 var CLASS_PRODUCT = "PRODUCT";
 var CLASS_SHIPPING = "SHIPPING";
@@ -326,7 +326,7 @@ function deliveryOperations(input) {
   return computeShipping(cfg, input);
 }
 
-// src/cart_lines_discounts_generate_run.js
+// extensions/cellexia-rewards/src/cart_lines_discounts_generate_run.js
 function cartLinesDiscountsGenerateRun(input) {
   try {
     return { operations: cartLinesOperations(input) };
@@ -335,7 +335,7 @@ function cartLinesDiscountsGenerateRun(input) {
   }
 }
 
-// src/cart_delivery_options_discounts_generate_run.js
+// extensions/cellexia-rewards/src/cart_delivery_options_discounts_generate_run.js
 function cartDeliveryOptionsDiscountsGenerateRun(input) {
   try {
     return { operations: deliveryOperations(input) };

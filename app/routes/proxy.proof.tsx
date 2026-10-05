@@ -239,7 +239,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         if ((DURATION_BUCKETS as readonly string[]).includes(duration)) {
           filters.duration = duration;
         }
-        const payload = await getPublicResults(shop, product, filters, page, per);
+        // v35: the display settings are read on EVERY results request now
+        // — the gallery ORDER must agree across Show-more pages, so it can
+        // no longer hide behind the page-1 guard the way the ui flags do.
+        // Own try/catch: a settings failure serves the pre-v35 curated
+        // order and no ui member (the classic gallery), never a 500.
+        let display: Awaited<
+          ReturnType<typeof getSettings>
+        >["beforeAfter"] | null = null;
+        try {
+          display = (await getSettings(shop)).beforeAfter;
+        } catch {
+          display = null;
+        }
+        const payload = await getPublicResults(
+          shop,
+          product,
+          filters,
+          page,
+          per,
+          display?.galleryOrder ?? "curated",
+        );
         const locale = normalizeLocaleParam(url.searchParams.get("locale"));
         if (locale && payload.items.length > 0) {
           try {
@@ -292,22 +312,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         } catch {
           // chrome copy is an enhancement — the gallery itself still serves
         }
-        // v33: the two results display options (clinical-study design +
-        // compare slider) ride the payload as `ui` — the Liquid island sits
-        // against the byte budget, and the widget reads flags only from the
-        // FIRST (page 1) response, so refetches skip the settings read (the
-        // endorsements page-1 precedent). Own try/catch: a settings failure
-        // serves the classic gallery, never a 500.
-        if (page === 1) {
-          try {
-            const ba = (await getSettings(shop)).beforeAfter;
-            const ui: Record<string, number> = {};
-            if (ba.labDesign === "study") ui.cs = 1;
-            if (ba.slider === true) ui.sl = 1;
-            (payload as Record<string, unknown>).ui = ui;
-          } catch {
-            // display flags are an enhancement — the gallery itself serves
-          }
+        // v33/v35: the results display options ride the payload as `ui` —
+        // the Liquid island sits against the byte budget, and the widget
+        // reads flags only from the FIRST (page 1) response, so paged
+        // refetches reuse them (the endorsements page-1 precedent). The
+        // settings were already read above (order); a failed read serves
+        // no ui member — the classic gallery. v35 adds gr (desktop grid
+        // back on), ns (study tags off) and ht (lab testimonials hidden);
+        // every flag is emitted only when it departs from the default, and
+        // the widget fails closed on absence (old servers = defaults).
+        if (page === 1 && display) {
+          const ui: Record<string, number> = {};
+          if (display.labDesign === "study") ui.cs = 1;
+          if (display.slider === true) ui.sl = 1;
+          if (display.desktopLayout === "grid") ui.gr = 1;
+          if (display.showStudy === false) ui.ns = 1;
+          if (display.hideLabQuotes === true) ui.ht = 1;
+          (payload as Record<string, unknown>).ui = ui;
         }
         return jsonResponse(payload, true);
       }

@@ -583,6 +583,16 @@ wins" exclusivity) and four new proxy chrome codes (aw/dr/iv/zm, 18
 locales). Zero Liquid bytes, zero locale bytes; both options ship OFF.
 Full contract: `docs/SPEC-v33-results-slider.md`.
 
+## v34 study presets (results gallery batch entry)
+
+`ResultPreset` table (shop/name/payload JSON) + admin-only workflow on
+/app/proof/results: "Save as study preset" inside a lab entry's form
+stores the study constants (quote, attribution, weeks, measurement rows
+WITHOUT percents, trust marks); the Add form's "Start from a study
+preset" picker applies them so only the photos and numbers remain.
+Same-name upsert, cap 50, shop-scoped, zero storefront surface. Full
+contract: `docs/SPEC-v34-result-presets.md`.
+
 ## v20 image badges on mobile
 
 `image_badges` — the SIZE of the award/certification badges the THEME lays

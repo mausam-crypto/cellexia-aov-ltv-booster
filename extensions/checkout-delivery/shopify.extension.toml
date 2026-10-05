@@ -1,4 +1,4 @@
-api_version = "2025-07"
+api_version = "2026-04"
 
 [[extensions]]
 name = "Cellexia delivery"
@@ -10,15 +10,17 @@ description = "Delivery estimate + delivery guarantee (v6.0) rendered under the 
   # Static placement directly under the shipping-method section — the
   # "under the shipping section" placement the merchant asked for.
   [[extensions.targeting]]
-  module = "./src/Checkout.tsx"
+  module = "./src/ShippingOptionListRenderAfter.tsx"
   target = "purchase.checkout.shipping-option-list.render-after"
 
   # Alternative merchant-positioned block placement (drag anywhere in the
-  # checkout editor). Same module/UI — the merchant chooses either placement.
-  # NOTE: the module must also register this target via a second
-  # reactExtension('purchase.checkout.block.render', ...) call.
+  # checkout editor). Same shared UI (./src/Extension.tsx) — the merchant
+  # chooses either placement. Split into its own entry module — same reason
+  # as checkout-trust's BlockRender.tsx/ActionsRenderBefore.tsx split: the
+  # web-components architecture has no documented way for one module to
+  # export render functions for two different targets.
   [[extensions.targeting]]
-  module = "./src/Checkout.tsx"
+  module = "./src/BlockRender.tsx"
   target = "purchase.checkout.block.render"
 
   [extensions.capabilities]
