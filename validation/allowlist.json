@@ -293,8 +293,18 @@
   },
   {
    "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
-   "reason": "v32 volume pricing: qselApi gains paint (qselPaint exposure), qsyncSplit gains the vd arm (one 1-unit line at quantity n, cents = round(n x p3 / K) — the function logic.js twin), qsyncApply relays the MECHANICAL 1-unit selection past the catalog while painting the TOP card, the ATC capture steps aside in vd mode, and qsyncState carries the island's vd verdict. Pinned by sims/quantity-sync.cjs S17/S18 + mutants m15-m18 and sims/volume-function.mjs F8 (the rounding twin).",
+   "reason": "v32 volume pricing: qselApi gains paint (qselPaint exposure), qsyncSplit gains the vd arm (one 1-unit line at quantity n, cents = round(n x p3 / K) — the function logic.js twin), qsyncApply relays the MECHANICAL 1-unit selection past the catalog while painting the TOP card, the ATC capture steps aside in vd mode, and qsyncState carries the island's vd verdict. v32.2: vd:0 (volume wanted, unverified) caps the stepper at the top tier via st.vw — the merchant rejected the composed 3+1 fallback. Pinned by sims/quantity-sync.cjs S17/S18/S19 + mutants m15-m19 and sims/volume-function.mjs F8 (the rounding twin).",
    "wave": "v32"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+   "reason": "v33 results gallery (docs/SPEC-v33-results-slider.md): resultsValidItems gains the lab-belted combined member c (pfHttps-gated, gate widened to before||after||combined); NEW builders resultsUiFlags (strict ===1 payload.ui reads, fail closed), resultsAfterTag (study week stamp via aw), resultsComboTag/resultsComboFrame (ONE combined figure, joint Before/After tag), resultsSliderPct/resultsSliderSet (pure clamped divider math, inline clip-path, physical geometry), resultsSlider (compare stage for the pair AND the composite halves, pointer/mouse/touch + keyboard, guarded for the mini-DOM), resultsStudyHead/resultsDisclaim (lab-only study band + footnote); resultsBuildCard/Lightbox thread the flags (slider media becomes a div + zoom button owning pfLbOpen and the click beacon; study cards suppress the duplicate lab pill); resultsApplyCopy whitelist grows to ten codes; resultsParams adds the preview-only per-minute pv cache-buster. Pinned by sims/proof-gallery.cjs R25-R32 + mutants m38-m42 and the harness v33 block.",
+   "wave": "v33"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+   "reason": "v35 results gallery (docs/SPEC-v35-results-batches.md): resultsValidItems gains the lab-belted study member st (textContent-only raw merchant data); resultsUiFlags widens to {cs,sl,gr,ns,ht} (same strict ===1 discipline, fail closed for old servers); NEW builders resultsStudyTag (badges-row study chip, ns-gated), resultsHideQuote (ht AND lab — card and lightbox share the one rule), resultsQuoteClamped/resultsQuoteSync/resultsQuoteMore + resultsQuoteRescan/resultsQuoteBind (the testimonial expander: built [hidden] with the island's existing more label as its name, surfaces only on a PROVEN overflow via a rAF-deferred probe that suppresses the decorative ::before quote mark during its two synchronous reads (real-browser catch: the 32px mark alone inflated every one-line quote past its clientHeight) and re-syncs reveal-only on window load + debounced resize (review catch: the theme's web font swaps in after the one-shot probe); chevron rotates, aria-expanded toggles the --open clamp lift; no island label = no unnamed button); resultsBuildCard/Lightbox thread the study chip + the ht rule; resultsBuildSection adds the cx-results--grid root modifier ONLY under ui.gr (the desktop default becomes the one-row rail in CSS); RESULTS_ICON_PATHS gains chev. Zero new locale or copy codes. Pinned by sims/proof-gallery.cjs R25 (widened)/R34-R37 + mutants m44-m49 and the harness v35 block.",
+   "wave": "v35"
   }
  ]
 }

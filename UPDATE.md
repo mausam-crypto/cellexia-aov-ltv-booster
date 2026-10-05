@@ -126,6 +126,16 @@ detection; `db push` creates the empty table, the one-time in-app
 `markInstrument`, `markSamePatient`, `markUnretouched`, `attributionName`,
 `attributionRole` — the same `db push` adds them with safe defaults; existing
 rows are untouched and render exactly as before until you edit them.
+**v33 column (2026-09-23):** `CustomerResult` gains `combinedUrl` (nullable —
+the ONE combined before/after photo for clinical entries). `db push` adds it;
+every existing row keeps its separate before/after pair unchanged.
+**v34 table (2026-09-25):** `ResultPreset` — admin-only study presets for
+batch-entering before/afters (per-study constants as one JSON payload).
+`db push` creates it empty; nothing else is touched.
+**v35 column (2026-10-03):** `CustomerResult` gains `study` (nullable — the
+clinical study a before/after belongs to; shown as a small tag and used to
+mix studies in the gallery). `db push` adds it; existing rows keep NULL and
+render exactly as before until you tag them.
 Earlier additions if you're further behind: `PreviewState` (+ `draftConfig`),
 `TranslationConfig`, `Experiment.startSyncErrors`, `Event.market`,
 `OrderStat.market`, `OrderStat.countryCode` (+ indexes). `db push` adds all of
@@ -235,7 +245,187 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v32 — exact volume pricing at 4+ (app-owned Shopify discount, ships OFF) — what this release changes
+## 3a. v35 — study batches, study mix and gallery display options — what this release changes
+
+Your ask (2026-10-03): the desktop before/after gallery stacks several
+rows and eats vertical space — it should be one row; results from one
+study batch all show together instead of mixing across studies; each
+before/after should carry a small tag naming its study; batches of dozens
+of before/afters from one study should upload in one accurate,
+user-friendly flow; long testimonials are cut off with no way to expand;
+and an off-by-default option should hide testimonials on clinical
+entries. Full spec: `docs/SPEC-v35-results-batches.md`.
+
+### What changed
+
+- **One row on desktop.** The gallery's desktop layout is now the same
+  sideways-scrolling single row phones use (full-size cards, discreet
+  scrollbar). If you ever want the old 4-column grid back, it's one
+  select away: Proof library → Results → Clinical display → "Desktop
+  layout".
+- **Study variety order.** New "Gallery order" option, default **Study
+  variety**: the first cards shoppers see come one from EACH study batch
+  (then the second of each, and so on), so the breadth of your results
+  shows immediately instead of one batch after another. Featured entries
+  still pull their study to the front; "Manual" restores the old curated
+  order and "Newest first" is also available. Until entries carry study
+  names, Study variety behaves exactly like Manual — nothing reshuffles
+  on deploy.
+- **Study name on cards.** Lab entries can carry a study name (filled
+  automatically when you apply a preset — the preset's name IS the
+  study). It renders as a small, quiet tag on the card and in the
+  enlarged view; a toggle on the Clinical display card hides all tags.
+- **Add study batch.** Next to "Add result" there is now **"Add study
+  batch"**: pick a preset (or type the study constants once — name,
+  duration, quote, attribution, measurements, trust marks), choose the
+  photo format, then drop ALL the photos at once — rows are created in
+  filename order (01-before, 01-after, 02-before, …), every thumbnail is
+  visible for checking, each row takes its own percents. One bad row
+  refuses the whole batch with row-numbered messages, so a half-imported
+  study can never slip through. Rows save as Pending by default — review,
+  then one click of "Approve all pending" publishes them. The study
+  settings can save themselves as a preset in the same step.
+- **Testimonial expander.** When a testimonial is longer than the card's
+  3-line clamp, a small chevron appears under it — tap to read the full
+  quote in place (tap again to re-clamp). Short quotes get no button.
+- **Hide testimonials on clinical entries** (off by default): a new
+  Clinical display toggle strips the quote and attribution from lab
+  cards and their enlarged view, so clinical figures stand on the
+  numbers. Customer testimonials are never affected.
+
+### Deploy notes
+
+Both halves as always (§3). The database needs the §2 `db push` for the
+new `study` column BEFORE the server half goes live. Display options are
+LIVE settings served through the cached results feed — a flip can take
+~5 minutes to reach shoppers (your own preview refreshes within about a
+minute). Old storefront bundles simply ignore the new payload members
+during the deploy gap; the new bundle fails closed to the new defaults
+against an old server.
+
+### Liquid budget
+
+TOTAL unchanged at 99,454 / 99,500 — no .liquid file in this wave. Locale
+files untouched (el 15,069 / ar 15,124 against the 15,200 pin): the study
+tag renders your raw study name and the expander reuses the existing
+"Show more" string, so the wave costs zero locale bytes.
+
+## 3b. v34 — study presets for the before/after gallery — what this release changes
+
+Your ask (2026-09-25): you will add lots of before/afters from different
+studies, so a preset should pre-select that an entry is a study and
+pre-fill the dermatologist name, title and quote, the duration (weeks) and
+the measurement types and notes — leaving only the photos and each
+measurement's number to enter. Full spec: `docs/SPEC-v34-result-presets.md`.
+
+### What changed
+
+- **Save a preset from a filled-in entry.** Open (or fill in) any
+  Lab / clinical entry and click **"Save as study preset"** inside the
+  form: name it (e.g. "8-week wrinkle study") and it stores that entry's
+  quote, attribution name + title, duration and measurement rows — WITHOUT
+  their percents — plus the three trust marks. Re-using a name updates
+  that preset.
+- **Start from a preset in Add result.** A **"Start from a study
+  preset"** picker sits at the top of the Add form once presets exist.
+  Picking one sets Source to Lab / clinical and fills the study constants;
+  the measurement rows appear with empty percent fields, and the save
+  button stays disabled until every number is typed. Photos you already
+  added are kept, and photos, product tags, age/skin/concern/country and
+  status always stay per-entry.
+- **Study presets card** on the Results page lists your presets (name,
+  attribution, weeks, row count) with the usual two-click delete; its
+  empty state explains how to mint the first one.
+
+### Deploy notes
+
+Both halves as always (§3), though only the app server actually changes.
+This wave adds a DB TABLE (§2 above: `ResultPreset` — `db push` on
+Postgres, `migrate deploy` on dev SQLite). Nothing on the storefront
+changes at all: presets are an admin workflow tool, and entries created
+from them are ordinary clinical entries.
+
+### Liquid budget
+
+Untouched: 99,454/99,500 total; el.json 15,069 / ar.json 15,124 against
+the 15,200 pin. Zero new storefront strings.
+
+## 3c. v33 — before/after gallery: combined clinical photo, study design, compare slider — what this release changes
+
+Your ask (2026-09-23, with the reference screenshot): clinical before/afters
+can be ONE combined photo instead of a separate pair; an optional design that
+makes clinical entries look even more like a clinical study result; an
+optional drag slider so shoppers compare before and after themselves — and it
+must work on both photo layouts. Full spec: `docs/SPEC-v33-results-slider.md`.
+
+### What changed
+
+- **One combined before/after photo (clinical entries).** In Proof library →
+  Results, a "Lab / clinical" entry now has a **Photo format** choice: the
+  separate pair, or ONE side-by-side composite (before on the LEFT, after on
+  the RIGHT, same framing in both halves). Combined replaces the pair — a
+  row never carries both layouts. The storefront shows it as one full-width
+  figure at its natural aspect with a joint "Before / After" tag (one figure
+  in the lightbox too). Customer-submitted entries keep the separate pair.
+- **Clinical study design (optional, all clinical entries).** The new
+  **Clinical display** card on the Results page has a design choice: Classic
+  (today's card) or **Clinical study** — every lab entry gains an ink
+  "CLINICAL STUDY RESULT" document band, the photo tags become documentary
+  chips with the After tag week-stamped ("After 8 weeks"), and an honest
+  "Individual results may vary." footnote closes the card. Customer entries
+  are never dressed as studies.
+- **Before/after compare slider (optional).** A drag divider over the photos
+  (the reference site's juxtapose control): shoppers drag to reveal before
+  vs after themselves. Works on the separate pair AND on a combined
+  composite (it splits at the middle). Keyboard and screen-reader
+  accessible; a zoom button keeps the detail lightbox reachable; vertical
+  page scrolling on mobile is preserved. Entries with only one photo keep
+  the classic layout.
+
+### v33.1 (2026-09-25, your catch) — the Photo format choice is always visible
+
+In v33 the "Photo format" choice only appeared AFTER you set Source to
+"Lab / clinical" — and Source sits below the image fields, so the Add
+result form opened straight onto the two separate upload areas with no
+hint that a combined photo exists. Now the choice always shows above the
+photos: the combined option is greyed out for customer entries with a
+note telling you to set Source to "Lab / clinical" first (the combined
+figure stays a clinical-entry option, as specced). Nothing else changed —
+if you are on v33, only the app-server half needs the v33.1 redeploy.
+
+### Try it before it goes live
+
+Both options ship OFF and the gallery's master switch is untouched
+(`beforeAfter.enabled`, previewable the usual way). The two new switches are
+LIVE display settings like density/placement: flip them on the Results page
+and preview. They reach the storefront through the results feed, which is
+cached — allow up to ~5 minutes for shoppers to see a flip (your own
+verified preview refreshes within about a minute).
+
+### Deploy notes
+
+Both halves as always (§3). This wave adds a DB column (§2 above:
+`combinedUrl` — `db push` on Postgres, `migrate deploy` on dev SQLite). No
+Liquid file and no locale file changed. One ordering note: create your
+first **combined-photo entries only after BOTH halves are deployed** — a
+combined-only entry served to the previous storefront script is counted
+but not drawn (an empty card slot) until the new script reaches shoppers'
+caches (~minutes).
+
+Also fixed in this ZIP: `package-lock.json` now carries the
+`cellexia-volume` workspace entry that v32 introduced. Without it, a
+fresh `npm ci` (this guide's own deploy step) refused to install
+("Missing: cellexia-volume@0.0.1 from lock file"). If a v32 deploy from
+a fresh checkout hit that error, this ZIP resolves it; existing installs
+are unaffected.
+
+### Liquid budget
+
+Untouched: 99,454/99,500 total; el.json 15,069 / ar.json 15,124 against the
+15,200 pin. The four new storefront strings ride the results feed
+(`results-ui-copy.server.ts`, all 18 languages) — zero locale bytes.
+
+## 3d. v32 — exact volume pricing at 4+ (app-owned Shopify discount, ships OFF) — what this release changes
 
 Your decisions (2026-09-21): match each market's REAL 3-pack per-unit rate,
 computed from your own prices; discount codes may stack; the app creates and
@@ -318,13 +508,40 @@ minute for your country count). If a red banner appears instead, it now
 tells you exactly what to fix. Then re-test a 4-unit cart — the "Volume
 discount" line appears in cart and checkout.
 
+### v32.2 (2026-09-22, after your second test) — "Title must be unique", and the 3+1 cart
+
+Your report nailed both remaining problems:
+
+1. **"Title must be unique" root cause:** the app could not read back its
+   own saved volume config through the Admin API (a Shopify namespace
+   quirk on reads; writes and checkout reads were fine). So every sync
+   believed it was the first one and tried to CREATE the discount again,
+   colliding with the one it made the day before. Fixed twice over: the
+   read now falls back to the fully spelled namespace, and even with no
+   memory at all the app now finds its existing discount by its exact
+   title and updates it instead of creating a duplicate. You do NOT need
+   to delete the existing "Cellexia volume pricing" discount — the app
+   adopts it. (The "deploy the extensions" hint you rightly called wrong
+   now only appears when the error is actually about a missing function.)
+2. **The 3+1 cart is retired.** While the 4+ switch is on but the
+   discount is not yet verified, the stepper now simply stops at 3
+   (exactly like it does for subscriptions) instead of composing a 3-pack
+   plus a full-price single. Once the sync verifies the discount, 4+
+   unlocks with the discounted single-line behavior. The pack composition
+   only exists for stores that never turn volume pricing on.
+
+Also: the price sync runs about twice as fast (the "loads indefinitely"
+feel was it working through your ~85 countries sequentially), and a small
+note under the button says the first sync takes up to a minute.
+
 ### Liquid budget
 
-+~50 B (the `vd` flag on the qy island member; v32.1 renamed the gate to
-`volumeLive`), paid by further schema trims: total 99,471 / 99,500. Zero
-locale-file keys (the discount label ships inside the function).
++~50 B for the qy member's `vd` flag across v32.1/v32.2 (verified
+`volumeLive` = 1, wanted-but-unverified = 0), paid by further schema
+trims: total 99,454 / 99,500. Zero locale-file keys (the discount label
+ships inside the function).
 
-## 3b. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
+## 3e. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
 
 Two independent buy-box features you asked for, each with its own switch,
 market scope, Preview Center draft flag and analytics line. Both live on the
@@ -386,7 +603,7 @@ tag, one comment moved to docs): total Liquid 99,452 / 99,500. Zero new
 locale-file keys (the three new aria strings ride the JS table; el/ar stay
 at their byte walls).
 
-## 3c. v30 — Trustpilot star color in checkout + PDP Trustpilot size + star rounding + cart row completion — what this release changes
+## 3f. v30 — Trustpilot star color in checkout + PDP Trustpilot size + star rounding + cart row completion — what this release changes
 
 Two small display options plus two requested rendering corrections (full
 contract: `docs/SPEC-v30-trustpilot-tuning.md`). Deploy BOTH halves per §3 —
@@ -444,7 +661,7 @@ byte-identical to before this release. Suite: 11,396 checks green
 block pin the byte-identical-by-default guarantees, the rounding rule and
 the cross-file wiring).
 
-## 3d. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
+## 3g. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
 
 Two things landed together in this build:
 
@@ -505,7 +722,7 @@ on the storefront config; until then the legacy path keeps today's look.
 
 Full contracts: `docs/SPEC-v28-award-strip.md`, `docs/SPEC-v29-proof-split.md`.
 
-## 3e. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
+## 3h. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
 
 A new 43rd feature, `Quantity selector cards` (`quantity_selector`), for the product
 page. While it is on, the theme's text-pill size picker ("1 Jar / 2 Jars - 15% Off /
@@ -589,7 +806,7 @@ lever is still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but n
 the deploy-safety island expander does not expand `{% render %}` inside islands, so
 that dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
 
-## 3f. v25 — before/after gallery: clinical trust redesign — what this release changes
+## 3i. v25 — before/after gallery: clinical trust redesign — what this release changes
 
 Merchant ask (2026-09-18, with two reference designs): redesign the
 before/after results widget and its click-to-enlarge overlay for maximum
@@ -675,7 +892,7 @@ win and should be cleared.
 - To see it before enabling: arm a preview (§ preview) with the
   before/after draft flag, or enable + market-scope it to a test market.
 
-## 3g. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
+## 3j. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
 
 **The ask (2026-09-17):** restyle the PDP clinical study widget to match the
 reference design (letterspaced "PUBLISHED CLINICAL RESEARCH" eyebrow, big
@@ -726,7 +943,7 @@ BEFORE saving study content. Spec: `docs/SPEC-v24-study-redesign.md`.
 Pinned by `sims/survey-methodology.cjs` T2-T8 + mutants m13-m15 and the
 harness v24 pin updates.
 
-## 3h. v23 — subscription card prices now require the app to be LIVE — what this release changes
+## 3k. v23 — subscription card prices now require the app to be LIVE — what this release changes
 
 **The bug this fixes (reported by the merchant):** while the NEW subscription
 app is still in setup (or live in only some markets), theme product cards on
@@ -764,7 +981,7 @@ run). Spec: `docs/SPEC-v23-subs-live-gate.md`. Pinned by the harness (v23
 tripwires) and by `sims/badge-cards` (setup-mode and missing-member
 scenarios) + `sims/subscribed-upgrade` (setup fallback refusal).
 
-## 3i. v21 cart overlay features — what this release changes
+## 3l. v21 cart overlay features — what this release changes
 
 ### v21.2 (2026-09-14, after your field test) — five fixes in this build
 
@@ -900,7 +1117,7 @@ collapsed into two loops that mirror the file's own `bought_count` loop
 precedent (identical keys and values; JSON member order is parser-neutral).
 The release leaves 244 B of per-file headroom where it found 87 B.
 
-## 3j. v20 image badges on mobile — what this release changes
+## 3m. v20 image badges on mobile — what this release changes
 
 **No database migration. No new API scopes. No webhook changes. No new
 translated strings.** Deploy the app server and the extensions exactly as §3
@@ -942,7 +1159,7 @@ mechanically and proved byte-identical for every icon before it landed, so the
 five legacy blocks that render those icons are unchanged on the page. The
 release LEAVES 1,371 B of headroom where it found 207 B.
 
-## 3k. v18 free gifts V2 — what this release changes
+## 3n. v18 free gifts V2 — what this release changes
 
 **No database migration. No new API scopes. No webhook changes.** Deploy the
 app server and the extensions exactly as §3 describes; nothing extra is needed
@@ -1156,7 +1373,7 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - New FeatureKey `quantity_selector` (42 -> 43, appended at the end), settings
   section `quantitySelector` {enabled false}, own admin page
   `/app/features/quantity`, previewable, market-scoped, analytics-labeled.
-  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3e above.
+  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3h above.
 - Storefront: gated `qs` member in the #cx-pdp-config island (live flag, page
   locale, shop money format, per-variant id/title/cents/image) + the `qsel*`
   module and `CX_QSEL_STR` 18-locale table in `cellexia-pdp.js` + the
@@ -1171,14 +1388,14 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - v26.1 (2026-09-19): free-shipping micro-line on qualifying tiers —
   `quantitySelector.freeShipTag` (default ON, tick box on the feature page),
   island `fst` = the trust badges' per-market safe threshold as presentment
-  cents, storefront tags only tiers whose own price clears it (§3e).
+  cents, storefront tags only tiers whose own price clears it (§3h).
 
 v20 — IMAGE BADGES ON MOBILE (2026-09-11):
 
 - New FeatureKey `image_badges` (38 -> 39, appended at the end), settings
   section `imageBadges` {enabled false, scale 140}, configured on Trust &
   badges, previewable, market-scoped. Full contract:
-  `docs/SPEC-v20-image-badges.md`; deploy notes in §3j above.
+  `docs/SPEC-v20-image-badges.md`; deploy notes in §3m above.
 - Storefront surface is ONE CSS declaration: the width of the theme's own
   `.pdp .badges .badge` on phones, from a custom property the PDP asset
   writes after measuring the live product image. No node, no copy, no locale

@@ -797,6 +797,31 @@ function press(el, times) {
   ok(cards[0].getAttribute("aria-checked") === "true", "S18: ...and paints the tapped card again");
 }
 
+// ---------------------------------- S19: v32.2 volume wanted-but-not-armed
+
+{
+  // vd:0 = the merchant turned volume ON but arming is not verified: the
+  // stepper caps at the top tier (the merchant rejected the composed 3+1
+  // fallback for 4+) — never a count the discount cannot price.
+  const ctx = makeContext();
+  const page = makeBuyArea(ctx);
+  ctx.sandbox.cfg = { qs: qsMember(LIVE_VARIANTS), qy: { live: true, vd: 0 } };
+  call(ctx, "qsyncMount");
+  const root = ctx.doc.querySelector(".cx-qsync");
+  ok(!!root, "S19: vw mode mounts like the plain sync");
+  const s = stepper(root);
+  press(s.plus, 6);
+  ok(s.count.textContent === "3" && page.input.value === "1", "S19: the counter caps at the top tier while volume is unverified");
+  ok(
+    ctx.beacons.filter((b) => b[0] === "quantity_sync" && b[1] === "click").length === 2,
+    "S19: clamped presses beacon nothing (2 real changes)",
+  );
+  const ev = { target: page.atc, preventDefault() { ok(false, "S19: vw must never preventDefault"); }, stopPropagation() {} };
+  ctx.doc._listeners.click[0](ev);
+  ok(ctx.fetches.length === 0, "S19: nothing is ever composed in vw mode");
+  ok(page.priceSpan.textContent === "$160.80", "S19: the theme owns the price at the cap");
+}
+
 // -------------------------------------- S11 + S16 (async): observer + add flow
 
 async function asyncChecks() {
@@ -892,8 +917,15 @@ function runMutantsPhase() {
       {
         // The subscription clamp keeps plan pricing exact.
         name: "m7-sub-clamp-dropped",
-        find: "    var cap = qsyncSubActive() ? st.top.q : QSYNC_CAP;",
-        replace: "    var cap = QSYNC_CAP;",
+        find: "    var cap = qsyncSubActive() || st.vw ? st.top.q : QSYNC_CAP;",
+        replace: "    var cap = st.vw ? st.top.q : QSYNC_CAP;",
+      },
+      {
+        // v32.2: an unverified volume must cap, never compose (the field
+        // incident's rejected 3+1 fallback).
+        name: "m19-vw-clamp-dropped",
+        find: "    var cap = qsyncSubActive() || st.vw ? st.top.q : QSYNC_CAP;",
+        replace: "    var cap = qsyncSubActive() ? st.top.q : QSYNC_CAP;",
       },
       {
         // In catalog the THEME owns the price text; owning it always would

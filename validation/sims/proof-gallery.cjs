@@ -90,6 +90,18 @@
  *   OR cx_preview_token; cx_preview_ok alone does NOT suppress — the
  *   token is the suppression key; token alone never renders drafts).
  *
+ * v33 cases (R25–R32, combined figure + compare slider + study design):
+ *   payload.ui strict === 1 flag reads (anything else fails closed),
+ *   combined-image mapping is lab-gated client-side (the serve-belt
+ *   twin) and https-gated, ONE combo frame/figure with the joint
+ *   Before / After tag, the slider stage for BOTH feeds (pair layers +
+ *   200%-wide composite halves) incl. press-jump, keyboard, clamp math
+ *   and the zoom control owning the lightbox + click beacon, the study
+ *   card (band first, week-stamped After tag, no duplicate lab pill,
+ *   disclaim footnote, customer cards untouched, fail-soft on missing
+ *   proxy copy), flags flowing to Show-more cards, and the preview-only
+ *   pv cache-buster staying out of shopper URLs.
+ *
  * Stubs: shared mini-DOM (v8 extensions documented in lib/mini-dom.cjs:
  * createElementNS + documentElement.lang — nothing else); proofFetch
  * (records + feeds queued fixtures, cb(null) when the queue is empty =
@@ -123,6 +135,10 @@
  *   m32–m36 (v25 clinical)      lab gates ×2, copy whitelist, percent
  *                               cap, attribution textContent sink
  *   m37 (v26.2)                 one-decimal percent bound dropped
+ *   m38–m42 (v33)               ui-flag strict reads loosened, combined
+ *                               lab gate dropped, slider clamp dropped,
+ *                               study lab gate dropped, week stamp on
+ *                               weekless entries
  */
 "use strict";
 const fs = require("fs");
@@ -148,7 +164,11 @@ function ok(cond, label) {
 
 // ---------------------------------------------------------------- sandbox
 const EXTRACTED = extractAll(SRC, {
-  vars: ["RESULTS_SKIN_KEYS", "RESULTS_DURATION_KEYS", "RESULTS_ICON_PATHS", "RESULTS_COMMA_DECIMAL"],
+  vars: [
+    "RESULTS_SKIN_KEYS", "RESULTS_DURATION_KEYS", "RESULTS_ICON_PATHS", "RESULTS_COMMA_DECIMAL",
+    // v35 expander re-sync state
+    "resultsQuotePairs", "resultsQuoteTimer", "resultsQuoteBound",
+  ],
   functions: [
     "pfEl", "pfSp", "pfSvg", "pfDecode", "pfStr", "pfHttps", "pfVideoFile",
     "pfPosInt", "pfPageLocale", "pfRegionName", "pfQuery", "pfProductParams",
@@ -173,7 +193,20 @@ const EXTRACTED = extractAll(SRC, {
     "resultsAttr", "resultsClinical",
     // v26.2 decimal percents
     "resultsValidPct", "resultsFmtPct",
+    // v33 combined figure + compare slider + study design
+    "resultsUiFlags", "resultsAfterTag", "resultsComboTag",
+    "resultsComboFrame", "resultsSliderPct", "resultsSliderSet",
+    "resultsSlider", "resultsStudyHead", "resultsDisclaim",
+    // v35 study tag + quote expander + hide-lab-quotes
+    "resultsStudyTag", "resultsHideQuote", "resultsQuoteClamped",
+    "resultsQuoteSync", "resultsQuoteMore",
+    "resultsQuoteRescan", "resultsQuoteBind",
   ],
+  // extend the vars list separately below (extractAll takes each key once)
+});
+const EXTRACTED_V35_VARS = extractAll(SRC, {
+  vars: ["resultsQuotePairs", "resultsQuoteTimer", "resultsQuoteBound"],
+  functions: [],
 });
 
 // Deterministic stubs (declared before the extracted pieces; function
@@ -196,6 +229,10 @@ const doc = makeDocument();
 // matrix asserts pfWhenAllowed's SYNCHRONOUS path and the pfPreviewVerified
 // predicate — never the poll (deterministic, no timers).
 const INTERVALS = [];
+// v35: requestAnimationFrame records-but-never-fires (the setInterval
+// discipline) — the expander's deferred overflow probe is asserted by
+// firing the recorded callback explicitly, never by a real timer.
+const RAFS = [];
 const S = {
   console,
   document: doc,
@@ -205,6 +242,7 @@ const S = {
     Intl,
     setInterval(fn, ms) { INTERVALS.push({ fn, ms }); return INTERVALS.length; },
     clearInterval() { /* recorded timers never fire */ },
+    requestAnimationFrame(fn) { RAFS.push(fn); return RAFS.length; },
   },
 };
 vm.createContext(S);
@@ -306,6 +344,11 @@ const CLIN_COPY = {
   mi: "Instrument measured",
   mp: "Same patient",
   mu: "Unretouched images",
+  // v33 codes
+  aw: "After @@N@@ weeks",
+  dr: "Drag to compare",
+  iv: "Individual results may vary.",
+  zm: "View larger",
 };
 const STR_CLIN = Object.assign({}, STR, CLIN_COPY);
 const RES_LAB = {
@@ -1144,6 +1187,390 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   const lb2 = S.resultsBuildLightbox(bareItem, STR_CLIN);
   ok(!lb2.querySelector(".cx-lightbox__foot") && !!lb2.querySelector(".cx-lightbox__meta"),
     "R24: no quote and no attribution -> no foot wrapper, meta stands alone");
+}
+
+// ================== v33 (combined figure · compare slider · study design)
+
+// --- R25: payload.ui flag reads are strict and fail closed ---------------------------
+// (v35 widened the object with gr/ns/ht — same strict-=== discipline.)
+{
+  const OFF = '{"cs":false,"sl":false,"gr":false,"ns":false,"ht":false}';
+  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: 1, sl: 1 } })) ===
+      '{"cs":true,"sl":true,"gr":false,"ns":false,"ht":false}',
+    "R25: cs/sl === 1 read as on");
+  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: 1, sl: 1, gr: 1, ns: 1, ht: 1 } })) ===
+      '{"cs":true,"sl":true,"gr":true,"ns":true,"ht":true}',
+    "R25: all five flags read as on when === 1");
+  ok(JSON.stringify(S.resultsUiFlags({ ui: {} })) === OFF,
+    "R25: empty ui -> all off");
+  ok(JSON.stringify(S.resultsUiFlags({})) === OFF,
+    "R25: absent ui (old server) -> all off");
+  ok(JSON.stringify(S.resultsUiFlags(null)) === OFF,
+    "R25: null data -> all off");
+  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: "1", sl: true, gr: "1", ns: true, ht: [1] } })) === OFF,
+    "R25: '1'/true are not the NUMBER 1 -> off (strict)");
+  ok(JSON.stringify(S.resultsUiFlags({ ui: "cs" })) === OFF,
+    "R25: non-object ui -> all off");
+}
+
+// --- R26: combined mapping — lab-gated (serve-belt twin) + https-gated ---------------
+{
+  const items = S.resultsValidItems({ items: [
+    { id: "c1", combinedUrl: "https://cdn/combo.jpg", source: "lab" },
+    { id: "c2", combinedUrl: "https://cdn/combo2.jpg", source: "customer" },
+    { id: "c3", combinedUrl: "http://cdn/combo3.jpg", source: "lab" },
+    { id: "c4", combinedUrl: "https://cdn/c4.jpg", beforeUrl: "https://cdn/b4.jpg", source: "customer" },
+  ] });
+  ok(items.length === 2,
+    "R26: combined-only rows survive ONLY as lab rows with a https URL");
+  ok(items[0].c === "https://cdn/combo.jpg" && items[0].b === "" && items[0].a === "",
+    "R26: combined maps to c");
+  ok(items[1].c === "" && items[1].b === "https://cdn/b4.jpg",
+    "R26: a customer row's combined column never reaches c (client belt)");
+}
+
+// --- R27: combined card + lightbox (classic design, slider off) ----------------------
+{
+  const item = S.resultsValidItems({ items: [
+    { id: "c1", combinedUrl: "https://cdn/combo.jpg", source: "lab", testimonial: "T" },
+  ] })[0];
+  const card = S.resultsBuildCard(item, Object.assign({}, STR_CLIN));
+  const frames = card.querySelectorAll(".cx-results__frame");
+  ok(frames.length === 1 && frames[0].className === "cx-results__frame cx-results__frame--combo",
+    "R27: ONE combo frame");
+  const thumb = card.querySelector(".cx-results__thumb");
+  ok(!!thumb && thumb.src === "https://cdn/combo.jpg" &&
+    thumb.className === "cx-results__thumb cx-results__thumb--combo",
+    "R27: combo thumb keeps its natural-aspect modifier");
+  const tag = card.querySelector(".cx-results__tag");
+  ok(!!tag && tag.textContent === "Before / After", "R27: joint Before / After tag");
+  ok(card.querySelector(".cx-results__media").tagName === "BUTTON",
+    "R27: slider off -> the media stays the lightbox button");
+  const lb = S.resultsBuildLightbox(item, Object.assign({}, STR_CLIN));
+  ok(lb.querySelectorAll(".cx-lightbox__fig").length === 1,
+    "R27: lightbox shows ONE combined figure");
+  const lbImg = lb.querySelector(".cx-lightbox__img");
+  ok(lbImg.className === "cx-lightbox__img cx-lightbox__img--combo" &&
+    lbImg.src === "https://cdn/combo.jpg", "R27: lightbox combo modifier + src");
+  ok(lb.querySelector(".cx-lightbox__cap").textContent === "Before / After",
+    "R27: lightbox caption is the joint label");
+}
+
+// --- R28: slider stage — pair + combined feeds, drag/keys, zoom owns the lightbox ----
+{
+  const o = { cs: false, sl: true };
+  const pairItem = S.resultsValidItems({ items: [RES_ITEM] })[0];
+  const card = S.resultsBuildCard(pairItem, Object.assign({}, STR_CLIN), o);
+  const media = card.querySelector(".cx-results__media");
+  ok(media.tagName === "DIV" && media.className === "cx-results__media cx-results__media--slider",
+    "R28: slider media is a plain div (no button nesting)");
+  const stage = card.querySelector(".cx-results__ba");
+  ok(!!stage && stage.className === "cx-results__ba", "R28: pair stage carries no combo modifier");
+  const imgs = stage.querySelectorAll(".cx-results__ba-img");
+  ok(imgs.length === 2 && imgs[0].src === RES_ITEM.afterUrl && imgs[1].src === RES_ITEM.beforeUrl,
+    "R28: base = After, clipped top = Before");
+  const top = stage.querySelector(".cx-results__ba-top");
+  ok(top.style.clipPath === "inset(0 50% 0 0)", "R28: divider starts at the middle");
+  const handle = stage.querySelector(".cx-results__ba-handle");
+  ok(handle.getAttribute("role") === "slider" && handle.getAttribute("tabindex") === "0" &&
+    handle.getAttribute("aria-valuenow") === "50" && handle.getAttribute("aria-label") === "Drag to compare",
+    "R28: handle is a labelled slider control");
+  const hint = stage.querySelector(".cx-results__ba-hint");
+  ok(!!hint && hint.textContent === "Drag to compare" && !hint.hasAttribute("hidden"),
+    "R28: drag hint shows until first use");
+  const tags = stage.querySelectorAll(".cx-results__tag");
+  ok(tags.length === 2 && /--ba\b/.test(tags[0].className) && /--ba-after/.test(tags[1].className),
+    "R28: physical-side tags ride the stage");
+  // press-jump: the sandbox has no PointerEvent -> the mouse path listens
+  stage.getBoundingClientRect = () => ({ left: 0, width: 200 });
+  stage._fire("mousedown", { clientX: 150, preventDefault() { /* noop */ }, type: "mousedown" });
+  ok(top.style.clipPath === "inset(0 25% 0 0)" && handle.getAttribute("aria-valuenow") === "75",
+    "R28: press jumps the divider to the pointer");
+  ok(hint.hasAttribute("hidden"), "R28: first use hides the hint");
+  handle._fire("keydown", { key: "ArrowLeft", preventDefault() { /* noop */ } });
+  ok(handle.getAttribute("aria-valuenow") === "70", "R28: arrow keys step the divider");
+  // zoom control owns the lightbox + the click beacon; RES_ITEM carries a
+  // video, so the zoom label also announces it (the slider media's chip
+  // is decorative — review C3) and no stray sr-only rides the div.
+  const zoom = card.querySelector(".cx-results__zoom");
+  ok(!!zoom && zoom.tagName === "BUTTON" &&
+    zoom.getAttribute("aria-label") === "View larger · Video",
+    "R28: zoom button labelled from zm + the video label");
+  ok(!!media.querySelector(".cx-results__play") && !media.querySelector(".sr-only"),
+    "R28: the play chip stays visual-only in slider media (sr text rides the zoom)");
+  const opened = S.PF_LB_OPENED.length;
+  S.PF_TRACKS.length = 0;
+  click(zoom);
+  ok(S.PF_LB_OPENED.length === opened + 1, "R28: zoom opens the lightbox");
+  ok(JSON.stringify(S.PF_TRACKS) === '[["verified_before_after","click"]]',
+    "R28: zoom sends the click beacon");
+  // combined feed: 200%-wide halves over one stage
+  const comboItem = S.resultsValidItems({ items: [
+    { id: "c1", combinedUrl: "https://cdn/combo.jpg", source: "lab" },
+  ] })[0];
+  const comboCard = S.resultsBuildCard(comboItem, Object.assign({}, STR_CLIN), o);
+  const comboStage = comboCard.querySelector(".cx-results__ba");
+  ok(comboStage.className === "cx-results__ba cx-results__ba--combo", "R28: combo stage modifier");
+  const comboImgs = comboStage.querySelectorAll(".cx-results__ba-img");
+  ok(comboImgs[0].className === "cx-results__ba-img cx-results__ba-img--r" &&
+    comboImgs[1].className === "cx-results__ba-img cx-results__ba-img--l" &&
+    comboImgs[0].src === "https://cdn/combo.jpg" && comboImgs[1].src === "https://cdn/combo.jpg",
+    "R28: right/left halves of the SAME composite");
+  // single-image rows never build a broken stage
+  const oneImg = S.resultsValidItems({ items: [{ beforeUrl: "https://cdn/b.jpg" }] })[0];
+  const oneCard = S.resultsBuildCard(oneImg, Object.assign({}, STR_CLIN), o);
+  ok(!oneCard.querySelector(".cx-results__ba") &&
+    oneCard.querySelector(".cx-results__media").tagName === "BUTTON",
+    "R28: one image -> classic media (slider needs both halves)");
+  // the lightbox reuses the stage in slider mode
+  const lb = S.resultsBuildLightbox(pairItem, Object.assign({}, STR_CLIN), o);
+  ok(!!lb.querySelector(".cx-results__ba") && lb.querySelectorAll(".cx-lightbox__fig").length === 0,
+    "R28: lightbox swaps figures for the compare stage");
+}
+
+// --- R33: capability gate — no aspect-ratio/clip-path support -> classic media -------
+{
+  const o = { cs: false, sl: true };
+  const pairItem = S.resultsValidItems({ items: [RES_ITEM] })[0];
+  S.window.CSS = { supports: function () { return false; } };
+  const gated = S.resultsBuildCard(pairItem, Object.assign({}, STR_CLIN), o);
+  ok(!gated.querySelector(".cx-results__ba") &&
+    gated.querySelector(".cx-results__media").tagName === "BUTTON",
+    "R33: a browser without aspect-ratio/clip-path gets the classic media (fail closed)");
+  S.window.CSS = { supports: function () { return true; } };
+  const passed = S.resultsBuildCard(pairItem, Object.assign({}, STR_CLIN), o);
+  ok(!!passed.querySelector(".cx-results__ba"),
+    "R33: a supporting browser builds the stage");
+  delete S.window.CSS;
+}
+
+// --- R29: study design — band, week stamp, no duplicate pill, disclaim ---------------
+{
+  const o = { cs: true, sl: false };
+  const labItem = S.resultsValidItems({ items: [RES_LAB] })[0];
+  const card = S.resultsBuildCard(labItem, Object.assign({}, STR_CLIN), o);
+  ok(card.className === "cx-results__card cx-results__card--study", "R29: study card modifier");
+  const head = card.querySelector(".cx-results__study");
+  ok(!!head && card.children[0] === head, "R29: the document band heads the card");
+  ok(head.querySelector(".cx-results__study-t").textContent === "Clinical study result",
+    "R29: band text = the lab badge string");
+  const tags = card.querySelectorAll(".cx-results__tag");
+  ok(tags[1].textContent === "After 7 weeks", "R29: After tag week-stamped via aw");
+  ok(!card.querySelector(".cx-results__badge--lab"),
+    "R29: the lab pill yields to the band (one credential)");
+  const disc = card.querySelector(".cx-results__disclaim");
+  ok(!!disc && disc.textContent === "Individual results may vary." &&
+    card.children[card.children.length - 1] === disc,
+    "R29: disclaim footnote closes the card");
+  // weekless lab entry: never a fake week stamp
+  const weekless = S.resultsValidItems({ items: [Object.assign({}, RES_LAB, { durationWeeks: null, measurements: [] })] })[0];
+  const wCard = S.resultsBuildCard(weekless, Object.assign({}, STR_CLIN), o);
+  ok(wCard.querySelectorAll(".cx-results__tag")[1].textContent === "After",
+    "R29: no weeks -> plain After tag");
+  // customer entries keep the classic card in study mode
+  const custItem = S.resultsValidItems({ items: [RES_ITEM] })[0];
+  const cust = S.resultsBuildCard(custItem, Object.assign({}, STR_CLIN), o);
+  ok(cust.className === "cx-results__card" && !cust.querySelector(".cx-results__study") &&
+    !cust.querySelector(".cx-results__disclaim"),
+    "R29: customer cards untouched by the study design");
+  // lightbox: week-stamped caption + disclaim, lab pill KEPT (no band there)
+  const lb = S.resultsBuildLightbox(labItem, Object.assign({}, STR_CLIN), o);
+  ok(lb.querySelectorAll(".cx-lightbox__cap")[1].textContent === "After 7 weeks",
+    "R29: lightbox After caption week-stamped");
+  ok(!!lb.querySelector(".cx-results__badge--lab"), "R29: lightbox keeps the lab pill");
+  ok(!!lb.querySelector(".cx-results__disclaim"), "R29: lightbox carries the disclaim");
+  // fail soft when the proxy copy is missing (old server, blocked copy)
+  const bare = S.resultsBuildCard(labItem, Object.assign({}, STR), o);
+  ok(bare.querySelectorAll(".cx-results__tag")[1].textContent === "After",
+    "R29: missing aw -> plain After");
+  ok(!bare.querySelector(".cx-results__disclaim"), "R29: missing iv -> no footnote");
+}
+
+// --- R30: flags read once and flow to Show-more cards --------------------------------
+{
+  const fx = resultsFixture();
+  fx.total = 3;
+  fx.ui = { cs: 1, sl: 1 };
+  const section = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) }, fx);
+  ok(section.className === "cx-proof cx-results",
+    "R30: display flags never touch the root class (density pins hold)");
+  ok(section.querySelectorAll(".cx-results__media--slider").length === 2,
+    "R30: init cards render sliders");
+  S.PF_FETCH_QUEUE.push({ total: 3, verifiedTotal: 2, items: [RES_LAB] }); // NO ui member on page 2
+  click(section.querySelector(".cx-results__more"));
+  const cards = section.querySelectorAll(".cx-results__card");
+  ok(cards.length === 3 && cards[2].className === "cx-results__card cx-results__card--study" &&
+    !!cards[2].querySelector(".cx-results__ba"),
+    "R30: Show-more cards reuse the page-1 flags");
+}
+
+// --- R31: slider math is pure and clamped --------------------------------------------
+{
+  ok(S.resultsSliderPct({ left: 0, width: 200 }, 50) === 25, "R31: pct math");
+  ok(S.resultsSliderPct({ left: 100, width: 200 }, 50) === 0, "R31: clamps at 0");
+  ok(S.resultsSliderPct({ left: 0, width: 200 }, 900) === 100, "R31: clamps at 100");
+  ok(S.resultsSliderPct(null, 50) === null, "R31: unmeasurable box -> null");
+  ok(S.resultsSliderPct({ left: 0, width: 0 }, 50) === null, "R31: zero width -> null");
+  ok(S.resultsSliderPct({ left: 0, width: 200 }, undefined) === null, "R31: no pointer -> null");
+  const mk = () => S.document.createElement("div");
+  const parts = { top: mk(), line: mk(), handle: mk(), pct: 50 };
+  S.resultsSliderSet(parts, 62.34);
+  ok(parts.pct === 62.3 && parts.top.style.clipPath === "inset(0 37.7% 0 0)",
+    "R31: one-decimal position, complement re-rounded (no IEEE754 tail)");
+  ok(parts.handle.getAttribute("aria-valuenow") === "62", "R31: aria value rounds to an integer");
+  S.resultsSliderSet(parts, NaN);
+  ok(parts.pct === 62.3, "R31: NaN never moves the divider");
+}
+
+// --- R32: the preview cache-buster stays out of shopper URLs -------------------------
+{
+  const qs = S.pfQuery(S.resultsParams({ ctx: "brand", pid: 0 }, { concern: "", age: "", skin: "", duration: "", page: 1 }));
+  ok(qs.indexOf("pv=") === -1, "R32: normal visitors never send pv");
+  S.window.CellexiaBooster = { __preview: true };
+  const pqs = S.pfQuery(S.resultsParams({ ctx: "brand", pid: 0 }, { concern: "", age: "", skin: "", duration: "", page: 1 }));
+  ok(/(&|\?)pv=\d+/.test(pqs), "R32: verified preview sends the per-minute pv token");
+  delete S.window.CellexiaBooster;
+}
+
+// ========== v35 (study tag · quote expander · hide-lab-quotes · grid flag)
+
+// --- R34: study tag — lab-gated item map, badges-row chip, ns flag -------------------
+{
+  const items = S.resultsValidItems({ items: [
+    { beforeUrl: "https://cdn/1.jpg", source: "lab", study: "Helsinki Study" },
+    { beforeUrl: "https://cdn/2.jpg", source: "customer", study: "Drifted" },
+    { beforeUrl: "https://cdn/3.jpg", source: "lab", study: "   " },
+  ] });
+  ok(items[0].st === "Helsinki Study" && items[1].st === "" && items[2].st === "",
+    "R34: st maps LAB rows only (client belt) and blanks whitespace studies");
+  const card = S.resultsBuildCard(items[0], Object.assign({}, STR_CLIN));
+  const tag = card.querySelector(".cx-results__study-name");
+  ok(!!tag && tag.textContent === "Helsinki Study",
+    "R34: the study tag renders as plain text (raw merchant data, never a locale string)");
+  ok(!!card.querySelector(".cx-results__badges"),
+    "R34: the tag rides the badges row (its own row when no other badge)");
+  const cardNs = S.resultsBuildCard(items[0], Object.assign({}, STR_CLIN), { ns: true });
+  ok(!cardNs.querySelector(".cx-results__study-name"),
+    "R34: ui.ns hides study tags");
+  const cardStudy = S.resultsBuildCard(items[0], Object.assign({}, STR_CLIN), { cs: true });
+  ok(!!cardStudy.querySelector(".cx-results__study-name") &&
+    !cardStudy.querySelector(".cx-results__badge--lab"),
+    "R34: study design keeps the tag while the lab pill moves to the band");
+  const lb = S.resultsBuildLightbox(items[0], Object.assign({}, STR_CLIN));
+  ok(!!lb.querySelector(".cx-results__study-name"), "R34: the lightbox carries the tag too");
+  const lbNs = S.resultsBuildLightbox(items[0], Object.assign({}, STR_CLIN), { ns: true });
+  ok(!lbNs.querySelector(".cx-results__study-name"), "R34: the lightbox honours ns");
+  const plain = S.resultsBuildCard(items[1], Object.assign({}, STR_CLIN));
+  ok(!plain.querySelector(".cx-results__study-name"), "R34: no study -> no tag");
+}
+
+// --- R35: testimonial expander — built hidden, surfaces on PROVEN overflow -----------
+{
+  const item = S.resultsValidItems({ items: [RES_ITEM] })[0];
+  const rafsBefore = RAFS.length;
+  const card = S.resultsBuildCard(item, Object.assign({}, STR_CLIN));
+  const q = card.querySelector(".cx-results__quote");
+  const btn = card.querySelector(".cx-results__quote-more");
+  ok(!!btn && btn.tagName === "BUTTON" && btn.hasAttribute("hidden") &&
+    btn.getAttribute("aria-expanded") === "false" &&
+    btn.getAttribute("aria-label") === "Show more" &&
+    btn.getAttribute("type") === "button",
+    "R35: the expander is built [hidden] with the island's more label as its name");
+  ok(RAFS.length === rafsBefore + 1, "R35: the overflow probe defers to rAF");
+  RAFS[RAFS.length - 1]();
+  ok(btn.hasAttribute("hidden"),
+    "R35: an unmeasurable quote (sim DOM, detached node) never surfaces the expander");
+  q.scrollHeight = 120;
+  q.clientHeight = 54;
+  S.resultsQuoteSync(q, btn);
+  ok(!btn.hasAttribute("hidden"), "R35: proven overflow surfaces the button");
+  click(btn);
+  ok(q.className === "cx-results__quote cx-results__quote--open" &&
+    btn.getAttribute("aria-expanded") === "true" &&
+    btn.className === "cx-results__quote-more cx-results__quote-more--open",
+    "R35: click lifts the clamp (open classes + aria)");
+  click(btn);
+  ok(q.className === "cx-results__quote" &&
+    btn.getAttribute("aria-expanded") === "false" &&
+    btn.className === "cx-results__quote-more",
+    "R35: second click re-clamps");
+  // the open guard: sync never acts on an expanded quote
+  const openBtn = S.resultsQuoteMore(q, Object.assign({}, STR_CLIN));
+  openBtn.setAttribute("aria-expanded", "true");
+  S.resultsQuoteSync(q, openBtn);
+  ok(openBtn.hasAttribute("hidden"),
+    "R35: the one-shot probe never touches an already-open quote's control");
+  // pure clamp probe
+  ok(S.resultsQuoteClamped({ scrollHeight: 100, clientHeight: 40 }) === true,
+    "R35: clamp probe — real overflow");
+  ok(S.resultsQuoteClamped({ scrollHeight: 41, clientHeight: 40 }) === false,
+    "R35: clamp probe — 1px jitter is not overflow");
+  ok(S.resultsQuoteClamped({ scrollHeight: 100, clientHeight: 0 }) === false &&
+    S.resultsQuoteClamped({}) === false && S.resultsQuoteClamped(null) === false,
+    "R35: clamp probe fails closed on zero/missing metrics");
+  // stale island: no more label -> no button, quote stays reachable via lightbox
+  const bare = S.resultsBuildCard(item, { bef: "Before", aft: "After", vb: "V", lb: "L" });
+  ok(!!bare.querySelector(".cx-results__quote") && !bare.querySelector(".cx-results__quote-more"),
+    "R35: no island label -> no unnamed button (the quote keeps today's clamp)");
+  // the load/resize RE-SYNC (review catch: the theme's web font swaps in
+  // after the one-shot probe) — pairs are recorded and rescan re-probes
+  const pairCount = S.resultsQuotePairs.length;
+  ok(pairCount >= 2, "R35: built expanders record their (quote, button) pairs");
+  const lateQ = S.document.createElement("p");
+  const lateB = S.resultsQuoteMore(lateQ, Object.assign({}, STR_CLIN));
+  ok(S.resultsQuotePairs.length === pairCount + 1,
+    "R35: new buttons join the rescan set");
+  ok(lateB.hasAttribute("hidden"), "R35: still hidden before any probe");
+  lateQ.scrollHeight = 90;
+  lateQ.clientHeight = 40;
+  S.resultsQuoteRescan();
+  ok(!lateB.hasAttribute("hidden"),
+    "R35: rescan surfaces a LATE-clamping quote's expander (font-swap catch)");
+}
+
+// --- R36: ui.ht hides LAB testimonials — card AND lightbox, customer untouched -------
+{
+  const lab = S.resultsValidItems({ items: [RES_LAB] })[0];
+  const cust = S.resultsValidItems({ items: [RES_ITEM] })[0];
+  ok(S.resultsHideQuote(lab, { ht: true }) === true &&
+    S.resultsHideQuote(lab, {}) === false &&
+    S.resultsHideQuote(cust, { ht: true }) === false &&
+    S.resultsHideQuote(lab, null) === false,
+    "R36: the hide rule is ht AND lab, fail open on absent flags");
+  const card = S.resultsBuildCard(lab, Object.assign({}, STR_CLIN), { ht: true });
+  ok(!card.querySelector(".cx-results__quote") &&
+    !card.querySelector(".cx-results__attr") &&
+    !card.querySelector(".cx-results__quote-more"),
+    "R36: ht strips quote + attribution + expander from the lab card");
+  ok(!!card.querySelector(".cx-results__clin"),
+    "R36: the clinical panel stays — the card stands on the numbers");
+  const custCard = S.resultsBuildCard(cust, Object.assign({}, STR_CLIN), { ht: true });
+  ok(!!custCard.querySelector(".cx-results__quote") && !!custCard.querySelector(".cx-results__quote-more"),
+    "R36: customer cards keep their quotes (and the expander)");
+  const lb = S.resultsBuildLightbox(lab, Object.assign({}, STR_CLIN), { ht: true });
+  ok(!lb.querySelector(".cx-lightbox__quote") && !lb.querySelector(".cx-lightbox__foot") &&
+    !!lb.querySelector(".cx-lightbox__meta"),
+    "R36: the lightbox hides the foot too (a hidden quote must not resurface on zoom); meta stands alone");
+  const lbOn = S.resultsBuildLightbox(lab, Object.assign({}, STR_CLIN));
+  ok(!!lbOn.querySelector(".cx-lightbox__quote"),
+    "R36: without ht the lab quote serves as before");
+}
+
+// --- R37: ui.gr — the ONLY root-class flag (desktop grid back on) --------------------
+{
+  const fx = resultsFixture();
+  fx.ui = { gr: 1 };
+  const grid = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) }, fx);
+  ok(grid.className === "cx-proof cx-results cx-results--grid",
+    "R37: ui.gr adds the grid root modifier");
+  const plain = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) }, resultsFixture());
+  ok(plain.className === "cx-proof cx-results",
+    "R37: default root = the one-row rail (no modifier, the vertical-space fix)");
+  const fx3 = resultsFixture();
+  fx3.ui = { gr: 1 };
+  const ultra = S.resultsBuildSection({ ctx: "brand", pid: 0, cm: 2, str: Object.assign({}, STR_CLIN) }, fx3);
+  ok(ultra.className === "cx-proof cx-results cx-results--ultra cx-results--grid",
+    "R37: density + grid modifiers co-exist (ultra's rail wins the cascade)");
 }
 
 // ================================== ultra (U, v8.2 look — v8.3 "cm": 2)
@@ -2282,7 +2709,7 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
       },
       {
         name: "m6-imageless-rows-kept",
-        find: "      if (!before && !after) continue; // a visual gallery card needs at least one image",
+        find: "      if (!before && !after && !combined) continue; // a visual gallery card needs at least one image",
         replace: "",
       },
       {
@@ -2446,7 +2873,7 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         // v25: the copy whitelist dropped — any proxy field could then
         // overwrite island strings like the banner (R22's HACK catches).
         name: "m34-copy-whitelist-dropped",
-        find: "    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu'];",
+        find: "    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm'];",
         replace: "    var keys = []; for (var ck in data.copy) keys.push(ck);",
       },
       {
@@ -2474,6 +2901,90 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m9-preview-always-verified",
         find: "    try {\n      if (window.sessionStorage.getItem('cx_preview_ok') === '1') return true;\n    } catch (e) { /* noop */ }\n    return false;\n  }",
         replace: "    return true;\n  }",
+      },
+      {
+        // v33: loosened flag reads would let a '1'/true-shaped payload
+        // (or a poisoned cache) switch designs (R25's strict case).
+        name: "m38-ui-flags-not-strict",
+        find: "    return { cs: ui.cs === 1, sl: ui.sl === 1, gr: ui.gr === 1, ns: ui.ns === 1, ht: ui.ht === 1 };",
+        replace: "    return { cs: !!ui.cs, sl: !!ui.sl, gr: !!ui.gr, ns: !!ui.ns, ht: !!ui.ht };",
+      },
+      {
+        // v33: the combined column must never render for customer rows,
+        // whatever the payload claims (R26's belt case).
+        name: "m39-combined-lab-gate-dropped",
+        find: "      var combined = lab ? pfHttps(it.combinedUrl) : '';",
+        replace: "      var combined = pfHttps(it.combinedUrl);",
+      },
+      {
+        // v33: an unclamped divider would clip outside the stage
+        // (R31's clamp cases).
+        name: "m40-slider-clamp-dropped",
+        find: "    if (p < 0) p = 0;\n    if (p > 100) p = 100;\n    return p;",
+        replace: "    return p;",
+      },
+      {
+        // v33: the study band on customer cards would dress customer
+        // submissions as clinical studies (R29's customer case).
+        name: "m41-study-lab-gate-dropped",
+        find: "    if (!o || !o.cs || !item.lab) return null;\n    var label = pfStr(s, 'lb');",
+        replace: "    if (!o || !o.cs) return null;\n    var label = pfStr(s, 'lb');",
+      },
+      {
+        // v33: a week stamp on weekless entries would fabricate "After 0
+        // weeks" claims (R29's weekless case).
+        name: "m42-aftertag-weekless-stamped",
+        find: "    if (o && o.cs && item.lab && item.weeks) {",
+        replace: "    if (o && o.cs && item.lab) {",
+      },
+      {
+        // v33 review C4: without the capability gate, aspect-ratio-less
+        // WebKit renders a zero-height stage pile (R33 catches).
+        name: "m43-slider-caps-gate-dropped",
+        find: "      if (window.CSS && window.CSS.supports &&\n          (!window.CSS.supports('aspect-ratio', '1 / 1') ||\n            !window.CSS.supports('clip-path', 'inset(0 50% 0 0)'))) {\n        return null;\n      }",
+        replace: "",
+      },
+      {
+        // v35: the tag's ns gate dropped — the merchant's "hide study
+        // names" switch would stop working (R34's ns case).
+        name: "m44-study-tag-ns-gate-dropped",
+        find: "    if (!item.st || (o && o.ns)) return null;",
+        replace: "    if (!item.st) return null;",
+      },
+      {
+        // v35: the hide rule's lab gate dropped — ht would strip CUSTOMER
+        // testimonials too (R36's customer case).
+        name: "m45-hide-quote-lab-gate-dropped",
+        find: "    return !!(o && o.ht && item.lab);",
+        replace: "    return !!(o && o.ht);",
+      },
+      {
+        // v35: the item map's lab gate dropped — a drifted customer study
+        // column would flaunt a study tag (R34's belt case).
+        name: "m46-st-lab-gate-dropped",
+        find: "        st: lab && typeof it.study === 'string' && /\\S/.test(it.study) ? it.study : ''",
+        replace: "        st: typeof it.study === 'string' && /\\S/.test(it.study) ? it.study : ''",
+      },
+      {
+        // v35: the overflow probe dropped — every short quote would grow
+        // a pointless expander (R35's unmeasurable case).
+        name: "m47-quote-sync-unconditional",
+        find: "    if (resultsQuoteClamped(q)) btn.removeAttribute('hidden');",
+        replace: "    btn.removeAttribute('hidden');",
+      },
+      {
+        // v35: the grid modifier always on — every store would snap back
+        // to the tall 4-column desktop grid (R37 + R30's root pin).
+        name: "m48-grid-class-always",
+        find: "(o.gr ? ' cx-results--grid' : '')",
+        replace: "' cx-results--grid'",
+      },
+      {
+        // v35: the lightbox's hide rule dropped — a hidden card quote
+        // would resurface on zoom (R36's lightbox case).
+        name: "m49-ht-lightbox-dropped",
+        find: "    var hideQuote = resultsHideQuote(item, o);\n    var foot = null;\n    if (!hideQuote && (item.text || item.an)) {",
+        replace: "    var hideQuote = false;\n    var foot = null;\n    if (!hideQuote && (item.text || item.an)) {",
       },
     ],
   });

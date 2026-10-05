@@ -525,7 +525,7 @@ const L = await loadTrustLogic();
 
 // --------------------------------------------------------- T5 component pins
 {
-  const src = readSource("extensions/checkout-trust/src/Checkout.tsx");
+  const src = readSource("extensions/checkout-trust/src/Extension.tsx");
   for (const anchor of [
     // The three market gates (also the harness EVIDENCE literals).
     "'checkout_trust'",
@@ -556,13 +556,13 @@ const L = await loadTrustLogic();
     // carries a provinceCode — typed wins, non-US ignores the attribute.
     "shippingAddress?.countryCode",
     "shippingAddress?.provinceCode",
-    "'_cx_us_state',",
+    "attributeValue(attributes, '_cx_us_state')",
     "/^[A-Z]{2}$/.test(usStateAttributeValue)",
     "typedProvinceCode ||",
     "(countryCode === 'US' ? chosenUsState : undefined)",
     // v11: the render is DRIVEN by the normalized rowOrder — a keyed row map
     // indexed by the config order, every row still behind its own gate.
-    "const rowsByKey: Record<TrustRowKey, ReactElement | null>",
+    "const rowsByKey: Record<TrustRowKey, JSX.Element | null>",
     "{config.checkoutTrust.rowOrder.map((rowKey) => rowsByKey[rowKey])}",
     // ALL SIX rowsByKey entries stay behind their own render flag — the
     // Record type only forces key presence, not gating, so each ternary is
@@ -584,18 +584,18 @@ const L = await loadTrustLogic();
     "const renderTrustpilot = showTrustpilot || inEditor;",
     // v30: the star-color option maps "green" -> the success token and
     // feeds ONLY the full/half glyphs (empty stars stay subdued).
-    "config.checkoutTrust.trustpilotStars === 'green' ? 'success' : 'accent'",
+    "config.checkoutTrust.trustpilotStars === 'green' ? 'success' : 'auto'",
     // v30.1: glyphs come from the sim-tested pure helper (Trustpilot's
     // nearest-half display rule), never a local rounding.
     "const starShapes = trustStarShapes(config.trustpilot.rating);",
-    "source={shape === 'full' ? 'starFill' : shape === 'half' ? 'starHalf' : 'star'}",
-    "appearance={shape === 'empty' ? 'subdued' : starAppearance}",
+    "type={shape === 'full' ? 'star-filled' : shape === 'half' ? 'star-half' : 'star'}",
+    "tone={shape === 'empty' ? 'neutral' : starTone}",
     // v12 exclusions: cart lines read (bundle components included), both
     // records checked against the buyer's market, both row derivations
     // carry the veto (draft grants included), and the diagnosis receives
     // ONLY the wanted-but-excluded verdict (review fix: an exclusion is
     // never blamed for a row that was toggled/scoped off anyway).
-    "useCartLines()",
+    "shopify.lines.value",
     "line?.lineComponents",
     "'customsExcludedByMarket'",
     "'trackedExcludedByMarket'",

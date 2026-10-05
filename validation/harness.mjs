@@ -147,11 +147,11 @@ const EVIDENCE = {
   guarantee: [{ file: PDP_JS, has: MARK("guarantee") }],
   clinical_results: [{ file: `${EXT}/blocks/clinical-results.liquid`, has: 'data-cx-feature="clinical_results"', note: "Liquid-rendered block (no JS builder)" }],
   subscription_nudge: [{ file: PDP_JS, has: MARK("subscription_nudge") }],
-  checkout_upsell: [{ file: "extensions/checkout-upsell/src/Checkout.tsx", has: "'checkout_upsell'", note: "checkout extension gate" }],
-  checkout_protection: [{ file: "extensions/checkout-protection/src/Checkout.tsx", has: "'checkout_protection'", note: "checkout extension gate" }],
-  checkout_trust: [{ file: "extensions/checkout-trust/src/Checkout.tsx", has: "'checkout_trust'", note: "checkout extension gate" }],
-  checkout_customs: [{ file: "extensions/checkout-trust/src/Checkout.tsx", has: "'checkout_customs'", note: "v9 trust-row market gate inside the trust extension" }],
-  checkout_tracked: [{ file: "extensions/checkout-trust/src/Checkout.tsx", has: "'checkout_tracked'", note: "v9 trust-row market gate inside the trust extension" }],
+  checkout_upsell: [{ file: "extensions/checkout-upsell/src/Extension.tsx", has: "'checkout_upsell'", note: "checkout extension gate" }],
+  checkout_protection: [{ file: "extensions/checkout-protection/src/Extension.tsx", has: "'checkout_protection'", note: "checkout extension gate" }],
+  checkout_trust: [{ file: "extensions/checkout-trust/src/Extension.tsx", has: "'checkout_trust'", note: "checkout extension gate" }],
+  checkout_customs: [{ file: "extensions/checkout-trust/src/Extension.tsx", has: "'checkout_customs'", note: "v9 trust-row market gate inside the trust extension" }],
+  checkout_tracked: [{ file: "extensions/checkout-trust/src/Extension.tsx", has: "'checkout_tracked'", note: "v9 trust-row market gate inside the trust extension" }],
   clinical_study: [{ file: PDP_JS, has: MARK("clinical_study") }],
   verified_before_after: [{ file: PROOF_JS, has: MARK("verified_before_after"), note: "v8: marker moved to the proof asset — the results-gallery block replaces the retired PDP BA widget (same feature key)" }],
   batch_transparency: [{ file: PDP_JS, has: MARK("batch_transparency") }],
@@ -163,7 +163,7 @@ const EVIDENCE = {
   dispatch_countdown: [{ file: PDP_JS, has: MARK("dispatch_countdown") }],
   delivery_estimate: [
     { file: PDP_JS, has: MARK("delivery_estimate") },
-    { file: "extensions/checkout-delivery/src/Checkout.tsx", has: "'delivery_estimate'", note: "checkout extension gate" },
+    { file: "extensions/checkout-delivery/src/Extension.tsx", has: "'delivery_estimate'", note: "checkout extension gate" },
   ],
   az_buy_box: [{ file: PDP_JS, has: MARK("az_buy_box") }],
   az_microcopy: [{ file: PDP_JS, has: MARK("az_microcopy") }],
@@ -182,13 +182,13 @@ const EVIDENCE = {
   set_savings: [
     { file: CART_JS, has: MARK("set_savings") },
     { file: PDP_JS, has: MARK("set_savings") },
-    { file: "extensions/checkout-protection/src/Checkout.tsx", has: "'set_savings'", note: "v14 RewardsSafetyNet KIT-attach gate" },
+    { file: "extensions/checkout-protection/src/Extension.tsx", has: "'set_savings'", note: "v14 RewardsSafetyNet KIT-attach gate" },
   ],
   // v14 rewards: the cart gift meter (rwRenderMeter) carries the marker; the
   // checkout safety net's gift-honesty removal is gated on the same key.
   gift_tiers: [
     { file: CART_JS, has: MARK("gift_tiers") },
-    { file: "extensions/checkout-protection/src/Checkout.tsx", has: "'gift_tiers'", note: "v14 RewardsSafetyNet gift-honesty gate" },
+    { file: "extensions/checkout-protection/src/Extension.tsx", has: "'gift_tiers'", note: "v14 RewardsSafetyNet gift-honesty gate" },
   ],
   // v19: the buy-box proof block builds two nodes (the in-panel rows and the
   // research band) — BOTH carry the marker, and one beacon covers the block.
@@ -2530,8 +2530,8 @@ const EVIDENCE = {
       );
     }
     for (const cf of [
-      "extensions/checkout-delivery/src/Checkout.tsx",
-      "extensions/checkout-trust/src/Checkout.tsx",
+      "extensions/checkout-delivery/src/Extension.tsx",
+      "extensions/checkout-trust/src/Extension.tsx",
     ]) {
       ok(
         read(cf).includes("'_cx_us_state'"),
@@ -2656,11 +2656,11 @@ const EVIDENCE = {
       ),
       "v12: trust-logic exports the pure exclusion helper",
     );
-    const trustTsx12 = read("extensions/checkout-trust/src/Checkout.tsx");
+    const trustTsx12 = read("extensions/checkout-trust/src/Extension.tsx");
     for (const lit of [
       "'customsExcludedByMarket'",
       "'trackedExcludedByMarket'",
-      "useCartLines()",
+      "shopify.lines.value",
       "!customsExcluded",
       "!trackedExcluded",
       // Review fix: the diagnosis only blames a WANTED-but-excluded row.
@@ -2671,10 +2671,10 @@ const EVIDENCE = {
     ]) {
       ok(trustTsx12.includes(lit), `v12: checkout-trust Checkout.tsx carries ${lit}`);
     }
-    const delTsx12 = read("extensions/checkout-delivery/src/Checkout.tsx");
+    const delTsx12 = read("extensions/checkout-delivery/src/Extension.tsx");
     for (const lit of [
       "'excludedByMarket'",
-      "useCartLines()",
+      "shopify.lines.value",
       "!deliveryExcluded",
       "excluded: deliveryExcluded",
       "line?.lineComponents",
@@ -2833,13 +2833,45 @@ const EVIDENCE = {
   }
 }
 
-// ================================================ 8. REACT-RECONCILER PIN
+// ================================================ 8. CHECKOUT EXTENSION ARCHITECTURE PIN
+// Migrated off React (@shopify/ui-extensions-react, react-reconciler) to
+// Preact + Polaris web components, api_version 2026-04, per Shopify's
+// required checkout extension migration. Pins the NEW contract: no React
+// deps remain, and the Preact/signals/web-components deps are present.
 {
   const CHECKOUT_EXTS = ["checkout-delivery", "checkout-protection", "checkout-trust", "checkout-upsell"];
   for (const ext of CHECKOUT_EXTS) {
     const pkg = JSON.parse(read(`extensions/${ext}/package.json`));
-    const pin = pkg.dependencies?.["react-reconciler"];
-    ok(pin === "^0.29.2", `react-reconciler ^0.29.2 pinned in extensions/${ext} (got ${pin})`);
+    ok(
+      pkg.dependencies?.["react-reconciler"] === undefined,
+      `react-reconciler removed from extensions/${ext} (post-migration)`,
+    );
+    ok(
+      pkg.dependencies?.["react"] === undefined,
+      `react removed from extensions/${ext} (post-migration)`,
+    );
+    ok(
+      pkg.dependencies?.["@shopify/ui-extensions-react"] === undefined,
+      `@shopify/ui-extensions-react removed from extensions/${ext} (post-migration)`,
+    );
+    const uiExtPin = pkg.dependencies?.["@shopify/ui-extensions"];
+    ok(
+      uiExtPin === "2026.4.x",
+      `@shopify/ui-extensions 2026.4.x pinned in extensions/${ext} (got ${uiExtPin})`,
+    );
+    ok(
+      pkg.dependencies?.["preact"] === "^10.10.x",
+      `preact ^10.10.x pinned in extensions/${ext} (got ${pkg.dependencies?.["preact"]})`,
+    );
+    ok(
+      pkg.dependencies?.["@preact/signals"] === "^2.3.x",
+      `@preact/signals ^2.3.x pinned in extensions/${ext} (got ${pkg.dependencies?.["@preact/signals"]})`,
+    );
+    const toml = read(`extensions/${ext}/shopify.extension.toml`);
+    ok(
+      toml.includes('api_version = "2026-04"'),
+      `extensions/${ext}/shopify.extension.toml pinned to api_version 2026-04`,
+    );
   }
 }
 
@@ -3791,7 +3823,7 @@ const EVIDENCE = {
 
   // (i) Checkout safety net (no new extension): gift honesty + KIT attach
   // inside checkout-protection, gated on the two FeatureKeys.
-  const prot14 = read("extensions/checkout-protection/src/Checkout.tsx");
+  const prot14 = read("extensions/checkout-protection/src/Extension.tsx");
   ok(prot14.includes("function RewardsSafetyNet()") && prot14.includes("<RewardsSafetyNet />"), "v14: RewardsSafetyNet declared and rendered");
   ok(prot14.includes("'gift_tiers'") && prot14.includes("'set_savings'"), "v14: safety net gates on the gift_tiers / set_savings literals");
   ok(prot14.includes("const GIFT_ATTRIBUTE = '_cellexia_gift';"), "v14: safety net reads the _cellexia_gift line property");
@@ -4868,8 +4900,8 @@ const EVIDENCE = {
   // ---- storefront: whitelist, raw reads, gates, close ---------------------
   const proofJs25 = read(PROOF_JS);
   ok(
-    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu'];"),
-    "v25: resultsApplyCopy whitelist is exactly the six chrome codes",
+    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm'];"),
+    "v25/v33: resultsApplyCopy whitelist is exactly the ten chrome codes",
   );
   for (const raw of ["pfStrRaw(s, 'rp')", "pfStrRaw(s, 'ma')", "pfStrRaw(s, 'vsb')", "pfStrRaw(s, 'mi')"]) {
     ok(proofJs25.includes(raw), `v25: proxy-only code read RAW (v8.22 convention): ${raw}`);
@@ -4916,6 +4948,391 @@ const EVIDENCE = {
   ok(
     read("app/routes/app.proof.results.tsx").includes("field: `m${index}l`"),
     "v25: the translations reviewer exposes the measurement fields",
+  );
+}
+
+// ============================== v33 RESULTS COMBINED + SLIDER + STUDY
+// docs/SPEC-v33-results-slider.md — ONE combined before+after photo for
+// lab entries (three-layer lab gate, "combined wins" exclusivity), the
+// clinical-study design option and the compare slider (both LIVE
+// beforeAfter settings travelling via the results proxy's payload.ui —
+// the Liquid island sits against the byte budget). Behavior lives in
+// proof-gallery R25–R32 (+m38–m42) and proof-server SR5/PR12 (+m8–m10);
+// the pins here hold the cross-file wiring.
+{
+  // ---- schema: both prisma files + the migration --------------------------
+  for (const schema of ["prisma/schema.prisma", "prisma/schema.postgres.prisma"]) {
+    ok(
+      read(schema).includes("combinedUrl   String?"),
+      `v33: ${schema} declares CustomerResult.combinedUrl`,
+    );
+  }
+  ok(
+    read("prisma/migrations/20260923090000_v33_results_combined/migration.sql")
+      .includes('ALTER TABLE "CustomerResult" ADD COLUMN "combinedUrl" TEXT;'),
+    "v33: the additive combinedUrl migration ships",
+  );
+
+  // ---- server: the three-layer lab gate + exclusivity ---------------------
+  const proofSrv33 = read("app/services/proof.server.ts");
+  ok(
+    proofSrv33.includes('const combinedUrl = isLab\n    ? cleanHttpsUrl(input.combinedUrl, "Combined before/after image", errors)\n    : "";'),
+    "v33: save layer — combined is https-cleaned for lab entries, cleared on a customer flip",
+  );
+  ok(
+    proofSrv33.includes("combinedUrl: lab ? row.combinedUrl : null,"),
+    "v33: serve belt — customer rows always serve combinedUrl null",
+  );
+  ok(
+    proofSrv33.includes('(row.source === "lab" && row.combinedUrl !== null),'),
+    "v33: the renderable gate counts the combined figure only where it serves (lab rows)",
+  );
+  ok(
+    proofSrv33.includes('beforeUrl: beforeUrl === "" || combinedUrl !== "" ? null : beforeUrl,'),
+    "v33: combined wins — a row never stores both photo layouts",
+  );
+
+  // ---- settings: the two LIVE display options -----------------------------
+  const settings33 = read("app/models/settings.server.ts");
+  ok(
+    settings33.includes('export const LAB_RESULT_DESIGNS = ["classic", "study"] as const;'),
+    "v33: the lab-design enum is closed",
+  );
+  ok(
+    settings33.includes("!LAB_RESULT_DESIGNS.includes(next.beforeAfter.labDesign as LabResultDesign)") &&
+      settings33.includes('if (typeof next.beforeAfter.slider !== "boolean") {'),
+    "v33: sanitize coerces labDesign (enum) and slider (boolean) to their defaults",
+  );
+  ok(
+    settings33.includes('labDesign: "classic",\n    slider: false,'),
+    "v33: both display options default OFF in DEFAULT_SETTINGS (classic, no slider)",
+  );
+
+  // ---- proxy: flags ride the FIRST results response -----------------------
+  // (v35 moved the settings read above getPublicResults — the order needs
+  // it on EVERY page — and widened ui with gr/ns/ht; pin moved with it.)
+  const proxy33 = read("app/routes/proxy.proof.tsx");
+  ok(
+    proxy33.includes("display = (await getSettings(shop)).beforeAfter;") &&
+      proxy33.includes('if (display.labDesign === "study") ui.cs = 1;') &&
+      proxy33.includes("if (display.slider === true) ui.sl = 1;") &&
+      proxy33.includes("(payload as Record<string, unknown>).ui = ui;") &&
+      proxy33.includes("if (page === 1 && display) {"),
+    "v33: the results proxy emits payload.ui from live settings (page 1, own try/catch)",
+  );
+
+  // ---- storefront: strict reads, belts, ARIA ------------------------------
+  // (v35 widened the flag object — the strict-=== discipline is the pin.)
+  const proofJs33 = read(PROOF_JS);
+  ok(
+    proofJs33.includes("return { cs: ui.cs === 1, sl: ui.sl === 1, gr: ui.gr === 1, ns: ui.ns === 1, ht: ui.ht === 1 };"),
+    "v33: payload.ui flags are strict === 1 reads (fail closed)",
+  );
+  ok(
+    proofJs33.includes("var combined = lab ? pfHttps(it.combinedUrl) : '';"),
+    "v33: the client combined belt twins the serve belt",
+  );
+  for (const raw of ["pfStrRaw(s, 'aw')", "pfStrRaw(s, 'dr')", "pfStrRaw(s, 'iv')", "pfStrRaw(s, 'zm')"]) {
+    ok(proofJs33.includes(raw), `v33: proxy-only code read RAW: ${raw}`);
+  }
+  ok(
+    proofJs33.includes("'aria-valuemin', '0', 'aria-valuemax', '100', 'aria-valuenow', '50'"),
+    "v33: the slider handle is a real ARIA slider control",
+  );
+  ok(
+    proofJs33.includes("stage.setPointerCapture(dragId);") &&
+      proofJs33.includes("document.addEventListener('pointercancel', dragEnd);") &&
+      proofJs33.includes("document.addEventListener('touchcancel', dragEnd);"),
+    "v33 review C1/C2: pointer capture (backdrop-close fix) + cancel-path listener cleanup",
+  );
+  ok(
+    proofJs33.includes("window.CSS.supports('aspect-ratio', '1 / 1')"),
+    "v33 review C4: the slider fails closed without aspect-ratio support",
+  );
+
+  // ---- CSS: slider geometry + study family styled -------------------------
+  const css33 = read(CSS);
+  for (const cls of [
+    ".cx-results__ba {", ".cx-results__ba-top {", ".cx-results__ba-handle {",
+    ".cx-results__ba-hint[hidden]", ".cx-results__card--study {",
+    ".cx-results__study {", ".cx-results__disclaim {",
+    ".cx-results__frame--combo {", ".cx-lightbox__img--combo {",
+  ]) {
+    ok(css33.includes(cls), `v33: CSS styles ${cls.replace(" {", "")}`);
+  }
+  const baIdx = css33.indexOf(".cx-results__ba {");
+  ok(
+    css33.slice(baIdx, css33.indexOf("}", baIdx)).includes("touch-action: pan-y"),
+    "v33: the stage yields vertical panning (mobile rail coexistence)",
+  );
+  ok(
+    css33.includes(":lang(ar) .cx-results__study-t,") &&
+      css33.includes(":lang(ar) .cx-results__ba-hint,"),
+    "v33: the new letterspaced chrome joins the Arabic letter-spacing reset",
+  );
+
+  // ---- admin: layout choice, stripped payload, display card ---------------
+  const forms33 = read("app/components/ProofForms.tsx");
+  ok(
+    forms33.includes('set("imageMode", selected[0] === "combined" ? "combined" : "pair")'),
+    "v33: the lab-only photo-format choice drives the combined field",
+  );
+  ok(
+    forms33.includes("const photoSwapLoss = combinedMode") &&
+      forms33.includes("!photoSwapLoss &&"),
+    "v33 review C5: a format/source switch never silently deletes the stored photos",
+  );
+  {
+    const cssPlay = read(CSS);
+    const playIdx = cssPlay.indexOf(".cx-results__media--slider .cx-results__play {");
+    ok(
+      playIdx !== -1 &&
+        cssPlay.slice(playIdx, cssPlay.indexOf("}", playIdx)).includes("pointer-events: none"),
+      "v33 review C3: the slider-mode play chip is decorative (physical corner, click-through)",
+    );
+  }
+  const results33 = read("app/routes/app.proof.results.tsx");
+  ok(
+    results33.includes('combinedUrl: combinedMode ? values.combinedUrl.trim() : "",'),
+    "v33: formToPayload strips the unused layout's URLs",
+  );
+  ok(
+    results33.includes("submitDisplay({ labDesign: next })") &&
+      results33.includes("submitDisplay({ slider: checked })"),
+    "v33: the Clinical display card saves both options through save_settings",
+  );
+}
+
+// ======================================== v34 STUDY PRESETS (admin-only)
+// docs/SPEC-v34-result-presets.md — batch-entry templates for lab results:
+// per-study constants (quote, attribution, weeks, measurement rows WITHOUT
+// percents, trust marks) applied in the Add form so only the photos and
+// numbers remain. ZERO storefront surface (no Liquid, no locale, no proxy,
+// no JS). Behavior lives in proof-server PS1–PS6 (+m11/m12); the pins here
+// hold the cross-file wiring.
+{
+  for (const schema of ["prisma/schema.prisma", "prisma/schema.postgres.prisma"]) {
+    const schema34 = read(schema);
+    ok(
+      schema34.includes("model ResultPreset {"),
+      `v34: ${schema} declares ResultPreset`,
+    );
+    ok(
+      schema34.includes("@@unique([shop, name])"),
+      `v34: ${schema} backs the same-name upsert with a UNIQUE (shop, name) key (review F2)`,
+    );
+  }
+  {
+    const migration34 = read(
+      "prisma/migrations/20260925090000_v34_result_presets/migration.sql",
+    );
+    ok(
+      migration34.includes('CREATE TABLE "ResultPreset"') &&
+        migration34.includes('CREATE UNIQUE INDEX "ResultPreset_shop_name_key"'),
+      "v34: the ResultPreset migration ships with the unique key",
+    );
+  }
+  const proofSrv34 = read("app/services/proof.server.ts");
+  ok(
+    proofSrv34.includes("export const MAX_RESULT_PRESETS = 50;") &&
+      proofSrv34.includes("function assertPresetModel(): void {") &&
+      proofSrv34.includes("function cleanPresetMeasurements("),
+    "v34: preset cap + old-client guard + the pct-free strict cleaner",
+  );
+  ok(
+    !proofSrv34.slice(
+      proofSrv34.indexOf("function cleanPresetMeasurements("),
+      proofSrv34.indexOf("export function parseResultPresetFields("),
+    ).includes("pct"),
+    "v34: the preset cleaner never reads a percent — percents are per-entry numbers",
+  );
+  const results34 = read("app/routes/app.proof.results.tsx");
+  ok(
+    results34.includes('case "save_result_preset": {') &&
+      results34.includes('case "delete_result_preset": {') &&
+      results34.includes("listResultPresets(session.shop)"),
+    "v34: the results route wires preset CRUD + the loader list",
+  );
+  const forms34 = read("app/components/ProofForms.tsx");
+  ok(
+    forms34.includes('label="Start from a study preset"') &&
+      forms34.includes("Save as study preset") &&
+      forms34.includes('pct: "",'),
+    "v34: the Add-form picker + in-form save exist, and applying leaves percents empty",
+  );
+  ok(
+    forms34.includes("measurementErrors.some((entry) => entry.label)"),
+    "v34: the save-preset button never out-saves the visible form (review F1 — label/duration errors gate it)",
+  );
+}
+
+// =================== v35 STUDY BATCHES + GALLERY ORDER + DISPLAY OPTIONS
+// docs/SPEC-v35-results-batches.md — CustomerResult.study (lab-only),
+// server-side gallery order (mix/curated/newest), batch save through the
+// SAME cleanResultInput rules, desktop one-row default (ui.gr restores the
+// grid), study-name tag (ui.ns hides), lab-testimonial hiding (ui.ht),
+// testimonial overflow expander. Behavior lives in proof-server (SR6/PR13+
+// batch/order cases) and proof-gallery (R34+); these pins hold the
+// cross-file wiring.
+{
+  for (const schema of ["prisma/schema.prisma", "prisma/schema.postgres.prisma"]) {
+    const schema35 = read(schema);
+    ok(
+      /model CustomerResult \{[\s\S]*?\n  study {11}String\?\n[\s\S]*?\n\}/.test(schema35),
+      `v35: ${schema} declares CustomerResult.study (nullable)`,
+    );
+  }
+  ok(
+    read("prisma/migrations/20261003090000_v35_result_studies/migration.sql")
+      .includes('ALTER TABLE "CustomerResult" ADD COLUMN "study" TEXT;'),
+    "v35: the study-column migration ships",
+  );
+
+  // ---- server: lab-only study + the serve belt + batch discipline --------
+  const proofSrv35 = read("app/services/proof.server.ts");
+  ok(
+    proofSrv35.includes("export const RESULT_STUDY_MAX = 80;") &&
+      proofSrv35.includes('const study = isLab ? cleanText(input.study, RESULT_STUDY_MAX) : "";'),
+    "v35: the study tag is a LAB-ONLY study constant (customer saves clear it)",
+  );
+  ok(
+    proofSrv35.includes("study: lab ? row.study : null,"),
+    "v35: the public projection's study serve belt (customer rows always null)",
+  );
+  ok(
+    proofSrv35.includes('export const RESULTS_GALLERY_ORDERS = ["mix", "curated", "newest"] as const;') &&
+      proofSrv35.includes('cleanEnum(order, RESULTS_GALLERY_ORDERS, "curated") as ResultsGalleryOrder'),
+    "v35: getPublicResults coerces junk order to curated (the pre-v35 sequence)",
+  );
+  ok(
+    proofSrv35.includes("function interleaveByStudy<") &&
+      proofSrv35.includes("row.source === \"lab\" && row.study ? `s:${row.study}` : \"\"") &&
+      proofSrv35.includes("if (sequence.length <= 1) return rows;"),
+    "v35: mix interleave groups lab rows by study, ONE catch-all group, identity with a single group",
+  );
+  ok(
+    proofSrv35.includes("export const MAX_RESULT_BATCH_ROWS = 100;") &&
+      proofSrv35.includes("export async function saveResultBatch(") &&
+      proofSrv35.includes("const { errors: rowErrors, data } = cleanResultInput(rowInput);"),
+    "v35: batch rows run through the SAME cleanResultInput rules as a single save",
+  );
+  ok(
+    proofSrv35.indexOf("return {\n      ok: false,\n      created: 0,\n      total,\n      presetSaved: false,\n      errors: capBatchErrors(errors),\n    };") <
+      proofSrv35.indexOf("const base = await nextSortWeight(\"results\", shop);"),
+    "v35: the batch validates EVERY row before anything is written (all-or-nothing)",
+  );
+
+  // ---- settings: the four LIVE display options ----------------------------
+  const settings35 = read("app/models/settings.server.ts");
+  ok(
+    settings35.includes('export const RESULTS_GALLERY_ORDERS = ["mix", "curated", "newest"] as const;') &&
+      settings35.includes('export const RESULTS_DESKTOP_LAYOUTS = ["row", "grid"] as const;'),
+    "v35: the order + desktop-layout enums are closed (settings twin of the server const)",
+  );
+  ok(
+    settings35.includes('galleryOrder: "mix",\n    desktopLayout: "row",\n    showStudy: true,\n    hideLabQuotes: false,'),
+    "v35: defaults — mix order, one-row desktop, study tags on, lab quotes shown",
+  );
+  ok(
+    settings35.includes("next.beforeAfter.galleryOrder as ResultsGalleryOrder") &&
+      settings35.includes("next.beforeAfter.desktopLayout as ResultsDesktopLayout") &&
+      settings35.includes('if (typeof next.beforeAfter.showStudy !== "boolean") {') &&
+      settings35.includes('if (typeof next.beforeAfter.hideLabQuotes !== "boolean") {'),
+    "v35: sanitize coerces all four new display fields",
+  );
+
+  // ---- proxy: order on EVERY page, the three new page-1 flags ------------
+  const proxy35 = read("app/routes/proxy.proof.tsx");
+  ok(
+    proxy35.includes('display?.galleryOrder ?? "curated",'),
+    "v35: the proxy passes the gallery order to getPublicResults on every page request",
+  );
+  ok(
+    proxy35.includes('if (display.desktopLayout === "grid") ui.gr = 1;') &&
+      proxy35.includes("if (display.showStudy === false) ui.ns = 1;") &&
+      proxy35.includes("if (display.hideLabQuotes === true) ui.ht = 1;"),
+    "v35: gr/ns/ht ride payload.ui only when they depart from the defaults",
+  );
+
+  // ---- storefront: tag, expander, hide rule, grid modifier ---------------
+  const proofJs35 = read(PROOF_JS);
+  ok(
+    proofJs35.includes("st: lab && typeof it.study === 'string' && /\\S/.test(it.study) ? it.study : ''"),
+    "v35: the item map's study field twins the serve belt (lab rows only)",
+  );
+  ok(
+    proofJs35.includes("function resultsStudyTag(item, o) {") &&
+      proofJs35.includes("if (!item.st || (o && o.ns)) return null;"),
+    "v35: the study tag renders from item.st and respects ui.ns",
+  );
+  ok(
+    proofJs35.includes("function resultsHideQuote(item, o) {") &&
+      proofJs35.includes("return !!(o && o.ht && item.lab);"),
+    "v35: ui.ht hides quotes on LAB entries only (customer quotes always serve)",
+  );
+  ok(
+    proofJs35.includes("if (resultsQuoteClamped(q)) btn.removeAttribute('hidden');") &&
+      proofJs35.includes("if (btn.getAttribute('aria-expanded') === 'true') return;"),
+    "v35: the expander surfaces only on proven overflow and never re-hides an open quote",
+  );
+  ok(
+    proofJs35.includes("(o.gr ? ' cx-results--grid' : '')"),
+    "v35: ui.gr adds the grid root modifier (default = the one-row rail)",
+  );
+
+  // ---- CSS: the one-row default + the new families ------------------------
+  const css35 = read(`${EXT}/assets/cellexia-booster.css`);
+  ok(
+    css35.includes(".cx-results--grid .cx-results__rail {") &&
+      !/@media \(min-width: 900px\) \{[^@]*?\n  \.cx-results__rail \{\n    display: grid;/.test(css35),
+    "v35: the desktop 4-column grid lives ONLY behind the --grid modifier",
+  );
+  ok(
+    css35.includes(".cx-results__study-name {") &&
+      css35.includes(".cx-results__quote-more {") &&
+      css35.includes(".cx-results .cx-results__quote--open {") &&
+      css35.includes(".cx-results__quote--probe::before {"),
+    "v35: study-tag + expander + open-quote + probe CSS families exist",
+  );
+  ok(
+    proofJs35.includes("q.className = base + ' cx-results__quote--probe';"),
+    "v35: the overflow probe suppresses the decorative quote mark (real-browser catch — a one-line quote must never grow an expander)",
+  );
+  ok(
+    css35.indexOf(".cx-results .cx-results__quote--open {") >
+      css35.indexOf(".cx-results--ultra .cx-results__quote {"),
+    "v35: the open-quote lift sits AFTER the ultra clamp (equal specificity, later wins)",
+  );
+
+  // ---- admin wiring --------------------------------------------------------
+  const results35 = read("app/routes/app.proof.results.tsx");
+  ok(
+    results35.includes('case "save_result_batch": {') &&
+      results35.includes("saveResultBatch(shop, input)"),
+    "v35: the results route wires the batch intent",
+  );
+  ok(
+    results35.includes('label="Gallery order"') &&
+      results35.includes('label="Desktop layout"') &&
+      results35.includes('label="Show the study name on cards"') &&
+      results35.includes('label="Hide testimonials on clinical entries"'),
+    "v35: the four display options sit on the Clinical display card",
+  );
+  const batchForm35 = read("app/components/ResultBatchForm.tsx");
+  ok(
+    batchForm35.includes("export const MAX_BATCH_ROWS = 100;") &&
+      batchForm35.includes("window.setTimeout(submitNext, 150);"),
+    "v35: the batch form caps rows (server twin) and paces uploads (house 150ms)",
+  );
+  ok(
+    read("app/components/ProofForms.tsx").includes("study: preset.name,"),
+    "v35: applying a preset fills the entry's study tag with the preset's name",
+  );
+
+  // ---- study names never translate (proper noun, the attributionName rule)
+  ok(
+    !read("app/services/proof-translation.server.ts").includes('"study"'),
+    "v35: study is NOT in the translatable-field allowlist",
   );
 }
 
@@ -5579,8 +5996,8 @@ const EVIDENCE = {
     "v31: the composed add is ONE items[] call (bundles + at most one remainder line)",
   );
   ok(
-    qyJs.includes("var cap = qsyncSubActive() ? st.top.q : QSYNC_CAP;"),
-    "v31: a selected subscription clamps the stepper at the top tier (composed counts stay one-time)",
+    qyJs.includes("var cap = qsyncSubActive() || st.vw ? st.top.q : QSYNC_CAP;"),
+    "v31/v32.2: a selected subscription OR an unverified volume clamps the stepper at the top tier",
   );
   ok(
     qyJs.includes("if (st.n <= st.top.q) {") && qyJs.includes("st.lastPrice = qselMoney(split.cents, st.d);"),
@@ -5704,9 +6121,9 @@ const EVIDENCE = {
   // widget show discounts a refused arming never charged) ----
   ok(
     read(`${EXT}/blocks/pdp-booster.liquid`).includes(
-      '"qy": {"live": {{ cx_qyl }}{% if cfg.quantitySync.volumeLive == true %}, "vd": 1{% endif %}},',
+      '"qy": {"live": {{ cx_qyl }}{% if cfg.quantitySync.volumeLive == true %}, "vd": 1{% elsif cfg.quantitySync.volume == true %}, "vd": 0{% endif %}},',
     ),
-    "v32.1: the island emits vd only on the VERIFIED volumeLive verdict, never the raw switch",
+    "v32.1/v32.2: vd:1 only on the VERIFIED volumeLive verdict; vd:0 (cap, never compose) while volume is wanted but unverified",
   );
 
   // ---- widget: vd mode never intercepts; the capture pin still holds ----
@@ -5753,9 +6170,31 @@ const EVIDENCE = {
   // persisted reasons + the post-refresh volumeLive re-sync ----
   ok(
     vService.includes('if (e?.extensions?.code === "THROTTLED") return true;') &&
-      vService.includes("const PRICE_CALL_SPACING_MS = 250;") &&
+      vService.includes("const PRICE_CALL_SPACING_MS = 150;") &&
       vService.includes("const THROTTLE_RETRIES = 3;"),
     "v32.1: pricing calls are paced and throttle-retried (the unpaced burst was the field failure)",
+  );
+  // ---- v32.2 field fixes (round 2: 'Title must be unique' + blind read) ----
+  ok(
+    vService.includes("async function findVolumeDiscountByTitle(") &&
+      vService.includes('if (d.title !== VOLUME_DISCOUNT_TITLE) continue;') &&
+      vService.includes("if (ours.size > 0 && fid && !ours.has(fid)) continue; // another app's — never touch"),
+    "v32.2: a lost discount id is healed by exact-title adoption, guarded to OUR function-backed node",
+  );
+  ok(
+    vService.includes("if (/unique/i.test(joined)) {") &&
+      vService.includes('Delete "${VOLUME_DISCOUNT_TITLE}" in Shopify Admin -> Discounts'),
+    "v32.2: the unique-title create error re-adopts, and the last resort is an HONEST manual path",
+  );
+  ok(
+    vService.includes("const hint = /function/i.test(joined)") &&
+      !vService.includes('no id returned"}. ` +\n          "Deploy the extensions first'),
+    "v32.2: the deploy hint is CONDITIONAL on a function-shaped error (the blanket hint misled the merchant)",
+  );
+  ok(
+    vService.includes("concreteNamespaceCache = `app--${num}--cellexia`;") &&
+      vService.includes("if (concrete) cfg = await tryRead(concrete);"),
+    "v32.2: the config read falls back to the concrete app-reserved namespace (the shorthand read came back empty live)",
   );
   ok(
     vService.includes("const on = armed && Object.keys(p).length > 0;") &&

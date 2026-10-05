@@ -384,7 +384,7 @@ for (const [label, nowMs, over, expected] of computeCases) {
   // argument — a source anchor is the only guard that the PRIMARY checkout
   // delivery widget threads the typed state. Mirrors checkout-trust's T5
   // pair against ITS Checkout.tsx.
-  const src = readSource('extensions/checkout-delivery/src/Checkout.tsx');
+  const src = readSource('extensions/checkout-delivery/src/Extension.tsx');
   for (const anchor of [
     'resolveDeliveryConfig(configRoot, countryCode, provinceCode)',
     'shippingAddress?.provinceCode',
@@ -392,7 +392,7 @@ for (const [label, nowMs, over, expected] of computeCases) {
     // checks deliveryEstimate.excludedByMarket for the buyer's market, the
     // veto rides featureVisible (draft grants included), and the preview
     // diagnosis names exclusion instead of "not enabled".
-    'useCartLines()',
+    'shopify.lines.value',
     "excludedProductInCart(",
     "'excludedByMarket'",
     '!deliveryExcluded',
@@ -401,7 +401,7 @@ for (const [label, nowMs, over, expected] of computeCases) {
     // buyer's EXPLICIT choice onto the _cx_us_state cart attribute; it
     // seeds provinceCode ONLY while the typed address has none and ONLY
     // for US destinations (typed always wins — never-guess holds).
-    "'_cx_us_state',",
+    "attributeValue('_cx_us_state')",
     'const typedProvinceCode = shippingAddress?.provinceCode;',
     '/^[A-Z]{2}$/.test(usStateAttributeValue)',
     'typedProvinceCode ||',

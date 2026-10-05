@@ -142,7 +142,7 @@ function makeStub() {
   let tick = 1_700_000_000_000;
   let seq = 0;
   const clock = () => new Date((tick += 60_000));
-  const tables: Record<string, StubRow[]> = { pressItem: [], dermEndorsement: [], customerResult: [] };
+  const tables: Record<string, StubRow[]> = { pressItem: [], dermEndorsement: [], customerResult: [], resultPreset: [] };
   const findManyCalls: FindManyCall[] = [];
 
   function delegate(model: string) {
@@ -205,6 +205,7 @@ function makeStub() {
     pressItem: delegate("pressItem"),
     dermEndorsement: delegate("dermEndorsement"),
     customerResult: delegate("customerResult"),
+    resultPreset: delegate("resultPreset"),
     async $transaction(ops: Promise<unknown>[]) {
       return Promise.all(ops);
     },
@@ -331,6 +332,7 @@ function seedResult(shop: string, over: StubRow): StubRow {
     verified: false,
     beforeUrl: null,
     afterUrl: null,
+    combinedUrl: null,
     ageRange: null,
     skinType: null,
     concern: null,
@@ -344,6 +346,7 @@ function seedResult(shop: string, over: StubRow): StubRow {
     markUnretouched: false,
     attributionName: null,
     attributionRole: null,
+    study: null,
     productGids: "[]",
     marketHandles: undefined,
     legacyGid: null,
@@ -520,10 +523,10 @@ function pubs(res: { items: { publication: string }[] }): string[] {
   ok(!!item, "PR4: the full fixture row is served");
   ok(
     Object.keys(item).sort().join(",") ===
-      "afterUrl,ageRange,attributionName,attributionRole,beforeUrl,concern,country," +
+      "afterUrl,ageRange,attributionName,attributionRole,beforeUrl,combinedUrl,concern,country," +
       "durationWeeks,id,markInstrument,markSamePatient,markUnretouched,measurements," +
-      "skinType,source,testimonial,verified,videoUrl",
-    "PR4: public result items carry EXACTLY the eighteen public fields (v25)",
+      "skinType,source,study,testimonial,verified,videoUrl",
+    "PR4: public result items carry EXACTLY the twenty public fields (v25 + v33 combinedUrl + v35 study)",
   );
   for (const leak of ["shop", "status", "featured", "sortWeight", "productGids", "marketHandles", "legacyGid", "createdAt"]) {
     ok(!(leak in item), `PR4: result projection never leaks ${leak}`);
@@ -580,6 +583,7 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     verified: false,
     beforeUrl: "https://cdn/b.jpg",
     afterUrl: "https://cdn/a.jpg",
+    combinedUrl: "",
     ageRange: "",
     skinType: "",
     concern: "",
@@ -686,6 +690,448 @@ function pubs(res: { items: { publication: string }[] }): string[] {
   ok(capPct.ok === false, "SR4: percent above 500 is refused");
 }
 
+// =========== SR5/PR12: v33 combined before/after photo (lab-only layout)
+
+{
+  const shop = "combined.myshopify.com";
+  const base = {
+    source: "lab",
+    verified: true,
+    beforeUrl: "",
+    afterUrl: "",
+    combinedUrl: "https://cdn/combo.jpg",
+    ageRange: "",
+    skinType: "",
+    concern: "",
+    durationWeeks: 8,
+    country: "",
+    testimonial: "",
+    videoUrl: "",
+    measurements: [] as unknown[],
+    markInstrument: false,
+    markSamePatient: false,
+    markUnretouched: false,
+    attributionName: "",
+    attributionRole: "",
+    productGids: [] as string[],
+    featured: false,
+    status: "approved",
+  };
+  const saved = await P.saveResult(shop, base);
+  ok(saved.ok === true, "SR5: a combined-only lab entry meets the image requirement");
+  const served = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(served.total === 1 && served.items[0].combinedUrl === "https://cdn/combo.jpg",
+    "PR12: a combined-only lab row is renderable and serves combinedUrl");
+
+  // combined WINS: the separate pair is cleared, never served alongside
+  const both = await P.saveResult(shop, {
+    ...base, beforeUrl: "https://cdn/b.jpg", afterUrl: "https://cdn/a.jpg",
+  }, saved.id);
+  ok(both.ok === true, "SR5: pair + combined together still saves");
+  const servedBoth = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(servedBoth.items[0].combinedUrl === "https://cdn/combo.jpg" &&
+    servedBoth.items[0].beforeUrl === null && servedBoth.items[0].afterUrl === null,
+    "SR5: combined wins — the pair stores as null (one layout per row)");
+
+  // lab-only, layer 1 (save): a customer flip drops the combined photo
+  const flipped = await P.saveResult(shop, { ...base, source: "customer" }, saved.id);
+  ok(flipped.ok === false && flipped.errors.some((e: string) => e.includes("at least an image")),
+    "SR5: the flip clears the combined photo, so an otherwise-empty flip is refused");
+  const flipKept = await P.saveResult(shop, {
+    ...base, source: "customer", beforeUrl: "https://cdn/b.jpg",
+  }, saved.id);
+  ok(flipKept.ok === true, "SR5: the flip saves once a pair image replaces it");
+  const servedFlip = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(servedFlip.items[0].combinedUrl === null &&
+    servedFlip.items[0].beforeUrl === "https://cdn/b.jpg",
+    "SR5: after the flip the combined column serves null");
+
+  const badUrl = await P.saveResult(shop, { ...base, combinedUrl: "http://cdn/x.jpg" });
+  ok(badUrl.ok === false &&
+    badUrl.errors.some((e: string) => e.includes("Combined before/after image")),
+    "SR5: the combined URL passes the https gate or errors");
+
+  // layer 2 (serve belt) + the lab-aware renderable gate: a drifted
+  // CUSTOMER row with ONLY a combined photo would never render, so it
+  // must not enter items/totals/facets at all.
+  seedResult(shop, { combinedUrl: "https://cdn/drift-combo.jpg" });
+  const drift = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(drift.total === 1 &&
+    !drift.items.some((r: { combinedUrl: string | null }) => r.combinedUrl === "https://cdn/drift-combo.jpg"),
+    "PR12: a customer row with only a drifted combined photo is fully excluded");
+  seedResult(shop, { source: "lab", combinedUrl: "https://cdn/lab-drift.jpg" });
+  seedResult(shop, { beforeUrl: "https://cdn/pairb.jpg", combinedUrl: "https://cdn/cust-drift.jpg" });
+  const drift2 = await P.getPublicResults(shop, null, {}, 1, 12);
+  const labDrift = drift2.items.find((r: { combinedUrl: string | null }) => r.combinedUrl === "https://cdn/lab-drift.jpg");
+  const custDrift = drift2.items.find((r: { beforeUrl: string | null }) => r.beforeUrl === "https://cdn/pairb.jpg");
+  ok(drift2.total === 3 && !!labDrift, "PR12: a lab row's combined photo serves");
+  ok(!!custDrift && custDrift.combinedUrl === null,
+    "PR12: the serve belt nulls a customer row's drifted combined column");
+}
+
+// ===================== PS: v34 study presets (admin-only batch templates)
+
+{
+  const shop = "presets.myshopify.com";
+  const other = "otherpresets.myshopify.com";
+  const base = {
+    name: "  8-week wrinkle study ",
+    testimonial: "  Protocol quote.  ",
+    attributionName: " Dr. Lauren Bennett ",
+    attributionRole: " Consultant Dermatologist ",
+    durationWeeks: 8,
+    measurements: [
+      { label: " Wrinkle depth ", dir: "down", info: " PRIMOS scan. ", pct: 34.2 },
+      { label: "Skin firmness", dir: "up", info: "" },
+    ],
+    markInstrument: true,
+    markSamePatient: true,
+    markUnretouched: false,
+  };
+  const saved = await P.saveResultPreset(shop, base);
+  ok(saved.ok === true && typeof saved.id === "string", "PS1: a valid preset saves");
+  const listed = await P.listResultPresets(shop);
+  ok(listed.length === 1 && listed[0].name === "8-week wrinkle study",
+    "PS1: listed by trimmed name");
+  ok(
+    JSON.stringify(listed[0].fields.measurements) ===
+      JSON.stringify([
+        { label: "Wrinkle depth", dir: "down", info: "PRIMOS scan." },
+        { label: "Skin firmness", dir: "up" },
+      ]),
+    "PS1: rows store label/dir/info trimmed — the sent pct is DROPPED (percents are per-entry numbers)",
+  );
+  ok(listed[0].fields.attributionName === "Dr. Lauren Bennett" &&
+    listed[0].fields.durationWeeks === 8 && listed[0].fields.markInstrument === true &&
+    listed[0].fields.markUnretouched === false,
+    "PS1: study constants round-trip trimmed");
+
+  const renamedQuote = await P.saveResultPreset(shop, { ...base, testimonial: "Updated quote." });
+  ok(renamedQuote.ok === true && renamedQuote.id === saved.id,
+    "PS2: re-saving the same name UPDATES that preset in place");
+  const afterUpdate = await P.listResultPresets(shop);
+  ok(afterUpdate.length === 1 && afterUpdate[0].fields.testimonial === "Updated quote.",
+    "PS2: no duplicate row, refreshed payload");
+
+  const noName = await P.saveResultPreset(shop, { ...base, name: "   " });
+  ok(noName.ok === false && noName.errors.some((e: string) => e.includes("name")),
+    "PS3: a blank name is refused");
+  const badRow = await P.saveResultPreset(shop, {
+    ...base, name: "Bad rows", measurements: [{ label: "", dir: "sideways" }],
+  });
+  ok(badRow.ok === false &&
+    badRow.errors.some((e: string) => e.includes("label")) &&
+    badRow.errors.some((e: string) => e.includes("direction")),
+    "PS3: label + direction problems are reported, never silently dropped");
+  const tooMany = await P.saveResultPreset(shop, {
+    ...base, name: "Too many",
+    measurements: Array.from({ length: 7 }, (_, i) => ({ label: `M${i}`, dir: "up" })),
+  });
+  ok(tooMany.ok === false && tooMany.errors.some((e: string) => e.includes("No more than 6")),
+    "PS3: more than 6 rows is refused");
+  const badWeeks = await P.saveResultPreset(shop, { ...base, name: "Weeks", durationWeeks: 521 });
+  ok(badWeeks.ok === false && badWeeks.errors.some((e: string) => e.includes("Duration")),
+    "PS3: out-of-range duration is refused");
+
+  await P.saveResultPreset(other, { ...base, name: "Their study" });
+  const mine = await P.listResultPresets(shop);
+  ok(mine.length === 1 && mine.every((p: { name: string }) => p.name !== "Their study"),
+    "PS4: presets are shop-scoped");
+  const crossDelete = await P.deleteResultPreset(shop, (await P.listResultPresets(other))[0].id);
+  ok(crossDelete.ok === false && crossDelete.errors[0] === "Preset not found",
+    "PS4: cross-shop delete is refused");
+  const del = await P.deleteResultPreset(shop, saved.id as string);
+  ok(del.ok === true && (await P.listResultPresets(shop)).length === 0,
+    "PS4: own delete removes the preset");
+
+  const capShop = "capped.myshopify.com";
+  for (let i = 0; i < P.MAX_RESULT_PRESETS; i++) {
+    const fill = await P.saveResultPreset(capShop, { ...base, name: `Study ${i}` });
+    if (!fill.ok) { ok(false, `PS5: fill save ${i} unexpectedly failed`); break; }
+  }
+  const over = await P.saveResultPreset(capShop, { ...base, name: "One too many" });
+  ok(over.ok === false && over.errors.some((e: string) => e.includes(`No more than ${P.MAX_RESULT_PRESETS}`)),
+    "PS5: the preset cap refuses number 51");
+  const still = await P.saveResultPreset(capShop, { ...base, name: "Study 0", testimonial: "Refreshed." });
+  ok(still.ok === true, "PS5: same-name updates still work at the cap");
+
+  db._seed("resultPreset", { shop, name: "Corrupt", payload: "not json" });
+  const tolerant = await P.listResultPresets(shop);
+  const corrupt = tolerant.find((p: { name: string }) => p.name === "Corrupt");
+  ok(!!corrupt && corrupt.fields.measurements.length === 0 && corrupt.fields.testimonial === "",
+    "PS6: a corrupt payload degrades to empty fields, never throws");
+  ok(JSON.stringify(P.parseResultPresetFields(null)) === JSON.stringify(P.parseResultPresetFields("{bad")),
+    "PS6: null and corrupt parse identically (empty)");
+}
+
+// =============== ST: v35 study tag — lab-only save + serve belt + cap
+
+{
+  const shop = "study.myshopify.com";
+  const base = {
+    source: "lab",
+    verified: false,
+    beforeUrl: "https://cdn/sb.jpg",
+    afterUrl: "https://cdn/sa.jpg",
+    combinedUrl: "",
+    ageRange: "",
+    skinType: "",
+    concern: "",
+    durationWeeks: null,
+    country: "",
+    testimonial: "",
+    videoUrl: "",
+    measurements: [],
+    markInstrument: false,
+    markSamePatient: false,
+    markUnretouched: false,
+    attributionName: "",
+    attributionRole: "",
+    study: "  Helsinki 8-week study  ",
+    productGids: [] as string[],
+    featured: false,
+    status: "approved",
+  };
+  const saved = await P.saveResult(shop, base);
+  ok(saved.ok === true, "ST1: a lab entry with a study tag saves");
+  const served = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(served.items[0].study === "Helsinki 8-week study",
+    "ST1: the study tag serves trimmed");
+
+  const flipped = await P.saveResult(shop, { ...base, source: "customer" }, saved.id);
+  ok(flipped.ok === true, "ST2: flipping to customer saves");
+  const servedFlip = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(servedFlip.items[0].study === null,
+    "ST2: the flip CLEARS the study tag (lab-only study constant)");
+
+  // serve-time belt: a drifted CUSTOMER row with a study column serves null
+  seedResult(shop, { beforeUrl: "https://cdn/drift-study.jpg", study: "Drifted" });
+  const drift = await P.getPublicResults(shop, null, {}, 1, 12);
+  const driftItem = drift.items.find(
+    (i: { beforeUrl: string | null }) => i.beforeUrl === "https://cdn/drift-study.jpg",
+  );
+  ok(!!driftItem && driftItem.study === null,
+    "ST3: a drifted customer study column never serves (serve belt)");
+
+  const long = await P.saveResult(shop, { ...base, study: "x".repeat(200) });
+  ok(long.ok === true, "ST4: an over-long study name saves (capped, never errors)");
+  const servedLong = await P.getPublicResults(shop, null, {}, 1, 12);
+  const longItem = servedLong.items.find(
+    (i: { study: string | null }) => i.study !== null && i.study.startsWith("xxx"),
+  );
+  ok(!!longItem && longItem.study.length === 80,
+    "ST4: the study tag caps at RESULT_STUDY_MAX (80, the preset-name twin)");
+}
+
+// ====== GO: v35 gallery order — mix round-robin, newest, bands, paging
+
+{
+  const shop = "order.myshopify.com";
+  const seedOrdered = (t: string, over: Record<string, unknown>) =>
+    seedResult(shop, { beforeUrl: "https://cdn/" + t + ".jpg", testimonial: t, ...over });
+  seedOrdered("A1", { source: "lab", study: "A" });
+  seedOrdered("A2", { source: "lab", study: "A" });
+  seedOrdered("A3", { source: "lab", study: "A" });
+  seedOrdered("B1", { source: "lab", study: "B" });
+  seedOrdered("B2", { source: "lab", study: "B" });
+  seedOrdered("C1", {});
+  seedOrdered("D1", { source: "lab", study: "D", featured: true });
+  const names = (res: { items: { testimonial: string | null }[] }) =>
+    res.items.map((i) => i.testimonial).join(",");
+
+  const curated = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(names(curated) === "D1,A1,A2,A3,B1,B2,C1",
+    "GO1: default (curated) = featured first, then manual order — the pre-v35 sequence");
+  const explicit = await P.getPublicResults(shop, null, {}, 1, 12, "curated");
+  ok(names(explicit) === "D1,A1,A2,A3,B1,B2,C1", "GO1: explicit curated identical");
+  const junk = await P.getPublicResults(shop, null, {}, 1, 12, "bogus");
+  ok(names(junk) === "D1,A1,A2,A3,B1,B2,C1",
+    "GO1: junk order coerces to curated (fail closed)");
+
+  const mix = await P.getPublicResults(shop, null, {}, 1, 12, "mix");
+  ok(names(mix) === "D1,A1,B1,C1,A2,B2,A3",
+    "GO2: mix = one result from EVERY study first (round-robin, study-less rows share one group, featured pulls its study to the front)");
+  ok(mix.total === 7 && mix.verifiedTotal === curated.verifiedTotal,
+    "GO2: ordering never changes totals or the scale banner");
+
+  // paging must agree with the one-shot sequence (Show-more contract)
+  const p1 = await P.getPublicResults(shop, null, {}, 1, 3, "mix");
+  const p2 = await P.getPublicResults(shop, null, {}, 2, 3, "mix");
+  const p3 = await P.getPublicResults(shop, null, {}, 3, 3, "mix");
+  ok(names(p1) + "," + names(p2) + "," + names(p3) === "D1,A1,B1,C1,A2,B2,A3",
+    "GO3: mix pages concatenate to the exact one-shot sequence (no dup, no gap)");
+
+  const newest = await P.getPublicResults(shop, null, {}, 1, 12, "newest");
+  ok(names(newest) === "D1,C1,B2,B1,A3,A2,A1",
+    "GO4: newest = createdAt desc, featured pin deliberately ignored");
+
+  // mix composes with filters: the filtered subsequence interleaves
+  const mixDry = await P.getPublicResults(shop, null, { skin: "dry" }, 1, 12, "mix");
+  ok(mixDry.total === 0 || mixDry.items.length === mixDry.total,
+    "GO5: filters + mix stay consistent (filtered set interleaves)");
+
+  // drifted CUSTOMER study columns group into the catch-all, never a study
+  const shop2 = "order2.myshopify.com";
+  const seed2 = (t: string, over: Record<string, unknown>) =>
+    seedResult(shop2, { beforeUrl: "https://cdn/" + t + ".jpg", testimonial: t, ...over });
+  seed2("A1", { source: "lab", study: "A" });
+  seed2("A2", { source: "lab", study: "A" });
+  seed2("CX", { study: "A" }); // drifted customer row
+  seed2("CY", {});
+  const mix2 = await P.getPublicResults(shop2, null, {}, 1, 12, "mix");
+  ok(names(mix2) === "A1,CX,A2,CY",
+    "GO6: a drifted customer study column cannot join the study's group (lab-gated key)");
+
+  // product bands reorder INTERNALLY — tagged rows never sink below brand
+  const shop3 = "order3.myshopify.com";
+  const seed3 = (t: string, over: Record<string, unknown>) =>
+    seedResult(shop3, { beforeUrl: "https://cdn/" + t + ".jpg", testimonial: t, ...over });
+  seed3("b1", { source: "lab", study: "X" });
+  seed3("t1", { source: "lab", study: "Y", productGids: JSON.stringify([GID_P]) });
+  seed3("b2", {});
+  seed3("t2", { source: "lab", study: "Y", productGids: JSON.stringify([GID_P]) });
+  seed3("t3", { source: "lab", study: "Z", productGids: JSON.stringify([GID_P]) });
+  const mixP = await P.getPublicResults(shop3, GID_P, {}, 1, 12, "mix");
+  ok(names(mixP) === "t1,t3,t2,b1,b2",
+    "GO7: mix interleaves INSIDE each product band (tagged first, brand after — spec §2 holds)");
+  const newestP = await P.getPublicResults(shop3, GID_P, {}, 1, 12, "newest");
+  ok(names(newestP) === "t3,t2,t1,b2,b1",
+    "GO7: newest sorts inside each band too");
+}
+
+// ========== SB: v35 study batches — one study, many rows, one validation
+
+{
+  const shop = "batch.myshopify.com";
+  const baseBatch = {
+    study: "  Oslo Trial  ",
+    testimonial: " Clinically documented. ",
+    attributionName: " Dr. X ",
+    attributionRole: " Dermatologist ",
+    durationWeeks: 8,
+    measurements: [
+      { label: " Depth ", dir: "down", info: " scan " },
+      { label: "Firmness", dir: "up", info: "" },
+    ],
+    markInstrument: true,
+    markSamePatient: false,
+    markUnretouched: true,
+    verified: true,
+    country: "no",
+    concern: "Wrinkles!",
+    productGids: [] as string[],
+    status: "approved",
+    savePreset: true,
+    rows: [
+      { beforeUrl: "https://cdn/1b.jpg", afterUrl: "https://cdn/1a.jpg", combinedUrl: "", pcts: [18, 14.3], ageRange: "25-34", skinType: "dry" },
+      { beforeUrl: "https://cdn/2b.jpg", afterUrl: "https://cdn/2a.jpg", combinedUrl: "", pcts: [21.4, 9], ageRange: "", skinType: "" },
+      { beforeUrl: "https://cdn/3b.jpg", afterUrl: "https://cdn/3a.jpg", combinedUrl: "", pcts: [2, 3], ageRange: "", skinType: "" },
+    ],
+  };
+  const batch = await P.saveResultBatch(shop, baseBatch);
+  ok(batch.ok === true && batch.created === 3 && batch.total === 3,
+    "SB1: a valid 3-row batch creates every row");
+  ok(batch.presetSaved === true, "SB1: the study constants upsert as a preset");
+  const served = await P.getPublicResults(shop, null, {}, 1, 12);
+  ok(served.total === 3, "SB1: all three rows serve");
+  ok(served.items.map((i: { beforeUrl: string | null }) => i.beforeUrl).join(",") ===
+      "https://cdn/1b.jpg,https://cdn/2b.jpg,https://cdn/3b.jpg",
+    "SB1: the batch keeps its on-screen order in the curated sequence (one sortWeight run)");
+  const first = served.items[0];
+  ok(first.source === "lab" && first.study === "Oslo Trial" && first.verified === true,
+    "SB1: rows are lab entries tagged with the trimmed study name");
+  ok(JSON.stringify(first.measurements) === JSON.stringify([
+      { label: "Depth", dir: "down", pct: 18, info: "scan" },
+      { label: "Firmness", dir: "up", pct: 14.3 },
+    ]),
+    "SB1: shared definitions zip with the row's OWN percents (trimmed, info omitted when blank)");
+  ok(served.items[1].measurements[0].pct === 21.4 && served.items[2].measurements[1].pct === 3,
+    "SB1: every row carries its own numbers");
+  ok(first.country === "NO" && first.concern === "wrinkles" &&
+      first.attributionName === "Dr. X" && first.markInstrument === true &&
+      first.markSamePatient === false && first.markUnretouched === true,
+    "SB1: study-level constants land on every row through the shared cleaners");
+  ok(first.ageRange === "25-34" && served.items[1].ageRange === null,
+    "SB1: per-row facets stay per-row");
+
+  const presets = await P.listResultPresets(shop);
+  const oslo = presets.find((p: { name: string }) => p.name === "Oslo Trial");
+  ok(!!oslo && oslo.fields.measurements.length === 2 &&
+      !("pct" in (oslo.fields.measurements[0] as Record<string, unknown>)),
+    "SB2: the upserted preset is pct-free (the v34 rule)");
+
+  // all-or-nothing: ONE bad percent refuses the WHOLE batch
+  const bad = await P.saveResultBatch(shop, {
+    ...baseBatch,
+    study: "Bad Pct Study",
+    rows: [
+      baseBatch.rows[0],
+      { ...baseBatch.rows[1], pcts: [3.25, 9] },
+    ],
+  });
+  ok(bad.ok === false && bad.created === 0,
+    "SB3: one invalid percent refuses the whole batch (all-or-nothing)");
+  ok(bad.errors.some((e: string) => e.startsWith("Row 2: Measurement 1 needs a percent")),
+    "SB3: errors are row-numbered");
+  const afterBad = await P.getPublicResults(shop, null, {}, 1, 24);
+  ok(afterBad.total === 3 && !afterBad.items.some((i: { study: string | null }) => i.study === "Bad Pct Study"),
+    "SB3: a refused batch writes NOTHING");
+
+  // photo rule: every row needs its active layout's photo(s)
+  const onePhoto = await P.saveResultBatch(shop, {
+    ...baseBatch,
+    study: "One Photo Study",
+    rows: [{ beforeUrl: "https://cdn/x.jpg", afterUrl: "", combinedUrl: "", pcts: [1, 2], ageRange: "", skinType: "" }],
+  });
+  ok(onePhoto.ok === false &&
+      onePhoto.errors.some((e: string) => e === "Row 1: needs both a before and an after photo (or one combined photo)"),
+    "SB4: a pair row missing one photo is refused with the row number");
+  const combined = await P.saveResultBatch(shop, {
+    ...baseBatch,
+    study: "Combined Study",
+    savePreset: false,
+    rows: [{ beforeUrl: "", afterUrl: "", combinedUrl: "https://cdn/combo.jpg", pcts: [1, 2], ageRange: "", skinType: "" }],
+  });
+  ok(combined.ok === true && combined.created === 1,
+    "SB4: a combined-photo row satisfies the photo rule");
+  ok(combined.presetSaved === false &&
+      !(await P.listResultPresets(shop)).some((p: { name: string }) => p.name === "Combined Study"),
+    "SB4: savePreset off -> no preset row");
+  const servedCombined = await P.getPublicResults(shop, null, {}, 1, 24);
+  const comboItem = servedCombined.items.find(
+    (i: { study: string | null }) => i.study === "Combined Study",
+  );
+  ok(!!comboItem && comboItem.combinedUrl === "https://cdn/combo.jpg" && comboItem.beforeUrl === null,
+    "SB4: the combined row serves through the v33 combined-wins contract");
+
+  // header validation
+  const noStudy = await P.saveResultBatch(shop, { ...baseBatch, study: "   " });
+  ok(noStudy.ok === false && noStudy.errors.includes("Study name is required"),
+    "SB5: a batch needs its study name");
+  const noRows = await P.saveResultBatch(shop, { ...baseBatch, study: "Empty", rows: [] });
+  ok(noRows.ok === false && noRows.errors.includes("Add at least one before/after row"),
+    "SB5: a batch needs rows");
+  const tooMany = await P.saveResultBatch(shop, {
+    ...baseBatch,
+    study: "Huge",
+    rows: Array.from({ length: 101 }, () => baseBatch.rows[0]),
+  });
+  ok(tooMany.ok === false && tooMany.errors.includes("No more than 100 rows per batch"),
+    "SB5: the row cap holds");
+
+  // error cap: a systematic mistake stays readable
+  const noisy = await P.saveResultBatch(shop, {
+    ...baseBatch,
+    study: "Noisy",
+    rows: Array.from({ length: 13 }, () => ({
+      beforeUrl: "", afterUrl: "", combinedUrl: "", pcts: [1, 2] as unknown[], ageRange: "", skinType: "",
+    })),
+  });
+  ok(noisy.ok === false && noisy.errors.length === 13 &&
+      noisy.errors[12].startsWith("…and ") && noisy.errors[12].includes("more problem"),
+    "SB6: row errors cap at 12 + an honest overflow line");
+}
+
 // ===================== UC: v25 results-ui-copy table (18 native locales)
 
 {
@@ -704,7 +1150,7 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     .sort();
   ok(locales.join(",") === catalogs.join(","),
     `UC1: copy table covers EXACTLY the 18 catalog languages (${locales.length})`);
-  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu"];
+  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu", "aw", "dr", "iv", "zm"];
   ok(JSON.stringify([...UC.RESULTS_UI_COPY_CODES]) === JSON.stringify(codes),
     "UC1: exported code list matches the storefront whitelist");
   for (const locale of locales) {
@@ -717,6 +1163,8 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     }
     ok(table[locale].ma.includes("@@N@@"),
       `UC2: ${locale}.ma carries the @@N@@ weeks sentinel`);
+    ok(table[locale].aw.includes("@@N@@"),
+      `UC2: ${locale}.aw carries the @@N@@ weeks sentinel (v33)`);
   }
   ok(table.nb === table.no, "UC3: nb/no are twins (house convention)");
   ok(UC.resultsUiCopy("el") === table.el, "UC4: exact locale resolves");
@@ -731,6 +1179,9 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     table.en.vsb === "vs. baseline" && table.en.mi === "Instrument measured" &&
     table.en.mp === "Same patient" && table.en.mu === "Unretouched images",
     "UC5: the English source strings are the mock's exact wording");
+  ok(table.en.aw === "After @@N@@ weeks" && table.en.dr === "Drag to compare" &&
+    table.en.iv === "Individual results may vary." && table.en.zm === "View larger",
+    "UC5: the v33 English source strings are pinned");
 }
 
 // ==================================== MH: market-handle clean/parse trips
@@ -892,7 +1343,7 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
       },
       {
         name: "m2-imageless-served",
-        find: "  const renderable = rows.filter(\n    (row) => row.beforeUrl !== null || row.afterUrl !== null,\n  );",
+        find: "  const renderable = rows.filter(\n    (row) =>\n      row.beforeUrl !== null ||\n      row.afterUrl !== null ||\n      // v33: the combined figure counts only where it will actually serve\n      // (lab rows — the belt below nulls it for customer rows, and a row\n      // counted here but never rendered would drift totals/pagination).\n      (row.source === \"lab\" && row.combinedUrl !== null),\n  );",
         replace: "  const renderable = rows;",
       },
       {
@@ -923,6 +1374,70 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m7-clin-duration-req-dropped",
         find: "  if (measurements.length > 0 && (durationWeeks === null || durationWeeks < 1)) {",
         replace: "  if (false) {",
+      },
+      {
+        // v33: the combined serve belt dropped — a drifted customer row
+        // would serve its combined photo (PR12 catches).
+        name: "m8-combined-belt-dropped",
+        find: "        combinedUrl: lab ? row.combinedUrl : null,",
+        replace: "        combinedUrl: row.combinedUrl,",
+      },
+      {
+        // v33: the save-side lab gate dropped — customer entries could
+        // keep a combined photo (SR5's refused-flip catches).
+        name: "m9-combined-save-gate-dropped",
+        find: "  const combinedUrl = isLab\n    ? cleanHttpsUrl(input.combinedUrl, \"Combined before/after image\", errors)\n    : \"\";",
+        replace: "  const combinedUrl = cleanHttpsUrl(input.combinedUrl, \"Combined before/after image\", errors);",
+      },
+      {
+        // v33: "combined wins" dropped — a row could carry BOTH layouts
+        // and render twice (SR5's pair-null catch).
+        name: "m10-combined-wins-dropped",
+        find: "    beforeUrl: beforeUrl === \"\" || combinedUrl !== \"\" ? null : beforeUrl,\n    afterUrl: afterUrl === \"\" || combinedUrl !== \"\" ? null : afterUrl,",
+        replace: "    beforeUrl: beforeUrl === \"\" ? null : beforeUrl,\n    afterUrl: afterUrl === \"\" ? null : afterUrl,",
+      },
+      {
+        // v34: the preset list's shop scope dropped — one shop's study
+        // templates would leak into every other admin (PS4 catches).
+        name: "m11-preset-shop-scope-dropped",
+        find: "  const rows = await prisma.resultPreset.findMany({\n    where: { shop },\n    orderBy: { name: \"asc\" },",
+        replace: "  const rows = await prisma.resultPreset.findMany({\n    where: {},\n    orderBy: { name: \"asc\" },",
+      },
+      {
+        // v34: same-name upsert dropped — every re-save would pile up a
+        // duplicate preset until the cap (PS2's single-row catch).
+        name: "m12-preset-upsert-dropped",
+        find: "    const existing = await prisma.resultPreset.findFirst({\n      where: { shop, name },\n    });",
+        replace: "    const existing = null as { id: string } | null;",
+      },
+      {
+        // v35: the gallery order ignored — "mix"/"newest" would silently
+        // serve the curated sequence (GO2/GO4 catch).
+        name: "m13-gallery-order-ignored",
+        find: "  const served = applyGalleryOrder(\n    filtered,\n    cleanEnum(order, RESULTS_GALLERY_ORDERS, \"curated\") as ResultsGalleryOrder,\n    productGid,\n  );",
+        replace: "  const served = filtered;",
+      },
+      {
+        // v35: the study serve belt dropped — a drifted customer row
+        // would flaunt a study tag (ST3 catches).
+        name: "m14-study-belt-dropped",
+        find: "        study: lab ? row.study : null,",
+        replace: "        study: row.study,",
+      },
+      {
+        // v35: all-or-nothing dropped — a batch with a bad row would
+        // half-import and the merchant would trust a wrong library
+        // (SB3's refused-batch + writes-nothing catches).
+        name: "m15-batch-partial-write",
+        find: "  if (errors.length > 0) {\n    return {\n      ok: false,\n      created: 0,\n      total,\n      presetSaved: false,\n      errors: capBatchErrors(errors),\n    };\n  }",
+        replace: "  errors.length = 0;",
+      },
+      {
+        // v35: the mix key's lab gate dropped — a drifted customer study
+        // column would join a study's group (GO6 catches).
+        name: "m16-mix-lab-gate-dropped",
+        find: "    const key = row.source === \"lab\" && row.study ? `s:${row.study}` : \"\";",
+        replace: "    const key = row.study ? `s:${row.study}` : \"\";",
       },
     ],
   });

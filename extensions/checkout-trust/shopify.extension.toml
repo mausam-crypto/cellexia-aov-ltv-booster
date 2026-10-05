@@ -1,4 +1,4 @@
-api_version = "2025-07"
+api_version = "2026-04"
 
 [[extensions]]
 name = "Cellexia Checkout Trust"
@@ -9,17 +9,19 @@ description = "Compact trust module V2 (guarantee, secure checkout, per-market c
 
   # Merchant-positioned block placement (drag anywhere in the editor).
   [[extensions.targeting]]
-  module = "./src/Checkout.tsx"
+  module = "./src/BlockRender.tsx"
   target = "purchase.checkout.block.render"
 
   # Alternative static placement adjacent to the Pay button (rendered
-  # immediately before the actions area). Same module/UI — the merchant
-  # chooses either placement in the checkout editor. Target verified
-  # against RenderExtensionTargets in @shopify/ui-extensions 2025.7.
-  # NOTE: the module must also register this target via a second
-  # reactExtension('purchase.checkout.actions.render-before', ...) call.
+  # immediately before the actions area). Same shared UI (./src/Extension.tsx)
+  # — the merchant chooses either placement in the checkout editor. Split into
+  # its own entry module because the web-components architecture (post
+  # React removal) has no documented way for one module to export render
+  # functions for two different targets — each [[extensions.targeting]]
+  # entry gets its own module per the documented one-to-one module/target
+  # pattern, per https://shopify.dev/docs/api/checkout-ui-extensions/2026-07/configuration.
   [[extensions.targeting]]
-  module = "./src/Checkout.tsx"
+  module = "./src/ActionsRenderBefore.tsx"
   target = "purchase.checkout.actions.render-before"
 
   [extensions.capabilities]

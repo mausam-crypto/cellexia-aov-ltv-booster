@@ -265,6 +265,44 @@ export const PROOF_DENSITIES = ["full", "compact", "ultra"] as const;
 export type ProofDensity = (typeof PROOF_DENSITIES)[number];
 
 /**
+ * v33: merchant-selected DESIGN for the results gallery's LAB (clinical)
+ * entries — a LIVE display setting (the v6.5/v8.3 no-draft-plumbing
+ * convention). "classic" is the v25 card; "study" renders every lab entry
+ * as a clinical-study figure: ink document band, week-stamped photo tags,
+ * "results may vary" footnote. Customer entries keep the classic card in
+ * both designs. Reaches the storefront through the results proxy payload
+ * (`payload.ui`), never the Liquid island (the byte wall).
+ */
+export const LAB_RESULT_DESIGNS = ["classic", "study"] as const;
+export type LabResultDesign = (typeof LAB_RESULT_DESIGNS)[number];
+
+/**
+ * v35: results gallery serve ORDER (LIVE setting, the labDesign
+ * convention; twin const in proof.server.ts — keep the two identical).
+ * "mix" (default) interleaves study batches round-robin so the first
+ * cards span EVERY study — one result from each batch before any second;
+ * with no study tags saved it is byte-identical to "curated", so the
+ * default flip is invisible until batches exist. "curated" is the pre-v35
+ * sequence (featured first, then manual order). "newest" serves
+ * newest-first. Ordering is applied SERVER-side in getPublicResults (it
+ * must agree across Show-more pages) — no payload.ui flag.
+ */
+export const RESULTS_GALLERY_ORDERS = ["mix", "curated", "newest"] as const;
+export type ResultsGalleryOrder = (typeof RESULTS_GALLERY_ORDERS)[number];
+
+/**
+ * v35: results gallery DESKTOP layout (LIVE setting, labDesign
+ * convention). "row" (default — the fix for the multi-row vertical-space
+ * complaint) keeps the one-row sideways-scrolling rail on desktop, the
+ * ultra/compact precedent at full density. "grid" restores the pre-v35
+ * 4-column desktop grid (travels as `payload.ui.gr`; the widget fails
+ * closed to the row). Ultra/compact densities always rail (their blocks
+ * win the cascade), exactly as before.
+ */
+export const RESULTS_DESKTOP_LAYOUTS = ["row", "grid"] as const;
+export type ResultsDesktopLayout = (typeof RESULTS_DESKTOP_LAYOUTS)[number];
+
+/**
  * v8.8: merchant-selected DESIGN for the per-product dermatologist survey
  * widget (LIVE setting — the v6.5/v8.3 no-draft-plumbing convention).
  * "classic" is the v7 outcomes-forward layout and the only design the
@@ -871,6 +909,33 @@ export interface BoosterSettings {
     density: ProofDensity;
     /** v8.9 product-page placement (PROOF_PLACEMENTS). */
     placement: ProofPlacement;
+    /** v33 design for LAB entries (LAB_RESULT_DESIGNS — LIVE display
+     *  setting, the density precedent): "classic" keeps the v25 card,
+     *  "study" renders lab entries as clinical-study figures. Travels via
+     *  the results proxy (`payload.ui.cs`), not the Liquid island. */
+    labDesign: LabResultDesign;
+    /** v33 before/after compare slider (LIVE display setting): shoppers
+     *  drag a divider over the photos — works for the separate pair AND
+     *  for the single combined figure (left half = before, right half =
+     *  after). Travels via the results proxy (`payload.ui.sl`). */
+    slider: boolean;
+    /** v35 serve order (LIVE): "mix" = one result from each study batch
+     *  first (round-robin), "curated" = the pre-v35 manual sequence,
+     *  "newest" = newest first. Applied server-side per request. */
+    galleryOrder: ResultsGalleryOrder;
+    /** v35 desktop layout (LIVE): "row" = one sideways-scrolling row
+     *  (default, the vertical-space fix), "grid" = the old 4-column
+     *  desktop grid (`payload.ui.gr`). */
+    desktopLayout: ResultsDesktopLayout;
+    /** v35 (LIVE): show each entry's study name as a small tag on its
+     *  card and in the lightbox. Off travels as `payload.ui.ns` ("no
+     *  study"); entries without a study never show a tag either way. */
+    showStudy: boolean;
+    /** v35 (LIVE, off by default): hide the testimonial quote and its
+     *  attribution on LAB (clinical) entries — card and lightbox — for
+     *  merchants who want clinical figures to stand on the numbers.
+     *  Travels as `payload.ui.ht`. */
+    hideLabQuotes: boolean;
   };
   batchTransparency: {
     enabled: boolean;
@@ -1857,6 +1922,14 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     compact: false,
     density: "full",
     placement: "below_tabs",
+    labDesign: "classic",
+    slider: false,
+    // v35 — "mix" is identical to "curated" until study tags exist, so
+    // the new default never reshuffles a live gallery on deploy.
+    galleryOrder: "mix",
+    desktopLayout: "row",
+    showStudy: true,
+    hideLabQuotes: false,
   },
   batchTransparency: {
     enabled: false,
@@ -4286,6 +4359,41 @@ export function sanitizeSettings(
   if (!PROOF_DENSITIES.includes(next.beforeAfter.density as ProofDensity)) {
     next.beforeAfter.density =
       next.beforeAfter.compact === true ? "ultra" : "full";
+  }
+  // v33 results display options — LIVE settings (the density precedent):
+  // a closed design enum and a plain boolean, both coerced to their
+  // defaults on any invalid stored value.
+  if (
+    !LAB_RESULT_DESIGNS.includes(next.beforeAfter.labDesign as LabResultDesign)
+  ) {
+    next.beforeAfter.labDesign = DEFAULT_SETTINGS.beforeAfter.labDesign;
+  }
+  if (typeof next.beforeAfter.slider !== "boolean") {
+    next.beforeAfter.slider = DEFAULT_SETTINGS.beforeAfter.slider;
+  }
+  // v35 results display options — the same LIVE-setting discipline: two
+  // closed enums and two plain booleans, junk coerced to the defaults.
+  if (
+    !RESULTS_GALLERY_ORDERS.includes(
+      next.beforeAfter.galleryOrder as ResultsGalleryOrder,
+    )
+  ) {
+    next.beforeAfter.galleryOrder = DEFAULT_SETTINGS.beforeAfter.galleryOrder;
+  }
+  if (
+    !RESULTS_DESKTOP_LAYOUTS.includes(
+      next.beforeAfter.desktopLayout as ResultsDesktopLayout,
+    )
+  ) {
+    next.beforeAfter.desktopLayout =
+      DEFAULT_SETTINGS.beforeAfter.desktopLayout;
+  }
+  if (typeof next.beforeAfter.showStudy !== "boolean") {
+    next.beforeAfter.showStudy = DEFAULT_SETTINGS.beforeAfter.showStudy;
+  }
+  if (typeof next.beforeAfter.hideLabQuotes !== "boolean") {
+    next.beforeAfter.hideLabQuotes =
+      DEFAULT_SETTINGS.beforeAfter.hideLabQuotes;
   }
   // v8.17 endorsement badge flags + merchant copy overrides. Booleans keep
   // the typeof discipline; copy fields keep the methodology discipline

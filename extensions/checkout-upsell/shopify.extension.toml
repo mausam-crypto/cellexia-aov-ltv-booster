@@ -1,4 +1,4 @@
-api_version = "2025-07"
+api_version = "2026-04"
 
 [[extensions]]
 name = "Cellexia Checkout Upsell"
@@ -9,15 +9,15 @@ description = "Post-cart, pre-payment product offers (\"Complete your routine\")
 
   # Merchant-positioned block placement (drag anywhere in the editor).
   [[extensions.targeting]]
-  module = "./src/Checkout.tsx"
+  module = "./src/BlockRender.tsx"
   target = "purchase.checkout.block.render"
 
   # Alternative static placement adjacent to the Pay button (rendered
-  # immediately before the actions area). Same module/UI — the merchant
-  # chooses either placement in the checkout editor. Target verified
-  # against RenderExtensionTargets in @shopify/ui-extensions 2025.7.
+  # immediately before the actions area). Same shared UI (./src/Extension.tsx)
+  # — the merchant chooses either placement. Split into its own entry module
+  # — same reason as checkout-trust/checkout-delivery's split.
   [[extensions.targeting]]
-  module = "./src/Checkout.tsx"
+  module = "./src/ActionsRenderBefore.tsx"
   target = "purchase.checkout.actions.render-before"
 
   [extensions.capabilities]

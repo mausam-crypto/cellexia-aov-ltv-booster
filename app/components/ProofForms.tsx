@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Checkbox,
+  ChoiceList,
   DropZone,
   InlineStack,
   Select,
@@ -94,6 +95,11 @@ interface ProofImageFieldProps {
   onChange: (url: string) => void;
   /** Optional guidance under the field (e.g. optimal-logo requirements). */
   helpText?: string;
+  /** v33: "contain" shows a wide combined composite uncropped (the default
+   *  "cover" crop would hide both outer halves). */
+  previewFit?: "cover" | "contain";
+  /** v33: widen the field for landscape composites. */
+  wide?: boolean;
 }
 
 export function ProofImageField({
@@ -102,6 +108,8 @@ export function ProofImageField({
   disabled,
   onChange,
   helpText,
+  previewFit,
+  wide,
 }: ProofImageFieldProps) {
   const shopify = useAppBridge();
   const upload = useFetcher<ProofFieldActionData>();
@@ -147,7 +155,7 @@ export function ProofImageField({
   const urlValid = HTTPS_PATTERN.test(urlText.trim());
 
   return (
-    <Box minWidth="220px" maxWidth="260px">
+    <Box minWidth="220px" maxWidth={wide ? "460px" : "260px"}>
       <BlockStack gap="200">
         <Text as="span" variant="bodySm" fontWeight="semibold">
           {label}
@@ -173,7 +181,7 @@ export function ProofImageField({
               style={{
                 width: "100%",
                 height: "100%",
-                objectFit: "cover",
+                objectFit: previewFit ?? "cover",
                 display: "block",
               }}
             />
@@ -929,6 +937,12 @@ export interface ResultFormValues {
   verified: boolean;
   beforeUrl: string;
   afterUrl: string;
+  /** v33: the ONE combined before/after photo (lab entries only). */
+  combinedUrl: string;
+  /** v33 client-only layout choice ("pair" | "combined") — derived from
+   *  combinedUrl when a row opens; formToPayload strips the unused
+   *  layout's URLs, so it is never stored. */
+  imageMode: string;
   ageRange: string;
   skinType: string;
   concern: string;
@@ -942,6 +956,10 @@ export interface ResultFormValues {
   markUnretouched: boolean;
   attributionName: string;
   attributionRole: string;
+  /** v35: the clinical study this entry belongs to (lab only — the
+   *  server clears it for customer entries). Applying a preset fills it
+   *  with the preset's name. */
+  study: string;
   productGids: string[];
   featured: boolean;
   status: string;
@@ -952,6 +970,8 @@ export const EMPTY_RESULT_FORM: ResultFormValues = {
   verified: false,
   beforeUrl: "",
   afterUrl: "",
+  combinedUrl: "",
+  imageMode: "pair",
   ageRange: "",
   skinType: "",
   concern: "",
@@ -965,6 +985,7 @@ export const EMPTY_RESULT_FORM: ResultFormValues = {
   markUnretouched: false,
   attributionName: "",
   attributionRole: "",
+  study: "",
   productGids: [],
   featured: false,
   status: "pending",
@@ -981,7 +1002,8 @@ const SOURCE_OPTIONS = [
   { label: "Lab / clinical", value: "lab" },
 ];
 
-const AGE_OPTIONS = [
+/** Exported since v35 — the batch form's per-row selects reuse them. */
+export const AGE_OPTIONS = [
   { label: "No age range", value: "" },
   { label: "18–24", value: "18-24" },
   { label: "25–34", value: "25-34" },
@@ -991,7 +1013,7 @@ const AGE_OPTIONS = [
   { label: "65+", value: "65+" },
 ];
 
-const SKIN_OPTIONS = [
+export const SKIN_OPTIONS = [
   { label: "No skin type", value: "" },
   { label: "Dry", value: "dry" },
   { label: "Oily", value: "oily" },
@@ -1024,10 +1046,27 @@ export function measurementPctError(value: string): string | undefined {
   return undefined;
 }
 
-const MEASUREMENT_DIR_OPTIONS = [
+export const MEASUREMENT_DIR_OPTIONS = [
   { label: "Decreased (↓)", value: "down" },
   { label: "Increased (↑)", value: "up" },
 ];
+
+/** v34: a study preset as the route serializes it — the CLIENT twin of the
+ *  server's ResultPresetRow (`.server` types never reach the bundle). */
+export interface ResultPresetOption {
+  id: string;
+  name: string;
+  fields: {
+    testimonial: string;
+    attributionName: string;
+    attributionRole: string;
+    durationWeeks: number | null;
+    measurements: { label: string; dir: string; info?: string }[];
+    markInstrument: boolean;
+    markSamePatient: boolean;
+    markUnretouched: boolean;
+  };
+}
 
 interface ResultFormProps {
   initial: ResultFormValues;
@@ -1035,6 +1074,14 @@ interface ResultFormProps {
   submitLabel: string;
   onSubmit: (values: ResultFormValues) => void;
   onCancel?: () => void;
+  /** v34: study presets offered by the "Start from a study preset" picker
+   *  (the ADD form passes them; the edit form deliberately does not — an
+   *  accidental apply would overwrite curated entry text). */
+  presets?: ResultPresetOption[];
+  /** v34: wired on BOTH forms — a filled-in lab entry is the natural place
+   *  to mint or refresh a preset. */
+  onSavePreset?: (name: string, values: ResultFormValues) => void;
+  presetSaving?: boolean;
 }
 
 export function ResultForm({
@@ -1043,8 +1090,17 @@ export function ResultForm({
   submitLabel,
   onSubmit,
   onCancel,
+  presets,
+  onSavePreset,
+  presetSaving,
 }: ResultFormProps) {
   const [values, setValues] = useState<ResultFormValues>(initial);
+  // v34 preset state: which preset the picker shows, and the save-as-preset
+  // disclosure. Applying NEVER touches photos, product tags, facets or
+  // status — only the study constants — so a late apply keeps uploads.
+  const [presetId, setPresetId] = useState("");
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [presetName, setPresetName] = useState("");
   const set = <K extends keyof ResultFormValues>(
     key: K,
     value: ResultFormValues[K],
@@ -1053,14 +1109,31 @@ export function ResultForm({
   const videoError = httpsUrlError(values.videoUrl);
   const countryError = iso2Error(values.country);
   const durationError = durationWeeksError(values.durationWeeks);
-  const hasContent =
-    values.beforeUrl !== "" ||
-    values.afterUrl !== "" ||
-    values.testimonial.trim() !== "" ||
-    values.videoUrl.trim() !== "";
   // v25 clinical editor state (lab entries only — the section is hidden
   // otherwise and the server clears clinical fields on a source flip).
   const isLab = values.source === "lab";
+  // v33: which photo layout ships. Combined is a lab-only option; in pair
+  // mode (or for customer entries) a stale combined URL never counts here
+  // and is stripped by formToPayload, so it cannot resurface.
+  const combinedMode = isLab && values.imageMode === "combined";
+  const hasContent =
+    (combinedMode
+      ? values.combinedUrl !== ""
+      : values.beforeUrl !== "" || values.afterUrl !== "") ||
+    values.testimonial.trim() !== "" ||
+    values.videoUrl.trim() !== "";
+  // v33 review C5: switching Photo format (or source) strips the OTHER
+  // layout's stored URLs on save. If the active layout has no photo while
+  // the inactive one still does, a save would silently delete the only
+  // image and the entry would vanish from the storefront (image-less rows
+  // never serve) — block it until the merchant adds a photo in the
+  // selected format or switches back.
+  const photoSwapLoss = combinedMode
+    ? values.combinedUrl === "" &&
+      (values.beforeUrl !== "" || values.afterUrl !== "")
+    : values.combinedUrl !== "" &&
+      values.beforeUrl === "" &&
+      values.afterUrl === "";
   const measurementErrors = values.measurements.map((m) => ({
     label: m.label.trim() === "" ? "Label is required" : undefined,
     pct: measurementPctError(m.pct),
@@ -1073,6 +1146,7 @@ export function ResultForm({
     !/^[1-9]\d*$/.test(values.durationWeeks.trim());
   const valid =
     hasContent &&
+    !photoSwapLoss &&
     !videoError &&
     !countryError &&
     !durationError &&
@@ -1114,22 +1188,114 @@ export function ResultForm({
       return { ...prev, measurements: next };
     });
 
+  const applyPreset = (id: string) => {
+    setPresetId(id);
+    if (id === "") return;
+    const preset = (presets ?? []).find((entry) => entry.id === id);
+    if (!preset) return;
+    const f = preset.fields;
+    setValues((previous) => ({
+      ...previous,
+      source: "lab",
+      // v35: the preset's name IS the study identity — it becomes the
+      // entry's study tag (editable below like every other filled field).
+      study: preset.name,
+      testimonial: f.testimonial,
+      attributionName: f.attributionName,
+      attributionRole: f.attributionRole,
+      durationWeeks: f.durationWeeks === null ? "" : String(f.durationWeeks),
+      // percents start EMPTY on purpose — they are the per-entry numbers,
+      // and the save button stays gated until every row has one.
+      measurements: f.measurements.map((m) => ({
+        label: m.label,
+        dir: m.dir === "up" ? "up" : "down",
+        pct: "",
+        info: m.info ?? "",
+      })),
+      markInstrument: f.markInstrument,
+      markSamePatient: f.markSamePatient,
+      markUnretouched: f.markUnretouched,
+    }));
+  };
+
   return (
     <BlockStack gap="300">
+      {presets && presets.length > 0 ? (
+        <Select
+          label="Start from a study preset"
+          options={[
+            { label: "No preset", value: "" },
+            ...presets.map((preset) => ({
+              label: preset.name,
+              value: preset.id,
+            })),
+          ]}
+          value={presetId}
+          onChange={applyPreset}
+          disabled={busy}
+          helpText="Fills the study constants — source, quote, attribution, duration and the measurement rows. You add the photos and type each percent. Photos already added are kept."
+        />
+      ) : null}
+      {/* v33.1 (merchant catch): the choice is ALWAYS visible — hiding it
+          behind the Source select (which sits BELOW the images and defaults
+          to Customer) made the combined option undiscoverable. The combined
+          choice stays lab-only; for customer entries it is disabled and its
+          help text points at Source. */}
+      <ChoiceList
+        title="Photo format"
+        choices={[
+          { label: "Separate before and after photos", value: "pair" },
+          {
+            label:
+              "One combined before/after photo (before on the left, after on the right)",
+            value: "combined",
+            disabled: !isLab,
+            helpText: isLab
+              ? "One side-by-side image — the compare slider splits it exactly at the middle."
+              : "For clinical entries: set Source (below) to “Lab / clinical” to use one combined photo.",
+          },
+        ]}
+        selected={[combinedMode ? "combined" : "pair"]}
+        onChange={(selected) =>
+          set("imageMode", selected[0] === "combined" ? "combined" : "pair")
+        }
+        disabled={busy}
+      />
       <InlineStack gap="300" wrap blockAlign="start">
-        <ProofImageField
-          label="Before image"
-          url={values.beforeUrl}
-          disabled={busy}
-          onChange={(beforeUrl) => set("beforeUrl", beforeUrl)}
-        />
-        <ProofImageField
-          label="After image"
-          url={values.afterUrl}
-          disabled={busy}
-          onChange={(afterUrl) => set("afterUrl", afterUrl)}
-        />
+        {combinedMode ? (
+          <ProofImageField
+            label="Combined before/after image"
+            url={values.combinedUrl}
+            disabled={busy}
+            onChange={(combinedUrl) => set("combinedUrl", combinedUrl)}
+            helpText="One side-by-side photo: before on the LEFT half, after on the RIGHT, same framing in both halves — the compare slider splits it exactly at the middle."
+            previewFit="contain"
+            wide
+          />
+        ) : (
+          <>
+            <ProofImageField
+              label="Before image"
+              url={values.beforeUrl}
+              disabled={busy}
+              onChange={(beforeUrl) => set("beforeUrl", beforeUrl)}
+            />
+            <ProofImageField
+              label="After image"
+              url={values.afterUrl}
+              disabled={busy}
+              onChange={(afterUrl) => set("afterUrl", afterUrl)}
+            />
+          </>
+        )}
       </InlineStack>
+      {photoSwapLoss ? (
+        <Text as="p" variant="bodySm" tone="caution">
+          {combinedMode
+            ? "This entry's stored photos are the separate before/after pair. Add the combined photo (or switch Photo format back) before saving — saving now would remove the pair."
+            : "This entry's stored photo is the combined before/after image. Add the separate photos (or switch to the combined format) before saving — saving now would remove it."}
+        </Text>
+      ) : null}
       {!hasContent ? (
         <Text as="p" variant="bodySm" tone="subdued">
           Add at least an image, a testimonial or a video.
@@ -1248,6 +1414,16 @@ export function ResultForm({
       {isLab ? (
         <Box padding="300" background="bg-surface-secondary" borderRadius="200">
           <BlockStack gap="300">
+            <TextField
+              label="Study name"
+              value={values.study}
+              maxLength={80}
+              onChange={(study) => set("study", study)}
+              autoComplete="off"
+              disabled={busy}
+              placeholder="Helsinki 8-week clinical study"
+              helpText="Shown as a small tag on the storefront card and used to mix results from different studies in the gallery. Applying a preset fills it with the preset's name."
+            />
             <Text as="h4" variant="headingSm">
               Clinical measurements
             </Text>
@@ -1372,6 +1548,55 @@ export function ResultForm({
             </Text>
           </BlockStack>
         </Box>
+      ) : null}
+      {isLab && onSavePreset ? (
+        <BlockStack gap="150">
+          <InlineStack>
+            <Button
+              variant="plain"
+              disclosure={presetOpen ? "up" : "down"}
+              onClick={() => setPresetOpen((previous) => !previous)}
+              disabled={busy}
+            >
+              Save as study preset
+            </Button>
+          </InlineStack>
+          <Collapsible id="cx-result-preset-save" open={presetOpen}>
+            <InlineStack gap="200" blockAlign="start" wrap>
+              <Box minWidth="240px" maxWidth="340px">
+                <TextField
+                  label="Preset name"
+                  value={presetName}
+                  onChange={setPresetName}
+                  maxLength={80}
+                  placeholder="8-week wrinkle study"
+                  helpText="Saves this entry's quote, attribution, duration, measurement rows (without their percents) and trust marks. Re-using a name updates that preset."
+                  autoComplete="off"
+                  disabled={presetSaving}
+                />
+              </Box>
+              <Box paddingBlockStart="600">
+                <Button
+                  onClick={() => onSavePreset(presetName.trim(), values)}
+                  loading={presetSaving}
+                  // Review F1: the button must not out-save what the form
+                  // shows — a red label-less row or an invalid Duration
+                  // would be silently dropped by the payload otherwise.
+                  // Percent errors deliberately do NOT gate (a preset's
+                  // rows are SUPPOSED to be number-less).
+                  disabled={
+                    presetSaving ||
+                    presetName.trim() === "" ||
+                    !!durationError ||
+                    measurementErrors.some((entry) => entry.label)
+                  }
+                >
+                  Save preset
+                </Button>
+              </Box>
+            </InlineStack>
+          </Collapsible>
+        </BlockStack>
       ) : null}
       <ProductTagPicker
         value={values.productGids}

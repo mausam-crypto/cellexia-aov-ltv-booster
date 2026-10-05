@@ -134,6 +134,33 @@ defects, both fixed and now BINDING:
     state renders as a CRITICAL banner with those reasons on the Quantity
     page — never a subdued line.
 
+## 2c. v32.2 — field fixes round 2 (2026-09-22, "Title must be unique")
+
+The live retry surfaced the NEXT layer: the app could not see its own
+volume config through the Admin API (`$app:cellexia` shorthand read came
+back empty while writes and function/checkout reads work), so every sync
+started from scratch and the re-create died on the unique-title rule.
+Three more BINDING rules:
+
+13. **The config read falls back to the concrete reserved namespace**
+    (`app--{numeric app id}--cellexia`, resolved once per process) before
+    ever concluding "never synced".
+14. **The discount is self-healing**: a missing/stale `_s.d` id is
+    recovered by EXACT-title adoption of a function-backed
+    DiscountAutomaticApp node (guarded to THIS app's function ids when
+    resolvable; anything else in the store is never touched), a
+    unique-title create error triggers one more adoption pass, and the
+    last resort is an honest manual path naming the discount to delete.
+    The deploy hint appears ONLY on a function-shaped create error.
+15. **Volume wanted but unverified caps the stepper at K** (island
+    `vd: 0`, widget `vw`): the merchant rejected the composed 3+1
+    fallback for 4+, so while `quantitySync.volume` is on and
+    `volumeLive` is not, counts past the top tier are simply not offered
+    (mirrors the sub-mode clamp). The composed v31 arm remains ONLY for
+    stores that never opt into volume pricing. Pricing calls also run
+    the per-product variant pair in parallel at 150 ms spacing (the
+    v32.1 fully-sequential run read as a hung button).
+
 ## 3. What this deliberately does NOT do
 
 - No discount on 2..K (those ARE the tier variants; the pills/cards handle
