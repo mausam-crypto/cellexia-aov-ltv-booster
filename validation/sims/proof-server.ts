@@ -1150,7 +1150,7 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     .sort();
   ok(locales.join(",") === catalogs.join(","),
     `UC1: copy table covers EXACTLY the 18 catalog languages (${locales.length})`);
-  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu", "aw", "dr", "iv", "zm"];
+  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu", "aw", "dr", "iv", "zm", "sa", "pr", "nx"];
   ok(JSON.stringify([...UC.RESULTS_UI_COPY_CODES]) === JSON.stringify(codes),
     "UC1: exported code list matches the storefront whitelist");
   for (const locale of locales) {
@@ -1165,6 +1165,8 @@ function pubs(res: { items: { publication: string }[] }): string[] {
       `UC2: ${locale}.ma carries the @@N@@ weeks sentinel`);
     ok(table[locale].aw.includes("@@N@@"),
       `UC2: ${locale}.aw carries the @@N@@ weeks sentinel (v33)`);
+    ok(table[locale].sa.includes("@@N@@"),
+      `UC2: ${locale}.sa carries the @@N@@ total sentinel (v36)`);
   }
   ok(table.nb === table.no, "UC3: nb/no are twins (house convention)");
   ok(UC.resultsUiCopy("el") === table.el, "UC4: exact locale resolves");
@@ -1182,6 +1184,9 @@ function pubs(res: { items: { publication: string }[] }): string[] {
   ok(table.en.aw === "After @@N@@ weeks" && table.en.dr === "Drag to compare" &&
     table.en.iv === "Individual results may vary." && table.en.zm === "View larger",
     "UC5: the v33 English source strings are pinned");
+  ok(table.en.sa === "See all @@N@@ results" && table.en.pr === "Previous result" &&
+    table.en.nx === "Next result",
+    "UC5: the v36 English source strings are pinned");
 }
 
 // ==================================== MH: market-handle clean/parse trips

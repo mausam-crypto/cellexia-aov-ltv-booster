@@ -262,6 +262,33 @@ function attributeValue(
 }
 
 /**
+ * The protection line in a set of cart lines: the attribute-tagged line
+ * first (the line we added), the configured variant as the fallback (a
+ * line the buyer added through other means still counts as protected).
+ * Shared by the render memo AND the checkbox snap-back, which re-reads
+ * cart truth fresh off the signal after a mutation settles.
+ */
+function findProtectionLine(
+  lines: ReadonlyArray<{
+    id: string;
+    quantity: number;
+    merchandise?: {id?: string};
+    attributes?: ReadonlyArray<{key: string}>;
+  }>,
+  variantId: string,
+) {
+  return (
+    lines.find((line) =>
+      line?.attributes?.some((attr) => attr?.key === '_cellexia_protection'),
+    ) ??
+    (variantId
+      ? lines.find((line) => line?.merchandise?.id === variantId)
+      : undefined) ??
+    undefined
+  );
+}
+
+/**
  * Block root: the Order Protection card plus the invisible v14 rewards
  * safety net. The card component is untouched behaviorally (its early
  * returns still decide what the buyer sees); the safety net renders
@@ -596,6 +623,11 @@ function RewardsSafetyNet(): JSX.Element | null {
 
   useEffect(() => {
     if (!setSavingsActive || !mutationsAllowed || !canUpdateCodes) return;
+    // Belt (the audit's surviving gate): the one-shot storage key below
+    // must never burn on a runtime whose API lacks the method — types
+    // say it is always present for block.render, but a thrown call AFTER
+    // the write would retire the yield forever.
+    if (typeof applyDiscountCodeChange !== 'function') return;
     if (!ladderToYield) return;
     if (yieldStartedRef.current) return;
     yieldStartedRef.current = true;
@@ -629,6 +661,8 @@ function RewardsSafetyNet(): JSX.Element | null {
 
   useEffect(() => {
     if (!setSavingsActive || !mutationsAllowed || !canUpdateCodes || !noCodes) return;
+    // Belt: same surviving gate as the yield effect above.
+    if (typeof applyDiscountCodeChange !== 'function') return;
     if (sawCodesRef.current) return;
     if (!desiredCode) return;
     if (kitStartedRef.current) return;
@@ -761,14 +795,7 @@ function ProtectionCard(): JSX.Element | null {
   ]);
 
   const protectionLine = useMemo(
-    () =>
-      cartLines.find((line) =>
-        line?.attributes?.some((attr) => attr?.key === '_cellexia_protection'),
-      ) ??
-      (config.variantId
-        ? cartLines.find((line) => line?.merchandise?.id === config.variantId)
-        : undefined) ??
-      undefined,
+    () => findProtectionLine(cartLines, config.variantId),
     [cartLines, config.variantId],
   );
   const isProtected = Boolean(protectionLine);
@@ -929,12 +956,24 @@ function ProtectionCard(): JSX.Element | null {
             // The new component passes a plain DOM Event, not a boolean —
             // read the new state off currentTarget.checked (real API shape
             // change, verified against the component's type declaration).
-            const checked = (event.currentTarget as unknown as {checked: boolean})
-              .checked;
+            const el = event.currentTarget as unknown as {checked: boolean};
+            const checked = el.checked;
             if (!checked) {
               void storage.write(PROTECTION_STATE_KEY, 'removed').catch(() => {});
             }
-            void changeProtection(checked);
+            void changeProtection(checked).then(() => {
+              // Snap the control back to CART TRUTH once the mutation
+              // settles. The web component toggles its own DOM state on
+              // tap, and after a FAILED mutation the `checked` prop value
+              // is unchanged — Preact's diff sees "same value" and never
+              // rewrites the DOM, so without this a declined add would
+              // stay visually ticked with no protection in the cart
+              // (2026-10-06 migration-merge review catch, audit item 4).
+              const truth = Boolean(
+                findProtectionLine(shopify.lines.value, config.variantId),
+              );
+              if (el.checked !== truth) el.checked = truth;
+            });
           }}
         >
           <s-text type="strong">{translate('description')}</s-text>

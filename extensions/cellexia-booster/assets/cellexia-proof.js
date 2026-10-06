@@ -1741,7 +1741,7 @@
     // island strings and entry text are untouched. Raw-read convention:
     // these never pass Liquid's t-filter escaping (v8.22 precedent).
     if (!conf || !conf.str || !data || !data.copy || typeof data.copy !== 'object') return;
-    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm'];
+    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx'];
     for (var i = 0; i < keys.length; i++) {
       var value = data.copy[keys[i]];
       if (typeof value === 'string' && /\S/.test(value)) conf.str[keys[i]] = value;
@@ -1823,6 +1823,13 @@
   }
 
   function resultsParams(conf, st) {
+    // The RAIL's own fetch params (page-size 12). v36: the viewer pages
+    // the SAME filtered sequence at per=24 through resultsPageParams —
+    // one body, explicit page/per, byte-identical queries here.
+    return resultsPageParams(conf, st, st.page, 12);
+  }
+
+  function resultsPageParams(conf, st, page, per) {
     // Filter state → query params (pfQuery serializes; empty values are
     // skipped there, so cleared filters vanish from the URL).
     var p = {
@@ -1830,8 +1837,8 @@
       age: st.age,
       skin: st.skin,
       duration: st.duration,
-      page: st.page,
-      per: 12
+      page: page,
+      per: per
     };
     // v33: while the MERCHANT previews, a per-minute token busts the
     // proxy's 60s/300s cache so display-option flips show up promptly.
@@ -1858,6 +1865,11 @@
       var combined = lab ? pfHttps(it.combinedUrl) : '';
       if (!before && !after && !combined) continue; // a visual gallery card needs at least one image
       out.push({
+        // v36: the row id feeds the retained store's dedupe (cache skew
+        // between the rail's per=12 and the viewer's per=24 pages).
+        // Old servers / fixtures without one still append ('' never
+        // enters the seen map).
+        id: typeof it.id === 'string' && it.id ? it.id : '',
         b: before,
         a: after,
         c: combined,
@@ -2459,9 +2471,12 @@
     return stage;
   }
 
-  function resultsBuildCard(item, s, o) {
+  function resultsBuildCard(item, s, o, vw) {
     // v33: o carries the display flags from resultsUiFlags ({cs, sl});
     // absent o (old call sites, sims) keeps the exact v25 card.
+    // v36: vw = { at, open } routes the media/zoom tap into the swipe
+    // viewer at this card's store index; absent vw (no proxy copy, old
+    // call sites, sims) keeps the classic one-item lightbox exactly.
     var study = !!(o && o.cs && item.lab);
     var card = pfEl('div', study ? 'cx-results__card cx-results__card--study' : 'cx-results__card');
     pfSp(card);
@@ -2512,13 +2527,15 @@
       var zoom = pfEl('button', 'cx-results__zoom', ['type', 'button', 'aria-label', zoomText]);
       zoom.appendChild(resultsIcon('zoom', 14));
       zoom.addEventListener('click', function () {
-        pfLbOpen(resultsBuildLightbox(item, s, o), zoom);
+        if (vw && vw.open) vw.open(vw.at, zoom);
+        else pfLbOpen(resultsBuildLightbox(item, s, o), zoom);
         pfTrack('verified_before_after', 'click');
       });
       media.appendChild(zoom);
     } else {
       media.addEventListener('click', function () {
-        pfLbOpen(resultsBuildLightbox(item, s, o), media);
+        if (vw && vw.open) vw.open(vw.at, media);
+        else pfLbOpen(resultsBuildLightbox(item, s, o), media);
         pfTrack('verified_before_after', 'click');
       });
     }
@@ -2731,9 +2748,15 @@
     try {
       if (state.trigger && state.trigger.focus) state.trigger.focus();
     } catch (e) { /* noop */ }
+    // v36: the viewer's history/popstate glue unbinds through this hook —
+    // fired AFTER the teardown so a throwing hook can never leave the
+    // dialog stuck open or the scroll locked.
+    try {
+      if (state.onClose) state.onClose();
+    } catch (e) { /* noop */ }
   }
 
-  function pfLbOpen(root, trigger) {
+  function pfLbOpen(root, trigger, opts) {
     try {
       if (pfLbState || document.getElementById('cx-proof-lb')) return; // singleton
       if (!root) return;
@@ -2790,10 +2813,465 @@
         root: root,
         trigger: trigger && trigger.focus ? trigger : null,
         prevOverflow: prevOverflow,
-        onKeydown: onKeydown
+        onKeydown: onKeydown,
+        // v36: additive close hook (the viewer's history unbind rides it)
+        onClose: opts && opts.onClose ? opts.onClose : null
       };
       try { card.focus(); } catch (e) { /* noop */ }
     } catch (e) { /* never break the theme */ }
+  }
+
+  // ------------------------------------------------ v36 swipe viewer
+  // The full-screen browse surface for 50-150 results: ONE result at a
+  // time with prev/next + keyboard + swipe, a numeric counter, a
+  // thumbnail jump strip, and invisible per=24 paging through the SAME
+  // filtered sequence the rail shows. Hosted by the pfLbOpen singleton
+  // (focus trap, Escape, body lock, backdrop close), so it can never
+  // stack with the classic lightbox — which stays alive both as the
+  // no-copy degrade path and as the fallback if construction throws.
+
+  function resultsMergeItems(store, ids, list) {
+    // Append-only retained store with id dedupe: the rail fetches
+    // per=12 and the viewer per=24, so a later page can overlap rows
+    // already held (the proxy caches 60s/300s — two fetches may
+    // straddle a data change). Id-less rows (old servers, fixtures)
+    // always append; the caller gets ONLY the genuinely-new rows back
+    // for its DOM work.
+    var fresh = [];
+    for (var i = 0; i < list.length; i++) {
+      var id = list[i] && typeof list[i].id === 'string' ? list[i].id : '';
+      if (id && ids[id] === 1) continue;
+      if (id) ids[id] = 1;
+      store.push(list[i]);
+      fresh.push(list[i]);
+    }
+    return fresh;
+  }
+
+  function resultsCounterText(seen, total) {
+    // "14/87" — digits only (Western digits are the widget-wide
+    // convention, and numerals dodge the locale tables entirely),
+    // clamped into 1..total; '' hides the chrome on junk totals.
+    if (!pfPosInt(total)) return '';
+    var n = pfPosInt(seen) ? seen : 1;
+    if (n > total) n = total;
+    return String(n) + '/' + String(total);
+  }
+
+  function resultsCdnThumb(url, width) {
+    // Sized rendition for strip thumbs (120) and viewer media (1080).
+    // HOST-GATED to Shopify's CDN: merchants may paste any https URL
+    // (the save layer only https-checks), and a foreign host would 404
+    // or ignore ?width= — those pass through untouched. Idempotent: an
+    // already-present width param wins.
+    var clean = pfHttps(url);
+    if (!clean) return '';
+    if (!/^https:\/\/cdn\.shopify\.com\//i.test(clean)) return clean;
+    if (/[?&]width=/.test(clean)) return clean;
+    if (!pfPosInt(width)) return clean;
+    return clean + (clean.indexOf('?') === -1 ? '?' : '&') + 'width=' + width;
+  }
+
+  function resultsSwipeStep(dx, dy, rtl) {
+    // Pure swipe verdict (sim-tested): a horizontal-dominant move past
+    // 40px pages the viewer; vertical dominance means the shopper is
+    // scrolling and must never page. RTL mirrors — the strip flows
+    // right-to-left there, so a rightward flick reads "next". Returns
+    // -1 (previous), 1 (next) or 0 (no page).
+    if (typeof dx !== 'number' || typeof dy !== 'number') return 0;
+    if (!(Math.abs(dx) >= 40) || Math.abs(dx) <= Math.abs(dy)) return 0;
+    var step = dx < 0 ? 1 : -1;
+    return rtl ? -step : step;
+  }
+
+  function resultsViewerRtl() {
+    try {
+      var el = document.documentElement;
+      var dir = el && typeof el.dir === 'string' && el.dir
+        ? el.dir
+        : el && el.getAttribute ? el.getAttribute('dir') : '';
+      return typeof dir === 'string' && dir.toLowerCase() === 'rtl';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function resultsViewerContent(item, s, o) {
+    // The one-item body REUSES resultsBuildLightbox verbatim — every
+    // existing gate (slider, combined figure, ht, study design, video
+    // link-out) rides along for free — and grafts the card's children,
+    // minus its close control, into a plain wrapper (the viewer chrome
+    // owns closing). CDN media is re-requested at width=1080 so a
+    // 150-item session never pulls full-resolution originals.
+    var wrap = pfEl('div', 'cx-results-vw__item');
+    var lb = resultsBuildLightbox(item, s, o);
+    var card = lb ? lb.querySelector('.cx-lightbox__card') : null;
+    if (!card) return wrap;
+    while (card.firstChild) {
+      var node = card.firstChild;
+      card.removeChild(node);
+      if (node.nodeType === 1 && node.hasAttribute && node.hasAttribute('data-cx-lb-close')) continue;
+      wrap.appendChild(node);
+    }
+    var imgs = wrap.querySelectorAll('.cx-lightbox__img, .cx-results__ba-img');
+    for (var i = 0; i < imgs.length; i++) {
+      var sized = resultsCdnThumb(imgs[i].src, 1080);
+      if (sized) imgs[i].src = sized;
+    }
+    return wrap;
+  }
+
+  function resultsViewerPrefetch(store, idx) {
+    // Neighbor warm-up ONLY (idx±1): swipes feel instant without
+    // pulling the whole set. Image is feature-checked (absent in the
+    // sim sandbox).
+    if (typeof Image !== 'function') return;
+    for (var d = -1; d <= 1; d += 2) {
+      var it = store[idx + d];
+      if (!it) continue;
+      var url = resultsCdnThumb(it.c || it.a || it.b, 1080);
+      if (!url) continue;
+      try { new Image().src = url; } catch (e) { /* warm-up only */ }
+    }
+  }
+
+  function resultsViewerHistory(onBack) {
+    // The phone's back button must close the full-screen viewer like
+    // any sheet. One pushed entry per open; popstate closes; a UI close
+    // (X / Escape / backdrop) consumes the entry with history.back() so
+    // the NEXT back press leaves the page as before. Everything is
+    // feature-gated — inert in the sim sandbox (no history, no window
+    // listeners) — and skipped inside the theme editor, whose own
+    // navigation must never fight ours (Shopify.designMode).
+    var armed = false;
+    var popping = false;
+    var pop = null;
+    function usable() {
+      try {
+        if (window.Shopify && window.Shopify.designMode) return false;
+        return !!(window.history && typeof window.history.pushState === 'function' &&
+          typeof window.addEventListener === 'function' &&
+          typeof window.removeEventListener === 'function');
+      } catch (e) {
+        return false;
+      }
+    }
+    return {
+      open: function () {
+        if (armed || !usable()) return;
+        try {
+          window.history.pushState({ cxVw: 1 }, '');
+          pop = function () {
+            if (!armed) return;
+            armed = false;
+            popping = true;
+            try { onBack(); } catch (e) { /* the dialog outlives a history hiccup */ }
+            popping = false;
+          };
+          window.addEventListener('popstate', pop);
+          armed = true;
+        } catch (e) { /* history is an enhancement */ }
+      },
+      close: function () {
+        if (pop) {
+          try { window.removeEventListener('popstate', pop); } catch (e) { /* noop */ }
+          pop = null;
+        }
+        if (armed && !popping) {
+          armed = false;
+          try { window.history.back(); } catch (e) { /* noop */ }
+        }
+        armed = false;
+      }
+    };
+  }
+
+  function resultsViewerSwipeBind(area, fire) {
+    // Swipe-to-page. Gestures that START inside the compare stage
+    // (.cx-results__ba — its document-level capture and pan-y contract
+    // stay untouched), the thumb strip (its own panning) or a video
+    // keep their owners; anywhere else on the dialog a horizontal flick
+    // pages. Start/end points only — no move listeners and no
+    // preventDefault, so native vertical scrolling never degrades.
+    var sx = null;
+    var sy = 0;
+    var sid;
+    function owned(target) {
+      var el = target;
+      while (el && el !== area && el.nodeType === 1) {
+        var cls = ' ' + (typeof el.className === 'string' ? el.className : '') + ' ';
+        if (cls.indexOf(' cx-results__ba ') !== -1 ||
+            cls.indexOf(' cx-results-vw__strip ') !== -1 ||
+            el.tagName === 'VIDEO') return true;
+        el = el.parentNode;
+      }
+      return false;
+    }
+    function startPoint(ev) {
+      if (ev && typeof ev.clientX === 'number') return ev;
+      if (ev && ev.touches && ev.touches[0]) return ev.touches[0];
+      return null;
+    }
+    function endPoint(ev) {
+      if (ev && typeof ev.clientX === 'number') return ev;
+      if (ev && ev.changedTouches && ev.changedTouches[0]) return ev.changedTouches[0];
+      return null;
+    }
+    function down(ev) {
+      sx = null;
+      if (ev && ev.target && owned(ev.target)) return;
+      var p = startPoint(ev);
+      if (!p || typeof p.clientX !== 'number') return;
+      sx = p.clientX;
+      sy = typeof p.clientY === 'number' ? p.clientY : 0;
+      sid = ev && typeof ev.pointerId === 'number' ? ev.pointerId : undefined;
+    }
+    function up(ev) {
+      if (sx === null) return;
+      if (typeof sid === 'number' && ev && typeof ev.pointerId === 'number' && ev.pointerId !== sid) return;
+      var fromX = sx;
+      var fromY = sy;
+      sx = null;
+      var p = endPoint(ev);
+      if (!p || typeof p.clientX !== 'number') return;
+      var dy = typeof p.clientY === 'number' ? p.clientY - fromY : 0;
+      var step = resultsSwipeStep(p.clientX - fromX, dy, resultsViewerRtl());
+      if (step !== 0) fire(step);
+    }
+    function cancel() { sx = null; }
+    if (window.PointerEvent) {
+      area.addEventListener('pointerdown', down);
+      area.addEventListener('pointerup', up);
+      area.addEventListener('pointercancel', cancel);
+    } else {
+      area.addEventListener('touchstart', down);
+      area.addEventListener('touchend', up);
+      area.addEventListener('touchcancel', cancel);
+    }
+  }
+
+  function resultsViewerOpen(s, o, ctx, idx, trigger) {
+    // ctx = { conf, st, total } from resultsBuildSection: st.items /
+    // st.ids are the retained store (shared with the rail), total()
+    // reads the LIVE filtered total. Built COMPLETELY before pfLbOpen
+    // so a throw lands in the caller's classic-lightbox fallback with
+    // the singleton still free.
+    // The singleton guard TWINS pfLbOpen's own: a second open while the
+    // dialog is up would otherwise build a detached zombie viewer whose
+    // pager keeps fetching into the SHARED store (no user tap can reach
+    // this — the open dialog covers the page — but programmatic callers
+    // must be safe too).
+    try {
+      if (document.getElementById('cx-proof-lb')) return;
+    } catch (e) { /* the pfLbOpen guard still holds */ }
+    var st = ctx.st;
+    var total = ctx.total;
+    var rtl = resultsViewerRtl();
+    var cur = typeof idx === 'number' && isFinite(idx) && idx >= 0 && Math.floor(idx) === idx ? idx : 0;
+    if (pfPosInt(total()) && cur >= total()) cur = total() - 1;
+    var busy = false;
+    var dead = false;
+    var waiting = false;
+
+    var root = pfEl('div', 'cx-lightbox cx-results-vw');
+    pfSp(root);
+    root.appendChild(pfEl('div', 'cx-lightbox__backdrop', ['data-cx-lb-close', '']));
+    pfSp(root);
+    // Dual-class dialog: pfLbOpen's pinned card lookup finds the first
+    // class; the second reshapes it full-screen in CSS (later in the
+    // file at equal specificity, so the override always wins).
+    var card = pfEl('div', 'cx-lightbox__card cx-results-vw__card', ['role', 'dialog', 'aria-modal', 'true', 'tabindex', '-1']);
+    pfSp(card);
+
+    var head = pfEl('div', 'cx-results-vw__head');
+    var count = pfEl('p', 'cx-results-vw__count', ['aria-live', 'polite']);
+    head.appendChild(count);
+    pfSp(head);
+    var close = pfEl('button', 'cx-lightbox__close cx-results-vw__close', ['type', 'button', 'data-cx-lb-close', '', 'aria-label', pfStr(s, 'close')]);
+    close.appendChild(resultsIcon('x', 16));
+    head.appendChild(close);
+    card.appendChild(head);
+    pfSp(card);
+
+    var body = pfEl('div', 'cx-results-vw__body');
+    var stage = pfEl('div', 'cx-results-vw__stage');
+    body.appendChild(stage);
+    card.appendChild(body);
+    pfSp(card);
+
+    var nav = pfEl('div', 'cx-results-vw__nav');
+    var prev = pfEl('button', 'cx-results-vw__btn cx-results-vw__btn--prev', ['type', 'button', 'aria-label', pfStrRaw(s, 'pr')]);
+    prev.appendChild(resultsIcon('chev', 18));
+    nav.appendChild(prev);
+    pfSp(nav);
+    var next = pfEl('button', 'cx-results-vw__btn cx-results-vw__btn--next', ['type', 'button', 'aria-label', pfStrRaw(s, 'nx')]);
+    next.appendChild(resultsIcon('chev', 18));
+    nav.appendChild(next);
+    card.appendChild(nav);
+    pfSp(card);
+
+    var strip = pfEl('div', 'cx-results-vw__strip');
+    var ghost = pfEl('button', 'cx-results-vw__ghost', ['type', 'button', 'hidden', '']);
+    var saTpl = pfStrRaw(s, 'sa');
+    if (/\S/.test(saTpl)) {
+      ghost.setAttribute('aria-label', saTpl.indexOf('@@N@@') === -1 ? saTpl : saTpl.replace('@@N@@', String(total())));
+    }
+    strip.appendChild(ghost);
+    card.appendChild(strip);
+    pfSp(card);
+    root.appendChild(card);
+    pfSp(root);
+
+    function thumbFor(i) {
+      var btn = pfEl('button', 'cx-results-vw__thumb', ['type', 'button', 'aria-label', resultsCounterText(i + 1, total()) || String(i + 1)]);
+      var it = st.items[i];
+      var url = it ? resultsCdnThumb(it.c || it.a || it.b, 120) : '';
+      if (url) {
+        var img = pfEl('img', 'cx-results-vw__thumb-img', ['alt', '', 'loading', 'lazy', 'draggable', 'false']);
+        img.src = url;
+        btn.appendChild(img);
+      }
+      btn.addEventListener('click', function () { jump(i); });
+      return btn;
+    }
+
+    function extendStrip(from) {
+      for (var i = from; i < st.items.length; i++) {
+        strip.insertBefore(thumbFor(i), ghost);
+      }
+    }
+
+    function syncStrip() {
+      var t = total();
+      var left = pfPosInt(t) ? t - st.items.length : 0;
+      if (left > 0 && !dead) {
+        ghost.textContent = '+' + String(left);
+        ghost.removeAttribute('hidden');
+      } else {
+        ghost.setAttribute('hidden', '');
+      }
+      var thumbs = strip.children;
+      var active = null;
+      for (var i = 0; i < thumbs.length; i++) {
+        if (thumbs[i] === ghost) continue;
+        if (i === cur) {
+          thumbs[i].className = 'cx-results-vw__thumb cx-results-vw__thumb--on';
+          thumbs[i].setAttribute('aria-current', 'true');
+          active = thumbs[i];
+        } else {
+          thumbs[i].className = 'cx-results-vw__thumb';
+          thumbs[i].removeAttribute('aria-current');
+        }
+      }
+      // Keep the active thumb centered — pure enhancement, every metric
+      // read is guarded (the mini-DOM has no layout).
+      try {
+        if (active && typeof active.offsetLeft === 'number' &&
+            typeof active.offsetWidth === 'number' &&
+            typeof strip.clientWidth === 'number' && strip.clientWidth > 0) {
+          strip.scrollLeft = active.offsetLeft - (strip.clientWidth - active.offsetWidth) / 2;
+        }
+      } catch (e) { /* centering is an enhancement */ }
+    }
+
+    function fetchMore() {
+      if (busy || dead) return;
+      var t = total();
+      if (!pfPosInt(t) || st.items.length >= t) return;
+      busy = true;
+      // per=24 (the server max) over the SAME filter state; the page
+      // formula restarts from the store size, and the id dedupe absorbs
+      // the overlap with the rail's per=12 page 1.
+      var page = Math.floor(st.items.length / 24) + 1;
+      proofFetch('results', resultsPageParams(ctx.conf, st, page, 24), function (next) {
+        busy = false;
+        if (!next) { syncStrip(); return; } // transient — the next gesture retries
+        var list = resultsValidItems(next);
+        var before = st.items.length;
+        var fresh = resultsMergeItems(st.items, st.ids, list);
+        if (fresh.length === 0) {
+          // Past the end, or a cache-skewed page of pure duplicates —
+          // either way stop asking (the loop guard).
+          dead = true;
+        } else {
+          extendStrip(before);
+        }
+        if (waiting && cur < st.items.length) paint();
+        else syncStrip();
+      });
+    }
+
+    function paint() {
+      while (stage.firstChild) stage.removeChild(stage.firstChild);
+      var item = st.items[cur];
+      waiting = !item;
+      if (item) {
+        stage.className = 'cx-results-vw__stage';
+        stage.appendChild(resultsViewerContent(item, s, o));
+        resultsViewerPrefetch(st.items, cur);
+      } else {
+        // The "+N" tile lands here: the index exists server-side but
+        // its page is still in flight — a quiet placeholder until the
+        // merge paints it.
+        stage.className = 'cx-results-vw__stage cx-results-vw__stage--wait';
+        fetchMore();
+      }
+      count.textContent = resultsCounterText(cur + 1, total());
+      // Resume marker: the rail's "+N" tile reopens HERE, so closing at
+      // result 25 and tapping the tile again never skips 26-48.
+      st.vwAt = cur;
+      if (cur <= 0) prev.setAttribute('disabled', '');
+      else prev.removeAttribute('disabled');
+      if (pfPosInt(total()) && cur >= total() - 1) next.setAttribute('disabled', '');
+      else next.removeAttribute('disabled');
+      try { body.scrollTop = 0; } catch (e) { /* noop */ }
+      syncStrip();
+    }
+
+    function go(step) {
+      var n = cur + step;
+      if (n < 0) return;
+      var t = total();
+      if (pfPosInt(t) && n >= t) return;
+      cur = n;
+      paint();
+      if (st.items.length - cur <= 3) fetchMore();
+    }
+
+    function jump(i) {
+      if (i === cur) return;
+      cur = i;
+      paint();
+      if (st.items.length - cur <= 3) fetchMore();
+    }
+
+    prev.addEventListener('click', function () { go(-1); });
+    next.addEventListener('click', function () { go(1); });
+    ghost.addEventListener('click', function () {
+      if (dead) return;
+      var t = total();
+      if (pfPosInt(t) && st.items.length < t) jump(st.items.length);
+    });
+
+    root.addEventListener('keydown', function (ev) {
+      var k = ev.key;
+      if (k !== 'ArrowLeft' && k !== 'Left' && k !== 'ArrowRight' && k !== 'Right') return;
+      try {
+        var a = document.activeElement;
+        // The compare handle owns its own arrows (±5% divider steps).
+        if (a && a.getAttribute && a.getAttribute('role') === 'slider') return;
+      } catch (e) { /* the buttons still serve */ }
+      var step = k === 'ArrowRight' || k === 'Right' ? 1 : -1;
+      go(rtl ? -step : step);
+      if (ev.preventDefault) ev.preventDefault();
+    });
+
+    resultsViewerSwipeBind(card, go);
+    extendStrip(0);
+    paint();
+    var hist = resultsViewerHistory(function () { pfLbClose(); });
+    pfLbOpen(root, trigger, { onClose: function () { hist.close(); } });
+    hist.open();
   }
 
   function resultsFacetGroups(data) {
@@ -2836,8 +3314,35 @@
     if (items.length === 0) return null; // a banner with no cards is broken proof
     var groups = resultsFacetGroups(data);
     var st = { concern: '', age: '', skin: '', duration: '', page: 1 };
+    // v36: the retained item store — the viewer's strip, paging and
+    // prev/next read THIS array; ids dedupe cache-skewed page overlaps.
+    st.items = [];
+    st.ids = {};
+    resultsMergeItems(st.items, st.ids, items);
     var filteredTotal = pfPosInt(data.total) ? data.total : items.length;
-    var shown = items.length;
+    var shown = st.items.length;
+
+    // v36: the swipe viewer replaces Show more as the browse path
+    // whenever the proxy carries its control labels — a stale cached
+    // payload (or the sim fixture) lacks them and the legacy button
+    // serves unchanged.
+    var saTpl = pfStrRaw(s, 'sa');
+    var vwOn = /\S/.test(pfStrRaw(s, 'pr')) && /\S/.test(pfStrRaw(s, 'nx'));
+    var vwCtx = vwOn ? { conf: conf, st: st, total: function () { return filteredTotal; } } : null;
+    var seeTile = null;
+    var seeTileN = null;
+    var seeTileT = null;
+
+    function openViewer(idx, trigger) {
+      if (vwCtx) {
+        try {
+          resultsViewerOpen(s, o, vwCtx, idx, trigger);
+          return;
+        } catch (e) { /* fall through to the classic one-item dialog */ }
+      }
+      var item = st.items[idx];
+      if (item) pfLbOpen(resultsBuildLightbox(item, s, o), trigger);
+    }
 
     // v8.3 three-tier density (LIVE setting, island "cm" member — lean
     // two-code convention): both modifiers are pure CSS leverage. cm 2 =
@@ -2882,8 +3387,11 @@
     emptyP.textContent = pfStr(s, 'empty');
     var moreBtn = null;
 
-    function appendCards(list) {
-      for (var i = 0; i < list.length; i++) rail.appendChild(resultsBuildCard(list[i], s, o));
+    function appendCards(list, start) {
+      var base = typeof start === 'number' ? start : 0;
+      for (var i = 0; i < list.length; i++) {
+        rail.appendChild(resultsBuildCard(list[i], s, o, vwCtx ? { at: base + i, open: openViewer } : null));
+      }
     }
 
     function renderList(list) {
@@ -2899,8 +3407,23 @@
     }
 
     function syncMore() {
+      // v36: the "+N" tile owns the end of the rail when the viewer is
+      // live — count, caption and position re-sync here after every
+      // fetch (appendChild re-seats it as the LAST rail child; filter
+      // renders cleared it with the cards).
+      if (seeTile) {
+        var left = filteredTotal - shown;
+        if (left > 0 && !rail.hasAttribute('hidden')) {
+          seeTileN.textContent = '+' + String(left);
+          seeTileT.textContent = saTpl.indexOf('@@N@@') === -1 ? saTpl : saTpl.replace('@@N@@', String(filteredTotal));
+          rail.appendChild(seeTile);
+          seeTile.removeAttribute('hidden');
+        } else {
+          seeTile.setAttribute('hidden', '');
+        }
+      }
       if (!moreBtn) return;
-      if (shown >= filteredTotal || rail.hasAttribute('hidden')) moreBtn.setAttribute('hidden', '');
+      if (seeTile || shown >= filteredTotal || rail.hasAttribute('hidden')) moreBtn.setAttribute('hidden', '');
       else moreBtn.removeAttribute('hidden');
     }
 
@@ -3002,12 +3525,18 @@
         var list = resultsValidItems(next);
         filteredTotal = pfPosInt(next.total) ? next.total : (append ? shown + list.length : list.length);
         if (append) {
-          appendCards(list);
-          shown += list.length;
+          // v36: the store dedupes by id (cache skew between paged
+          // fetches) — only genuinely-new rows reach the rail.
+          var fresh = resultsMergeItems(st.items, st.ids, list);
+          appendCards(fresh, st.items.length - fresh.length);
+          shown += fresh.length;
           if (list.length === 0 && st.page > 1) st.page -= 1;
         } else {
-          renderList(list);
-          shown = list.length;
+          st.items.length = 0;
+          st.ids = {};
+          st.vwAt = 0; // a filtered sequence invalidates the resume seat
+          renderList(resultsMergeItems(st.items, st.ids, list));
+          shown = st.items.length;
         }
         syncMore();
       });
@@ -3135,7 +3664,30 @@
       pfSp(root);
     }
 
-    appendCards(items);
+    if (vwCtx && /\S/.test(saTpl)) {
+      // v36: the "+N" end-of-rail tile — the Show-more replacement. It
+      // opens the viewer at the first unseen result (the viewer's own
+      // pager fetches that page). Built hidden; syncMore owns its
+      // count, caption, visibility and end-of-rail seat.
+      seeTile = pfEl('button', 'cx-results__card cx-results__moretile', ['type', 'button', 'hidden', '']);
+      seeTileN = pfEl('span', 'cx-results__moretile-n', ['aria-hidden', 'true']);
+      seeTile.appendChild(seeTileN);
+      pfSp(seeTile);
+      seeTileT = pfEl('span', 'cx-results__moretile-t');
+      seeTile.appendChild(seeTileT);
+      seeTile.addEventListener('click', function () {
+        // Resume past the rail when a previous viewer session got there;
+        // otherwise the first unseen result (its page still in flight).
+        var idx = typeof st.vwAt === 'number' && st.vwAt >= shown
+          ? st.vwAt
+          : st.items.length < filteredTotal ? st.items.length : st.items.length - 1;
+        if (idx < 0) return;
+        openViewer(idx, seeTile);
+        pfTrack('verified_before_after', 'click');
+      });
+    }
+
+    appendCards(st.items);
     syncChips();
     syncMore();
     return root;

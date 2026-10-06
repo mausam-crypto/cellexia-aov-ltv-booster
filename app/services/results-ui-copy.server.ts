@@ -28,6 +28,10 @@
  *   dr  v33 compare-slider handle hint + aria-label ("Drag to compare")
  *   iv  v33 study-design footnote ("Individual results may vary.")
  *   zm  v33 slider-mode lightbox trigger label ("View larger")
+ *   sa  v36 rail end-tile caption ("See all N results"); @@N@@ = the
+ *       filtered result total — also the tile's accessible name
+ *   pr  v36 viewer previous-result control label (aria)
+ *   nx  v36 viewer next-result control label (aria)
  */
 
 export interface ResultsUiCopy {
@@ -41,6 +45,9 @@ export interface ResultsUiCopy {
   dr: string;
   iv: string;
   zm: string;
+  sa: string;
+  pr: string;
+  nx: string;
 }
 
 export const RESULTS_UI_COPY_CODES = [
@@ -54,6 +61,9 @@ export const RESULTS_UI_COPY_CODES = [
   "dr",
   "iv",
   "zm",
+  "sa",
+  "pr",
+  "nx",
 ] as const;
 
 const NO_TABLE: ResultsUiCopy = {
@@ -67,6 +77,9 @@ const NO_TABLE: ResultsUiCopy = {
   dr: "Dra for å sammenligne",
   iv: "Resultatene kan variere fra person til person.",
   zm: "Se større",
+  sa: "Se alle @@N@@ resultater",
+  pr: "Forrige resultat",
+  nx: "Neste resultat",
 };
 
 /** Keyed by NORMALIZED (lowercase) storefront locale — the proxy
@@ -84,6 +97,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Drag to compare",
     iv: "Individual results may vary.",
     zm: "View larger",
+    sa: "See all @@N@@ results",
+    pr: "Previous result",
+    nx: "Next result",
   },
   ar: {
     rp: "أشخاص حقيقيون. نتائج حقيقية.",
@@ -96,6 +112,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "اسحب للمقارنة",
     iv: "قد تختلف النتائج من شخص إلى آخر.",
     zm: "تكبير الصورة",
+    sa: "عرض جميع النتائج (@@N@@)",
+    pr: "النتيجة السابقة",
+    nx: "النتيجة التالية",
   },
   da: {
     rp: "Ægte mennesker. Ægte resultater.",
@@ -108,6 +127,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Træk for at sammenligne",
     iv: "Resultaterne kan variere fra person til person.",
     zm: "Se større",
+    sa: "Se alle @@N@@ resultater",
+    pr: "Forrige resultat",
+    nx: "Næste resultat",
   },
   de: {
     rp: "Echte Menschen. Echte Ergebnisse.",
@@ -120,6 +142,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Zum Vergleichen ziehen",
     iv: "Ergebnisse können individuell abweichen.",
     zm: "Größer ansehen",
+    sa: "Alle @@N@@ Ergebnisse ansehen",
+    pr: "Vorheriges Ergebnis",
+    nx: "Nächstes Ergebnis",
   },
   el: {
     rp: "Αληθινοί άνθρωποι. Αληθινά αποτελέσματα.",
@@ -132,6 +157,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Σύρε για σύγκριση",
     iv: "Τα αποτελέσματα διαφέρουν από άτομο σε άτομο.",
     zm: "Μεγέθυνση",
+    sa: "Δες όλα τα @@N@@ αποτελέσματα",
+    pr: "Προηγούμενο αποτέλεσμα",
+    nx: "Επόμενο αποτέλεσμα",
   },
   es: {
     rp: "Personas reales. Resultados reales.",
@@ -144,6 +172,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Arrastra para comparar",
     iv: "Los resultados pueden variar según la persona.",
     zm: "Ampliar",
+    sa: "Ver los @@N@@ resultados",
+    pr: "Resultado anterior",
+    nx: "Resultado siguiente",
   },
   fi: {
     rp: "Aitoja ihmisiä. Aitoja tuloksia.",
@@ -156,6 +187,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Vertaile vetämällä",
     iv: "Tulokset voivat vaihdella henkilöittäin.",
     zm: "Katso suurempana",
+    sa: "Katso kaikki @@N@@ tulosta",
+    pr: "Edellinen tulos",
+    nx: "Seuraava tulos",
   },
   fr: {
     rp: "De vraies personnes. De vrais résultats.",
@@ -168,6 +202,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Faites glisser pour comparer",
     iv: "Les résultats peuvent varier d'une personne à l'autre.",
     zm: "Voir en grand",
+    sa: "Voir les @@N@@ résultats",
+    pr: "Résultat précédent",
+    nx: "Résultat suivant",
   },
   hu: {
     rp: "Valódi emberek. Valódi eredmények.",
@@ -180,6 +217,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Húzd az összehasonlításhoz",
     iv: "Az eredmények egyénenként eltérhetnek.",
     zm: "Nagyobb nézet",
+    sa: "Nézd meg mind a @@N@@ eredményt",
+    pr: "Előző eredmény",
+    nx: "Következő eredmény",
   },
   it: {
     rp: "Persone vere. Risultati veri.",
@@ -192,6 +232,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Trascina per confrontare",
     iv: "I risultati possono variare da persona a persona.",
     zm: "Ingrandisci",
+    sa: "Vedi tutti i @@N@@ risultati",
+    pr: "Risultato precedente",
+    nx: "Risultato successivo",
   },
   ja: {
     rp: "実際の使用者による、本物の結果。",
@@ -204,6 +247,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "ドラッグして比較",
     iv: "効果には個人差があります。",
     zm: "拡大表示",
+    sa: "@@N@@件の結果をすべて見る",
+    pr: "前の結果",
+    nx: "次の結果",
   },
   nb: NO_TABLE,
   nl: {
@@ -217,6 +263,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Sleep om te vergelijken",
     iv: "Resultaten kunnen per persoon verschillen.",
     zm: "Groter bekijken",
+    sa: "Bekijk alle @@N@@ resultaten",
+    pr: "Vorig resultaat",
+    nx: "Volgend resultaat",
   },
   no: NO_TABLE,
   pl: {
@@ -230,6 +279,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Przeciągnij, aby porównać",
     iv: "Efekty mogą się różnić w zależności od osoby.",
     zm: "Powiększ",
+    sa: "Zobacz wszystkie wyniki (@@N@@)",
+    pr: "Poprzedni wynik",
+    nx: "Następny wynik",
   },
   "pt-pt": {
     rp: "Pessoas reais. Resultados reais.",
@@ -242,6 +294,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Arraste para comparar",
     iv: "Os resultados podem variar de pessoa para pessoa.",
     zm: "Ampliar",
+    sa: "Ver os @@N@@ resultados",
+    pr: "Resultado anterior",
+    nx: "Resultado seguinte",
   },
   ro: {
     rp: "Oameni reali. Rezultate reale.",
@@ -254,6 +309,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Trage pentru a compara",
     iv: "Rezultatele pot varia de la o persoană la alta.",
     zm: "Vezi mai mare",
+    sa: "Vezi toate cele @@N@@ rezultate",
+    pr: "Rezultatul anterior",
+    nx: "Rezultatul următor",
   },
   sv: {
     rp: "Riktiga människor. Riktiga resultat.",
@@ -266,6 +324,9 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     dr: "Dra för att jämföra",
     iv: "Resultaten kan variera från person till person.",
     zm: "Se större bild",
+    sa: "Se alla @@N@@ resultat",
+    pr: "Föregående resultat",
+    nx: "Nästa resultat",
   },
 };
 

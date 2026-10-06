@@ -556,7 +556,7 @@ const L = await loadTrustLogic();
     // carries a provinceCode — typed wins, non-US ignores the attribute.
     "shippingAddress?.countryCode",
     "shippingAddress?.provinceCode",
-    "attributeValue(attributes, '_cx_us_state')",
+    "'_cx_us_state')",
     "/^[A-Z]{2}$/.test(usStateAttributeValue)",
     "typedProvinceCode ||",
     "(countryCode === 'US' ? chosenUsState : undefined)",
@@ -604,7 +604,7 @@ const L = await loadTrustLogic();
     "(customsWantedBase && customsExcluded) ||",
     "(trackedWantedBase && trackedExcluded),",
   ]) {
-    tap.check(`T5: Checkout.tsx anchor present: ${anchor}`, src.includes(anchor));
+    tap.check(`T5: Extension.tsx anchor present: ${anchor}`, src.includes(anchor));
   }
   tap.check(
     "T5: tracked date never derives from deliveryResult.min",

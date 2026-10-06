@@ -1545,6 +1545,9 @@ const EVIDENCE = {
     cwd: ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    // Windows: npx is npx.cmd, and Node refuses to spawn .cmd shims
+    // without a shell (the 2024 spawn hardening) — the dev's recurring
+    // local patch, now in-tree (v36.1). Static args only.
     shell: process.platform === "win32",
   });
   const DEF = JSON.parse(out);
@@ -2669,7 +2672,7 @@ const EVIDENCE = {
       // Review fix: bundle components are inspected too.
       "line?.lineComponents",
     ]) {
-      ok(trustTsx12.includes(lit), `v12: checkout-trust Checkout.tsx carries ${lit}`);
+      ok(trustTsx12.includes(lit), `v12: checkout-trust Extension.tsx carries ${lit}`);
     }
     const delTsx12 = read("extensions/checkout-delivery/src/Extension.tsx");
     for (const lit of [
@@ -2679,7 +2682,7 @@ const EVIDENCE = {
       "excluded: deliveryExcluded",
       "line?.lineComponents",
     ]) {
-      ok(delTsx12.includes(lit), `v12: checkout-delivery Checkout.tsx carries ${lit}`);
+      ok(delTsx12.includes(lit), `v12: checkout-delivery Extension.tsx carries ${lit}`);
     }
     // Review fix (preview honesty): an exclusion-hidden product in a
     // verified PDP preview names the exclusion — never the false
@@ -2833,46 +2836,82 @@ const EVIDENCE = {
   }
 }
 
-// ================================================ 8. CHECKOUT EXTENSION ARCHITECTURE PIN
-// Migrated off React (@shopify/ui-extensions-react, react-reconciler) to
-// Preact + Polaris web components, api_version 2026-04, per Shopify's
-// required checkout extension migration. Pins the NEW contract: no React
-// deps remain, and the Preact/signals/web-components deps are present.
+// ============== 8. CHECKOUT EXTENSION ARCHITECTURE (Polaris web components)
+// 2026-10-06: the four checkout UI extensions run the dev-migrated
+// Preact + <s-*> architecture (api_version 2026-04) — Shopify BLOCKS
+// deploys of checkout extensions older than 2026-01 since 2026-10-01.
+// These pins hold the three things a regression or a careless regenerate
+// would silently destroy:
+//   (a) uid + handle — deploy-generated identities; changing either
+//       ORPHANS the live extensions and drops every checkout-editor
+//       placement (the dev-repo audit's hardest warning);
+//   (b) the signals wiring — every entry module MUST import
+//       '@shopify/ui-extensions/preact' (it hands @preact/signals' Signal
+//       class to the sandbox via shopify.setSignals) or shopify.*.value
+//       reads inside components never subscribe and the extension
+//       FREEZES at first render (migration-merge review catch: the
+//       delivered package shipped without it);
+//   (c) the React family stays gone — a stray react/react-reconciler/
+//       ui-extensions-react dependency would resurrect the pre-migration
+//       architecture the deploy block rejects.
 {
-  const CHECKOUT_EXTS = ["checkout-delivery", "checkout-protection", "checkout-trust", "checkout-upsell"];
-  for (const ext of CHECKOUT_EXTS) {
-    const pkg = JSON.parse(read(`extensions/${ext}/package.json`));
-    ok(
-      pkg.dependencies?.["react-reconciler"] === undefined,
-      `react-reconciler removed from extensions/${ext} (post-migration)`,
-    );
-    ok(
-      pkg.dependencies?.["react"] === undefined,
-      `react removed from extensions/${ext} (post-migration)`,
-    );
-    ok(
-      pkg.dependencies?.["@shopify/ui-extensions-react"] === undefined,
-      `@shopify/ui-extensions-react removed from extensions/${ext} (post-migration)`,
-    );
-    const uiExtPin = pkg.dependencies?.["@shopify/ui-extensions"];
-    ok(
-      uiExtPin === "2026.4.x",
-      `@shopify/ui-extensions 2026.4.x pinned in extensions/${ext} (got ${uiExtPin})`,
-    );
-    ok(
-      pkg.dependencies?.["preact"] === "^10.10.x",
-      `preact ^10.10.x pinned in extensions/${ext} (got ${pkg.dependencies?.["preact"]})`,
-    );
-    ok(
-      pkg.dependencies?.["@preact/signals"] === "^2.3.x",
-      `@preact/signals ^2.3.x pinned in extensions/${ext} (got ${pkg.dependencies?.["@preact/signals"]})`,
-    );
+  const CHECKOUT_EXTS = {
+    "checkout-delivery": {
+      handle: "cellexia-checkout-delivery",
+      uid: "f32f3701-7844-e198-28d1-f78b34c358c3bf1f83fb",
+      entries: ["ShippingOptionListRenderAfter.tsx", "BlockRender.tsx"],
+    },
+    "checkout-protection": {
+      handle: "cellexia-checkout-protection",
+      uid: "d5f76391-3ca3-09d6-0009-f3f910f978d21791d3d9",
+      entries: ["BlockRender.tsx"],
+    },
+    "checkout-trust": {
+      handle: "cellexia-checkout-trust",
+      uid: "419757f0-789f-d169-ffa6-a9276f7489a4d79a4ba7",
+      entries: ["BlockRender.tsx", "ActionsRenderBefore.tsx"],
+    },
+    "checkout-upsell": {
+      handle: "cellexia-checkout-upsell",
+      uid: "0102626b-7cdd-e1e3-b4a2-c705aa54ba4cef18dd66",
+      entries: ["BlockRender.tsx", "ActionsRenderBefore.tsx"],
+    },
+  };
+  for (const [ext, spec] of Object.entries(CHECKOUT_EXTS)) {
     const toml = read(`extensions/${ext}/shopify.extension.toml`);
-    ok(
-      toml.includes('api_version = "2026-04"'),
-      `extensions/${ext}/shopify.extension.toml pinned to api_version 2026-04`,
-    );
+    ok(toml.includes('api_version = "2026-04"'), `${ext}: api_version 2026-04 (post deploy-block architecture)`);
+    ok(toml.includes(`handle = "${spec.handle}"`), `${ext}: handle unchanged (${spec.handle})`);
+    ok(toml.includes(`uid = "${spec.uid}"`), `${ext}: deploy uid preserved — regenerating it orphans the live extension`);
+    ok(!toml.includes("Checkout.tsx"), `${ext}: no toml module points at the removed Checkout.tsx`);
+    const pkg = JSON.parse(read(`extensions/${ext}/package.json`));
+    ok(pkg.dependencies?.["@shopify/ui-extensions"] === "2026.4.x", `${ext}: @shopify/ui-extensions 2026.4.x`);
+    ok(typeof pkg.dependencies?.preact === "string" && typeof pkg.dependencies?.["@preact/signals"] === "string", `${ext}: preact + @preact/signals declared`);
+    for (const gone of ["react", "react-reconciler", "@shopify/ui-extensions-react"]) {
+      ok(!pkg.dependencies?.[gone] && !pkg.devDependencies?.[gone], `${ext}: ${gone} stays removed`);
+    }
+    ok(read(`extensions/${ext}/tsconfig.json`).includes('"jsxImportSource": "preact"'), `${ext}: tsconfig compiles JSX for preact`);
+    for (const entry of spec.entries) {
+      ok(
+        read(`extensions/${ext}/src/${entry}`).includes("import '@shopify/ui-extensions/preact';"),
+        `${ext}/${entry}: wires the host signals to Preact BEFORE render (frozen-extension guard)`,
+      );
+    }
   }
+  // The migration-merge hardenings on the protection money path:
+  // checkbox snap-back to cart truth after a failed mutation (the web
+  // component self-toggles and Preact never rewrites an "unchanged"
+  // checked prop), and the discount-method belts that keep the one-shot
+  // storage keys from burning on a methodless runtime.
+  const prot36 = read("extensions/checkout-protection/src/Extension.tsx");
+  ok(
+    prot36.includes("findProtectionLine(shopify.lines.value, config.variantId)") &&
+      prot36.includes("if (el.checked !== truth) el.checked = truth;"),
+    "checkout-protection: checkbox snaps back to CART TRUTH after the mutation settles",
+  );
+  ok(
+    (prot36.match(/typeof applyDiscountCodeChange !== 'function'/g) ?? []).length === 2,
+    "checkout-protection: both rewards effects keep the surviving discount-method gate",
+  );
 }
 
 // ==================================================== 9. SUITE INVENTORY
@@ -3827,7 +3866,7 @@ const EVIDENCE = {
   ok(prot14.includes("function RewardsSafetyNet()") && prot14.includes("<RewardsSafetyNet />"), "v14: RewardsSafetyNet declared and rendered");
   ok(prot14.includes("'gift_tiers'") && prot14.includes("'set_savings'"), "v14: safety net gates on the gift_tiers / set_savings literals");
   ok(prot14.includes("const GIFT_ATTRIBUTE = '_cellexia_gift';"), "v14: safety net reads the _cellexia_gift line property");
-  ok(prot14.includes("type: 'removeCartLine'") && prot14.includes("useDiscountCodes") && prot14.includes("useInstructions"), "v14: gift-honesty removal + KIT attach hooks present");
+  ok(prot14.includes("type: 'removeCartLine'") && prot14.includes("shopify.discountCodes") && prot14.includes("shopify.instructions"), "v14: gift-honesty removal + KIT attach hooks present");
   ok(prot14.includes("previewDraft.rehearsal"), "v14: checkout mutations inside a preview only during a live rehearsal");
 
   // (j) Preview: proxy keys, readiness, fix links, admin registrations.
@@ -4900,8 +4939,8 @@ const EVIDENCE = {
   // ---- storefront: whitelist, raw reads, gates, close ---------------------
   const proofJs25 = read(PROOF_JS);
   ok(
-    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm'];"),
-    "v25/v33: resultsApplyCopy whitelist is exactly the ten chrome codes",
+    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx'];"),
+    "v25/v33/v36: resultsApplyCopy whitelist is exactly the thirteen chrome codes",
   );
   for (const raw of ["pfStrRaw(s, 'rp')", "pfStrRaw(s, 'ma')", "pfStrRaw(s, 'vsb')", "pfStrRaw(s, 'mi')"]) {
     ok(proofJs25.includes(raw), `v25: proxy-only code read RAW (v8.22 convention): ${raw}`);
@@ -6251,6 +6290,101 @@ const EVIDENCE = {
       "v32: no em/en dashes in any localized shopper-facing message",
     );
   }
+}
+
+// ======================================== v36 RESULTS SWIPE VIEWER
+// docs/SPEC-v36-results-viewer.md — the full-screen one-at-a-time browse
+// surface for 50-150 results: the rail stays page 1, a "+N" end-of-rail
+// tile replaces Show more (which survives HIDDEN as the stale-copy
+// degrade path), and any media tap opens the pfLbOpen-hosted dual-class
+// viewer (counter, prev/next, thumbnail jump strip, invisible per=24
+// paging, phone back-button close). Behavior lives in proof-gallery
+// VW1-VW11 + LB6 (+m50-m55) and proof-server UC (three new copy codes);
+// these pins hold the cross-file wiring.
+{
+  const proofJs36 = read(PROOF_JS);
+  // ---- copy plumbing: RAW reads + the fail-soft arming gate ---------------
+  for (const raw of ["pfStrRaw(s, 'sa')", "pfStrRaw(s, 'pr')", "pfStrRaw(s, 'nx')"]) {
+    ok(proofJs36.includes(raw), `v36: proxy-only code read RAW (v8.22 convention): ${raw}`);
+  }
+  ok(
+    proofJs36.includes("var vwOn = /\\S/.test(pfStrRaw(s, 'pr')) && /\\S/.test(pfStrRaw(s, 'nx'));"),
+    "v36: the viewer arms ONLY on live control labels — stale caches and old payloads degrade to Show more",
+  );
+  const uiCopy36 = read("app/services/results-ui-copy.server.ts");
+  ok(
+    uiCopy36.includes("sa: string;") && uiCopy36.includes('"sa",') &&
+      uiCopy36.includes('"pr",') && uiCopy36.includes('"nx",'),
+    "v36: the copy interface + code list carry sa/pr/nx (tables deep-checked in proof-server UC)",
+  );
+  // ---- the dual-class dialog + the untouched singleton pins ---------------
+  ok(
+    proofJs36.includes("'cx-lightbox__card cx-results-vw__card'"),
+    "v36: the viewer dialog is DUAL-CLASS — pfLbOpen's pinned card selector finds it unchanged",
+  );
+  ok(
+    proofJs36.includes("onClose: opts && opts.onClose ? opts.onClose : null") &&
+      proofJs36.includes("if (state.onClose) state.onClose();"),
+    "v36: the ADDITIVE onClose hook (fired after teardown) carries the history unbind",
+  );
+  // ---- history glue: feature-gated, theme editor exempt -------------------
+  ok(
+    proofJs36.includes("if (window.Shopify && window.Shopify.designMode) return false;") &&
+      proofJs36.includes("window.history.pushState({ cxVw: 1 }, '');"),
+    "v36: history is feature-gated and NEVER touched inside the theme editor",
+  );
+  // ---- pager + dedupe + the CDN host gate + swipe ownership ---------------
+  ok(
+    proofJs36.includes("return resultsPageParams(conf, st, st.page, 12);"),
+    "v36: the rail delegates to resultsPageParams at its original page/per (byte-identical queries, R16's pin)",
+  );
+  ok(
+    proofJs36.includes("var page = Math.floor(st.items.length / 24) + 1;"),
+    "v36: the viewer pager restarts from the store size at per=24 (the id dedupe absorbs the overlap)",
+  );
+  ok(
+    proofJs36.includes("if (!/^https:\\/\\/cdn\\.shopify\\.com\\//i.test(clean)) return clean;"),
+    "v36: image resizing is HOST-GATED to Shopify's CDN (merchants may paste any https URL)",
+  );
+  ok(
+    proofJs36.includes("if (cls.indexOf(' cx-results__ba ') !== -1 ||"),
+    "v36: swipes never initiate inside the compare stage — the slider keeps its gesture",
+  );
+  ok(
+    proofJs36.includes("if (document.getElementById('cx-proof-lb')) return;") &&
+      proofJs36.includes("st.vwAt = cur;") &&
+      proofJs36.includes("typeof st.vwAt === 'number' && st.vwAt >= shown"),
+    "v36: the viewer twins the singleton guard (no zombie pagers) and the tile resumes at the last viewed result",
+  );
+  // ---- CSS: new families + the override-order invariant -------------------
+  const css36 = read(CSS);
+  for (const cls of [
+    ".cx-results__moretile {",
+    ".cx-results-vw__card {",
+    ".cx-results-vw__strip {",
+    ".cx-results-vw__thumb--on {",
+    ".cx-results-vw__stage--wait {",
+  ]) {
+    ok(css36.includes(cls), `v36: CSS styles ${cls.replace(" {", "")}`);
+  }
+  ok(
+    css36.includes(".cx-results__moretile[hidden]") && css36.includes(".cx-results-vw__ghost[hidden]"),
+    "v36: the [hidden] display:none!important guards ship (the v6.8.1 lesson)",
+  );
+  ok(
+    css36.lastIndexOf(".cx-results-vw__card {") > css36.lastIndexOf(".cx-lightbox__card {"),
+    "v36: the full-screen card overrides sit AFTER every lightbox rule (equal specificity, later wins) — the <=640px bottom-sheet included",
+  );
+  ok(
+    css36.includes('[dir="rtl"] .cx-results-vw__btn--prev svg'),
+    "v36: RTL mirrors the nav chevrons",
+  );
+  // ---- zero Liquid bytes ---------------------------------------------------
+  const liquid36 = read(`${EXT}/blocks/proof-booster.liquid`);
+  ok(
+    !liquid36.includes("moretile") && !liquid36.includes("results-vw"),
+    "v36: ZERO Liquid bytes — the whole feature is JS + CSS + proxy copy",
+  );
 }
 
 finish();

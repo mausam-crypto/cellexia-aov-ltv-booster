@@ -139,6 +139,23 @@
  *                               lab gate dropped, slider clamp dropped,
  *                               study lab gate dropped, week stamp on
  *                               weekless entries
+ *   m50–m55 (v36)               store dedupe dropped, CDN host gate
+ *                               dropped, swipe threshold dropped, pager
+ *                               formula pinned wrong, compare-stage
+ *                               swipe exclusion dropped, counter clamp
+ *                               dropped
+ *
+ * v36 cases (VW1–VW11 + LB6, swipe viewer): counter/thumb/merge/swipe
+ *   pure helpers, per=24 pager params with the byte-identical rail
+ *   delegation, history glue (inert sandbox, designMode skip, one entry
+ *   per open, back-button single close), the lightbox-content graft
+ *   (close control left behind, width=1080 media), neighbor prefetch,
+ *   and the wired flows: live proxy copy hides Show more behind the +N
+ *   tile, media taps open the dual-class viewer through pfLbOpen with
+ *   ONE click beacon, approach-end paging pins ?page&per=24 with id
+ *   dedupe feeding the strip, prev clamps, keyboard arrows, the tile
+ *   seats the first unseen index (waiting stage until its page lands),
+ *   and swipe ownership (compare stage + vertical scrolls never page).
  */
 "use strict";
 const fs = require("fs");
@@ -201,6 +218,11 @@ const EXTRACTED = extractAll(SRC, {
     "resultsStudyTag", "resultsHideQuote", "resultsQuoteClamped",
     "resultsQuoteSync", "resultsQuoteMore",
     "resultsQuoteRescan", "resultsQuoteBind",
+    // v36 swipe viewer (+ the retained store / pager plumbing)
+    "resultsPageParams", "resultsMergeItems", "resultsCounterText",
+    "resultsCdnThumb", "resultsSwipeStep", "resultsViewerRtl",
+    "resultsViewerContent", "resultsViewerPrefetch",
+    "resultsViewerHistory", "resultsViewerSwipeBind", "resultsViewerOpen",
   ],
   // extend the vars list separately below (extractAll takes each key once)
 });
@@ -2592,6 +2614,278 @@ const OFFICIAL_STR = Object.assign({}, ENDO_STR, {
     "OF5: note + list share the ONE scroll body (the mid-line clip fix)");
 }
 
+// ========================= v36 swipe viewer (VW, SPEC-v36-results-viewer)
+
+// --- VW1: counter math — clamped, digits-only, '' on junk ----------------------------
+ok(S.resultsCounterText(14, 87) === "14/87", "VW1: seen/total composes");
+ok(S.resultsCounterText(99, 87) === "87/87", "VW1: clamps above the total");
+ok(S.resultsCounterText(0, 87) === "1/87", "VW1: clamps below 1");
+ok(S.resultsCounterText(3, 0) === "" && S.resultsCounterText(3, "87") === "",
+  "VW1: junk total hides the chrome ('')");
+
+// --- VW2: CDN thumb helper — host gate, idempotence, pass-through --------------------
+ok(S.resultsCdnThumb("https://cdn.shopify.com/s/files/a.jpg", 360) ===
+  "https://cdn.shopify.com/s/files/a.jpg?width=360", "VW2: Shopify host gains ?width");
+ok(S.resultsCdnThumb("https://cdn.shopify.com/s/files/a.jpg?v=2", 360) ===
+  "https://cdn.shopify.com/s/files/a.jpg?v=2&width=360", "VW2: existing query appends with &");
+ok(S.resultsCdnThumb("https://cdn.shopify.com/s/a.jpg?width=100", 360) ===
+  "https://cdn.shopify.com/s/a.jpg?width=100", "VW2: an existing width wins (idempotent)");
+ok(S.resultsCdnThumb("https://merchant-site.com/a.jpg", 360) === "https://merchant-site.com/a.jpg",
+  "VW2: a foreign https host passes through UNtransformed (merchants paste anywhere)");
+ok(S.resultsCdnThumb("http://cdn.shopify.com/a.jpg", 360) === "" &&
+  S.resultsCdnThumb(null, 360) === "", "VW2: non-https fails the pfHttps gate");
+ok(S.resultsCdnThumb("https://cdn.shopify.com/a.jpg", 0) === "https://cdn.shopify.com/a.jpg",
+  "VW2: a junk width leaves the URL alone");
+
+// --- VW3: retained-store merge — id dedupe, id-less rows always pass -----------------
+{
+  const store = [];
+  const ids = {};
+  const f1 = S.resultsMergeItems(store, ids, [{ id: "a" }, { id: "b" }, { id: "" }]);
+  ok(f1.length === 3 && store.length === 3, "VW3: first page all fresh (id-less rows pass)");
+  const f2 = S.resultsMergeItems(store, ids, [{ id: "b" }, { id: "c" }, {}]);
+  ok(f2.length === 2 && store.length === 5 && f2[0].id === "c",
+    "VW3: an overlapping page nets ONLY the unseen rows");
+}
+
+// --- VW4: swipe verdict — threshold, dominance, direction, RTL mirror ----------------
+ok(S.resultsSwipeStep(-60, 5, false) === 1 && S.resultsSwipeStep(60, 5, false) === -1,
+  "VW4: a left flick advances, a right flick goes back (LTR)");
+ok(S.resultsSwipeStep(-39, 0, false) === 0, "VW4: under the 40px threshold never pages");
+ok(S.resultsSwipeStep(-80, 90, false) === 0, "VW4: vertical dominance (scrolling) never pages");
+ok(S.resultsSwipeStep(-60, 5, true) === -1 && S.resultsSwipeStep(60, 5, true) === 1,
+  "VW4: RTL mirrors the direction");
+ok(S.resultsSwipeStep("x", 1, false) === 0, "VW4: junk input -> 0");
+
+// --- VW5: pager params — per=24 twin, rail delegation byte-identical -----------------
+{
+  const stFx = { concern: "", age: "", skin: "", duration: "", page: 2 };
+  ok("?type=results" + S.pfQuery(S.resultsPageParams({ ctx: "brand", pid: 0 }, stFx, 1, 24)) ===
+    "?type=results&page=1&per=24", "VW5: viewer pages pin per=24");
+  ok("?type=results" + S.pfQuery(S.resultsParams({ ctx: "brand", pid: 0 }, stFx)) ===
+    "?type=results&page=2&per=12", "VW5: the rail delegation stays byte-identical (R16's twin)");
+  const stF2 = { concern: "wrinkles", age: "", skin: "", duration: "", page: 1 };
+  ok("?type=results" + S.pfQuery(S.resultsPageParams({ ctx: "brand", pid: 0 }, stF2, 2, 24)) ===
+    "?type=results&concern=wrinkles&page=2&per=24", "VW5: filters ride the viewer pages too");
+}
+
+// --- VW9: history glue — inert sandbox, designMode skip, one entry per open ----------
+{
+  const inert = S.resultsViewerHistory(function () { /* noop */ });
+  inert.open();
+  inert.close();
+  ok(true, "VW9: no history/listeners (the sandbox) -> fully inert no-ops");
+  const pushes = [];
+  let backs = 0;
+  const popHandlers = [];
+  S.window.history = { pushState(state) { pushes.push(state); }, back() { backs += 1; } };
+  S.window.addEventListener = function (t, f) { if (t === "popstate") popHandlers.push(f); };
+  S.window.removeEventListener = function (t, f) {
+    const i = popHandlers.indexOf(f);
+    if (i !== -1) popHandlers.splice(i, 1);
+  };
+  S.window.Shopify = { designMode: true };
+  const editor = S.resultsViewerHistory(function () { /* noop */ });
+  editor.open();
+  ok(pushes.length === 0 && popHandlers.length === 0,
+    "VW9: theme-editor preview (designMode) never touches history");
+  delete S.window.Shopify;
+  const ui = S.resultsViewerHistory(function () { /* noop */ });
+  ui.open();
+  ok(pushes.length === 1 && pushes[0].cxVw === 1 && popHandlers.length === 1,
+    "VW9: open pushes ONE tagged entry + binds popstate");
+  ui.close();
+  ok(backs === 1 && popHandlers.length === 0,
+    "VW9: a UI close unbinds and consumes the entry with history.back()");
+  let closed = 0;
+  const back = S.resultsViewerHistory(function () { closed += 1; back.close(); });
+  back.open();
+  popHandlers[0]();
+  ok(closed === 1 && backs === 1 && popHandlers.length === 0,
+    "VW9: the phone's back button closes ONCE and never re-pops history");
+  delete S.window.history;
+  delete S.window.addEventListener;
+  delete S.window.removeEventListener;
+}
+
+// --- VW10: content graft — lightbox body verbatim, close left behind, 1080 media -----
+{
+  const item = S.resultsValidItems({ items: [Object.assign({}, RES_LAB, {
+    beforeUrl: "https://cdn.shopify.com/s/files/b.jpg",
+    afterUrl: "https://cdn.shopify.com/s/files/a.jpg",
+  })] })[0];
+  const wrap = S.resultsViewerContent(item, Object.assign({}, STR_CLIN),
+    { cs: false, sl: false, gr: false, ns: false, ht: false });
+  ok(wrap.className === "cx-results-vw__item", "VW10: graft wrapper class");
+  ok(!!wrap.querySelector(".cx-lightbox__imgs") && !!wrap.querySelector(".cx-results__clin"),
+    "VW10: the lightbox content rides over verbatim (figures + clinical panel)");
+  ok(!wrap.querySelector("[data-cx-lb-close]"),
+    "VW10: the lightbox's own close control never grafts (the viewer chrome owns closing)");
+  const img = wrap.querySelector(".cx-lightbox__img");
+  ok(img.src === "https://cdn.shopify.com/s/files/b.jpg?width=1080",
+    "VW10: CDN media is re-requested at the width=1080 rendition");
+}
+
+// --- VW11: neighbor prefetch — idx±1 only, Image feature-checked ----------------------
+{
+  S.resultsViewerPrefetch([{ b: "https://cdn/b.jpg" }], 0);
+  ok(true, "VW11: no Image constructor (the sandbox) -> inert");
+  const made = [];
+  S.Image = function () { made.push(this); };
+  S.resultsViewerPrefetch([
+    { b: "https://cdn.shopify.com/1.jpg" },
+    { b: "https://cdn.shopify.com/2.jpg" },
+    { b: "https://cdn.shopify.com/3.jpg" },
+    { b: "https://cdn.shopify.com/4.jpg" },
+  ], 1);
+  ok(made.length === 2 && made[0].src === "https://cdn.shopify.com/1.jpg?width=1080" &&
+    made[1].src === "https://cdn.shopify.com/3.jpg?width=1080",
+    "VW11: neighbors ONLY (idx±1) at the viewer rendition");
+  delete S.Image;
+}
+
+// The viewer's copy codes as the proxy would merge them (sa/pr/nx absent
+// from the island STR fixture on purpose — every pre-v36 case keeps
+// exercising the legacy Show-more path by construction).
+function vwFixture() {
+  return {
+    total: 40,
+    verifiedTotal: 25,
+    items: [
+      Object.assign({}, RES_ITEM),
+      { id: "r2", beforeUrl: "https://cdn/b2.jpg", afterUrl: "https://cdn/a2.jpg", source: "customer", verified: false },
+    ],
+    facets: {},
+    copy: { sa: "See all @@N@@ results", pr: "Previous result", nx: "Next result" },
+  };
+}
+
+// --- VW6: live copy -> tile replaces Show more; viewer opens, pages, clamps ----------
+{
+  const section = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR) }, vwFixture());
+  const more = section.querySelector(".cx-results__more");
+  ok(!!more && more.hasAttribute("hidden"),
+    "VW6: Show more stays BUILT but hidden while the viewer copy is live (the degrade belt)");
+  const tile = section.querySelector(".cx-results__moretile");
+  ok(!!tile && !tile.hasAttribute("hidden"), "VW6: the +N tile renders");
+  ok(tile.querySelector(".cx-results__moretile-n").textContent === "+38" &&
+    tile.querySelector(".cx-results__moretile-t").textContent === "See all 40 results",
+    "VW6: tile numeral = total - shown; caption composes @@N@@");
+  const rail = section.querySelector(".cx-results__rail");
+  ok(rail.children[rail.children.length - 1] === tile, "VW6: the tile seats LAST in the rail");
+  S.PF_LB_OPENED.length = 0;
+  S.PF_TRACKS.length = 0;
+  S.PF_FETCH_CALLS.length = 0;
+  click(section.querySelectorAll(".cx-results__media")[0]);
+  ok(S.PF_LB_OPENED.length === 1 && S.PF_TRACKS.length === 1 && S.PF_TRACKS[0][1] === "click",
+    "VW6: a media tap still routes through pfLbOpen + ONE click beacon (the R3 contract)");
+  const vwRoot = S.PF_LB_OPENED[0];
+  ok(vwRoot.className === "cx-lightbox cx-results-vw", "VW6: viewer root = lightbox + vw modifier");
+  const vcard = vwRoot.querySelector(".cx-lightbox__card");
+  ok(!!vcard && vcard.className === "cx-lightbox__card cx-results-vw__card",
+    "VW6: dual-class dialog — the pinned pfLbOpen card selector finds it untouched");
+  const counterEl = vwRoot.querySelector(".cx-results-vw__count");
+  ok(counterEl.textContent === "1/40", "VW6: counter opens at 1/40");
+  ok(!!vwRoot.querySelector(".cx-results-vw__item"), "VW6: the grafted item body paints");
+  const thumbs = vwRoot.querySelectorAll(".cx-results-vw__thumb");
+  ok(thumbs.length === 2, "VW6: one strip thumb per stored row");
+  ok(thumbs[0].className === "cx-results-vw__thumb cx-results-vw__thumb--on" &&
+    thumbs[0].getAttribute("aria-current") === "true", "VW6: the active thumb is marked");
+  const ghost = vwRoot.querySelector(".cx-results-vw__ghost");
+  ok(!ghost.hasAttribute("hidden") && ghost.textContent === "+38",
+    "VW6: the strip ghost counts the unloaded tail");
+  const prevB = vwRoot.querySelector(".cx-results-vw__btn--prev");
+  const nextB = vwRoot.querySelector(".cx-results-vw__btn--next");
+  ok(prevB.getAttribute("aria-label") === "Previous result" &&
+    nextB.getAttribute("aria-label") === "Next result", "VW6: nav buttons carry the proxy labels");
+  ok(prevB.hasAttribute("disabled") && !nextB.hasAttribute("disabled"),
+    "VW6: prev clamps at the start");
+  S.PF_FETCH_QUEUE.push({ total: 40, verifiedTotal: 25, items: [
+    { id: "r1", beforeUrl: "https://cdn/b.jpg" },
+    { id: "r3", beforeUrl: "https://cdn/b3.jpg" },
+    { id: "r4", beforeUrl: "https://cdn/b4.jpg" },
+  ] });
+  click(nextB);
+  ok(counterEl.textContent === "2/40", "VW6: next advances the counter");
+  ok(S.PF_FETCH_CALLS.length === 1 && S.PF_FETCH_CALLS[0].qs === "?type=results&page=1&per=24",
+    "VW6: the approach-end pager fetch is pinned (floor(2/24)+1 -> page 1, per=24)");
+  ok(vwRoot.querySelectorAll(".cx-results-vw__thumb").length === 4,
+    "VW6: the strip extends by the two genuinely-new rows (r1 deduped)");
+  ok(ghost.textContent === "+36", "VW6: the ghost re-counts after the merge");
+  vwRoot._fire("keydown", { key: "ArrowRight", preventDefault() { /* noop */ } });
+  ok(counterEl.textContent === "3/40", "VW6: ArrowRight advances (no slider handle focused)");
+  vwRoot._fire("keydown", { key: "ArrowLeft", preventDefault() { /* noop */ } });
+  ok(counterEl.textContent === "2/40", "VW6: ArrowLeft goes back");
+  click(vwRoot.querySelectorAll(".cx-results-vw__thumb")[0]);
+  ok(counterEl.textContent === "1/40", "VW6: a thumb tap jumps");
+  vwRoot._fire("keydown", { key: "ArrowRight", preventDefault() { /* noop */ } });
+  vwRoot._fire("keydown", { key: "ArrowRight", preventDefault() { /* noop */ } });
+  ok(counterEl.textContent === "3/40", "VW6: arrows walk to the third result (resume setup)");
+  S.PF_LB_OPENED.length = 0;
+  click(section.querySelector(".cx-results__moretile"));
+  const resumed = S.PF_LB_OPENED[0];
+  ok(!!resumed && resumed.querySelector(".cx-results-vw__count").textContent === "3/40",
+    "VW6: the tile RESUMES at the last viewed result, never skipping what a closed session already paged past");
+}
+
+// --- VW7: the +N tile opens at the FIRST UNSEEN result ------------------------------
+{
+  // 7a: page still in flight -> the waiting stage holds the seat
+  const section = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR) }, vwFixture());
+  S.PF_LB_OPENED.length = 0;
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.length = 0;
+  click(section.querySelector(".cx-results__moretile"));
+  const vwRoot = S.PF_LB_OPENED[0];
+  ok(!!vwRoot, "VW7: the tile opens the viewer");
+  ok(vwRoot.querySelector(".cx-results-vw__count").textContent === "3/40",
+    "VW7: the tile lands on the first unseen index");
+  ok(vwRoot.querySelector(".cx-results-vw__stage").className ===
+    "cx-results-vw__stage cx-results-vw__stage--wait",
+    "VW7: an unloaded index paints the waiting stage, never a broken card");
+  ok(S.PF_FETCH_CALLS.length === 1 && S.PF_FETCH_CALLS[0].qs === "?type=results&page=1&per=24",
+    "VW7: the open itself starts the page fetch");
+  // 7b: the page is already there -> the seat paints immediately
+  const section2 = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR) }, vwFixture());
+  S.PF_LB_OPENED.length = 0;
+  S.PF_FETCH_QUEUE.push({ total: 40, verifiedTotal: 25, items: [
+    { id: "r1", beforeUrl: "https://cdn/b.jpg" },
+    { id: "r2", beforeUrl: "https://cdn/b2.jpg" },
+    { id: "r5", beforeUrl: "https://cdn/b5.jpg" },
+  ] });
+  click(section2.querySelector(".cx-results__moretile"));
+  const vwRoot2 = S.PF_LB_OPENED[0];
+  ok(vwRoot2.querySelector(".cx-results-vw__count").textContent === "3/40" &&
+    vwRoot2.querySelector(".cx-results-vw__stage").className === "cx-results-vw__stage" &&
+    !!vwRoot2.querySelector(".cx-results-vw__item"),
+    "VW7: a landed page resolves the seat in place (merge -> paint)");
+}
+
+// --- VW8: swipe ownership — the compare stage and vertical scrolls never page --------
+{
+  const section = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR) },
+    Object.assign(vwFixture(), { ui: { sl: 1 } }));
+  S.PF_LB_OPENED.length = 0;
+  click(section.querySelectorAll(".cx-results__zoom")[0]);
+  const vwRoot = S.PF_LB_OPENED[0];
+  const vcard = vwRoot.querySelector(".cx-results-vw__card");
+  const ba = vwRoot.querySelector(".cx-results__ba");
+  ok(!!ba, "VW8: the compare stage rides into the viewer (slider mode)");
+  const counterEl = vwRoot.querySelector(".cx-results-vw__count");
+  vcard._fire("touchstart", { target: ba, touches: [{ clientX: 200, clientY: 40 }] });
+  vcard._fire("touchend", { target: ba, changedTouches: [{ clientX: 80, clientY: 42 }] });
+  ok(counterEl.textContent === "1/40",
+    "VW8: a flick STARTING on the compare stage never pages (the slider owns it)");
+  const head = vwRoot.querySelector(".cx-results-vw__head");
+  S.PF_FETCH_QUEUE.push({ total: 40, verifiedTotal: 25, items: [] });
+  vcard._fire("touchstart", { target: head, touches: [{ clientX: 200, clientY: 40 }] });
+  vcard._fire("touchend", { target: head, changedTouches: [{ clientX: 100, clientY: 44 }] });
+  ok(counterEl.textContent === "2/40", "VW8: the same flick from neutral ground pages forward");
+  vcard._fire("touchstart", { target: head, touches: [{ clientX: 200, clientY: 40 }] });
+  vcard._fire("touchend", { target: head, changedTouches: [{ clientX: 140, clientY: 190 }] });
+  ok(counterEl.textContent === "2/40", "VW8: vertical dominance never pages");
+}
+
 // ======================================= REAL lightbox machinery (LB, v8.21)
 //
 // OV1-OV4 run against a RECORDING pfLbOpen stub, which is precisely why
@@ -2662,6 +2956,17 @@ const OFFICIAL_STR = Object.assign({}, ENDO_STR, {
   const items = S2.pfLbFocusables(f3.card);
   ok(items.length === 1 && items[0] === f3.closeBtn,
     "LB5: hidden and tabindex=-1 controls never join the focus trap");
+  // --- LB6: the v36 onClose hook — once, AFTER teardown; 2-arg callers unchanged -----
+  const f4 = lbFixture();
+  const hookLog = [];
+  S2.pfLbOpen(f4.root, null, { onClose: function () { hookLog.push(f4.root.parentNode === null); } });
+  f4.root._fire("click", { target: f4.closeBtn });
+  ok(hookLog.length === 1 && hookLog[0] === true,
+    "LB6: the onClose hook fires exactly once, after the dialog left the DOM");
+  const f5 = lbFixture();
+  S2.pfLbOpen(f5.root, null);
+  f5.root._fire("click", { target: f5.closeBtn });
+  ok(f5.root.parentNode === null, "LB6: two-arg callers stay byte-compatible");
 }
 
 // ---------------------------------------------------------------- mutants
@@ -2873,7 +3178,7 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         // v25: the copy whitelist dropped — any proxy field could then
         // overwrite island strings like the banner (R22's HACK catches).
         name: "m34-copy-whitelist-dropped",
-        find: "    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm'];",
+        find: "    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx'];",
         replace: "    var keys = []; for (var ck in data.copy) keys.push(ck);",
       },
       {
@@ -2985,6 +3290,49 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m49-ht-lightbox-dropped",
         find: "    var hideQuote = resultsHideQuote(item, o);\n    var foot = null;\n    if (!hideQuote && (item.text || item.an)) {",
         replace: "    var hideQuote = false;\n    var foot = null;\n    if (!hideQuote && (item.text || item.an)) {",
+      },
+      {
+        // v36: the store dedupe dropped — cache-skewed page overlaps
+        // would double rows in the store, rail and strip (VW3 + VW6's
+        // thumb count catch).
+        name: "m50-merge-dedupe-dropped",
+        find: "      if (id && ids[id] === 1) continue;",
+        replace: "",
+      },
+      {
+        // v36: the CDN host gate dropped — merchant-pasted foreign
+        // hosts would get ?width= bolted on and 404 (VW2 catches).
+        name: "m51-cdn-gate-dropped",
+        find: "    if (!/^https:\\/\\/cdn\\.shopify\\.com\\//i.test(clean)) return clean;",
+        replace: "",
+      },
+      {
+        // v36: the swipe threshold dropped — a 5px wobble would page
+        // the viewer (VW4's under-threshold case catches).
+        name: "m52-swipe-threshold-dropped",
+        find: "    if (!(Math.abs(dx) >= 40) || Math.abs(dx) <= Math.abs(dy)) return 0;",
+        replace: "    if (Math.abs(dx) <= Math.abs(dy)) return 0;",
+      },
+      {
+        // v36: the pager formula pinned wrong — a fixed page would skip
+        // rows 13-24 after the rail's per=12 start (VW6/VW7 page-1 pins).
+        name: "m53-pager-formula-fixed",
+        find: "      var page = Math.floor(st.items.length / 24) + 1;",
+        replace: "      var page = 2;",
+      },
+      {
+        // v36: the compare-stage swipe exclusion dropped — every slider
+        // drag would ALSO page the viewer (VW8's stage case catches).
+        name: "m54-swipe-ba-exclusion-dropped",
+        find: "        if (cls.indexOf(' cx-results__ba ') !== -1 ||\n            cls.indexOf(' cx-results-vw__strip ') !== -1 ||\n            el.tagName === 'VIDEO') return true;",
+        replace: "        if (cls.indexOf(' cx-results-vw__strip ') !== -1 ||\n            el.tagName === 'VIDEO') return true;",
+      },
+      {
+        // v36: the counter clamp dropped — "99/87" would render as
+        // broken proof arithmetic (VW1 catches).
+        name: "m55-counter-clamp-dropped",
+        find: "    if (n > total) n = total;",
+        replace: "",
       },
     ],
   });
