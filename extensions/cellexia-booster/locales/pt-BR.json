@@ -1,0 +1,269 @@
+{
+  "shipbar": {
+    "away_html": "Faltam {{ amount }} para ganhar frete grátis",
+    "unlocked": "Parabéns, você desbloqueou o frete grátis!"
+  },
+  "volume": {
+    "title": "Economize mais por unidade",
+    "upgrade_to": "Passe para {{ count }} unidades",
+    "save_pct": "Economize {{ percent }}%",
+    "per_unit": "{{ price }} / unidade",
+    "best_value": "Melhor custo-benefício",
+    "most_popular": "O mais popular",
+    "current_pack": "Sua opção atual",
+    "upgraded": "Opção atualizada: você está economizando mais por unidade",
+    "error": "Algo deu errado. Tente novamente."
+  },
+  "subscription": {
+    "switch_title": "Transforme sua compra em um Plano de Tratamento Contínuo",
+    "switch_cta": "Assine e economize {{ percent }}%",
+    "benefits": "Economize {{ percent }}% em cada entrega. Pule entregas, pause ou cancele quando quiser.",
+    "switched": "Plano de Tratamento Contínuo ativado",
+    "nudge_title": "Nunca fique sem seu produto",
+    "nudge_body": "Assine o Plano de Tratamento Contínuo: economize {{ percent }}% em cada entrega, com frete grátis incluído. Cancele quando quiser.",
+    "error": "Algo deu errado. Tente novamente.",
+    "switch_all_cta": "Assine tudo e economize {{ percent }}%",
+    "partial": "Assinatura disponível para {{ eligible }} de {{ total }} produtos",
+    "remove": "Remover o tratamento contínuo",
+    "removed": "Tratamento contínuo removido"
+  },
+  "crosssell": {
+    "title": "Combina perfeitamente com a sua rotina",
+    "add": "Adicionar",
+    "adding": "Adicionando…",
+    "added": "Adicionado ao seu carrinho"
+  },
+  "dispatch": {
+    "within": "Peça em até {{ hours }}h {{ minutes }}min para envio hoje mesmo",
+    "within_minutes": "Peça em até {{ minutes }} min para envio hoje mesmo"
+  },
+  "badges": {
+    "secure_checkout": "Compra segura",
+    "free_shipping_over": "Frete grátis acima de {{ amount }}",
+    "money_back": "Garantia de reembolso de {{ days }} dias",
+    "dermatologist_tested": "Dermatologicamente testado",
+    "cruelty_free": "Não testado em animais",
+    "clinically_proven": "Clinicamente comprovado",
+    "ssl_encrypted": "Pagamento com criptografia SSL",
+    "easy_returns": "Devolução fácil",
+    "research": "Com base em pesquisas publicadas por"
+  },
+  "guarantee": {
+    "title": "Garantia de reembolso de {{ days }} dias",
+    "body": "Satisfação garantida ou seu dinheiro de volta. Se não amar os resultados em até {{ days }} dias, devolvemos o valor pago, sem perguntas e sem burocracia."
+  },
+  "trustpilot": {
+    "decimal_separator": ",",
+    "excellent": "Excelente",
+    "reviews_count": "{{ count }} avaliações no",
+    "view": "Veja nossas avaliações no Trustpilot"
+  },
+  "clinical": {
+    "eyebrow": "Resultados clínicos",
+    "title": "Comprovado pela ciência",
+    "stat_improvement": "notaram melhora visível na pele",
+    "stat_hydration": "relataram hidratação mais profunda",
+    "stat_visible": "semanas até os primeiros resultados visíveis",
+    "footnote": "Resultados de um estudo clínico independente.",
+    "source_label": "Detalhes do estudo"
+  },
+  "a11y": {
+    "close": "Fechar",
+    "loading": "Carregando",
+    "rating_out_of_5": "Nota {{ rating }} de 5"
+  },
+  "study": {
+    "eyebrow": "Estudo clínico independente",
+    "subject": "Estudo realizado com {{ product }}, exatamente a mesma fórmula vendida nesta página.",
+    "weeks_count": {
+      "one": "Estudo de {{ count }} semana",
+      "other": "Estudo de {{ count }} semanas"
+    },
+    "fact_participants": "{{ n }} participantes",
+    "instruments": "Medido com {{ methods }}",
+    "view_study": "Ver o resumo do estudo",
+    "footnote_default": "Medido sob a supervisão de dermatologistas, e não por autoavaliação. Os resultados podem variar de pessoa para pessoa."
+  },
+  "ba": {
+    "eyebrow": "Resultados verificados",
+    "title": "Resultados reais, verificados de forma independente",
+    "before": "Antes",
+    "after": "Depois",
+    "week_0": "Semana 0",
+    "week_n": "Semana {{ weeks }}",
+    "captured": "Imagens {{ imaging }} sem retoque, capturadas em {{ clinic }}",
+    "verified_by": "Verificado por {{ name }}, registro {{ license }}",
+    "view_verification": "Ver a verificação"
+  },
+  "batch": {
+    "eyebrow": "Transparência total",
+    "title": "Exatamente o que há na fórmula",
+    "col_ingredient": "Ingrediente",
+    "col_concentration": "Concentração real",
+    "col_form": "Forma",
+    "coa_title": "Certificados de análise",
+    "batch_no": "Lote {{ batch }}",
+    "tested_by": "Testado por {{ lab }}",
+    "download": "Baixar o certificado",
+    "honesty": "Cada lote é testado de forma independente, e os resultados são publicados. Tire suas próprias conclusões."
+  },
+  "bottle": {
+    "container_bottle": "frasco",
+    "container_jar": "pote",
+    "container_tube": "tubo",
+    "container_pump": "frasco pump",
+    "container_product": "produto",
+    "title": "Experimente por {{ days }}, sem nenhum risco",
+    "body": "Use por {{ days }}. Se não amar os resultados, devolva o {{ container }} vazio e receba o reembolso integral.",
+    "days_count": {
+      "one": "{{ count }} dia",
+      "other": "{{ count }} dias"
+    },
+    "point_1": "Funciona ou é grátis, mesmo com o {{ container }} vazio",
+    "point_2": "Sem perguntas, sem burocracia",
+    "point_3": "Reembolso integral na sua forma de pagamento original",
+    "terms": "Ver as condições da garantia"
+  },
+  "guarantee_check": {
+    "button": "Confira a garantia",
+    "title": "Nossa garantia, verificada",
+    "mechanics_title": "Como funciona",
+    "trust_title": "Por que você pode confiar",
+    "footnote": "Esta garantia se soma aos seus direitos previstos em lei."
+  },
+  "survey": {
+    "eyebrow": "Pesquisa independente com dermatologistas",
+    "rec_line": "dos {{ total }} dermatologistas consultados recomendariam {{ product }}",
+    "outcomes_intro": "Os dermatologistas que avaliaram {{ product }} classificaram os resultados que observaram:",
+    "outcome_agree": "@@YES@@ de @@TOTAL@@ concordaram",
+    "more_outcomes": "Ver todos os resultados (+@@N@@)",
+    "how": "Como a pesquisa foi realizada",
+    "methodology_p1": "Em maio de 2026, uma empresa independente de pesquisa em cosmética consultou {{ total }} dermatologistas certificados nos Estados Unidos, no Reino Unido, na França, na Alemanha, na Itália e na Espanha.",
+    "methodology_p2": "Cada dermatologista recebeu todos os produtos Cellexia, testou cada um deles com pelo menos 5 pacientes durante pelo menos 8 semanas e analisou uma apresentação detalhada da Cellexia, incluindo a linha de produtos, as informações sobre os ingredientes, os usos previstos e as evidências clínicas de suporte. Em seguida, cada um recebeu a seguinte pergunta:",
+    "methodology_p3": "“Com base nas informações analisadas e na experiência dos seus pacientes, você recomendaria a Cellexia a um paciente com perfil adequado que busque cuidados para os sinais visíveis de envelhecimento da pele?”",
+    "methodology_p4": "Todos os {{ total }} dermatologistas responderam à pergunta. {{ yes }} selecionaram “Sim”, o que representa {{ percent }}% dos participantes.",
+    "methodology_p5": "A pesquisa foi solicitada pela Cellexia e realizada de forma independente. O recrutamento dos participantes, assim como a coleta e a análise das respostas, ficou a cargo da empresa de pesquisa. A Cellexia não selecionou os participantes nem alterou respostas individuais.",
+    "verified_badge": "Verificado por terceiros",
+    "verified_by": "Pesquisa verificada por {{ name }}"
+  },
+  "press": {
+    "eyebrow": "Destaque na imprensa",
+    "read_article": "Ler a matéria"
+  },
+  "endo": {
+    "eyebrow": "Recomendado por dermatologistas",
+    "count_headline": {
+      "one": "{{ n }} dermatologista recomenda este produto",
+      "other": "{{ n }} dermatologistas recomendam este produto"
+    },
+    "shown_of": "Mostrando @@SHOWN@@ de @@TOTAL@@",
+    "show_more": "Mostrar mais",
+    "read_full": "Ler a recomendação completa",
+    "description": "Recomendações verificadas de dermatologistas certificados. Leia o que eles dizem sobre o produto, a Cellexia e a abordagem da marca para o cuidado com a pele.",
+    "badge_headline": {
+      "one": "Recomendado por {{ n }} dermatologista",
+      "other": "Recomendado por {{ n }} dermatologistas"
+    },
+    "badge_link": "Leia as avaliações desses profissionais",
+    "badge_alt": "Avaliações profissionais verificadas",
+    "badge_chip": "Dermatologistas certificados"
+  },
+  "results": {
+    "banner_verified": "Veja os resultados de {{ count }} usuários reais da Cellexia.",
+    "banner_all": "Veja os resultados de {{ count }} usuários da Cellexia.",
+    "filter_concern": "Necessidade",
+    "filter_age": "Idade",
+    "filter_skin": "Tipo de pele",
+    "filter_duration": "Tempo de uso",
+    "skin_dry": "Seca",
+    "skin_oily": "Oleosa",
+    "skin_combination": "Mista",
+    "skin_sensitive": "Sensível",
+    "skin_normal": "Normal",
+    "duration_lt8": "Menos de 8 semanas",
+    "duration_8to12": "8–12 semanas",
+    "duration_gt12": "Mais de 12 semanas",
+    "age_years": "{{ range }} anos",
+    "verified_badge": "Compra verificada",
+    "lab_badge": "Resultado de estudo clínico",
+    "video_badge": "Vídeo",
+    "weeks_of_use": "@@N@@ semanas de uso",
+    "before": "Antes",
+    "after": "Depois",
+    "show_more": "Mostrar mais",
+    "empty": "Ainda não há resultados para esses filtros.",
+    "close": "Fechar",
+    "clear_filters": "Limpar filtros"
+  },
+  "delivery": {
+    "line": "Receba até {{ date }}",
+    "range": "Entrega prevista: {{ from }} – {{ to }}",
+    "range_same": "Entrega prevista: {{ date }}",
+    "timeline_order": "Peça hoje",
+    "timeline_ship": "Envio: {{ date }}",
+    "timeline_delivered": "Entrega até {{ date }}",
+    "box_title": "Entrega garantida até {{ date }}",
+    "box_sub": "…ou devolvemos seu dinheiro ou reenviamos o pedido sem custo.",
+    "badge": "Garantia de entrega",
+    "tooltip": "Entrega até {{ date }}, no máximo. Caso contrário, devolvemos seu dinheiro ou reenviamos o pedido sem custo.",
+    "deliver_to": "Entregar em:",
+    "select_state": "Selecione seu estado para uma data de entrega mais precisa"
+  },
+  "amazon": {
+    "in_stock": "Em estoque",
+    "free_delivery": "Entrega GRÁTIS",
+    "over_threshold": "em pedidos acima de {{ amount }}",
+    "add_more": "Adicione mais {{ amount }} para ganhar frete GRÁTIS.",
+    "qualifies": "Seu pedido se qualifica para frete GRÁTIS.",
+    "order_within": "Peça em até {{ hours }} h {{ minutes }} min",
+    "ships_from": "Enviado {{ country }}",
+    "ships_from_fallback": "Enviado de: {{ country }}",
+    "secure": "Transação segura",
+    "free_returns": "Devolução GRÁTIS",
+    "bought_count": {
+      "one": "Mais de {{ n }} compra no último mês",
+      "many": "Mais de {{ n }} de compras no último mês",
+      "other": "Mais de {{ n }} compras no último mês"
+    },
+    "bestseller": "Nº {{ rank }} mais vendido",
+    "fbt_title": "Frequentemente comprados juntos",
+    "fbt_this_item": "Este item:",
+    "fbt_total": "Preço total:",
+    "fbt_add": {
+      "one": "Adicionar ao carrinho",
+      "other": "Adicionar os {{ count }} ao carrinho"
+    },
+    "fbt_add_both": "Adicionar os dois ao carrinho",
+    "similar_title": "Você também pode gostar",
+    "cta_count": {
+      "one": "Finalizar compra ({{ count }} item)",
+      "other": "Finalizar compra ({{ count }} itens)"
+    }
+  },
+  "rewards": {
+    "meter_gift_away": "Faltam {{ amount }} para ganhar {{ gift }} de brinde (no valor de {{ value }})",
+    "meter_gift_unlocked": "Brinde desbloqueado: {{ gift }}",
+    "meter_all": "Todas as recompensas desbloqueadas. Aproveite!",
+    "set_add_one": "Adicione mais 1 produto e economize {{ pct }}% em tudo",
+    "set_add_more": "Adicione mais {{ count }} produtos e economize {{ pct }}% em tudo",
+    "set_saving": "Desconto do kit −{{ amount }} ({{ code }})",
+    "set_title": "Complete seu kit e economize {{ pct }}%",
+    "subtotal": "Subtotal",
+    "free": "GRÁTIS",
+    "gift_tag": "Brinde",
+    "gift_added": "Brinde adicionado ao seu carrinho",
+    "gift_back": "Adicionar o brinde novamente",
+    "gift_unavailable": "No momento, não é possível incluir o brinde neste pedido",
+    "remove": "Remover",
+    "swap": "Trocar brinde",
+    "sample_set": "Kit de amostras",
+    "pdp_line": "Adicione mais um produto, qualquer um, e economize {{ pct }}% nos dois",
+    "pdp_line_next": "Adicione este produto ao carrinho e economize {{ pct }}% no seu kit",
+    "fbt_caption": "Compre os {{ count }} juntos e economize pelo menos {{ pct }}%",
+    "fbt_add_save": "Adicionar os {{ count }} e economizar {{ pct }}%",
+    "similar_caption": "Adicione qualquer um destes e economize {{ pct }}% nos dois",
+    "meter_gift_away_plain": "Faltam {{ amount }} para ganhar {{ gift }} de brinde",
+    "set_title_more": "Complete seu kit: {{ pct }}% de desconto em tudo o que você adicionar",
+    "fbt_add_save_both": "Adicionar os dois e economizar {{ pct }}%"
+  }
+}

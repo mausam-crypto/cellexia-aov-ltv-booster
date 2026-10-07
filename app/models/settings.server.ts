@@ -16,7 +16,7 @@ import prisma from "../db.server";
  *      "config") — read by the CHECKOUT UI EXTENSIONS via useAppMetafields.
  *
  * IMPORTANT (i18n / Translate & Adapt): user-facing COPY does not live here.
- * All storefront strings ship as extension locale files (17 languages) and
+ * All storefront strings ship as extension locale files (18 languages) and
  * as theme-editor block settings with translatable defaults, so merchants
  * manage translations in Translate & Adapt exactly like theme content.
  * Only language-neutral values (booleans, numbers, ids, URLs) belong in
@@ -3521,7 +3521,7 @@ const BUY_BOX_PROOF_MAX_NAME = 60;
  * extension's curated CX_BBP_AWARD table (harness-pinned in both
  * directions): each locale carries the noun already inflected for ITS
  * sentence template, which free text never could be. Adding a category is
- * a code change that lands with its 18 translations.
+ * a code change that lands with its 19 translations.
  */
 export const AWARD_CATEGORY_KEYS = [
   "wrinkle",

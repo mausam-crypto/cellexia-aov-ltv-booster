@@ -1,0 +1,12 @@
+{
+  "title": "Proteção do Pedido",
+  "description": "Proteja seu pedido contra extravio, roubo e danos durante o transporte.",
+  "price_label": "por {{price}}",
+  "added": "Seu pedido está protegido",
+  "error": "Não foi possível atualizar a Proteção do Pedido. Tente novamente.",
+  "benefit_1": "Cobre extravio, roubo e danos durante o transporte",
+  "benefit_2": "Substituição ou reembolso imediato, sem precisar acionar a transportadora",
+  "benefit_3": "Um toque agora, zero preocupação depois",
+  "recommended": "Recomendada",
+  "price_suffix": "pagamento único"
+}

@@ -15,7 +15,7 @@ re-apply local patches; deploy this tree as-is** (after the config merge in §1)
 | **Prisma datasource patch (sqlite → postgres)** | **Fully automatic now.** The build/install scripts run `node scripts/prisma-env.mjs generate`, which selects `prisma/schema.postgres.prisma` whenever `DATABASE_URL` is a Postgres URL (Render sets it at build time) and the SQLite dev schema otherwise. Drop this patch too — §2/§3 explain the new flow, and the server now REFUSES TO BOOT if a mismatched client ever slips through |
 | Missing dotenv loading | `dotenv` is a dependency; `app/shopify.server.ts` imports `dotenv/config` first (never overrides host-set vars) |
 | Missing `RENDER_EXTERNAL_URL` fallback | `appUrl` resolves `SHOPIFY_APP_URL → RENDER_EXTERNAL_URL → ""` (also in the app-proxy health check) |
-| Missing `react-reconciler` | **Obsolete since v36.1** — the four checkout extensions no longer use React at all (your Polaris web-components migration is merged in-tree, see §3a); `react`, `react-reconciler` and `@shopify/ui-extensions-react` are gone from their `package.json` on purpose. Do not re-add them |
+| Missing `react-reconciler` | **Obsolete since v36.1** — the four checkout extensions no longer use React at all (your Polaris web-components migration is merged in-tree, see §3b); `react`, `react-reconciler` and `@shopify/ui-extensions-react` are gone from their `package.json` on purpose. Do not re-add them |
 | 27-char schema name limit | All block schema names now ≤ 25 chars (`Cellexia subscription`) |
 | `external` → `target` Button iframe issue | ALL occurrences swept (14 across 5 admin routes — more than the 6 you found; new pages had regressed it) |
 | 100 KB Liquid limit | The live/draft template pairs are deduplicated in-tree (single template with a conditional `data-cx-draft` marker) — `pdp-booster.liquid` is well under the limit again and won't regress |
@@ -245,7 +245,64 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v36.1 — your checkout Polaris migration is merged in-tree (plus three fixes you'll want live) — what this release changes
+## 3a. v37 — Brazilian Portuguese (pt-BR) is now a shipped language — what this release changes
+
+Every widget, checkout extension and curated table now speaks Brazilian
+Portuguese natively. Until now a storefront published as `pt-BR` fell back to
+English for the locale-file strings and to European Portuguese (or DeepL) for
+the curated tables — Brazilian shoppers saw a mix. Full translation notes:
+`docs/SPEC-v37-pt-br.md`.
+
+### What changed
+
+- **All five extensions ship `pt-BR.json`** — the booster theme extension
+  (236 keys, 12,981B, well under the 15,360B Shopify cap) plus the four
+  checkout extensions. Hand-written Brazilian Portuguese (você register,
+  gerúndio, frete/pedido/estoque/brinde vocabulary), not DeepL, and no em
+  dashes anywhere (the house copy rule). European Portuguese files are
+  untouched; `el`/`ar` byte walls untouched.
+- **The curated JS tables in `cellexia-pdp.js` gained `pt-BR`:** quantity
+  selector cards (`CX_QSEL_STR` — badges stay twinned verbatim with the
+  locale file's `volume.most_popular`/`best_value`), unit words
+  (`CX_QSEL_UNITS`: Pote/Bisnaga/Dosador…), the "Rated #1" award strip
+  (`CX_BBP_AWARD`, incl. "cremes anti-idade"), and the ships-from country
+  grammar (59 Brazilian country forms — "da França", "do Vietnã" — generated
+  by `scripts/gen-ships-from-grammar.mjs`, which now carries a `pt-BR`
+  entry).
+- **The server-side curated tables gained `pt-br`:** the dermatologist
+  endorsement overlay copy (`app/services/copy-curated.server.ts`) and the
+  results-gallery chrome (`app/services/results-ui-copy.server.ts`). Bare
+  `pt` still resolves to the European tables on purpose.
+- **Volume pricing label:** pt-BR carts read "Desconto por quantidade"
+  (the European files keep "Desconto de quantidade"); the function wasm is
+  rebuilt from source during your normal deploy.
+- **Admin:** the Languages page lists Portuguese (Brazil) under Shipped
+  languages (18) and the health check counts a published `pt-BR` as covered.
+- **DeepL needed no change** — `pt-BR → PT-BR` was already mapped. Once you
+  publish Brazilian Portuguese in Shopify, auto-translation of your
+  merchant-edited copy (badge overrides, proof quotes, …) includes it on the
+  next save / translate run, and curated built-ins are used where they
+  exist, exactly like the other languages.
+
+### Deploy notes
+
+- Both halves (`npm run deploy` + the server), same as always. No database
+  change, no new scopes, no theme-editor steps.
+- Nothing is shopper-visible until you add Brazilian Portuguese in Shopify
+  admin → Settings → Languages and publish it for the markets you want. You
+  can add it unpublished first and review everything through Translate &
+  Adapt's preview.
+- Translate & Adapt can override any of the shipped strings per language as
+  usual — the built-ins are the fallback.
+
+### Budgets and proof
+
+- ZERO Liquid bytes (the blocks already pass `request.locale.iso_code`
+  through); Liquid stays 99,454/99,500.
+- Suite grew to 36 suites / 12,561 checks (the per-locale pins now fan out
+  over 19 files) — all green, plus `tsc` and `npm run build`.
+
+## 3b. v36.1 — your checkout Polaris migration is merged in-tree (plus three fixes you'll want live) — what this release changes
 
 Your developer's migration package (2026-10-06): the four checkout UI
 extensions (`checkout-trust`, `checkout-delivery`, `checkout-protection`,
@@ -340,7 +397,7 @@ Untouched — this wave contains zero Liquid and zero locale bytes
 (checkout extension strings live in the extensions' own locale files,
 which are unchanged).
 
-## 3b. v36 — before/after gallery: full-screen swipe viewer replaces "Show more" — what this release changes
+## 3c. v36 — before/after gallery: full-screen swipe viewer replaces "Show more" — what this release changes
 
 Your ask (2026-10-06): the horizontal scrolling is good, but "Show more"
 below the rail appending more photos sideways is confusing; with 50-150
@@ -426,7 +483,7 @@ it the full width and pushing the clinical numbers below the fold:
   browsers without container-query support simply keep the v36 scrolling
   layout. The compare slider is unaffected by the new geometry.
 
-## 3c. v35 — study batches, study mix and gallery display options — what this release changes
+## 3d. v35 — study batches, study mix and gallery display options — what this release changes
 
 Your ask (2026-10-03): the desktop before/after gallery stacks several
 rows and eats vertical space — it should be one row; results from one
@@ -491,7 +548,7 @@ files untouched (el 15,069 / ar 15,124 against the 15,200 pin): the study
 tag renders your raw study name and the expander reuses the existing
 "Show more" string, so the wave costs zero locale bytes.
 
-## 3d. v34 — study presets for the before/after gallery — what this release changes
+## 3e. v34 — study presets for the before/after gallery — what this release changes
 
 Your ask (2026-09-25): you will add lots of before/afters from different
 studies, so a preset should pre-select that an entry is a study and
@@ -531,7 +588,7 @@ from them are ordinary clinical entries.
 Untouched: 99,454/99,500 total; el.json 15,069 / ar.json 15,124 against
 the 15,200 pin. Zero new storefront strings.
 
-## 3e. v33 — before/after gallery: combined clinical photo, study design, compare slider — what this release changes
+## 3f. v33 — before/after gallery: combined clinical photo, study design, compare slider — what this release changes
 
 Your ask (2026-09-23, with the reference screenshot): clinical before/afters
 can be ONE combined photo instead of a separate pair; an optional design that
@@ -606,7 +663,7 @@ Untouched: 99,454/99,500 total; el.json 15,069 / ar.json 15,124 against the
 15,200 pin. The four new storefront strings ride the results feed
 (`results-ui-copy.server.ts`, all 18 languages) — zero locale bytes.
 
-## 3f. v32 — exact volume pricing at 4+ (app-owned Shopify discount, ships OFF) — what this release changes
+## 3g. v32 — exact volume pricing at 4+ (app-owned Shopify discount, ships OFF) — what this release changes
 
 Your decisions (2026-09-21): match each market's REAL 3-pack per-unit rate,
 computed from your own prices; discount codes may stack; the app creates and
@@ -722,7 +779,7 @@ note under the button says the first sync takes up to a minute.
 trims: total 99,454 / 99,500. Zero locale-file keys (the discount label
 ships inside the function).
 
-## 3g. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
+## 3h. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
 
 Two independent buy-box features you asked for, each with its own switch,
 market scope, Preview Center draft flag and analytics line. Both live on the
@@ -784,7 +841,7 @@ tag, one comment moved to docs): total Liquid 99,452 / 99,500. Zero new
 locale-file keys (the three new aria strings ride the JS table; el/ar stay
 at their byte walls).
 
-## 3h. v30 — Trustpilot star color in checkout + PDP Trustpilot size + star rounding + cart row completion — what this release changes
+## 3i. v30 — Trustpilot star color in checkout + PDP Trustpilot size + star rounding + cart row completion — what this release changes
 
 Two small display options plus two requested rendering corrections (full
 contract: `docs/SPEC-v30-trustpilot-tuning.md`). Deploy BOTH halves per §3 —
@@ -842,7 +899,7 @@ byte-identical to before this release. Suite: 11,396 checks green
 block pin the byte-identical-by-default guarantees, the rounding rule and
 the cross-file wiring).
 
-## 3i. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
+## 3j. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
 
 Two things landed together in this build:
 
@@ -903,7 +960,7 @@ on the storefront config; until then the legacy path keeps today's look.
 
 Full contracts: `docs/SPEC-v28-award-strip.md`, `docs/SPEC-v29-proof-split.md`.
 
-## 3j. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
+## 3k. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
 
 A new 43rd feature, `Quantity selector cards` (`quantity_selector`), for the product
 page. While it is on, the theme's text-pill size picker ("1 Jar / 2 Jars - 15% Off /
@@ -987,7 +1044,7 @@ lever is still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but n
 the deploy-safety island expander does not expand `{% render %}` inside islands, so
 that dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
 
-## 3k. v25 — before/after gallery: clinical trust redesign — what this release changes
+## 3l. v25 — before/after gallery: clinical trust redesign — what this release changes
 
 Merchant ask (2026-09-18, with two reference designs): redesign the
 before/after results widget and its click-to-enlarge overlay for maximum
@@ -1073,7 +1130,7 @@ win and should be cleared.
 - To see it before enabling: arm a preview (§ preview) with the
   before/after draft flag, or enable + market-scope it to a test market.
 
-## 3l. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
+## 3m. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
 
 **The ask (2026-09-17):** restyle the PDP clinical study widget to match the
 reference design (letterspaced "PUBLISHED CLINICAL RESEARCH" eyebrow, big
@@ -1124,7 +1181,7 @@ BEFORE saving study content. Spec: `docs/SPEC-v24-study-redesign.md`.
 Pinned by `sims/survey-methodology.cjs` T2-T8 + mutants m13-m15 and the
 harness v24 pin updates.
 
-## 3m. v23 — subscription card prices now require the app to be LIVE — what this release changes
+## 3n. v23 — subscription card prices now require the app to be LIVE — what this release changes
 
 **The bug this fixes (reported by the merchant):** while the NEW subscription
 app is still in setup (or live in only some markets), theme product cards on
@@ -1162,7 +1219,7 @@ run). Spec: `docs/SPEC-v23-subs-live-gate.md`. Pinned by the harness (v23
 tripwires) and by `sims/badge-cards` (setup-mode and missing-member
 scenarios) + `sims/subscribed-upgrade` (setup fallback refusal).
 
-## 3n. v21 cart overlay features — what this release changes
+## 3o. v21 cart overlay features — what this release changes
 
 ### v21.2 (2026-09-14, after your field test) — five fixes in this build
 
@@ -1298,7 +1355,7 @@ collapsed into two loops that mirror the file's own `bought_count` loop
 precedent (identical keys and values; JSON member order is parser-neutral).
 The release leaves 244 B of per-file headroom where it found 87 B.
 
-## 3o. v20 image badges on mobile — what this release changes
+## 3p. v20 image badges on mobile — what this release changes
 
 **No database migration. No new API scopes. No webhook changes. No new
 translated strings.** Deploy the app server and the extensions exactly as §3
@@ -1340,7 +1397,7 @@ mechanically and proved byte-identical for every icon before it landed, so the
 five legacy blocks that render those icons are unchanged on the page. The
 release LEAVES 1,371 B of headroom where it found 207 B.
 
-## 3p. v18 free gifts V2 — what this release changes
+## 3q. v18 free gifts V2 — what this release changes
 
 **No database migration. No new API scopes. No webhook changes.** Deploy the
 app server and the extensions exactly as §3 describes; nothing extra is needed
@@ -1554,7 +1611,7 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - New FeatureKey `quantity_selector` (42 -> 43, appended at the end), settings
   section `quantitySelector` {enabled false}, own admin page
   `/app/features/quantity`, previewable, market-scoped, analytics-labeled.
-  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3h above.
+  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3k above.
 - Storefront: gated `qs` member in the #cx-pdp-config island (live flag, page
   locale, shop money format, per-variant id/title/cents/image) + the `qsel*`
   module and `CX_QSEL_STR` 18-locale table in `cellexia-pdp.js` + the
@@ -1569,14 +1626,14 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - v26.1 (2026-09-19): free-shipping micro-line on qualifying tiers —
   `quantitySelector.freeShipTag` (default ON, tick box on the feature page),
   island `fst` = the trust badges' per-market safe threshold as presentment
-  cents, storefront tags only tiers whose own price clears it (§3h).
+  cents, storefront tags only tiers whose own price clears it (§3k).
 
 v20 — IMAGE BADGES ON MOBILE (2026-09-11):
 
 - New FeatureKey `image_badges` (38 -> 39, appended at the end), settings
   section `imageBadges` {enabled false, scale 140}, configured on Trust &
   badges, previewable, market-scoped. Full contract:
-  `docs/SPEC-v20-image-badges.md`; deploy notes in §3m above.
+  `docs/SPEC-v20-image-badges.md`; deploy notes in §3p above.
 - Storefront surface is ONE CSS declaration: the width of the theme's own
   `.pdp .badges .badge` on phones, from a custom property the PDP asset
   writes after measuring the live product image. No node, no copy, no locale

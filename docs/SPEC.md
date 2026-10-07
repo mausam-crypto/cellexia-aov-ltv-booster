@@ -34,13 +34,13 @@ Mirrored on save by `app/services/metafields.server.ts` to:
 2. **Shop metafield** — owner `Shop`, namespace `$app:cellexia`, key `config`, type `json`.
    Checkout extensions declare it in their toml and read it via `useAppMetafields()`.
 
-User-facing COPY never lives in settings. It ships as extension locale files (17 languages) and
+User-facing COPY never lives in settings. It ships as extension locale files (18 languages) and
 theme-editor block settings (translatable via Translate & Adapt). Settings hold only booleans,
 numbers, ids, URLs, color hexes.
 
 ## i18n (Translate & Adapt compatibility)
 
-- Languages (match theme `locales/`): `ar da de el en es fi fr hu it ja nl no pl pt-PT ro sv`.
+- Languages (theme `locales/` + Brazilian Portuguese since v37): `ar da de el en es fi fr hu it ja nl no pl pt-BR pt-PT ro sv`.
   `en` is the default (`en.default.json`). Checkout extensions additionally ship `nb.json`
   (copy of `no`) because checkout uses `nb` for Norwegian Bokmål.
 - Theme extension: every string via `{{ 'namespace.key' | t }}` with params
@@ -142,7 +142,7 @@ Full sentence, no interpolation; each locale keeps its established
 register (de Sie, fr vous, es/it/nl/da/sv/el/hu/ro informal, ja polite).
 Missing/`Translation missing` values only keep the quiet v10 line — the
 selector itself never hides on this key. Placed right after
-`deliver_to` in all 18 theme locale files; nb stays a byte-copy of no.
+`deliver_to` in all 19 theme locale files; nb stays a byte-copy of no.
 Checkout locale files unchanged.)
 
 ### Checkout upsell — `extensions/checkout-upsell/locales/en.default.json`
@@ -197,7 +197,7 @@ any `·`/`・` separator in `tracked`.)
 
 (v5.5: the `subscription_hint` line — "Continuous Treatment Plan members
 save {{percent}}% on every delivery." — was removed from the checkout trust
-module on merchant request, including its key in all 18 locale files.)
+module on merchant request, including its key in all 19 locale files.)
 
 (v9 trust module V2, 2026-08-08, merchant request: `secure` re-worded —
 "Secure SSL-encrypted checkout" → "Secure Encrypted Checkout" — and
@@ -206,7 +206,7 @@ questions asked."; the body now carries the `{{days}}` token. Two NEW keys:
 `customs` (the per-market customs-free guarantee row) and `tracked` (the
 per-market tracked-delivery row; `{{date}}` is the delivery guarantee's
 guaranteed-by date, formatted by `trustFormatDateCompact` — day + long
-month, locale verbatim, fr `1er` rule — in the checkout language). All 18
+month, locale verbatim, fr `1er` rule — in the checkout language). All 19
 locale files carry the same 7-key set; nb stays a byte-copy of no.
 PLURALS: `guarantee_title`/`guarantee_body` may be CLDR plural OBJECTS —
 the component passes `count: guarantee.days` alongside `days`, so locales
@@ -499,7 +499,7 @@ Routes (all under `app.` prefix, already-linked in `app/routes/app.tsx` NavMenu)
 - `app.analytics.tsx` — period select (7/30/90), stat cards, funnels DataTable
   (feature/impressions/clicks/conversions/revenue), empty state.
 - `app.localization.tsx` — GraphQL `shopLocales { locale name primary published }`, table of shop
-  languages vs our 17 shipped languages (✓ badge), step-by-step Translate & Adapt guide
+  languages vs our 18 shipped languages (✓ badge), step-by-step Translate & Adapt guide
   (theme content → app embeds; metafields note; selling plan names).
 - `app.settings.tsx` — free-shipping threshold, brand colors (3 hex fields, prefilled from
   branding), "Re-sync storefront config" button (re-runs metafield sync), install status
@@ -524,7 +524,7 @@ feature that already owns it and SUPPRESSES the widgets it would duplicate
 in the buy box. Full contract: `docs/SPEC-v19-buy-box-proof.md`.
 
 v28 added a third under-the-panel piece — the "Rated #1" award strip
-(default OFF, own v22 gate `ba`, curated 18-locale copy in the JS asset,
+(default OFF, own v22 gate `ba`, curated 19-locale copy in the JS asset,
 always FIRST above the research band): `docs/SPEC-v28-award-strip.md`.
 
 ## v29 proof-block split

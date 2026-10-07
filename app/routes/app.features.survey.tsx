@@ -364,7 +364,7 @@ function builtInMethodology(
 }
 
 /** What a save stores: an untouched copy of the built-in text collapses to
- *  "" — the built-in path keeps all 17 translations and the rendered
+ *  "" — the built-in path keeps all 18 translations and the rendered
  *  English is identical. Only an actually-edited text becomes a
  *  (untranslated) custom override. Shared by handleSave and the dirty
  *  flag so loading the built-in text alone never arms a no-op save. */
@@ -670,9 +670,9 @@ export default function SurveyFeaturePage() {
                   onChange={(methodology) =>
                     setState((previous) => ({ ...previous, methodology }))
                   }
-                  placeholder="Leave empty to use the built-in explanation, already translated into all 17 additional languages."
+                  placeholder="Leave empty to use the built-in explanation, already translated into all 18 additional languages."
                   helpText={
-                    "The full text shown in the “How the survey was conducted” panel. Leave empty to use the built-in explanation (translated into all 17 additional languages). Custom text appears exactly as written in every language — it is not translated. Separate paragraphs with line breaks. The placeholders {{ total }}, {{ yes }} and {{ percent }} are replaced with each product's own survey numbers on the storefront; lines using {{ yes }} or {{ percent }} appear only on products with a Would-recommend count. {name} inserts each product’s display name (Product names page)."
+                    "The full text shown in the “How the survey was conducted” panel. Leave empty to use the built-in explanation (translated into all 18 additional languages). Custom text appears exactly as written in every language — it is not translated. Separate paragraphs with line breaks. The placeholders {{ total }}, {{ yes }} and {{ percent }} are replaced with each product's own survey numbers on the storefront; lines using {{ yes }} or {{ percent }} appear only on products with a Would-recommend count. {name} inserts each product’s display name (Product names page)."
                   }
                   autoComplete="off"
                 />

@@ -1172,7 +1172,8 @@ function pubs(res: { items: { publication: string }[] }): string[] {
   ok(UC.resultsUiCopy("el") === table.el, "UC4: exact locale resolves");
   ok(UC.resultsUiCopy("de-AT") === table.de, "UC4: regional falls back to base");
   ok(UC.resultsUiCopy("pt") === table["pt-pt"], "UC4: bare pt aliases to pt-pt");
-  ok(UC.resultsUiCopy("pt-BR") === table["pt-pt"], "UC4: pt-br aliases to pt-pt");
+  ok(UC.resultsUiCopy("pt-BR") === table["pt-br"],
+    "UC4: pt-BR resolves its own Brazilian table, not the European one");
   ok(UC.resultsUiCopy("xx") === table.en && UC.resultsUiCopy(null) === table.en &&
     UC.resultsUiCopy("") === table.en,
     "UC4: unknown/blank locale serves English, never blank chrome");

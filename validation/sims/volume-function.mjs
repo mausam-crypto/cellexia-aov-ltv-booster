@@ -221,6 +221,9 @@ function firstCandidate(ops) {
   ok(minorUnits("junk", 100) === -1 && minorUnits("-5", 100) === -1, "H3: junk/negative amounts are refused");
   ok(fmtAmount(7067, 100) === "70.67" && fmtAmount(7067, 1) === "7067" && fmtAmount(70667, 1000) === "70.667", "H4: fmtAmount per currency decimals");
   ok(volumeMessage("FR") === VOLUME_MSG.fr && volumeMessage("pt-PT") === VOLUME_MSG.pt && volumeMessage("xx") === VOLUME_MSG.en && volumeMessage(undefined) === VOLUME_MSG.en, "H5: message chain exact -> base -> en");
+  // The REAL input is the GraphQL LanguageCode enum — underscores, never
+  // hyphens. PT_PT fell through to English until v37 normalized it.
+  ok(volumeMessage("PT_BR") === VOLUME_MSG["pt-br"] && volumeMessage("PT_PT") === VOLUME_MSG.pt && volumeMessage("ZH_CN") === VOLUME_MSG.en, "H5b: enum-shaped codes (PT_BR/PT_PT) hit their tables");
   ok(volumeConfig({ shop: { metafield: { jsonValue: cfgFixture({ on: false }) } } }) === null, "H6: volumeConfig refuses a disarmed blob");
   const verdict = volumeLineOff(line(), cfgFixture(), "US");
   ok(!!verdict && verdict.off === 7067 && verdict.m === 100, "H7: volumeLineOff returns integer minor units");

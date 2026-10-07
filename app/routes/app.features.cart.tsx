@@ -1188,7 +1188,7 @@ export default function CartFeaturesPage() {
               </Text>
               <Text as="p" tone="subdued" variant="bodySm">
                 Static preview with sample prices. Storefront copy ships
-                translated in 17 languages.
+                translated in 18 languages.
               </Text>
               <div
                 style={{

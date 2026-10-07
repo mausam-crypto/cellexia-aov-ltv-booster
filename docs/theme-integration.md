@@ -152,7 +152,7 @@ The picker the v26 quantity-selector cards replace lives in `.pdp__info > .pdp__
 - Checkout branding: sidebar `#f4f4f4`, white inputs — extensions use native checkout tokens, so they inherit this automatically.
 
 ## Localization
-- 17 locale files: `ar da de el en(.default) es fi fr hu it ja nl no pl pt-PT ro sv`. Everything user-facing goes through `{{ 'key' | t }}`.
+- Theme ships 17 locale files: `ar da de el en(.default) es fi fr hu it ja nl no pl pt-PT ro sv`; our extension additionally ships `pt-BR` (v37). Everything user-facing goes through `{{ 'key' | t }}`.
 - Markets: `ireland`, `b2b-market` (+ default). Multi-currency (€/$) — never parse money strings; compute from cents.
 - Free shipping threshold: theme setting `free_ship` = **150** (currency units); mirrored on `section.mini-cart[data-freeship]` in cents. Our config metafield is the primary source; fall back to `data-freeship`.
 - `ar` is RTL — widget CSS must use logical properties (`margin-inline-start`, etc.) or `[dir="rtl"]` overrides.

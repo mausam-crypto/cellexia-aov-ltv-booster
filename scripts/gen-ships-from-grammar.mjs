@@ -140,6 +140,36 @@ const LANGS = {
       ZA: "da África do Sul", MA: "de Marrocos",
     },
   },
+  // Brazilian Portuguese: same fused-preposition grammar as pt-PT but with
+  // the Brazilian articles (da França, da Itália, da Espanha, do Marrocos)
+  // and spellings (Estônia/Polônia/Romênia ô-ê, Tchéquia, Vietnã, Mônaco).
+  // Keep this entry AFTER pt-PT: the storefront resolvers fall back to the
+  // first same-base key, and bare "pt" pages must keep getting pt-PT.
+  "pt-BR": {
+    intl: "pt",
+    tpl: "Enviado {{ country }}",
+    fb: "Enviado de: {{ country }}",
+    o: {
+      AT: "da Áustria", BE: "da Bélgica", BG: "da Bulgária", HR: "da Croácia",
+      CY: "do Chipre", CZ: "da Tchéquia", DK: "da Dinamarca", EE: "da Estônia",
+      FI: "da Finlândia", FR: "da França", DE: "da Alemanha", GR: "da Grécia",
+      HU: "da Hungria", IE: "da Irlanda", IT: "da Itália", LV: "da Letônia",
+      LT: "da Lituânia", LU: "do Luxemburgo", MT: "de Malta",
+      NL: "dos Países Baixos", PL: "da Polônia", PT: "de Portugal",
+      RO: "da Romênia", SK: "da Eslováquia", SI: "da Eslovênia",
+      ES: "da Espanha", SE: "da Suécia", CH: "da Suíça", NO: "da Noruega",
+      IS: "da Islândia", LI: "de Liechtenstein", GB: "do Reino Unido",
+      MC: "de Mônaco", AD: "de Andorra", TR: "da Turquia", UA: "da Ucrânia",
+      RS: "da Sérvia", US: "dos Estados Unidos", CA: "do Canadá",
+      MX: "do México", BR: "do Brasil", AU: "da Austrália",
+      NZ: "da Nova Zelândia", JP: "do Japão", CN: "da China",
+      HK: "de Hong Kong", TW: "de Taiwan", KR: "da Coreia do Sul",
+      SG: "de Singapura", TH: "da Tailândia", VN: "do Vietnã",
+      MY: "da Malásia", ID: "da Indonésia", PH: "das Filipinas",
+      IN: "da Índia", AE: "dos Emirados Árabes Unidos", IL: "de Israel",
+      ZA: "da África do Sul", MA: "do Marrocos",
+    },
+  },
   nl: {
     intl: "nl",
     tpl: "Verzonden vanuit {{ country }}",

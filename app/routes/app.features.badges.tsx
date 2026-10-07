@@ -734,7 +734,7 @@ export default function BadgesFeaturesPage() {
                 </Text>
                 <Checkbox
                   label="Enable the badge row"
-                  helpText="Shown on product pages (auto-injected) and via the Trust badges app block. Labels ship translated in 17 languages."
+                  helpText="Shown on product pages (auto-injected) and via the Trust badges app block. Labels ship translated in 18 languages."
                   checked={state.badgesEnabled}
                   onChange={(badgesEnabled) =>
                     setState((previous) => ({ ...previous, badgesEnabled }))

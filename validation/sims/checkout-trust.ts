@@ -410,7 +410,7 @@ const L = await loadTrustLogic();
     return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(local);
   }
   const CHECKOUT_LOCALES = [
-    "en", "fr", "de", "es", "it", "pt-PT", "nl", "da", "sv", "no", "nb",
+    "en", "fr", "de", "es", "it", "pt-PT", "pt-BR", "nl", "da", "sv", "no", "nb",
     "fi", "pl", "ro", "hu", "el", "ja", "ar",
   ];
   for (const locale of CHECKOUT_LOCALES) {
@@ -437,7 +437,7 @@ const L = await loadTrustLogic();
 {
   const dir = path.join(ROOT, "extensions", "checkout-trust", "locales");
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
-  tap.eq("T4: 18 locale files", files.length, 18);
+  tap.eq("T4: 19 locale files", files.length, 19);
   const REQUIRED_KEYS = [
     "guarantee_title", "guarantee_body", "secure", "clinical", "trustpilot",
     "customs", "tracked",

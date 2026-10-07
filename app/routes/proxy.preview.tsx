@@ -33,7 +33,7 @@ import {
  * trackers in the theme layout cannot pick it up via page_location/referrer.
  *
  * All copy is hardcoded English: this is a merchant-facing tool, not buyer
- * UI, so it stays out of the 17-language locale pipeline on purpose.
+ * UI, so it stays out of the 18-language locale pipeline on purpose.
  */
 
 const LIQUID_HEADERS = {

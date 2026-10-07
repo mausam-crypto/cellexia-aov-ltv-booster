@@ -24,6 +24,9 @@ var VOLUME_MSG = {
   it: "Sconto quantit\xE0",
   nl: "Volumekorting",
   pt: "Desconto de quantidade",
+  // Brazilian Portuguese says "por quantidade"; bare "pt"/"pt-PT" keep the
+  // European form via the base-language fallback below.
+  "pt-br": "Desconto por quantidade",
   da: "M\xE6ngderabat",
   sv: "M\xE4ngdrabatt",
   nb: "Mengderabatt",
@@ -57,7 +60,7 @@ function fmtAmount(minor, m) {
   return (minor / mm).toFixed(digits);
 }
 function volumeMessage(langIso) {
-  const raw = typeof langIso === "string" ? langIso.toLowerCase() : "";
+  const raw = typeof langIso === "string" ? langIso.toLowerCase().replace(/_/g, "-") : "";
   if (VOLUME_MSG[raw]) return VOLUME_MSG[raw];
   const base = raw.split("-")[0];
   if (VOLUME_MSG[base]) return VOLUME_MSG[base];

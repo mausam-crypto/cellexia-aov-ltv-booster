@@ -612,12 +612,12 @@ function mountLive(opts) {
   );
 }
 {
-  // Catalog integrity: 18 locales x 7 units, category sets per plural rule,
+  // Catalog integrity: 19 locales x 7 units, category sets per plural rule,
   // {n} in every digit-bearing form, no em/en dashes anywhere.
   const ctx = makeContext();
   const units = vm.runInContext("CX_QSEL_UNITS", ctx.sandbox);
   const locales = Object.keys(units);
-  ok(locales.length === 18, "U: catalog covers 18 locales (got " + locales.length + ")");
+  ok(locales.length === 19, "U: catalog covers 19 locales (got " + locales.length + ")");
   const UNIT_KEYS = ["jar", "syringe", "tube", "dropper", "stick", "pump", "bottle"];
   const CATS = {
     pl: ["one", "few", "many"],

@@ -1804,6 +1804,126 @@
       "label": "poniedziałek, 31 sierpnia"
     },
     {
+      "locale": "pt-BR",
+      "ut": 1767225600000,
+      "iso": "2026-01-01",
+      "label": "quinta-feira, 1 de janeiro"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1769904000000,
+      "iso": "2026-02-01",
+      "label": "domingo, 1 de fevereiro"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1772323200000,
+      "iso": "2026-03-01",
+      "label": "domingo, 1 de março"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1775001600000,
+      "iso": "2026-04-01",
+      "label": "quarta-feira, 1 de abril"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1777593600000,
+      "iso": "2026-05-01",
+      "label": "sexta-feira, 1 de maio"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1780272000000,
+      "iso": "2026-06-01",
+      "label": "segunda-feira, 1 de junho"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1782864000000,
+      "iso": "2026-07-01",
+      "label": "quarta-feira, 1 de julho"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1785542400000,
+      "iso": "2026-08-01",
+      "label": "sábado, 1 de agosto"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1788220800000,
+      "iso": "2026-09-01",
+      "label": "terça-feira, 1 de setembro"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1790812800000,
+      "iso": "2026-10-01",
+      "label": "quinta-feira, 1 de outubro"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1793491200000,
+      "iso": "2026-11-01",
+      "label": "domingo, 1 de novembro"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1796083200000,
+      "iso": "2026-12-01",
+      "label": "terça-feira, 1 de dezembro"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1784505600000,
+      "iso": "2026-07-20",
+      "label": "segunda-feira, 20 de julho"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1784592000000,
+      "iso": "2026-07-21",
+      "label": "terça-feira, 21 de julho"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1784678400000,
+      "iso": "2026-07-22",
+      "label": "quarta-feira, 22 de julho"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1784764800000,
+      "iso": "2026-07-23",
+      "label": "quinta-feira, 23 de julho"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1784851200000,
+      "iso": "2026-07-24",
+      "label": "sexta-feira, 24 de julho"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1784937600000,
+      "iso": "2026-07-25",
+      "label": "sábado, 25 de julho"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1785024000000,
+      "iso": "2026-07-26",
+      "label": "domingo, 26 de julho"
+    },
+    {
+      "locale": "pt-BR",
+      "ut": 1788134400000,
+      "iso": "2026-08-31",
+      "label": "segunda-feira, 31 de agosto"
+    },
+    {
       "locale": "pt-PT",
       "ut": 1767225600000,
       "iso": "2026-01-01",

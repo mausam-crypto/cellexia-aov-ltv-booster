@@ -46,6 +46,9 @@ export const VOLUME_MSG = {
   it: "Sconto quantità",
   nl: "Volumekorting",
   pt: "Desconto de quantidade",
+  // Brazilian Portuguese says "por quantidade"; bare "pt"/"pt-PT" keep the
+  // European form via the base-language fallback below.
+  "pt-br": "Desconto por quantidade",
   da: "Mængderabat",
   sv: "Mängdrabatt",
   nb: "Mengderabatt",
@@ -91,9 +94,14 @@ export function fmtAmount(minor, m) {
   return (minor / mm).toFixed(digits);
 }
 
-/** Message for the buyer's language iso code ("EN", "pt-PT", ...): exact -> base -> en. */
+/** Message for the buyer's language iso code: exact -> base -> en.
+ *  The input is the GraphQL LanguageCode ENUM ("EN", "PT_PT", "PT_BR") —
+ *  enum names can't carry hyphens, so regional codes arrive with an
+ *  underscore and must be normalized before the hyphen-keyed lookup
+ *  (pre-v37 they fell through to English). */
 export function volumeMessage(langIso) {
-  const raw = typeof langIso === "string" ? langIso.toLowerCase() : "";
+  const raw =
+    typeof langIso === "string" ? langIso.toLowerCase().replace(/_/g, "-") : "";
   if (VOLUME_MSG[raw]) return VOLUME_MSG[raw];
   const base = raw.split("-")[0];
   if (VOLUME_MSG[base]) return VOLUME_MSG[base];

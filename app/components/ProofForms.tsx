@@ -1651,7 +1651,7 @@ export function ResultForm({
 // v8.11: per-entry translations review (the proof twin of Translate & Adapt
 // review — proof entries live in the app DB, so T&A never sees them).
 // Rendered ONLY inside an expanded editor (never for collapsed rows — a
-// page of items times 17 locales would be hundreds of hidden fields).
+// page of items times 18 locales would be hundreds of hidden fields).
 // ---------------------------------------------------------------------------
 
 export interface ProofTranslationRow {

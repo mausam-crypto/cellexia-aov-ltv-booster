@@ -129,6 +129,7 @@ const SHIPPED_LOCALES = [
   "nl",
   "no",
   "pl",
+  "pt-BR",
   "pt-PT",
   "ro",
   "sv",
@@ -149,6 +150,7 @@ const LANGUAGE_NAMES: Record<string, string> = {
   nl: "Dutch",
   no: "Norwegian",
   pl: "Polish",
+  "pt-BR": "Portuguese (Brazil)",
   "pt-PT": "Portuguese (Portugal)",
   ro: "Romanian",
   sv: "Swedish",
@@ -386,7 +388,7 @@ export default function LocalizationPage() {
           <Card>
             <BlockStack gap="300">
               <Text as="h2" variant="headingMd">
-                Shipped languages (17)
+                Shipped languages (18)
               </Text>
               <InlineStack gap="200" wrap>
                 {SHIPPED_LOCALES.map((code) => (

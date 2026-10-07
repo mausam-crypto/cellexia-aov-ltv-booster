@@ -101,7 +101,7 @@ under ~3 minutes.
   - **checkout-trust.ts** — v9 trust module V2: delivery-engine twin BYTE
     parity, row flags fail-closed (pre-V2 configs render unchanged), market
     gates, compact tracked-date formatter vs an independent Intl path across
-    all 18 languages, 7-key locale parity + V2 copy contract, component
+    all 19 languages, 7-key locale parity + V2 copy contract, component
     pins. Mutation-tested (7 mutants, header comment).
   - **translation-service.ts** — real translation.server.ts vs mock DeepL +
     admin: allowlists, scoped metafield admission, incremental/outdated-only

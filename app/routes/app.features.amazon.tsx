@@ -234,7 +234,7 @@ const AZ_FEATURE_COPY: AzFeatureCardCopy[] = [
     key: "az_cta_count",
     title: "Checkout button item count",
     toggleLabel: "Enable the checkout button count",
-    how: "The pattern: the checkout button reads “Proceed to checkout (3 items)” — the count comes from the live cart, plural-correct in all 18 languages, re-decorated on every cart change.",
+    how: "The pattern: the checkout button reads “Proceed to checkout (3 items)” — the count comes from the live cart, plural-correct in all 19 languages, re-decorated on every cart change.",
     replaces:
       "Replaces the theme button's own label while on; the original label is restored verbatim when turned off.",
   },

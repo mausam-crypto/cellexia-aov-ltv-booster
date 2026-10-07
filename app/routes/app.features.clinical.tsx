@@ -262,7 +262,7 @@ function MarketScopeCard({
 const MAX_STATS = 4;
 
 /**
- * Preset labels map to the theme extension locale keys (translated in all 17
+ * Preset labels map to the theme extension locale keys (translated in all 18
  * languages). "custom" keeps the key out of the preset set — the merchant
  * writes the label per block instance in the theme editor instead.
  */
@@ -577,7 +577,7 @@ export default function ClinicalFeaturesPage() {
                 </Text>
                 <Text as="p" tone="subdued">
                   The three preset labels and the footnote (“Results from an
-                  independent clinical study.”) ship pre-translated in all 17
+                  independent clinical study.”) ship pre-translated in all 18
                   storefront languages — nothing to configure.
                 </Text>
                 <Text as="p" tone="subdued">

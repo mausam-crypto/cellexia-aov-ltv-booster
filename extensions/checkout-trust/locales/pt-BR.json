@@ -1,0 +1,15 @@
+{
+  "guarantee_title": {
+    "one": "Garantia de reembolso de {{days}} dia",
+    "other": "Garantia de reembolso de {{days}} dias"
+  },
+  "guarantee_body": {
+    "one": "Não ficou satisfeito? Peça seu dinheiro de volta em até {{days}} dia.",
+    "other": "Não ficou satisfeito? Peça seu dinheiro de volta em até {{days}} dias."
+  },
+  "secure": "Pagamento seguro e criptografado",
+  "clinical": "Fórmulas clinicamente comprovadas",
+  "trustpilot": "{{rating}}/5 · {{count}} avaliações no Trustpilot",
+  "customs": "Sem taxas alfandegárias nem custos adicionais na entrega.",
+  "tracked": "Entrega rastreada e garantida até {{date}}"
+}

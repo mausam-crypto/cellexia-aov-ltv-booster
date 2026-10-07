@@ -56,7 +56,7 @@ import { FeaturePageHeader } from "../components/FeaturePageHeader";
  * theme's own hidden pill buttons, so pricing, subscriptions and
  * add-to-cart behave exactly as before — only the picker's face changes.
  * v27 adds the per-product unit-type mapping (pdp_flags.unitType): the card
- * labels compose as "{n} {unit}" with curated native plural forms in all 18
+ * labels compose as "{n} {unit}" with curated native plural forms in all 19
  * languages once a product is mapped; unmapped products keep their variant
  * titles (already localized via Translate & Adapt).
  *
@@ -554,7 +554,7 @@ export default function QuantityFeaturePage() {
                   currency, so it stays truthful even where a variant title
                   overstates its discount. The second tier carries a
                   “Most popular” badge and the last one “Best value” (the
-                  cart tiles’ own wording), in all 18 storefront languages.
+                  cart tiles’ own wording), in all 19 storefront languages.
                 </Text>
                 <Checkbox
                   label="Show a green “Free shipping” line on qualifying tiers"
@@ -592,7 +592,7 @@ export default function QuantityFeaturePage() {
                   “Default” keeps the product’s own variant titles on the
                   cards (already translated per language). Picking a unit
                   switches that product’s cards to clean “2 Syringes”-style
-                  labels with correct native plural forms in all 18
+                  labels with correct native plural forms in all 19
                   languages — use it where the variant titles say the wrong
                   container (the wrinkle filler gel sells syringes, not
                   tubes). Saves immediately.
@@ -693,7 +693,7 @@ export default function QuantityFeaturePage() {
                 />
                 <Text as="p" tone="subdued" variant="bodySm">
                   A small “Save …” tag on the stepper mirrors the cards’ own
-                  savings chip (same wording, all 18 languages) whenever the
+                  savings chip (same wording, all 19 languages) whenever the
                   chosen count carries a discount. Shows only on products
                   whose variants are consecutive 1..N unit tiers and while
                   the minimum order quantity is 1; anywhere else (including

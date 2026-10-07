@@ -1375,7 +1375,7 @@ export default function ProofEndorsementsTab() {
               Copy
             </Text>
             <Text as="p" variant="bodySm" tone="subdued">
-              Blank fields use the built-in copy, translated into all 18
+              Blank fields use the built-in copy, translated into all 19
               storefront languages. Custom text auto-translates into every
               published language through DeepL (key on the Languages page)
               when you save — review or hand-edit each language under

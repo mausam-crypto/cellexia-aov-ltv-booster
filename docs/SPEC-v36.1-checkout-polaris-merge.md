@@ -80,7 +80,7 @@ after a full review against the 2026-10-05 audit checklist
   `app/services/protection-pricing.server.ts` calls
   `priceListFixedPricesAdd` and walks `Market.catalogs.priceList` — the
   Order Protection per-market price sync requires both scopes; nothing
-  here uses `write_markets`. Flagged back in UPDATE.md §3a: if their
+  here uses `write_markets`. Flagged back in UPDATE.md §3b: if their
   live toml dropped the scopes, that sync is failing silently.
 
 ## Validation

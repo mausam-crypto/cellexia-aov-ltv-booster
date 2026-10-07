@@ -218,6 +218,32 @@ export const CURATED_COPY_TRANSLATIONS: Record<
     [S.listTitle]:
       "Todos os {n} dermatologistas",
   },
+  "pt-br": {
+    [S.eyebrowChoice]:
+      "A escolha dos dermatologistas",
+    [S.badgeLinkView]:
+      "Conheça os dermatologistas e saiba mais abaixo",
+    [S.wallCta]:
+      "Leia todas as {n} recomendações",
+    [S.overlayIntro]:
+      "Cada recomendação reunida aqui vem de um dermatologista certificado que analisou as fórmulas, os ingredientes e a abordagem da Cellexia e depois compartilhou, por escrito e com as próprias palavras, sua avaliação profissional.\n\nAs recomendações são publicadas com o nome, o título profissional e o país de atuação de cada dermatologista, e ficam arquivadas na Cellexia.",
+    [S.faqTitle]:
+      "Perguntas frequentes",
+    [S.faq1Q]:
+      "Quem são os dermatologistas por trás destas recomendações?",
+    [S.faq1A]:
+      "Todos os autores são dermatologistas certificados. Cada recomendação é publicada com o nome do médico, a certificação de especialista ou o título profissional e o país onde atua.",
+    [S.faq2Q]:
+      "Como essas recomendações foram coletadas?",
+    [S.faq2A]:
+      "A Cellexia enviou o produto e as informações completas sobre os ingredientes a dermatologistas em atividade e pediu a eles uma avaliação profissional independente. As declarações são publicadas nas palavras de cada um.",
+    [S.faq3Q]:
+      "Uma recomendação significa que o produto é adequado para a minha pele?",
+    [S.faq3A]:
+      "Não existem duas peles iguais. Essas avaliações descrevem a abordagem de formulação em termos gerais. Para uma orientação personalizada sobre a sua pele, consulte seu dermatologista ou farmacêutico.",
+    [S.listTitle]:
+      "Todos os {n} dermatologistas",
+  },
   "da": {
     [S.eyebrowChoice]:
       "Dermatologernes valg",

@@ -84,7 +84,8 @@ const NO_TABLE: ResultsUiCopy = {
 
 /** Keyed by NORMALIZED (lowercase) storefront locale — the proxy
  *  normalizes `request.locale.iso_code` before the lookup. `nb`/`no` are
- *  twins, `pt-pt` is the catalog's Portuguese (the house conventions). */
+ *  twins, `pt-pt` is the catalog's European Portuguese and `pt-br` (v37)
+ *  the Brazilian one (the house conventions). */
 export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
   en: {
     rp: "Real people. Real results.",
@@ -283,6 +284,21 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Poprzedni wynik",
     nx: "Następny wynik",
   },
+  "pt-br": {
+    rp: "Pessoas reais. Resultados reais.",
+    ma: "Medição clínica após @@N@@ semanas",
+    vsb: "vs. valor inicial",
+    mi: "Medido com instrumentos",
+    mp: "A mesma pessoa",
+    mu: "Imagens sem retoque",
+    aw: "Após @@N@@ semanas",
+    dr: "Arraste para comparar",
+    iv: "Os resultados podem variar de pessoa para pessoa.",
+    zm: "Ampliar",
+    sa: "Ver todos os @@N@@ resultados",
+    pr: "Resultado anterior",
+    nx: "Próximo resultado",
+  },
   "pt-pt": {
     rp: "Pessoas reais. Resultados reais.",
     ma: "Medição clínica às @@N@@ semanas",
@@ -331,7 +347,8 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
 };
 
 /** Region variants fall back to their base language ("de-at" -> de); a
- *  bare or regional Portuguese falls back to the pt-pt table. */
+ *  bare Portuguese (or a regional one without its own table) falls back to
+ *  the pt-pt table — pt-br carries its own Brazilian table since v37. */
 const BASE_ALIASES: Record<string, string> = { pt: "pt-pt" };
 
 /**

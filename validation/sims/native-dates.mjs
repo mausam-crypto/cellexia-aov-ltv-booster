@@ -57,9 +57,10 @@ const localeFiles = fs
   .filter((f) => f.endsWith('.json'))
   .sort();
 const locales = localeFiles.map((f) => f.replace(/\.default\.json$|\.json$/, ''));
-tap.eq('theme ships exactly 18 locale files', locales.length, 18);
+tap.eq('theme ships exactly 19 locale files', locales.length, 19);
 tap.check('en present via en.default.json', locales.includes('en'));
 tap.check('regional tag pt-PT kept verbatim', locales.includes('pt-PT'));
+tap.check('regional tag pt-BR kept verbatim', locales.includes('pt-BR'));
 
 // --------------------------------------------------- engine extraction
 const srcs = { pdp: readSource(PDP), cart: readSource(CART) };

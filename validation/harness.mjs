@@ -1702,15 +1702,15 @@ const EVIDENCE = {
       exists("scripts/gen-ships-from-grammar.mjs"),
       "v8.16b: the grammar generator ships in-repo (scripts/gen-ships-from-grammar.mjs)",
     );
-    // Table integrity, now against the shipped JS literal: 18 page-locale
+    // Table integrity, now against the shipped JS literal: 19 page-locale
     // tables, identical country-key sets, every phrase a non-empty string.
     const formsMatch16 = pdpSrc16.match(/ {2}var AZ_SHIPS_FORMS = (\{[^\n]*\});\n/);
     ok(!!formsMatch16, "v8.16b: AZ_SHIPS_FORMS single-line generated literal present");
     const forms16 = formsMatch16 ? JSON.parse(formsMatch16[1]) : {};
     const localeKeys16 = Object.keys(forms16);
     ok(
-      localeKeys16.length === 18,
-      `v8.16b: 18 page-locale tables in AZ_SHIPS_FORMS (${localeKeys16.length})`,
+      localeKeys16.length === 19,
+      `v8.16b: 19 page-locale tables in AZ_SHIPS_FORMS (${localeKeys16.length})`,
     );
     const enKeys16 = Object.keys(forms16.en || {}).sort().join(",");
     ok(
@@ -1741,13 +1741,19 @@ const EVIDENCE = {
     pin16("it", "US", "dagli Stati Uniti");
     pin16("pt-PT", "CH", "da Suíça");
     pin16("pt-PT", "US", "dos Estados Unidos");
+    // pt-BR vs pt-PT: Brazil fuses the article where Portugal doesn't (FR)
+    // and spells Vietnã its own way — a regression to the European forms
+    // would read foreign to Brazilian shoppers.
+    pin16("pt-BR", "FR", "da França");
+    pin16("pt-BR", "VN", "do Vietnã");
+    pin16("pt-BR", "US", "dos Estados Unidos");
     pin16("el", "CH", "την Ελβετία");
     pin16("pl", "CH", "ze Szwajcarii");
     pin16("fi", "CH", "Sveitsistä");
     pin16("hu", "CH", "Svájcból");
     // Locale files keep the two sentence templates (the actual COPY).
     const localeFiles16 = listFiles(`${EXT}/locales`, ".json");
-    ok(localeFiles16.length === 18, "v8.16: 18 locale files present");
+    ok(localeFiles16.length === 19, "v8.16: 19 locale files present");
     for (const lf of localeFiles16) {
       const amazon16 = JSON.parse(read(`${EXT}/locales/${lf}`)).amazon;
       ok(
@@ -2448,10 +2454,10 @@ const EVIDENCE = {
         `v10: blocks/${block}.liquid deliveryStrings carries delivery.deliver_to`,
       );
     }
-    // delivery.deliver_to in ALL 18 theme locale files, non-empty (the JS
+    // delivery.deliver_to in ALL 19 theme locale files, non-empty (the JS
     // appends NBSP + the place name to this label).
     const locales10 = listFiles(`${EXT}/locales`, ".json");
-    ok(locales10.length === 18, `v10: 18 theme locale files (${locales10.length})`);
+    ok(locales10.length === 19, `v10: 19 theme locale files (${locales10.length})`);
     for (const lf of locales10) {
       const v = JSON.parse(read(`${EXT}/locales/${lf}`)).delivery?.deliver_to;
       ok(
@@ -5505,8 +5511,8 @@ const EVIDENCE = {
           f.replace(".default", "").replace(".json", ""),
         );
         ok(
-          locales.length === 18 && locales.every((l) => !!table[l]),
-          "v26: the table covers exactly the 18 shipped storefront locales",
+          locales.length === 19 && locales.every((l) => !!table[l]),
+          "v26: the table covers exactly the 19 shipped storefront locales",
         );
         for (const [loc, pack] of Object.entries(table)) {
           for (const key of ["title", "each", "save", "b2", "b3", "fs"]) {
@@ -5660,8 +5666,8 @@ const EVIDENCE = {
           f.replace(".default", "").replace(".json", ""),
         );
         ok(
-          locales.length === 18 && locales.every((l) => !!units[l]),
-          "v27: the unit catalog covers exactly the 18 shipped locales",
+          locales.length === 19 && locales.every((l) => !!units[l]),
+          "v27: the unit catalog covers exactly the 19 shipped locales",
         );
         const unitEnum = ["jar", "syringe", "tube", "dropper", "stick", "pump", "bottle"];
         for (const [loc, pack] of Object.entries(units)) {
@@ -5757,8 +5763,8 @@ const EVIDENCE = {
         f.replace(".default", "").replace(".json", ""),
       );
       ok(
-        locales.length === 18 && locales.every((l) => !!table[l]),
-        "v28: the award copy covers exactly the 18 shipped locales (zero locale-file bytes — the el/ar wall untouched)",
+        locales.length === 19 && locales.every((l) => !!table[l]),
+        "v28: the award copy covers exactly the 19 shipped locales (zero locale-file bytes — the el/ar wall untouched)",
       );
       ok(
         JSON.stringify(table.nb) === JSON.stringify(table.no),

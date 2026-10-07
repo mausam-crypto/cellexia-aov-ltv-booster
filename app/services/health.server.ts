@@ -859,6 +859,7 @@ const SHIPPED_LOCALES = [
   "nl",
   "no",
   "pl",
+  "pt-BR",
   "pt-PT",
   "ro",
   "sv",

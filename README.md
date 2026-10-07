@@ -123,7 +123,7 @@ orders/paid webhook ──► OrderStat table (AOV, attach rates)
 ```
 
 - **Copy vs config**: feature flags, numbers, ids live in the settings JSON; **all storefront copy
-  ships as extension locale files** (the same 17 languages as the theme) so Translate & Adapt
+  ships as extension locale files** (the theme's 17 languages plus Brazilian Portuguese) so Translate & Adapt
   manages translations exactly like theme content. Text overrides typed into theme-editor block
   settings are theme content → also translatable in Translate & Adapt.
 - **Volume pricing**: Cellexia sells 1/2/3-unit tiers as *variants* (position = units). The cart
@@ -191,7 +191,7 @@ Host the Remix backend anywhere Node runs (Fly.io, Render, Heroku…). Set env v
 
 ## Translate & Adapt workflow
 
-- Widget copy ships pre-translated in: `ar da de el en es fi fr hu it ja nl no pl pt-PT ro sv`
+- Widget copy ships pre-translated in: `ar da de el en es fi fr hu it ja nl no pl pt-BR pt-PT ro sv`
   (matching the theme's locales; checkout also ships `nb`). Nothing to do for these.
 - To *change* a string in any language: Translate & Adapt → Online Store → Theme → **App embeds /
   App blocks** (text overrides you typed in the theme editor appear here and are translatable
