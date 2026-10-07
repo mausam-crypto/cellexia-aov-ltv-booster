@@ -15,7 +15,7 @@ re-apply local patches; deploy this tree as-is** (after the config merge in §1)
 | **Prisma datasource patch (sqlite → postgres)** | **Fully automatic now.** The build/install scripts run `node scripts/prisma-env.mjs generate`, which selects `prisma/schema.postgres.prisma` whenever `DATABASE_URL` is a Postgres URL (Render sets it at build time) and the SQLite dev schema otherwise. Drop this patch too — §2/§3 explain the new flow, and the server now REFUSES TO BOOT if a mismatched client ever slips through |
 | Missing dotenv loading | `dotenv` is a dependency; `app/shopify.server.ts` imports `dotenv/config` first (never overrides host-set vars) |
 | Missing `RENDER_EXTERNAL_URL` fallback | `appUrl` resolves `SHOPIFY_APP_URL → RENDER_EXTERNAL_URL → ""` (also in the app-proxy health check) |
-| Missing `react-reconciler` | Declared in all four checkout extensions' `package.json` (incl. the new `checkout-delivery`) |
+| Missing `react-reconciler` | **Obsolete since v36.1** — the four checkout extensions no longer use React at all (your Polaris web-components migration is merged in-tree, see §3a); `react`, `react-reconciler` and `@shopify/ui-extensions-react` are gone from their `package.json` on purpose. Do not re-add them |
 | 27-char schema name limit | All block schema names now ≤ 25 chars (`Cellexia subscription`) |
 | `external` → `target` Button iframe issue | ALL occurrences swept (14 across 5 admin routes — more than the 6 you found; new pages had regressed it) |
 | 100 KB Liquid limit | The live/draft template pairs are deduplicated in-tree (single template with a conditional `data-cx-draft` marker) — `pdp-booster.liquid` is well under the limit again and won't regress |
@@ -245,7 +245,188 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v35 — study batches, study mix and gallery display options — what this release changes
+## 3a. v36.1 — your checkout Polaris migration is merged in-tree (plus three fixes you'll want live) — what this release changes
+
+Your developer's migration package (2026-10-06): the four checkout UI
+extensions (`checkout-trust`, `checkout-delivery`, `checkout-protection`,
+`checkout-upsell`) rewritten for Shopify's Polaris web-components
+architecture (api_version 2026-04), already deployed by them as app
+version `cellexia-aov-ltv-booster-73`, handed over so our packages stop
+shipping the old React code over it. Full review notes:
+`docs/SPEC-v36.1-checkout-polaris-merge.md`; the handover guide as
+received: `docs/vendor/CHECKOUT_MIGRATION_FOR_DEVELOPER-2026-10.md`.
+
+### What we merged, verified
+
+- All four extensions now ship the migrated architecture from this tree:
+  api_version **2026-04**, Preact + `<s-*>` components, per-target entry
+  modules, React removed. The pure business modules (`trust-logic.ts`,
+  `delivery-engine.ts`) were confirmed **byte-identical** to ours, every
+  behavioral anchor (translation keys, cart-attribute keys, storage keys,
+  instruction gates, GraphQL queries) matches the old code exactly, and
+  all four extensions **typecheck clean against the real installed
+  `@shopify/ui-extensions@2026.4.4` types**.
+- The deploy-generated `uid`/`handle` identity lines in the four tomls
+  are preserved exactly as your deployment generated them, and are now
+  pinned by the validation suite — regenerating them would orphan the
+  live extensions and drop every checkout-editor placement, so the suite
+  fails loudly if anyone ever touches them.
+- The Oct-1 Shopify deploy block is cleared: future extension-half
+  deploys from this tree no longer need any manual re-apply.
+
+### Three fixes applied on top — ⚠️ the first one affects your LIVE deploy
+
+1. **The signals wiring was missing.** Every entry module must start
+   with `import '@shopify/ui-extensions/preact';` — that line hands
+   Preact's signal class to the checkout sandbox, and it is what makes
+   `shopify.lines.value` (and every other reactive read) actually
+   re-render the extension when the cart changes. The handed-over
+   package (and therefore **the version you deployed as `-73`**) ships
+   without it, so the four extensions render once and only "catch up"
+   when something else happens to re-render them (a 30-second timer in
+   trust/delivery, a button press in protection/upsell). Most visible
+   consequences on live right now: the rewards safety net in
+   checkout-protection reacts to discount-code and gift-line changes
+   late or never, and the protection checkbox does not follow cart
+   changes it didn't cause. **Deploy this package's extension half as
+   soon as it reaches you** — it is the same migration plus this line.
+2. **Protection checkbox snap-back.** The new checkbox toggles its own
+   visual state on tap; if the cart mutation then fails, nothing turned
+   it back off (the old React version re-rendered it from cart state,
+   the web component keeps its own). A declined add would stay ticked
+   with no protection in the cart. The checkbox now re-syncs itself to
+   cart truth after every attempt.
+3. **Discount-method belts.** The rewards effects write a one-shot
+   storage key before calling `applyDiscountCodeChange`; if that call
+   ever threw on a runtime without the method, the key would be burned
+   and the KIT code never attached. A cheap `typeof` gate now runs
+   before the storage write (restores the old code's defensive check the
+   migration dropped).
+
+### Your two "recurring bugs", resolved
+
+- **Windows `execFileSync` — fixed in-tree.** `scripts/prisma-env.mjs`
+  and `validation/harness.mjs` now pass
+  `shell: process.platform === "win32"` (npx is `npx.cmd` on Windows and
+  Node refuses to spawn `.cmd` shims without a shell). Drop your local
+  patch. For the record, we found no trace of this being documented or
+  fixed "in the v22 round" in any package we shipped — it's simply fixed
+  now.
+- **The price-list scopes stay — please check YOUR live toml.** The
+  suggestion to drop `read_price_lists,write_price_lists` (in favor of
+  `write_markets`) is based on a mistaken audit:
+  `app/services/protection-pricing.server.ts` actively calls
+  `priceListFixedPricesAdd` and reads `Market.catalogs.priceList` — the
+  Order Protection per-market price sync needs BOTH scopes. Nothing in
+  this codebase uses `write_markets`. ⚠️ If your live app's toml
+  actually dropped the price-list scopes, that sync has been failing
+  silently in production — restore them and re-run the protection price
+  sync from the app's Checkout features page.
+
+### Deploy notes
+
+Both halves as always (§3). The extension half is the one that matters
+here (it carries the signals fix for the live `-73` deploy); the server
+half has no changes in this wave. After deploying, hard-refresh a
+checkout and confirm the protection checkbox reacts instantly to
+removing the protection line from the cart. One build-time note: the
+first `shopify app build` regenerates each extension's `shopify.d.ts`
+(auto-generated, intentionally not shipped) — nothing to do, just don't
+be surprised by the new file.
+
+### Liquid budget
+
+Untouched — this wave contains zero Liquid and zero locale bytes
+(checkout extension strings live in the extensions' own locale files,
+which are unchanged).
+
+## 3b. v36 — before/after gallery: full-screen swipe viewer replaces "Show more" — what this release changes
+
+Your ask (2026-10-06): the horizontal scrolling is good, but "Show more"
+below the rail appending more photos sideways is confusing; with 50-150
+results per product, browsing must be seamless, cost no extra vertical
+space, keep page load speed, and stay obvious for non-technical shoppers,
+mobile first. You picked Option 3 from the three mockups: tap a photo and
+flick through everything full screen. Full spec:
+`docs/SPEC-v36-results-viewer.md`.
+
+### What changed
+
+- **The "Show more" button is gone** (it survives invisibly only as a
+  safety net for cached old payloads). The rail still shows the first 12
+  results exactly as before, and its last position becomes a quiet
+  **"+N" tile** ("+75 · See all 87 results") that opens the viewer at the
+  first result the shopper has not seen yet.
+- **Tap any photo → full-screen viewer.** One result at a time: the
+  compare slider (still draggable full screen), the clinical panel,
+  badges, quote and attribution — everything the enlarged view showed
+  before — plus a **"14/87" counter**, big **previous/next arrows**,
+  **swipe** left/right, keyboard arrows, and a **thumbnail strip** along
+  the bottom for jumping around (it ends in a "+N" chip while more
+  results exist).
+- **Paging is invisible.** Approaching the end of what's loaded fetches
+  the next 24 results in the background through the same cached feed —
+  no button, no jump, duplicates impossible (rows are de-duplicated by
+  id). The next and previous photos pre-warm so swipes feel instant.
+- **The phone's back button closes the viewer** like any sheet (so does
+  the X, Escape, and clicking the dimmed page on desktop). Closing and
+  tapping the tile again **resumes where the shopper left off** — result
+  25 stays result 25, nothing is skipped.
+- **Swipes never fight the compare slider**: a drag that starts on the
+  photo moves the divider, exactly as before; navigation swipes work
+  everywhere else in the dialog (and the arrows always work).
+- **Filters still work**: a filtered gallery browses only the filtered
+  sequence, and the tile/counter re-count ("+17 · See all 29 results").
+- RTL storefronts (ar) mirror everything, including swipe direction;
+  reduced-motion users get no animations; the desktop viewer is a large
+  centered dialog instead of full screen.
+
+### Try it before it goes live
+
+Nothing ships behind a switch — but nothing changes until BOTH halves are
+deployed, because the viewer arms itself only when the results feed
+carries its three new label strings (`sa`/`pr`/`nx` ride `payload.copy`
+like the v25/v33 chrome). Old storefront bundle + new server, or new
+bundle + old/cached server payloads, both degrade to today's gallery with
+the Show more button. The ~5-minute feed cache applies to the switchover.
+
+### Deploy notes
+
+Both halves as always (§3). No database change, no settings change, no
+new scopes, no new webhooks, no admin UI change. The three new strings
+are server-curated in all 18 theme languages (results-ui-copy table) —
+zero locale-file bytes, zero merchant action.
+
+### Liquid budget
+
+TOTAL unchanged at 99,454 / 99,500 — no .liquid file in this wave (the
+whole feature is JS + CSS + proxy copy). Locale files untouched (el
+15,069 / ar 15,124 against the 15,200 pin): the counter and the "+N"
+numerals are digits-only by design.
+
+### v36.2 (2026-10-06, your catch) — the viewer fits the screen, no scrolling
+
+Your report: "when clicking on a result on mobile and desktop, it should
+all be visible, no vertical scrolling". The viewer now sizes the PHOTO to
+whatever height is left after the result's information, instead of giving
+it the full width and pushing the clinical numbers below the fold:
+
+- One screen, no scrolling, mobile and desktop: photo, badges, study
+  tag, the full clinical panel, quote, attribution, meta line and the
+  thumbnail strip are all visible at once. Verified in a real browser on
+  375x812 and desktop for clinical results, customer results and the
+  wide combined photos (which keep their true aspect ratio).
+- The previous/next arrows moved ONTO the photo's edges (their old row
+  below the content returned ~58px of screen), and the result info got a
+  compact viewer-only treatment — same content, tighter type.
+- Long testimonials clamp to three lines in the viewer; the card's
+  expander on the rail still shows the full text.
+- Safety valve: a pathological result (six metrics plus marks plus a
+  video) that still cannot fit scrolls instead of clipping; very old
+  browsers without container-query support simply keep the v36 scrolling
+  layout. The compare slider is unaffected by the new geometry.
+
+## 3c. v35 — study batches, study mix and gallery display options — what this release changes
 
 Your ask (2026-10-03): the desktop before/after gallery stacks several
 rows and eats vertical space — it should be one row; results from one
@@ -310,7 +491,7 @@ files untouched (el 15,069 / ar 15,124 against the 15,200 pin): the study
 tag renders your raw study name and the expander reuses the existing
 "Show more" string, so the wave costs zero locale bytes.
 
-## 3b. v34 — study presets for the before/after gallery — what this release changes
+## 3d. v34 — study presets for the before/after gallery — what this release changes
 
 Your ask (2026-09-25): you will add lots of before/afters from different
 studies, so a preset should pre-select that an entry is a study and
@@ -350,7 +531,7 @@ from them are ordinary clinical entries.
 Untouched: 99,454/99,500 total; el.json 15,069 / ar.json 15,124 against
 the 15,200 pin. Zero new storefront strings.
 
-## 3c. v33 — before/after gallery: combined clinical photo, study design, compare slider — what this release changes
+## 3e. v33 — before/after gallery: combined clinical photo, study design, compare slider — what this release changes
 
 Your ask (2026-09-23, with the reference screenshot): clinical before/afters
 can be ONE combined photo instead of a separate pair; an optional design that
@@ -425,7 +606,7 @@ Untouched: 99,454/99,500 total; el.json 15,069 / ar.json 15,124 against the
 15,200 pin. The four new storefront strings ride the results feed
 (`results-ui-copy.server.ts`, all 18 languages) — zero locale bytes.
 
-## 3d. v32 — exact volume pricing at 4+ (app-owned Shopify discount, ships OFF) — what this release changes
+## 3f. v32 — exact volume pricing at 4+ (app-owned Shopify discount, ships OFF) — what this release changes
 
 Your decisions (2026-09-21): match each market's REAL 3-pack per-unit rate,
 computed from your own prices; discount codes may stack; the app creates and
@@ -541,7 +722,7 @@ note under the button says the first sync takes up to a minute.
 trims: total 99,454 / 99,500. Zero locale-file keys (the discount label
 ships inside the function).
 
-## 3e. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
+## 3g. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
 
 Two independent buy-box features you asked for, each with its own switch,
 market scope, Preview Center draft flag and analytics line. Both live on the
@@ -603,7 +784,7 @@ tag, one comment moved to docs): total Liquid 99,452 / 99,500. Zero new
 locale-file keys (the three new aria strings ride the JS table; el/ar stay
 at their byte walls).
 
-## 3f. v30 — Trustpilot star color in checkout + PDP Trustpilot size + star rounding + cart row completion — what this release changes
+## 3h. v30 — Trustpilot star color in checkout + PDP Trustpilot size + star rounding + cart row completion — what this release changes
 
 Two small display options plus two requested rendering corrections (full
 contract: `docs/SPEC-v30-trustpilot-tuning.md`). Deploy BOTH halves per §3 —
@@ -661,7 +842,7 @@ byte-identical to before this release. Suite: 11,396 checks green
 block pin the byte-identical-by-default guarantees, the rounding rule and
 the cross-file wiring).
 
-## 3g. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
+## 3i. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
 
 Two things landed together in this build:
 
@@ -722,7 +903,7 @@ on the storefront config; until then the legacy path keeps today's look.
 
 Full contracts: `docs/SPEC-v28-award-strip.md`, `docs/SPEC-v29-proof-split.md`.
 
-## 3h. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
+## 3j. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
 
 A new 43rd feature, `Quantity selector cards` (`quantity_selector`), for the product
 page. While it is on, the theme's text-pill size picker ("1 Jar / 2 Jars - 15% Off /
@@ -806,7 +987,7 @@ lever is still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but n
 the deploy-safety island expander does not expand `{% render %}` inside islands, so
 that dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
 
-## 3i. v25 — before/after gallery: clinical trust redesign — what this release changes
+## 3k. v25 — before/after gallery: clinical trust redesign — what this release changes
 
 Merchant ask (2026-09-18, with two reference designs): redesign the
 before/after results widget and its click-to-enlarge overlay for maximum
@@ -892,7 +1073,7 @@ win and should be cleared.
 - To see it before enabling: arm a preview (§ preview) with the
   before/after draft flag, or enable + market-scope it to a test market.
 
-## 3j. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
+## 3l. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
 
 **The ask (2026-09-17):** restyle the PDP clinical study widget to match the
 reference design (letterspaced "PUBLISHED CLINICAL RESEARCH" eyebrow, big
@@ -943,7 +1124,7 @@ BEFORE saving study content. Spec: `docs/SPEC-v24-study-redesign.md`.
 Pinned by `sims/survey-methodology.cjs` T2-T8 + mutants m13-m15 and the
 harness v24 pin updates.
 
-## 3k. v23 — subscription card prices now require the app to be LIVE — what this release changes
+## 3m. v23 — subscription card prices now require the app to be LIVE — what this release changes
 
 **The bug this fixes (reported by the merchant):** while the NEW subscription
 app is still in setup (or live in only some markets), theme product cards on
@@ -981,7 +1162,7 @@ run). Spec: `docs/SPEC-v23-subs-live-gate.md`. Pinned by the harness (v23
 tripwires) and by `sims/badge-cards` (setup-mode and missing-member
 scenarios) + `sims/subscribed-upgrade` (setup fallback refusal).
 
-## 3l. v21 cart overlay features — what this release changes
+## 3n. v21 cart overlay features — what this release changes
 
 ### v21.2 (2026-09-14, after your field test) — five fixes in this build
 
@@ -1117,7 +1298,7 @@ collapsed into two loops that mirror the file's own `bought_count` loop
 precedent (identical keys and values; JSON member order is parser-neutral).
 The release leaves 244 B of per-file headroom where it found 87 B.
 
-## 3m. v20 image badges on mobile — what this release changes
+## 3o. v20 image badges on mobile — what this release changes
 
 **No database migration. No new API scopes. No webhook changes. No new
 translated strings.** Deploy the app server and the extensions exactly as §3
@@ -1159,7 +1340,7 @@ mechanically and proved byte-identical for every icon before it landed, so the
 five legacy blocks that render those icons are unchanged on the page. The
 release LEAVES 1,371 B of headroom where it found 207 B.
 
-## 3n. v18 free gifts V2 — what this release changes
+## 3p. v18 free gifts V2 — what this release changes
 
 **No database migration. No new API scopes. No webhook changes.** Deploy the
 app server and the extensions exactly as §3 describes; nothing extra is needed

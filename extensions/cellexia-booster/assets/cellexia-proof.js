@@ -2352,6 +2352,14 @@
         try {
           if (base.naturalWidth > 1 && base.naturalHeight > 0) {
             stage.style.aspectRatio = (base.naturalWidth / 2) + ' / ' + base.naturalHeight;
+            // v36.2: the same ratio as a CSS var — the viewer's fit-to-
+            // screen layout sizes the stage from the AVAILABLE HEIGHT
+            // (width = height x ratio, container-query units), so the
+            // whole result shows without scrolling. Guarded: the sim
+            // mini-DOM style object has no setProperty.
+            if (stage.style.setProperty) {
+              stage.style.setProperty('--cxr', String((base.naturalWidth / 2) / base.naturalHeight));
+            }
           }
         } catch (e) { /* keep the CSS default */ }
       };

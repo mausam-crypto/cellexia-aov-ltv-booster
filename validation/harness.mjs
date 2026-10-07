@@ -2914,6 +2914,39 @@ const EVIDENCE = {
   );
 }
 
+// ================== v36.2 RESULTS VIEWER FITS THE SCREEN (merchant catch)
+// "When clicking a result it should all be visible, no vertical
+// scrolling": the media stage flexes into the height LEFT OVER by the
+// result's info (container-query units; --cxr carries the combined
+// photo's ratio from resultsSlider), the info gets a viewer-only compact
+// treatment, the arrows overlay the media edges, quotes clamp to three
+// lines. All behind @supports (cq units) — old browsers keep the v36
+// scrolling layout; the body keeps overflow-y auto as the safety valve
+// for pathological results.
+{
+  const proofJs362 = read(PROOF_JS);
+  ok(
+    proofJs362.includes("stage.style.setProperty('--cxr', String((base.naturalWidth / 2) / base.naturalHeight));") &&
+      proofJs362.includes("if (stage.style.setProperty) {"),
+    "v36.2: the combined stage publishes its ratio as --cxr (guarded — the sim mini-DOM style has no setProperty)",
+  );
+  const css362 = read(CSS);
+  ok(css362.includes("@supports (block-size: 1cqh) {"), "v36.2: the fit-to-screen layout is @supports-gated on cq units");
+  ok(
+    css362.includes("inline-size: min(100%, calc(100cqh * var(--cxr, 1)));") &&
+      css362.includes("container-type: size;"),
+    "v36.2: the stage is HEIGHT-driven (width = available height x ratio) inside a size container",
+  );
+  ok(
+    css362.includes("-webkit-line-clamp: 3;"),
+    "v36.2: viewer quotes clamp to three lines (the rail card's expander still serves the full text)",
+  );
+  ok(
+    css362.indexOf("@supports (block-size: 1cqh) {") > css362.indexOf(".cx-results-vw__card {"),
+    "v36.2: the fit layer sits AFTER the v36 BASE card rule (equal specificity, later wins; the layer holds its own desktop card override)",
+  );
+}
+
 // ==================================================== 9. SUITE INVENTORY
 {
   const manifest = JSON.parse(read("validation/suite-manifest.json"));

@@ -8898,3 +8898,199 @@ html.cx-compact .mini-cart::after {
     animation: none;
   }
 }
+
+/* ==================================================================
+   v36.2 — THE VIEWER FITS THE SCREEN (merchant catch: "when clicking a
+   result it should all be visible, no vertical scrolling"). The media
+   stage stops owning the full width and instead flexes into WHATEVER
+   HEIGHT REMAINS after the result's info renders — width follows from
+   the stage's aspect ratio via container-query units (--cxr carries the
+   combined photo's real ratio from JS; the pair stage defaults to 1).
+   The info itself gets a viewer-only compact treatment, the prev/next
+   buttons move ONTO the media edges (their old row returned ~58px), and
+   long quotes clamp to three lines (the rail card's expander still
+   serves the full text). Everything sits behind @supports on cq units:
+   browsers without them keep the v36 scrolling layout untouched. The
+   body keeps overflow-y auto as a SAFETY VALVE — when a pathological
+   result (six tiles + marks + video) still cannot fit above the media
+   floor, it scrolls instead of clipping. */
+
+@supports (block-size: 1cqh) {
+  .cx-results-vw__body {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 14px 4px;
+  }
+
+  .cx-results-vw__stage,
+  .cx-results-vw__item {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cx-results-vw__stage--wait {
+    min-block-size: 0;
+  }
+
+  .cx-results-vw__item > * {
+    flex: 0 0 auto;
+  }
+
+  .cx-results-vw__item .cx-lightbox__imgs {
+    flex: 1 1 auto;
+    min-block-size: 110px;
+    container-type: size;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  /* Height-driven stage: width = available height x ratio, capped by the
+     column width; the slider math reads the live box, so dragging is
+     unaffected. Specificity matches the v36 72vh rule it replaces. */
+  .cx-results-vw .cx-results-vw__item .cx-results__ba {
+    inline-size: min(100%, calc(100cqh * var(--cxr, 1)));
+    block-size: auto;
+    max-block-size: 100cqh;
+    margin-inline: auto;
+  }
+
+  /* Slider-off stores: the plain figure pair fits the same way. */
+  .cx-results-vw .cx-results-vw__item .cx-lightbox__fig {
+    margin: 0;
+    min-inline-size: 0;
+    max-inline-size: calc(50% - 6px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .cx-results-vw .cx-results-vw__item .cx-lightbox__fig:only-child {
+    max-inline-size: 100%;
+  }
+
+  .cx-results-vw .cx-results-vw__item .cx-lightbox__img {
+    inline-size: auto;
+    max-inline-size: 100%;
+    block-size: auto;
+    max-block-size: calc(100cqh - 26px);
+  }
+
+  .cx-results-vw .cx-results-vw__item .cx-lightbox__cap {
+    margin-block-start: 4px;
+    font-size: 10px;
+  }
+
+  .cx-results-vw__item .cx-lightbox__video {
+    min-block-size: 0;
+    max-block-size: 24vh;
+  }
+
+  /* Viewer-only compact info: same DOM, tighter type, so the numbers the
+     merchant sells with stay ON screen next to the photo. */
+  .cx-results-vw__item .cx-results__badges {
+    padding: 8px 0 0;
+  }
+
+  .cx-results-vw__item .cx-results__clin {
+    margin: 8px 0 0;
+    padding: 10px 12px;
+  }
+
+  .cx-results-vw__item .cx-results__clin-grid {
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  }
+
+  .cx-results-vw__item .cx-results__clin-tile {
+    padding: 8px 8px 7px;
+  }
+
+  .cx-results-vw__item .cx-results__clin-label {
+    font-size: 11px;
+  }
+
+  .cx-results-vw__item .cx-results__clin-val {
+    font-size: 18px;
+    gap: 3px;
+  }
+
+  .cx-results-vw__item .cx-results__clin-note {
+    font-size: 11px;
+  }
+
+  .cx-results-vw__item .cx-results__clin-mark {
+    gap: 6px;
+    font-size: 10.5px;
+  }
+
+  .cx-results-vw__item .cx-lightbox__foot {
+    margin-block-start: 8px;
+    gap: 4px 16px;
+  }
+
+  .cx-results-vw__item .cx-lightbox__quote {
+    font-size: 13px;
+    line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .cx-results-vw__item .cx-results__attr {
+    margin: 4px 0 0;
+    font-size: 12px;
+  }
+
+  .cx-results-vw__item .cx-lightbox__meta {
+    margin: 4px 0 0;
+    font-size: 11px;
+  }
+
+  .cx-results-vw__item .cx-results__disclaim {
+    margin: 6px 0 0;
+    font-size: 10.5px;
+  }
+
+  /* The arrows ride the media edges — their dedicated row is gone. */
+  .cx-results-vw__nav {
+    position: absolute;
+    /* ~photo middle across densities: a tall photo centers near 40%,
+       a short one (info-heavy result) still keeps the arrows ON the
+       media, clear of the Before/After pills at its bottom edge. */
+    inset-block-start: 42%;
+    inset-inline: 10px;
+    transform: translateY(-50%);
+    padding: 0;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .cx-results-vw__btn {
+    pointer-events: auto;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  }
+
+  .cx-results-vw__head {
+    padding: 8px 12px;
+  }
+
+  .cx-results-vw__strip {
+    padding: 8px 12px 10px;
+  }
+
+  /* Desktop: the v36 dialog was content-sized (block-size auto), which
+     gives the flex chain no height to distribute and a size-contained
+     media box collapses to zero. The fit layer needs a DEFINITE dialog
+     height — a stable browsing surface anyway (fixed arrow positions,
+     uniform item-to-item feel). */
+  @media (min-width: 900px) {
+    .cx-results-vw__card {
+      block-size: min(92vh, 900px);
+    }
+  }
+}

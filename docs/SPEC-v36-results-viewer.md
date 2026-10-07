@@ -150,3 +150,41 @@ first. Post-deploy: fingerprint the served cellexia-proof.js for a v36
 marker (e.g. `resultsViewerOpen`), then live-check tap → viewer →
 swipe/arrows → invisible paging on the PDP; the viewer arms only once
 the proxy cache (<=5 min) serves the new copy codes.
+
+## v36.2 (2026-10-06) — fit-to-screen viewer (merchant catch)
+
+"When clicking on a result on mobile and desktop, it should all be
+visible, no vertical scrolling." Shipped as a CSS layer behind
+`@supports (block-size: 1cqh)` plus ONE guarded JS line:
+
+- `resultsSlider`'s combo `setRatio` also publishes the half-image
+  ratio as `--cxr` (guarded `style.setProperty` — absent in the sim
+  mini-DOM, and the load event never fires there anyway).
+- `.cx-results-vw__body` becomes a non-scroll-by-default flex column;
+  `.cx-lightbox__imgs` is a `container-type: size` flex-fill region and
+  the stage is HEIGHT-driven: `inline-size: min(100%,
+  calc(100cqh * var(--cxr, 1)))` (pair defaults to 1). Slider math reads
+  the live box, so dragging is untouched (re-verified: divider 50→18).
+- Viewer-only compact info (same DOM, tighter type), prev/next arrows
+  overlay the media edges at `inset-block-start: 42%` (their row's
+  ~58px returned to the photo), quotes clamp to 3 lines (the rail
+  card's expander keeps the full text), `overflow-y: auto` stays as the
+  safety valve for pathological results.
+- Desktop inside the fit layer needs a DEFINITE dialog height —
+  `block-size: min(92vh, 900px)` at >=900px — because a content-sized
+  dialog gives the flex chain nothing to distribute and a
+  size-contained media box collapses to zero (real-browser catch:
+  stage rendered 0x0 on desktop until this landed).
+- No-cq browsers keep the v36 scrolling layout verbatim.
+
+Real-browser verification (fixture, combos rebuilt at 1600x600 so the
+ratio path is exercised): mobile 375x812 lab item `scroll 685/685`
+stage 347x347; long-quote customer item no-scroll with clamped quote;
+combo item 347x260 (true 4:3, --cxr 1.3333); desktop 576/576 stage
+435x326 height-driven; arrows clear of the Before/After pills; slider
+drag intact. Harness v36.2 anchors pin the --cxr line, the @supports
+gate, the height-driven stage rule, the quote clamp and the
+layer-after-base ordering.
+
+Ships in `cellexia-aov-ltv-booster-UPDATE-2026-10-06-v36.2.zip`
+(supersedes the deleted v36.1 zip; same file list, content-only).

@@ -78,7 +78,14 @@ function pickSchema() {
 }
 
 function run(args) {
-    execFileSync("npx", ["prisma", ...args], { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" });
+  execFileSync("npx", ["prisma", ...args], {
+    cwd: ROOT,
+    stdio: "inherit",
+    // Windows: npx is npx.cmd, and Node refuses to spawn .cmd shims
+    // without a shell (the 2024 spawn hardening) — the dev's recurring
+    // local patch, now in-tree (v36.1). Static args only.
+    shell: process.platform === "win32",
+  });
 }
 
 const command = process.argv[2];
