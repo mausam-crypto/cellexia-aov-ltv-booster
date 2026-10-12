@@ -144,6 +144,12 @@
  *                               formula pinned wrong, compare-stage
  *                               swipe exclusion dropped, counter clamp
  *                               dropped
+ *   m56–m59 (v38)               card scope gate dropped, teach marker
+ *                               dropped, cue scope gate dropped, the
+ *                               combined card's After half unstamped
+ *   m60–m62 (v38.1)             count-all banner reverts to verified,
+ *                               numberless default dropped, ca falls
+ *                               through on an empty gallery
  *
  * v36 cases (VW1–VW11 + LB6, swipe viewer): counter/thumb/merge/swipe
  *   pure helpers, per=24 pager params with the byte-identical rail
@@ -1214,22 +1220,23 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
 // ================== v33 (combined figure · compare slider · study design)
 
 // --- R25: payload.ui flag reads are strict and fail closed ---------------------------
-// (v35 widened the object with gr/ns/ht — same strict-=== discipline.)
+// (v35 widened the object with gr/ns/ht, v38 with sc — same strict-===
+// discipline.)
 {
-  const OFF = '{"cs":false,"sl":false,"gr":false,"ns":false,"ht":false}';
+  const OFF = '{"cs":false,"sl":false,"sc":false,"gr":false,"ns":false,"ht":false,"ca":false}';
   ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: 1, sl: 1 } })) ===
-      '{"cs":true,"sl":true,"gr":false,"ns":false,"ht":false}',
-    "R25: cs/sl === 1 read as on");
-  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: 1, sl: 1, gr: 1, ns: 1, ht: 1 } })) ===
-      '{"cs":true,"sl":true,"gr":true,"ns":true,"ht":true}',
-    "R25: all five flags read as on when === 1");
+      '{"cs":true,"sl":true,"sc":false,"gr":false,"ns":false,"ht":false,"ca":false}',
+    "R25: cs/sl === 1 read as on (no sc -> the v38 lightbox-only default)");
+  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: 1, sl: 1, sc: 1, gr: 1, ns: 1, ht: 1, ca: 1 } })) ===
+      '{"cs":true,"sl":true,"sc":true,"gr":true,"ns":true,"ht":true,"ca":true}',
+    "R25: all seven flags read as on when === 1");
   ok(JSON.stringify(S.resultsUiFlags({ ui: {} })) === OFF,
     "R25: empty ui -> all off");
   ok(JSON.stringify(S.resultsUiFlags({})) === OFF,
     "R25: absent ui (old server) -> all off");
   ok(JSON.stringify(S.resultsUiFlags(null)) === OFF,
     "R25: null data -> all off");
-  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: "1", sl: true, gr: "1", ns: true, ht: [1] } })) === OFF,
+  ok(JSON.stringify(S.resultsUiFlags({ ui: { cs: "1", sl: true, sc: "1", gr: "1", ns: true, ht: [1], ca: "1" } })) === OFF,
     "R25: '1'/true are not the NUMBER 1 -> off (strict)");
   ok(JSON.stringify(S.resultsUiFlags({ ui: "cs" })) === OFF,
     "R25: non-object ui -> all off");
@@ -1264,8 +1271,13 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   ok(!!thumb && thumb.src === "https://cdn/combo.jpg" &&
     thumb.className === "cx-results__thumb cx-results__thumb--combo",
     "R27: combo thumb keeps its natural-aspect modifier");
-  const tag = card.querySelector(".cx-results__tag");
-  ok(!!tag && tag.textContent === "Before / After", "R27: joint Before / After tag");
+  // v38: the standard side-by-side labels each HALF (the stage's
+  // physical-side tag classes) instead of one joint tag
+  const tags = card.querySelectorAll(".cx-results__tag");
+  ok(tags.length === 2 && tags[0].textContent === "Before" && tags[1].textContent === "After" &&
+    tags[0].className === "cx-results__tag cx-results__tag--ba" &&
+    tags[1].className === "cx-results__tag cx-results__tag--after cx-results__tag--ba cx-results__tag--ba-after",
+    "R27: Before over the left half, After over the right half (physical-side classes)");
   ok(card.querySelector(".cx-results__media").tagName === "BUTTON",
     "R27: slider off -> the media stays the lightbox button");
   const lb = S.resultsBuildLightbox(item, Object.assign({}, STR_CLIN));
@@ -1279,8 +1291,9 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
 }
 
 // --- R28: slider stage — pair + combined feeds, drag/keys, zoom owns the lightbox ----
+// (v38: card sliders are the "everywhere" scope — sl AND sc.)
 {
-  const o = { cs: false, sl: true };
+  const o = { cs: false, sl: true, sc: true };
   const pairItem = S.resultsValidItems({ items: [RES_ITEM] })[0];
   const card = S.resultsBuildCard(pairItem, Object.assign({}, STR_CLIN), o);
   const media = card.querySelector(".cx-results__media");
@@ -1352,7 +1365,7 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
 
 // --- R33: capability gate — no aspect-ratio/clip-path support -> classic media -------
 {
-  const o = { cs: false, sl: true };
+  const o = { cs: false, sl: true, sc: true };
   const pairItem = S.resultsValidItems({ items: [RES_ITEM] })[0];
   S.window.CSS = { supports: function () { return false; } };
   const gated = S.resultsBuildCard(pairItem, Object.assign({}, STR_CLIN), o);
@@ -1412,7 +1425,7 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
 {
   const fx = resultsFixture();
   fx.total = 3;
-  fx.ui = { cs: 1, sl: 1 };
+  fx.ui = { cs: 1, sl: 1, sc: 1 };
   const section = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) }, fx);
   ok(section.className === "cx-proof cx-results",
     "R30: display flags never touch the root class (density pins hold)");
@@ -1593,6 +1606,148 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   const ultra = S.resultsBuildSection({ ctx: "brand", pid: 0, cm: 2, str: Object.assign({}, STR_CLIN) }, fx3);
   ok(ultra.className === "cx-proof cx-results cx-results--ultra cx-results--grid",
     "R37: density + grid modifiers co-exist (ultra's rail wins the cascade)");
+}
+
+// ============== v38 (slider scope — the enlarged view only, by default)
+
+// --- R38: lightbox-only scope — standard card + cue, the slider opens with the tap ---
+{
+  const o = { cs: false, sl: true }; // sl without sc = the v38 default scope
+  const pairItem = S.resultsValidItems({ items: [RES_ITEM] })[0];
+  const card = S.resultsBuildCard(pairItem, Object.assign({}, STR_CLIN), o);
+  const media = card.querySelector(".cx-results__media");
+  ok(media.tagName === "BUTTON" && media.className === "cx-results__media",
+    "R38: the card keeps the standard side-by-side media button");
+  ok(!card.querySelector(".cx-results__ba") && card.querySelectorAll(".cx-results__frame").length === 2,
+    "R38: no compare stage on the card — both frames side by side");
+  const cue = media.querySelector(".cx-results__zoom--cue");
+  ok(!!cue && cue.tagName === "SPAN" && cue.getAttribute("aria-hidden") === "true" &&
+    cue.className === "cx-results__zoom cx-results__zoom--cue",
+    "R38: a decorative magnifier cue rides INSIDE the media button");
+  ok(!card.querySelector("button.cx-results__zoom"),
+    "R38: no separate zoom button (the whole card face stays the one tap target)");
+  ok(media.getAttribute("aria-label") === "View larger · Video",
+    "R38: the media button carries the zoom label (+ video) — the cue itself is silent");
+  const bareLabel = S.resultsBuildCard(pairItem, Object.assign({}, STR), o);
+  ok(!bareLabel.querySelector(".cx-results__media").hasAttribute("aria-label"),
+    "R38: no proxy zm copy -> no label override (the tags keep naming the button)");
+  ok(!!media.querySelector(".sr-only"),
+    "R38: the classic video sr label stays on the media button");
+  S.PF_LB_OPENED.length = 0;
+  S.PF_TRACKS.length = 0;
+  click(media);
+  ok(S.PF_LB_OPENED.length === 1 &&
+    JSON.stringify(S.PF_TRACKS) === '[["verified_before_after","click"]]',
+    "R38: the card tap opens the enlarged view with ONE click beacon");
+  const lb = S.PF_LB_OPENED[0];
+  const stage = lb.querySelector(".cx-results__ba");
+  ok(!!stage && stage.className === "cx-results__ba cx-results__ba--teach" &&
+    lb.querySelectorAll(".cx-lightbox__fig").length === 0,
+    "R38: the enlarged view carries the compare stage, marked to TEACH the drag");
+  const hint = stage.querySelector(".cx-results__ba-hint");
+  ok(!!hint && hint.textContent === "Drag to compare" && !hint.hasAttribute("hidden"),
+    "R38: the enlarged view's hint is live until first use");
+  // combined photo + study design: half tags in the stage's wording
+  const combo = S.resultsValidItems({ items: [Object.assign({}, RES_LAB, {
+    beforeUrl: null, afterUrl: null, combinedUrl: "https://cdn/combo.jpg",
+  })] })[0];
+  const studyO = { cs: true, sl: true };
+  const cc = S.resultsBuildCard(combo, Object.assign({}, STR_CLIN), studyO);
+  const ctags = cc.querySelectorAll(".cx-results__frame--combo .cx-results__tag");
+  ok(ctags.length === 2 && ctags[0].textContent === "Before" && ctags[1].textContent === "After 7 weeks",
+    "R38: the combined study card labels each half, After week-stamped (the stage's wording)");
+  ok(!!cc.querySelector(".cx-results__zoom--cue"), "R38: combined cards carry the cue too");
+  const clb = S.resultsBuildLightbox(combo, Object.assign({}, STR_CLIN), studyO);
+  ok(clb.querySelector(".cx-results__ba").className === "cx-results__ba cx-results__ba--combo cx-results__ba--teach",
+    "R38: the combined enlarged view = combo stage + teach");
+}
+
+// --- R39: the other scopes — everywhere keeps v33 exactly, off stays static ----------
+{
+  const pairItem = S.resultsValidItems({ items: [RES_ITEM] })[0];
+  const all = { cs: false, sl: true, sc: true };
+  const card = S.resultsBuildCard(pairItem, Object.assign({}, STR_CLIN), all);
+  ok(!!card.querySelector(".cx-results__ba") && !!card.querySelector("button.cx-results__zoom") &&
+    !card.querySelector(".cx-results__zoom--cue"),
+    "R39: everywhere = the v33 card (stage + zoom button, no cue)");
+  const lb = S.resultsBuildLightbox(pairItem, Object.assign({}, STR_CLIN), all);
+  ok(lb.querySelector(".cx-results__ba").className === "cx-results__ba",
+    "R39: everywhere keeps the v33 untaught enlarged stage (the cards taught the drag)");
+  const oneImg = S.resultsValidItems({ items: [{ beforeUrl: "https://cdn/b.jpg" }] })[0];
+  const oneCard = S.resultsBuildCard(oneImg, Object.assign({}, STR_CLIN), all);
+  ok(oneCard.querySelector(".cx-results__media").tagName === "BUTTON" &&
+    !oneCard.querySelector(".cx-results__zoom"),
+    "R39: everywhere + a one-photo entry = the exact v33 classic fallback (no cue)");
+  const off = { cs: false, sl: false };
+  const offCard = S.resultsBuildCard(pairItem, Object.assign({}, STR_CLIN), off);
+  ok(!offCard.querySelector(".cx-results__ba") && !offCard.querySelector(".cx-results__zoom"),
+    "R39: slider off — standard card, no cue");
+  const offLb = S.resultsBuildLightbox(pairItem, Object.assign({}, STR_CLIN), off);
+  ok(!offLb.querySelector(".cx-results__ba") && offLb.querySelectorAll(".cx-lightbox__fig").length === 2,
+    "R39: slider off — static figures in the enlarged view");
+  const scOnly = S.resultsBuildCard(pairItem, Object.assign({}, STR_CLIN), { sc: true });
+  ok(!scOnly.querySelector(".cx-results__ba") && !scOnly.querySelector(".cx-results__zoom"),
+    "R39: sc without sl is inert (the scope never switches the slider on)");
+  const bare = S.resultsBuildCard(pairItem, Object.assign({}, STR_CLIN));
+  ok(!bare.querySelector(".cx-results__zoom"),
+    "R39: absent flags (old call sites, old server) keep the exact pre-v38 card");
+}
+
+// --- R40: page-1 scope flows to Show-more cards --------------------------------------
+{
+  const fx = resultsFixture();
+  fx.total = 3;
+  fx.ui = { sl: 1 };
+  const section = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) }, fx);
+  ok(section.querySelectorAll(".cx-results__ba").length === 0 &&
+    section.querySelectorAll(".cx-results__zoom--cue").length === 2,
+    "R40: sl without sc -> standard cards with cues (no card stages)");
+  S.PF_FETCH_QUEUE.push({ total: 3, verifiedTotal: 2, items: [RES_LAB] }); // NO ui member on page 2
+  click(section.querySelector(".cx-results__more"));
+  ok(section.querySelectorAll(".cx-results__zoom--cue").length === 3 &&
+    section.querySelectorAll(".cx-results__ba").length === 0,
+    "R40: Show-more cards reuse the page-1 scope");
+}
+
+// --- R41 (v38.1): the scale banner — numberless default, count-all, legacy chain ----
+{
+  const sB = Object.assign({}, STR, { bn: "See results from real Cellexia users." });
+  const plain = S.resultsBannerData(sB, 132, 16, { ca: false });
+  ok(!!plain && plain.text === "See results from real Cellexia users." && plain.n === undefined,
+    "R41: default (no ca) + proxy bn -> the numberless sentence, no count");
+  const all = S.resultsBannerData(sB, 132, 16, { ca: true });
+  ok(!!all && all.tpl === STR.bv && all.n === 132,
+    "R41: ca -> banner_verified's sentence with EVERY result (132, not the 16 verified)");
+  const allLab = S.resultsBannerData(sB, 116, 0, { ca: true });
+  ok(!!allLab && allLab.n === 116 && allLab.tpl === STR.bv,
+    "R41: ca with zero verified purchases (a lab-only product) still counts every result");
+  ok(S.resultsBannerData(sB, 0, 0, { ca: true }) === null &&
+    S.resultsBannerData(sB, 0, 0, { ca: false }) === null,
+    "R41: an empty gallery renders no banner in either mode (fail closed)");
+  ok(S.resultsBannerData(sB, 0, 5, { ca: true }) === null,
+    "R41: ca never falls back to the verified-only number");
+  const legacy = S.resultsBannerData(STR, 132, 16, { ca: false });
+  ok(!!legacy && legacy.tpl === STR.bv && legacy.n === 16,
+    "R41: no bn copy (old server / stale cache) -> the exact pre-v38.1 chain");
+  ok(S.resultsBannerData(sB, 132, 16).text === "See results from real Cellexia users.",
+    "R41: absent flags (old call sites) take the numberless default when bn is present");
+}
+
+// --- R42 (v38.1): the banner element — plain text, or the count in its <strong> -----
+{
+  const fx = resultsFixture();
+  fx.copy = { bn: "See results from real Cellexia users." };
+  const sec = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR) }, fx);
+  const banner = sec.querySelector(".cx-results__banner");
+  ok(banner.textContent === "See results from real Cellexia users." && !sec.querySelector(".cx-results__count"),
+    "R42: the numberless banner renders as plain text (no count element)");
+  const fx2 = resultsFixture();
+  fx2.copy = { bn: "See results from real Cellexia users." };
+  fx2.ui = { ca: 1 };
+  const sec2 = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR) }, fx2);
+  ok(sec2.querySelector(".cx-results__banner").textContent === "See results from 40 real Cellexia users." &&
+    sec2.querySelector(".cx-results__count").textContent === "40",
+    "R42: ca renders the full total (40) in the count element, not the 25 verified");
 }
 
 // ================================== ultra (U, v8.2 look — v8.3 "cm": 2)
@@ -2864,7 +3019,7 @@ function vwFixture() {
 // --- VW8: swipe ownership — the compare stage and vertical scrolls never page --------
 {
   const section = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR) },
-    Object.assign(vwFixture(), { ui: { sl: 1 } }));
+    Object.assign(vwFixture(), { ui: { sl: 1, sc: 1 } }));
   S.PF_LB_OPENED.length = 0;
   click(section.querySelectorAll(".cx-results__zoom")[0]);
   const vwRoot = S.PF_LB_OPENED[0];
@@ -2884,6 +3039,24 @@ function vwFixture() {
   vcard._fire("touchstart", { target: head, touches: [{ clientX: 200, clientY: 40 }] });
   vcard._fire("touchend", { target: head, changedTouches: [{ clientX: 140, clientY: 190 }] });
   ok(counterEl.textContent === "2/40", "VW8: vertical dominance never pages");
+}
+
+// --- VW12 (v38): lightbox-only scope — a standard card's tap opens a teaching stage --
+{
+  const section = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) },
+    Object.assign(vwFixture(), { ui: { sl: 1 } }));
+  ok(!section.querySelector(".cx-results__rail .cx-results__ba") &&
+    section.querySelectorAll(".cx-results__zoom--cue").length === 2,
+    "VW12: rail cards stay standard side-by-side (cue, no stage)");
+  S.PF_LB_OPENED.length = 0;
+  click(section.querySelectorAll(".cx-results__media")[0]);
+  const vwRoot = S.PF_LB_OPENED[0];
+  ok(!!vwRoot && !!vwRoot.querySelector(".cx-results-vw__count"),
+    "VW12: the standard card's tap opens the swipe viewer");
+  const ba = vwRoot && vwRoot.querySelector(".cx-results__ba");
+  ok(!!ba && ba.className === "cx-results__ba cx-results__ba--teach" &&
+    !ba.querySelector(".cx-results__ba-hint").hasAttribute("hidden"),
+    "VW12: the viewer's grafted stage keeps teach mode (hint live)");
 }
 
 // ======================================= REAL lightbox machinery (LB, v8.21)
@@ -3178,7 +3351,7 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         // v25: the copy whitelist dropped — any proxy field could then
         // overwrite island strings like the banner (R22's HACK catches).
         name: "m34-copy-whitelist-dropped",
-        find: "    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx'];",
+        find: "    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx', 'bn'];",
         replace: "    var keys = []; for (var ck in data.copy) keys.push(ck);",
       },
       {
@@ -3211,8 +3384,8 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         // v33: loosened flag reads would let a '1'/true-shaped payload
         // (or a poisoned cache) switch designs (R25's strict case).
         name: "m38-ui-flags-not-strict",
-        find: "    return { cs: ui.cs === 1, sl: ui.sl === 1, gr: ui.gr === 1, ns: ui.ns === 1, ht: ui.ht === 1 };",
-        replace: "    return { cs: !!ui.cs, sl: !!ui.sl, gr: !!ui.gr, ns: !!ui.ns, ht: !!ui.ht };",
+        find: "    return { cs: ui.cs === 1, sl: ui.sl === 1, sc: ui.sc === 1, gr: ui.gr === 1, ns: ui.ns === 1, ht: ui.ht === 1, ca: ui.ca === 1 };",
+        replace: "    return { cs: !!ui.cs, sl: !!ui.sl, sc: !!ui.sc, gr: !!ui.gr, ns: !!ui.ns, ht: !!ui.ht, ca: !!ui.ca };",
       },
       {
         // v33: the combined column must never render for customer rows,
@@ -3333,6 +3506,56 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m55-counter-clamp-dropped",
         find: "    if (n > total) n = total;",
         replace: "",
+      },
+      {
+        // v38: the card gate ignores the scope — every store would snap
+        // back to sliders on the cards (R38/R40/VW12 catch).
+        name: "m56-card-scope-gate-dropped",
+        find: "    var slider = o && o.sl && o.sc ? resultsSlider(item, s, o) : null;",
+        replace: "    var slider = o && o.sl ? resultsSlider(item, s, o) : null;",
+      },
+      {
+        // v38: the teach marker dropped — in the default scope NOTHING
+        // would teach the drag (the lightbox hides its hint; R38/VW12).
+        name: "m57-teach-marker-dropped",
+        find: "      if (!o.sc) slider.className += ' cx-results__ba--teach';",
+        replace: "",
+      },
+      {
+        // v38: the cue's scope gate dropped — the everywhere scope's
+        // classic fallback (a one-photo entry) would grow a cue the v33
+        // card never had (R39's one-photo case).
+        name: "m58-cue-scope-gate-dropped",
+        find: "    if (!slider && o && o.sl && !o.sc) {",
+        replace: "    if (!slider && o && o.sl) {",
+      },
+      {
+        // v38.1: the "count every result" choice drops back to the
+        // verified-only number that ignored clinical results (R41).
+        name: "m60-banner-all-verified",
+        find: "    if (o && o.ca) return pfPosInt(total) ? { tpl: pfStr(s, 'bv'), n: total } : null;",
+        replace: "    if (o && o.ca) return pfPosInt(verified) ? { tpl: pfStr(s, 'bv'), n: verified } : null;",
+      },
+      {
+        // v38.1: the numberless default ignored — the banner keeps the
+        // misleading verified-only number (R41 + R42 catch).
+        name: "m61-banner-plain-dropped",
+        find: "    if (/\\S/.test(plain) && pfPosInt(total)) return { text: plain };",
+        replace: "",
+      },
+      {
+        // v38.1: the zero-result guard dropped — ca on an empty gallery
+        // would fall through and render a banner over nothing (R41).
+        name: "m62-banner-ca-falls-through",
+        find: "    if (o && o.ca) return pfPosInt(total) ? { tpl: pfStr(s, 'bv'), n: total } : null;",
+        replace: "    if (o && o.ca && pfPosInt(total)) return { tpl: pfStr(s, 'bv'), n: total };",
+      },
+      {
+        // v38: the combined card's After half loses the week stamp — the
+        // card would contradict the stage it opens (R38's combo case).
+        name: "m59-combo-after-unstamped",
+        find: "    var aftT = resultsAfterTag(item, s, o);\n    if (/\\S/.test(aftT)) {\n      var at = pfEl('span', 'cx-results__tag cx-results__tag--after cx-results__tag--ba cx-results__tag--ba-after');\n      at.textContent = aftT;\n      frame.appendChild(at);",
+        replace: "    var aftT = pfStr(s, 'aft');\n    if (/\\S/.test(aftT)) {\n      var at = pfEl('span', 'cx-results__tag cx-results__tag--after cx-results__tag--ba cx-results__tag--ba-after');\n      at.textContent = aftT;\n      frame.appendChild(at);",
       },
     ],
   });

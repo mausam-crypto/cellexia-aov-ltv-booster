@@ -32,6 +32,11 @@
  *       filtered result total — also the tile's accessible name
  *   pr  v36 viewer previous-result control label (aria)
  *   nx  v36 viewer next-result control label (aria)
+ *   bn  v38.1 the scale banner WITHOUT a number ("See results from real
+ *       Cellexia users.") — the default banner; each language mirrors
+ *       its catalog's results.banner_verified with the count removed
+ *       and the grammar re-agreed (de/fi/hu genitive plurals, ro drops
+ *       its ": N în total" tail). Deliberately carries NO @@N@@.
  */
 
 export interface ResultsUiCopy {
@@ -48,6 +53,7 @@ export interface ResultsUiCopy {
   sa: string;
   pr: string;
   nx: string;
+  bn: string;
 }
 
 export const RESULTS_UI_COPY_CODES = [
@@ -64,6 +70,7 @@ export const RESULTS_UI_COPY_CODES = [
   "sa",
   "pr",
   "nx",
+  "bn",
 ] as const;
 
 const NO_TABLE: ResultsUiCopy = {
@@ -73,13 +80,14 @@ const NO_TABLE: ResultsUiCopy = {
   mi: "Målt med instrumenter",
   mp: "Samme person",
   mu: "Uretusjerte bilder",
-  aw: "Etter @@N@@ uker",
+  aw: "@@N@@ ukers bruk",
   dr: "Dra for å sammenligne",
   iv: "Resultatene kan variere fra person til person.",
   zm: "Se større",
   sa: "Se alle @@N@@ resultater",
   pr: "Forrige resultat",
   nx: "Neste resultat",
+  bn: "Se resultater fra ekte Cellexia-brukere.",
 };
 
 /** Keyed by NORMALIZED (lowercase) storefront locale — the proxy
@@ -94,13 +102,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Instrument measured",
     mp: "Same patient",
     mu: "Unretouched images",
-    aw: "After @@N@@ weeks",
+    aw: "@@N@@ weeks of use",
     dr: "Drag to compare",
     iv: "Individual results may vary.",
     zm: "View larger",
     sa: "See all @@N@@ results",
     pr: "Previous result",
     nx: "Next result",
+    bn: "See results from real Cellexia users.",
   },
   ar: {
     rp: "أشخاص حقيقيون. نتائج حقيقية.",
@@ -109,13 +118,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "قياس بالأجهزة",
     mp: "الشخص نفسه",
     mu: "صور غير معدلة",
-    aw: "بعد الأسبوع @@N@@",
+    aw: "أسابيع الاستخدام: @@N@@",
     dr: "اسحب للمقارنة",
     iv: "قد تختلف النتائج من شخص إلى آخر.",
     zm: "تكبير الصورة",
     sa: "عرض جميع النتائج (@@N@@)",
     pr: "النتيجة السابقة",
     nx: "النتيجة التالية",
+    bn: "اطّلع على نتائج مستخدمي Cellexia الحقيقيين.",
   },
   da: {
     rp: "Ægte mennesker. Ægte resultater.",
@@ -124,13 +134,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Målt med instrumenter",
     mp: "Samme person",
     mu: "Uretoucherede billeder",
-    aw: "Efter @@N@@ uger",
+    aw: "@@N@@ ugers brug",
     dr: "Træk for at sammenligne",
     iv: "Resultaterne kan variere fra person til person.",
     zm: "Se større",
     sa: "Se alle @@N@@ resultater",
     pr: "Forrige resultat",
     nx: "Næste resultat",
+    bn: "Se resultater fra ægte Cellexia-brugere.",
   },
   de: {
     rp: "Echte Menschen. Echte Ergebnisse.",
@@ -139,13 +150,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Instrumentell gemessen",
     mp: "Dieselbe Person",
     mu: "Unretuschierte Bilder",
-    aw: "Nach @@N@@ Wochen",
+    aw: "@@N@@ Wochen Anwendung",
     dr: "Zum Vergleichen ziehen",
     iv: "Ergebnisse können individuell abweichen.",
     zm: "Größer ansehen",
     sa: "Alle @@N@@ Ergebnisse ansehen",
     pr: "Vorheriges Ergebnis",
     nx: "Nächstes Ergebnis",
+    bn: "Sehen Sie die Ergebnisse echter Cellexia-Anwender.",
   },
   el: {
     rp: "Αληθινοί άνθρωποι. Αληθινά αποτελέσματα.",
@@ -154,13 +166,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Μέτρηση με όργανα",
     mp: "Το ίδιο άτομο",
     mu: "Φωτογραφίες χωρίς ρετούς",
-    aw: "Μετά από @@N@@ εβδομάδες",
+    aw: "@@N@@ εβδομάδες χρήσης",
     dr: "Σύρε για σύγκριση",
     iv: "Τα αποτελέσματα διαφέρουν από άτομο σε άτομο.",
     zm: "Μεγέθυνση",
     sa: "Δες όλα τα @@N@@ αποτελέσματα",
     pr: "Προηγούμενο αποτέλεσμα",
     nx: "Επόμενο αποτέλεσμα",
+    bn: "Δες αποτελέσματα από αληθινούς χρήστες Cellexia.",
   },
   es: {
     rp: "Personas reales. Resultados reales.",
@@ -169,13 +182,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Medido con instrumentos",
     mp: "La misma persona",
     mu: "Imágenes sin retocar",
-    aw: "Después de @@N@@ semanas",
+    aw: "@@N@@ semanas de uso",
     dr: "Arrastra para comparar",
     iv: "Los resultados pueden variar según la persona.",
     zm: "Ampliar",
     sa: "Ver los @@N@@ resultados",
     pr: "Resultado anterior",
     nx: "Resultado siguiente",
+    bn: "Descubre los resultados de usuarios reales de Cellexia.",
   },
   fi: {
     rp: "Aitoja ihmisiä. Aitoja tuloksia.",
@@ -184,13 +198,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Mitattu mittalaitteilla",
     mp: "Sama henkilö",
     mu: "Muokkaamattomat kuvat",
-    aw: "@@N@@ viikon jälkeen",
+    aw: "@@N@@ viikon käyttö",
     dr: "Vertaile vetämällä",
     iv: "Tulokset voivat vaihdella henkilöittäin.",
     zm: "Katso suurempana",
     sa: "Katso kaikki @@N@@ tulosta",
     pr: "Edellinen tulos",
     nx: "Seuraava tulos",
+    bn: "Katso aitojen Cellexia-käyttäjien tulokset.",
   },
   fr: {
     rp: "De vraies personnes. De vrais résultats.",
@@ -199,13 +214,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Mesuré par instruments",
     mp: "Même personne",
     mu: "Photos non retouchées",
-    aw: "Après @@N@@ sem.",
+    aw: "@@N@@ sem. d'utilisation",
     dr: "Faites glisser pour comparer",
     iv: "Les résultats peuvent varier d'une personne à l'autre.",
     zm: "Voir en grand",
     sa: "Voir les @@N@@ résultats",
     pr: "Résultat précédent",
     nx: "Résultat suivant",
+    bn: "Découvrez les résultats de vrais utilisateurs Cellexia.",
   },
   hu: {
     rp: "Valódi emberek. Valódi eredmények.",
@@ -214,13 +230,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Műszeres mérés",
     mp: "Ugyanaz a személy",
     mu: "Retusálatlan képek",
-    aw: "@@N@@ hét után",
+    aw: "@@N@@ hét használat",
     dr: "Húzd az összehasonlításhoz",
     iv: "Az eredmények egyénenként eltérhetnek.",
     zm: "Nagyobb nézet",
     sa: "Nézd meg mind a @@N@@ eredményt",
     pr: "Előző eredmény",
     nx: "Következő eredmény",
+    bn: "Nézd meg valódi Cellexia-felhasználók eredményeit.",
   },
   it: {
     rp: "Persone vere. Risultati veri.",
@@ -229,13 +246,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Misurato con strumenti",
     mp: "Stessa persona",
     mu: "Immagini non ritoccate",
-    aw: "Dopo @@N@@ settimane",
+    aw: "@@N@@ settimane di utilizzo",
     dr: "Trascina per confrontare",
     iv: "I risultati possono variare da persona a persona.",
     zm: "Ingrandisci",
     sa: "Vedi tutti i @@N@@ risultati",
     pr: "Risultato precedente",
     nx: "Risultato successivo",
+    bn: "Guarda i risultati di veri utenti Cellexia.",
   },
   ja: {
     rp: "実際の使用者による、本物の結果。",
@@ -244,13 +262,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "機器測定",
     mp: "同一人物",
     mu: "無加工の写真",
-    aw: "@@N@@週間後",
+    aw: "@@N@@週間使用",
     dr: "ドラッグして比較",
     iv: "効果には個人差があります。",
     zm: "拡大表示",
     sa: "@@N@@件の結果をすべて見る",
     pr: "前の結果",
     nx: "次の結果",
+    bn: "実際のCellexiaユーザーの結果をご覧ください。",
   },
   nb: NO_TABLE,
   nl: {
@@ -260,13 +279,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Instrumenteel gemeten",
     mp: "Dezelfde persoon",
     mu: "Onbewerkte foto's",
-    aw: "Na week @@N@@",
+    aw: "@@N@@ weken gebruik",
     dr: "Sleep om te vergelijken",
     iv: "Resultaten kunnen per persoon verschillen.",
     zm: "Groter bekijken",
     sa: "Bekijk alle @@N@@ resultaten",
     pr: "Vorig resultaat",
     nx: "Volgend resultaat",
+    bn: "Bekijk resultaten van echte Cellexia-gebruikers.",
   },
   no: NO_TABLE,
   pl: {
@@ -276,13 +296,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Pomiar aparaturą",
     mp: "Ta sama osoba",
     mu: "Zdjęcia bez retuszu",
-    aw: "Po @@N@@ tyg.",
+    aw: "@@N@@ tyg. stosowania",
     dr: "Przeciągnij, aby porównać",
     iv: "Efekty mogą się różnić w zależności od osoby.",
     zm: "Powiększ",
     sa: "Zobacz wszystkie wyniki (@@N@@)",
     pr: "Poprzedni wynik",
     nx: "Następny wynik",
+    bn: "Zobacz efekty prawdziwych użytkowników Cellexii.",
   },
   "pt-br": {
     rp: "Pessoas reais. Resultados reais.",
@@ -291,13 +312,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Medido com instrumentos",
     mp: "A mesma pessoa",
     mu: "Imagens sem retoque",
-    aw: "Após @@N@@ semanas",
+    aw: "@@N@@ semanas de uso",
     dr: "Arraste para comparar",
     iv: "Os resultados podem variar de pessoa para pessoa.",
     zm: "Ampliar",
     sa: "Ver todos os @@N@@ resultados",
     pr: "Resultado anterior",
     nx: "Próximo resultado",
+    bn: "Veja os resultados de usuários reais da Cellexia.",
   },
   "pt-pt": {
     rp: "Pessoas reais. Resultados reais.",
@@ -306,13 +328,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Medido com instrumentos",
     mp: "A mesma pessoa",
     mu: "Imagens não retocadas",
-    aw: "Após @@N@@ semanas",
+    aw: "@@N@@ semanas de utilização",
     dr: "Arraste para comparar",
     iv: "Os resultados podem variar de pessoa para pessoa.",
     zm: "Ampliar",
     sa: "Ver os @@N@@ resultados",
     pr: "Resultado anterior",
     nx: "Resultado seguinte",
+    bn: "Veja os resultados de utilizadores reais de Cellexia.",
   },
   ro: {
     rp: "Oameni reali. Rezultate reale.",
@@ -321,13 +344,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Măsurat cu instrumente",
     mp: "Aceeași persoană",
     mu: "Imagini neretușate",
-    aw: "Săptămâna @@N@@",
+    aw: "Săptămâni de utilizare: @@N@@",
     dr: "Trage pentru a compara",
     iv: "Rezultatele pot varia de la o persoană la alta.",
     zm: "Vezi mai mare",
     sa: "Vezi toate cele @@N@@ rezultate",
     pr: "Rezultatul anterior",
     nx: "Rezultatul următor",
+    bn: "Vezi rezultatele obținute de utilizatori reali Cellexia.",
   },
   sv: {
     rp: "Riktiga människor. Riktiga resultat.",
@@ -336,13 +360,14 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     mi: "Uppmätt med instrument",
     mp: "Samma person",
     mu: "Oretuscherade bilder",
-    aw: "Efter @@N@@ veckor",
+    aw: "@@N@@ veckors användning",
     dr: "Dra för att jämföra",
     iv: "Resultaten kan variera från person till person.",
     zm: "Se större bild",
     sa: "Se alla @@N@@ resultat",
     pr: "Föregående resultat",
     nx: "Nästa resultat",
+    bn: "Se resultat från riktiga Cellexia-användare.",
   },
 };
 

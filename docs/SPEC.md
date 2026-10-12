@@ -593,6 +593,19 @@ preset" picker applies them so only the photos and numbers remain.
 Same-name upsert, cap 50, shop-scoped, zero storefront surface. Full
 contract: `docs/SPEC-v34-result-presets.md`.
 
+## v38 compare slider scope (results gallery)
+
+`beforeAfter.sliderScope` ("lightbox" | "everywhere") — LIVE display
+setting. "lightbox" (default, with `slider` now defaulting ON) keeps the
+standard side-by-side before/after on every card and gives the drag
+slider only to the enlarged view (lightbox / swipe viewer), which keeps
+its "Drag to compare" hint; "everywhere" is the v33 behavior. Travels as
+`payload.ui.sc` (everywhere only). Zero Liquid bytes, zero locale bytes.
+v38.1 adds `beforeAfter.bannerCount` ("none" default = the numberless
+banner, proxy copy code `bn` ×19 | "all" = every served result,
+`payload.ui.ca`); the old banner counted verified purchases only.
+Full contract: `docs/SPEC-v38-slider-scope.md`.
+
 ## v20 image badges on mobile
 
 `image_badges` — the SIZE of the award/certification badges the THEME lays

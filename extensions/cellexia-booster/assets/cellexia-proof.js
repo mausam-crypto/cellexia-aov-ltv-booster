@@ -1683,10 +1683,21 @@
   // metadata, Show more pagination. PDP passes pid → product-prioritised
   // order; brand/home context shows everything.
 
-  function resultsBannerData(s, total, verified) {
-    // Scale-banner fallback chain: verifiedTotal → banner_verified;
-    // else total → banner_all; else null and the WHOLE module renders
-    // nothing (fail closed — a gallery with zero results is not proof).
+  function resultsBannerData(s, total, verified, o) {
+    // v38.1 — the merchant's banner choice (the old verified-only number
+    // ignored every clinical result: "16 real users" over 132 results).
+    // A gallery with zero results still renders nothing (fail closed —
+    // not proof) in every mode.
+    //   ui.ca → banner_verified's sentence with EVERY served result (the
+    //           page-1 unfiltered total: customer + clinical).
+    //   else, with the proxy's numberless `bn` copy → that sentence, no
+    //           number ({ text } instead of { tpl, n }).
+    //   else (old server / stale cache, no bn) → the pre-v38.1 chain:
+    //           verifiedTotal → banner_verified; else total → banner_all.
+    if (!pfPosInt(total) && !pfPosInt(verified)) return null;
+    if (o && o.ca) return pfPosInt(total) ? { tpl: pfStr(s, 'bv'), n: total } : null;
+    var plain = pfStrRaw(s, 'bn');
+    if (/\S/.test(plain) && pfPosInt(total)) return { text: plain };
     if (pfPosInt(verified)) return { tpl: pfStr(s, 'bv'), n: verified };
     if (pfPosInt(total)) return { tpl: pfStr(s, 'ba'), n: total };
     return null;
@@ -1741,7 +1752,7 @@
     // island strings and entry text are untouched. Raw-read convention:
     // these never pass Liquid's t-filter escaping (v8.22 precedent).
     if (!conf || !conf.str || !data || !data.copy || typeof data.copy !== 'object') return;
-    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx'];
+    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx', 'bn'];
     for (var i = 0; i < keys.length; i++) {
       var value = data.copy[keys[i]];
       if (typeof value === 'string' && /\S/.test(value)) conf.str[keys[i]] = value;
@@ -1753,13 +1764,17 @@
     // payload.ui — cs 1 = clinical-study design for lab entries, sl 1 =
     // compare slider, gr 1 = the old 4-column desktop grid (v35 default
     // is the one-row rail), ns 1 = study tags OFF (default shows them),
-    // ht 1 = lab testimonials hidden. Strict === 1 reads; anything else
-    // (absent member, wrong type, old server) fails closed to the
-    // defaults. The Liquid island cannot carry these (byte budget), and
-    // refetched pages reuse the flags read here.
+    // ht 1 = lab testimonials hidden. v38: sc 1 = the slider ALSO runs on
+    // the gallery cards (the v33 look); without it the cards keep the
+    // standard side-by-side and the slider lives in the enlarged view
+    // only. v38.1: ca 1 = the scale banner counts EVERY served result
+    // (customer + clinical). Strict === 1 reads; anything else (absent
+    // member, wrong type, old server) fails closed to the defaults. The
+    // Liquid island cannot carry these (byte budget), and refetched pages
+    // reuse the flags read here.
     var ui = data && data.ui;
-    if (!ui || typeof ui !== 'object') return { cs: false, sl: false, gr: false, ns: false, ht: false };
-    return { cs: ui.cs === 1, sl: ui.sl === 1, gr: ui.gr === 1, ns: ui.ns === 1, ht: ui.ht === 1 };
+    if (!ui || typeof ui !== 'object') return { cs: false, sl: false, sc: false, gr: false, ns: false, ht: false, ca: false };
+    return { cs: ui.cs === 1, sl: ui.sl === 1, sc: ui.sc === 1, gr: ui.gr === 1, ns: ui.ns === 1, ht: ui.ht === 1, ca: ui.ca === 1 };
   }
 
   // v26.2: decimal percents ("34.2") print with the page language's
@@ -2218,8 +2233,8 @@
   }
 
   function resultsAfterTag(item, s, o) {
-    // v33 study design: the After tag carries the week stamp ("After 8
-    // weeks", proxy code aw) when the lab entry has a duration — the
+    // v33 study design: the After tag carries the week stamp ("8 weeks
+    // of use", proxy code aw) when the lab entry has a duration — the
     // reference clinical look. Everything else (classic design, no weeks,
     // missing copy) falls back to the plain After label.
     if (o && o.cs && item.lab && item.weeks) {
@@ -2240,19 +2255,31 @@
     return /\S/.test(bef) ? bef : aft;
   }
 
-  function resultsComboFrame(item, s) {
+  function resultsComboFrame(item, s, o) {
     // v33: the ONE combined before+after figure as a static frame —
     // full-width, natural aspect (the pair's 1:1 crop would cut both
-    // outer halves off a landscape composite), one joint tag.
+    // outer halves off a landscape composite).
+    // v38: the standard side-by-side look now labels each HALF like the
+    // compare stage does — Before over the physical left half, the After
+    // tag (week-stamped in the study design) over the right half — so
+    // the card reads exactly like the slider it opens. Physical sides on
+    // purpose (the stage-tag classes): the composite's left half is the
+    // before photo in every reading direction.
     var frame = pfEl('div', 'cx-results__frame cx-results__frame--combo');
     var img = pfEl('img', 'cx-results__thumb cx-results__thumb--combo', ['alt', '', 'loading', 'lazy']);
     img.src = item.c;
     frame.appendChild(img);
-    var tag = resultsComboTag(s);
-    if (/\S/.test(tag)) {
-      var t = pfEl('span', 'cx-results__tag');
-      t.textContent = tag;
-      frame.appendChild(t);
+    var befT = pfStr(s, 'bef');
+    if (/\S/.test(befT)) {
+      var bt = pfEl('span', 'cx-results__tag cx-results__tag--ba');
+      bt.textContent = befT;
+      frame.appendChild(bt);
+    }
+    var aftT = resultsAfterTag(item, s, o);
+    if (/\S/.test(aftT)) {
+      var at = pfEl('span', 'cx-results__tag cx-results__tag--after cx-results__tag--ba cx-results__tag--ba-after');
+      at.textContent = aftT;
+      frame.appendChild(at);
     }
     return frame;
   }
@@ -2493,7 +2520,9 @@
       card.appendChild(head);
       pfSp(card);
     }
-    var slider = o && o.sl ? resultsSlider(item, s, o) : null;
+    // v38: card sliders need sc on top of sl — the default keeps the
+    // standard side-by-side here and the slider in the enlarged view.
+    var slider = o && o.sl && o.sc ? resultsSlider(item, s, o) : null;
     var media;
     if (slider) {
       // Slider media: a plain wrapper (a drag control may not nest inside
@@ -2504,7 +2533,7 @@
     } else {
       media = pfEl('button', 'cx-results__media', ['type', 'button']);
       if (item.c) {
-        media.appendChild(resultsComboFrame(item, s));
+        media.appendChild(resultsComboFrame(item, s, o));
       } else {
         if (item.b) media.appendChild(resultsBuildFrame(item.b, pfStr(s, 'bef'), false));
         if (item.a) media.appendChild(resultsBuildFrame(item.a, resultsAfterTag(item, s, o), true));
@@ -2525,6 +2554,23 @@
         var vidSr = pfEl('span', 'sr-only');
         vidSr.textContent = vidLabel;
         media.appendChild(vidSr);
+      }
+    }
+    if (!slider && o && o.sl && !o.sc) {
+      // v38: lightbox-only slider mode — a decorative magnifier chip on
+      // the standard side-by-side card says "tap for the enlarged view"
+      // (where the drag compare lives). Inside the media button, so the
+      // whole card face stays the one tap target.
+      var cue = pfEl('span', 'cx-results__zoom cx-results__zoom--cue', ['aria-hidden', 'true']);
+      cue.appendChild(resultsIcon('zoom', 14));
+      media.appendChild(cue);
+      // The cue is silent, so the button itself carries the v33 zoom
+      // label ("View larger", plus the video label) for screen readers;
+      // without the proxy copy it keeps its content name (the tags).
+      var cueLabel = pfStrRaw(s, 'zm');
+      if (/\S/.test(cueLabel)) {
+        var cueVid = item.video ? pfStr(s, 'vid') : '';
+        media.setAttribute('aria-label', /\S/.test(cueVid) ? cueLabel + ' · ' + cueVid : cueLabel);
       }
     }
     if (slider) {
@@ -2631,6 +2677,10 @@
     // a combined entry without the slider shows ONE full-width figure.
     var slider = o && o.sl ? resultsSlider(item, s, o) : null;
     if (slider) {
+      // v38: lightbox-only mode (no sc) — the cards never taught the
+      // drag, so the enlarged view keeps its "Drag to compare" hint
+      // (CSS hides it here when the cards already carried it).
+      if (!o.sc) slider.className += ' cx-results__ba--teach';
       imgs.appendChild(slider);
     } else if (item.c) {
       imgs.appendChild(fig(item.c, resultsComboTag(s), true));
@@ -3316,7 +3366,7 @@
     // v33 display flags — read once from the init response; every later
     // card and lightbox (filters, Show more) reuses this same object.
     var o = resultsUiFlags(data);
-    var banner = resultsBannerData(s, data ? data.total : 0, data ? data.verifiedTotal : 0);
+    var banner = resultsBannerData(s, data ? data.total : 0, data ? data.verifiedTotal : 0, o);
     if (!banner) return null; // 0 total → the whole module fails closed
     var items = resultsValidItems(data);
     if (items.length === 0) return null; // a banner with no cards is broken proof
@@ -3371,12 +3421,17 @@
     // Scale banner — the number rides its own <strong> so it can carry
     // the Gobold treatment. Numbers stay text, never markup.
     var bannerP = pfEl('p', 'cx-results__banner');
-    var parts = banner.tpl.split('@@N@@');
-    bannerP.appendChild(document.createTextNode(parts[0] || ''));
-    var count = pfEl('strong', 'cx-results__count');
-    count.textContent = String(banner.n);
-    bannerP.appendChild(count);
-    bannerP.appendChild(document.createTextNode(parts.length > 1 ? parts[1] : ''));
+    if (typeof banner.text === 'string') {
+      // v38.1 numberless banner — plain text, no count element.
+      bannerP.textContent = banner.text;
+    } else {
+      var parts = banner.tpl.split('@@N@@');
+      bannerP.appendChild(document.createTextNode(parts[0] || ''));
+      var count = pfEl('strong', 'cx-results__count');
+      count.textContent = String(banner.n);
+      bannerP.appendChild(count);
+      bannerP.appendChild(document.createTextNode(parts.length > 1 ? parts[1] : ''));
+    }
     root.appendChild(bannerP);
     pfSp(root);
 

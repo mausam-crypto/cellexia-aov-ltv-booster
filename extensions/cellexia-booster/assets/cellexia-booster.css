@@ -9094,3 +9094,100 @@ html.cx-compact .mini-cart::after {
     }
   }
 }
+
+/* ==================================================================
+   v38 — SLIDER IN THE ENLARGED VIEW ONLY (beforeAfter.sliderScope,
+   default "lightbox"). Gallery cards go back to the standard side-by-side
+   before/after; the drag compare lives in the lightbox / swipe viewer.
+   Three pieces (2 and 3 are inert in the v33 "everywhere" mode, 1
+   protects every mode):
+   1. Photo tags stay INSIDE their photo on narrow phones. A half-width
+      pair frame (or a combined photo's half) is ~140px on a 375px
+      phone, and the week-stamped After tag runs long in several
+      languages ("Săptămâni de utilizare: 10"). The tag now wraps inside
+      its frame (or its half of the compare stage) with a rounded-
+      rectangle shape instead of overflowing the edge or crossing the
+      divider (radius 12px still renders single-line tags as the same
+      full pill).
+   2. A decorative magnifier cue on the card says "tap for the enlarged
+      view" (pointer-events none: the media button owns the tap). A video
+      entry's play chip moves to the PHYSICAL bottom-left of a standard
+      card (the v33 slider-card spot): the top corners now belong to the
+      photo tags (a combined photo's After tag sits top-right, a week-
+      stamped pair tag can reach it), and bottom-right belongs to the cue
+      (review catch: the chip painted over the After tag).
+   3. The enlarged view keeps the "Drag to compare" hint in this mode
+      (.cx-results__ba--teach) — the cards no longer teach the drag. It
+      sits top-center: the side tags own the bottom corners there. */
+
+.cx-results__frame .cx-results__tag {
+  box-sizing: border-box;
+  max-inline-size: calc(100% - 20px);
+  line-height: 1.3;
+  border-radius: 12px;
+  overflow-wrap: break-word;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+}
+
+/* the combined photo's tags each own one physical half — and so do the
+   compare stage's (card and enlarged view): a long week stamp must never
+   run across the divider line, which is drawn over the tags. */
+.cx-results__frame--combo .cx-results__tag,
+.cx-results__ba .cx-results__tag {
+  max-inline-size: calc(50% - 20px);
+}
+
+.cx-results__ba .cx-results__tag {
+  box-sizing: border-box;
+  line-height: 1.3;
+  border-radius: 12px;
+  overflow-wrap: break-word;
+  -webkit-hyphens: auto;
+  hyphens: auto;
+}
+
+.cx-results__media:not(.cx-results__media--slider) .cx-results__play {
+  inset-block-start: auto;
+  inset-block-end: auto;
+  inset-inline-start: auto;
+  inset-inline-end: auto;
+  top: auto;
+  bottom: 8px;
+  left: 8px;
+  right: auto;
+}
+
+.cx-results__media .cx-results__zoom--cue {
+  inline-size: 28px;
+  block-size: 28px;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
+}
+
+/* max-content + a stage-relative cap: a long hint ("Faites glisser pour
+   comparer" on a 187px combined stage, 320px phone) wraps to a centered
+   second line instead of truncating. Without max-content the left:50%
+   anchor would shrink-wrap it at HALF the stage width. */
+.cx-lightbox .cx-results__ba--teach .cx-results__ba-hint {
+  display: block;
+  top: 12px;
+  bottom: auto;
+  box-sizing: border-box;
+  inline-size: max-content;
+  max-inline-size: calc(100% - 24px);
+  white-space: normal;
+  text-align: center;
+  line-height: 1.3;
+  border-radius: 12px;
+}
+
+/* the classic one-item lightbox (the viewer's fallback) floats its 40px
+   sticky close over the stage's top inline-end corner: the centered hint
+   keeps 50px clear on BOTH sides (symmetric, so RTL is covered) and wraps
+   sooner instead of sliding under the close on narrow phones (review
+   catch: 320px, French). The swipe viewer's close lives in its own head
+   row, so it keeps the wider cap. */
+.cx-lightbox:not(.cx-results-vw) .cx-results__ba--teach .cx-results__ba-hint {
+  max-inline-size: calc(100% - 100px);
+}

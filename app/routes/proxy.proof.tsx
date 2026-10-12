@@ -325,6 +325,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           const ui: Record<string, number> = {};
           if (display.labDesign === "study") ui.cs = 1;
           if (display.slider === true) ui.sl = 1;
+          // v38: sc = sliders on the gallery CARDS too (the v33 look);
+          // absent = the lightbox-only default, cards stay side-by-side.
+          if (display.slider === true && display.sliderScope === "everywhere") ui.sc = 1;
+          // v38.1: ca = the scale banner counts EVERY served result
+          // (customer + clinical); absent = the number-free banner.
+          if (display.bannerCount === "all") ui.ca = 1;
           if (display.desktopLayout === "grid") ui.gr = 1;
           if (display.showStudy === false) ui.ns = 1;
           if (display.hideLabQuotes === true) ui.ht = 1;

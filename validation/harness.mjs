@@ -4978,7 +4978,7 @@ const EVIDENCE = {
   // ---- storefront: whitelist, raw reads, gates, close ---------------------
   const proofJs25 = read(PROOF_JS);
   ok(
-    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx'];"),
+    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx', 'bn'];"),
     "v25/v33/v36: resultsApplyCopy whitelist is exactly the thirteen chrome codes",
   );
   for (const raw of ["pfStrRaw(s, 'rp')", "pfStrRaw(s, 'ma')", "pfStrRaw(s, 'vsb')", "pfStrRaw(s, 'mi')"]) {
@@ -5081,9 +5081,11 @@ const EVIDENCE = {
       settings33.includes('if (typeof next.beforeAfter.slider !== "boolean") {'),
     "v33: sanitize coerces labDesign (enum) and slider (boolean) to their defaults",
   );
+  // (v38 flipped the slider default ON with the lightbox-only scope — that
+  // default is pinned in the v38 block; the design default stays classic.)
   ok(
-    settings33.includes('labDesign: "classic",\n    slider: false,'),
-    "v33: both display options default OFF in DEFAULT_SETTINGS (classic, no slider)",
+    settings33.includes('labDesign: "classic",\n    // v38 (merchant ask)'),
+    "v33: the lab design defaults to classic in DEFAULT_SETTINGS",
   );
 
   // ---- proxy: flags ride the FIRST results response -----------------------
@@ -5103,8 +5105,8 @@ const EVIDENCE = {
   // (v35 widened the flag object — the strict-=== discipline is the pin.)
   const proofJs33 = read(PROOF_JS);
   ok(
-    proofJs33.includes("return { cs: ui.cs === 1, sl: ui.sl === 1, gr: ui.gr === 1, ns: ui.ns === 1, ht: ui.ht === 1 };"),
-    "v33: payload.ui flags are strict === 1 reads (fail closed)",
+    proofJs33.includes("return { cs: ui.cs === 1, sl: ui.sl === 1, sc: ui.sc === 1, gr: ui.gr === 1, ns: ui.ns === 1, ht: ui.ht === 1, ca: ui.ca === 1 };"),
+    "v33: payload.ui flags are strict === 1 reads (fail closed; v38 added sc, v38.1 ca)",
   );
   ok(
     proofJs33.includes("var combined = lab ? pfHttps(it.combinedUrl) : '';"),
@@ -5176,8 +5178,8 @@ const EVIDENCE = {
   );
   ok(
     results33.includes("submitDisplay({ labDesign: next })") &&
-      results33.includes("submitDisplay({ slider: checked })"),
-    "v33: the Clinical display card saves both options through save_settings",
+      results33.includes("submitDisplay({ slider: false })"),
+    "v33: the Clinical display card saves both options through save_settings (v38: the slider rides a scope choice)",
   );
 }
 
@@ -6423,6 +6425,149 @@ const EVIDENCE = {
   ok(
     !liquid36.includes("moretile") && !liquid36.includes("results-vw"),
     "v36: ZERO Liquid bytes — the whole feature is JS + CSS + proxy copy",
+  );
+}
+
+// ============================ v38 SLIDER SCOPE (enlarged view only by default)
+// docs/SPEC-v38-slider-scope.md — merchant ask: gallery cards show the
+// standard side-by-side before/after; the drag slider lives only in the
+// enlarged view (lightbox / swipe viewer). LIVE beforeAfter.sliderScope
+// ("lightbox" default | "everywhere" = the v33 look) travels as
+// payload.ui.sc, emitted only for "everywhere". Behavior lives in
+// proof-gallery R25/R27/R38-R40/VW12 (+m56-m59); these pins hold the
+// cross-file wiring.
+{
+  const settings38 = read("app/models/settings.server.ts");
+  ok(
+    settings38.includes('export const RESULTS_SLIDER_SCOPES = ["lightbox", "everywhere"] as const;'),
+    "v38: the slider-scope enum is closed",
+  );
+  ok(
+    settings38.includes('    slider: true,\n    sliderScope: "lightbox",'),
+    "v38: defaults — slider ON, scoped to the enlarged view (merchant ask)",
+  );
+  ok(
+    settings38.includes("next.beforeAfter.sliderScope as ResultsSliderScope") &&
+      settings38.includes("next.beforeAfter.sliderScope = DEFAULT_SETTINGS.beforeAfter.sliderScope;"),
+    "v38: sanitize coerces junk/absent scopes (every pre-v38 store) to the lightbox default",
+  );
+  const proxy38 = read("app/routes/proxy.proof.tsx");
+  ok(
+    proxy38.includes('if (display.slider === true && display.sliderScope === "everywhere") ui.sc = 1;'),
+    "v38: sc rides payload.ui only for the everywhere scope with the slider on",
+  );
+  const proofJs38 = read(PROOF_JS);
+  ok(
+    proofJs38.includes("var slider = o && o.sl && o.sc ? resultsSlider(item, s, o) : null;"),
+    "v38: card sliders need sc on top of sl",
+  );
+  ok(
+    proofJs38.includes("    var slider = o && o.sl ? resultsSlider(item, s, o) : null;\n    if (slider) {\n      // v38") &&
+      proofJs38.includes("if (!o.sc) slider.className += ' cx-results__ba--teach';"),
+    "v38: the enlarged view keeps the slider on sl alone and teaches the drag in the default scope",
+  );
+  ok(
+    proofJs38.includes("if (!slider && o && o.sl && !o.sc) {") &&
+      proofJs38.includes("'cx-results__zoom cx-results__zoom--cue', ['aria-hidden', 'true']"),
+    "v38: the decorative magnifier cue rides only the default-scope standard card",
+  );
+  ok(
+    proofJs38.includes("function resultsComboFrame(item, s, o) {") &&
+      proofJs38.includes("media.appendChild(resultsComboFrame(item, s, o));"),
+    "v38: the combined standard card labels each half with the stage's wording (o reaches the after tag)",
+  );
+  const css38 = read(CSS);
+  const hideIdx = css38.indexOf(".cx-lightbox .cx-results__ba-hint {\n  display: none;");
+  const teachIdx = css38.indexOf(".cx-lightbox .cx-results__ba--teach .cx-results__ba-hint {");
+  ok(
+    hideIdx !== -1 && teachIdx > hideIdx &&
+      css38.slice(teachIdx, css38.indexOf("}", teachIdx)).includes("display: block;") &&
+      css38.slice(teachIdx, css38.indexOf("}", teachIdx)).includes("inline-size: max-content;"),
+    "v38: the teach rule re-shows the enlarged view's hint (outranks the v33 hide by specificity; wraps instead of truncating)",
+  );
+  ok(
+    css38.includes(".cx-results__frame .cx-results__tag {\n  box-sizing: border-box;\n  max-inline-size: calc(100% - 20px);") &&
+      css38.includes(".cx-results__frame--combo .cx-results__tag,\n.cx-results__ba .cx-results__tag {\n  max-inline-size: calc(50% - 20px);"),
+    "v38: photo tags stay inside their frame / half (long week stamps never cross the divider)",
+  );
+  ok(
+    css38.includes(".cx-lightbox:not(.cx-results-vw) .cx-results__ba--teach .cx-results__ba-hint {\n  max-inline-size: calc(100% - 100px);"),
+    "v38 review: the classic lightbox's hint keeps clear of the sticky close on narrow phones",
+  );
+  const playIdx38 = css38.indexOf(".cx-results__media:not(.cx-results__media--slider) .cx-results__play {");
+  ok(
+    playIdx38 !== -1 && css38.slice(playIdx38, css38.indexOf("}", playIdx38)).includes("bottom: 8px;\n  left: 8px;"),
+    "v38 review: the standard card's play chip leaves the top corners to the photo tags",
+  );
+  const cueIdx = css38.indexOf(".cx-results__media .cx-results__zoom--cue {");
+  ok(
+    cueIdx !== -1 && css38.slice(cueIdx, css38.indexOf("}", cueIdx)).includes("pointer-events: none;"),
+    "v38: the cue is click-through (the media button owns the tap)",
+  );
+  const results38 = read("app/routes/app.proof.results.tsx");
+  ok(
+    results38.includes("selected={[sliderEnabled ? sliderScope : \"off\"]}") &&
+      results38.includes("submitDisplay({ slider: true, sliderScope: next });") &&
+      results38.includes("sliderScope: settings.beforeAfter.sliderScope,"),
+    "v38: the Clinical display card's three-way choice drives slider + sliderScope",
+  );
+  const liquid38 = read(`${EXT}/blocks/proof-booster.liquid`);
+  ok(
+    !liquid38.includes("sliderScope") && !liquid38.includes("zoom--cue"),
+    "v38: ZERO Liquid bytes — proxy flag + JS + CSS only",
+  );
+}
+
+// ================== v38.1 SCALE BANNER COUNT (merchant catch: lab results ignored)
+// docs/SPEC-v38-slider-scope.md §v38.1 — the banner counted verified
+// purchases only ("16 real Cellexia users" over 132 results). LIVE
+// beforeAfter.bannerCount: "none" (default, numberless sentence = proxy
+// copy code bn, 19 curated languages) | "all" (every served result,
+// payload.ui.ca). Behavior lives in proof-gallery R25/R41/R42 (+m60-m62)
+// and proof-server UC1/UC2/UC5; these pins hold the cross-file wiring.
+{
+  const settings381 = read("app/models/settings.server.ts");
+  ok(
+    settings381.includes('export const RESULTS_BANNER_COUNTS = ["none", "all"] as const;') &&
+      settings381.includes('    bannerCount: "none",') &&
+      settings381.includes("next.beforeAfter.bannerCount = DEFAULT_SETTINGS.beforeAfter.bannerCount;"),
+    "v38.1: closed banner-count enum, numberless default, sanitize coercion",
+  );
+  ok(
+    read("app/routes/proxy.proof.tsx").includes('if (display.bannerCount === "all") ui.ca = 1;'),
+    "v38.1: ca rides payload.ui only for the count-all choice",
+  );
+  const uiCopy381 = read("app/services/results-ui-copy.server.ts");
+  ok(
+    uiCopy381.includes('  "nx",\n  "bn",\n] as const;') &&
+      (uiCopy381.match(/\n {2,4}bn: "/g) || []).length === 18,
+    "v38.1: bn joins the code list and every table (17 tables + the nb/no twin)",
+  );
+  const proofJs381 = read(PROOF_JS);
+  ok(
+    proofJs381.includes("function resultsBannerData(s, total, verified, o) {") &&
+      proofJs381.includes("var banner = resultsBannerData(s, data ? data.total : 0, data ? data.verifiedTotal : 0, o);"),
+    "v38.1: the banner reads the page-1 display flags",
+  );
+  ok(
+    proofJs381.includes("if (o && o.ca) return pfPosInt(total) ? { tpl: pfStr(s, 'bv'), n: total } : null;") &&
+      proofJs381.includes("if (/\\S/.test(plain) && pfPosInt(total)) return { text: plain };") &&
+      proofJs381.includes("if (pfPosInt(verified)) return { tpl: pfStr(s, 'bv'), n: verified };"),
+    "v38.1: count-all = every result; numberless default; the pre-v38.1 chain stays for stale caches",
+  );
+  ok(
+    proofJs381.includes("if (typeof banner.text === 'string') {\n      // v38.1 numberless banner — plain text, no count element.\n      bannerP.textContent = banner.text;"),
+    "v38.1: the numberless banner renders via textContent (no count element)",
+  );
+  const results381 = read("app/routes/app.proof.results.tsx");
+  ok(
+    results381.includes("bannerCount: settings.beforeAfter.bannerCount,") &&
+      results381.includes("submitDisplay({ bannerCount: next });"),
+    "v38.1: the Clinical display card saves the banner choice",
+  );
+  ok(
+    !read(`${EXT}/blocks/proof-booster.liquid`).includes("bannerCount"),
+    "v38.1: ZERO Liquid bytes and zero locale keys (the sentence rides the proxy copy)",
   );
 }
 

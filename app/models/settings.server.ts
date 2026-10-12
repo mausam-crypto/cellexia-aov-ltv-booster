@@ -303,6 +303,33 @@ export const RESULTS_DESKTOP_LAYOUTS = ["row", "grid"] as const;
 export type ResultsDesktopLayout = (typeof RESULTS_DESKTOP_LAYOUTS)[number];
 
 /**
+ * v38: WHERE the compare slider runs when `beforeAfter.slider` is on (LIVE
+ * setting, labDesign convention). "lightbox" (default, merchant ask) keeps
+ * the standard side-by-side before/after on every gallery card and gives
+ * the drag slider only to the enlarged view (lightbox / swipe viewer) a
+ * shopper opens by tapping a card. "everywhere" is the v33 behavior:
+ * slider on the cards AND in the enlarged view. Travels as
+ * `payload.ui.sc` (sliders on cards), emitted only for "everywhere"; the
+ * widget fails closed to the lightbox-only default.
+ */
+export const RESULTS_SLIDER_SCOPES = ["lightbox", "everywhere"] as const;
+export type ResultsSliderScope = (typeof RESULTS_SLIDER_SCOPES)[number];
+
+/**
+ * v38.1: what the gallery's scale banner counts (LIVE setting, labDesign
+ * convention). Before v38.1 the banner always counted VERIFIED PURCHASES
+ * only, so clinical (lab) before/afters never added to "See results from
+ * N real Cellexia users" (merchant catch: 16 shown, 132 results on the
+ * page). "none" (default) drops the number ("See results from real
+ * Cellexia users.", proxy copy code `bn`, 19 curated languages); "all"
+ * counts EVERY before/after the gallery serves on that page (customer +
+ * clinical; brand-wide entries included, exactly what the shopper can
+ * browse) and travels as `payload.ui.ca`.
+ */
+export const RESULTS_BANNER_COUNTS = ["none", "all"] as const;
+export type ResultsBannerCount = (typeof RESULTS_BANNER_COUNTS)[number];
+
+/**
  * v8.8: merchant-selected DESIGN for the per-product dermatologist survey
  * widget (LIVE setting — the v6.5/v8.3 no-draft-plumbing convention).
  * "classic" is the v7 outcomes-forward layout and the only design the
@@ -919,6 +946,15 @@ export interface BoosterSettings {
      *  for the single combined figure (left half = before, right half =
      *  after). Travels via the results proxy (`payload.ui.sl`). */
     slider: boolean;
+    /** v38 (LIVE): where the slider runs while `slider` is on —
+     *  "lightbox" (default) = standard side-by-side cards, slider only in
+     *  the enlarged view; "everywhere" = cards too (the v33 behavior,
+     *  `payload.ui.sc`). Ignored while `slider` is off. */
+    sliderScope: ResultsSliderScope;
+    /** v38.1 (LIVE): the scale banner's number — "none" (default) = no
+     *  number, "all" = every before/after served on the page, customer
+     *  AND clinical (`payload.ui.ca`). */
+    bannerCount: ResultsBannerCount;
     /** v35 serve order (LIVE): "mix" = one result from each study batch
      *  first (round-robin), "curated" = the pre-v35 manual sequence,
      *  "newest" = newest first. Applied server-side per request. */
@@ -1923,7 +1959,13 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     density: "full",
     placement: "below_tabs",
     labDesign: "classic",
-    slider: false,
+    // v38 (merchant ask): the slider is ON by default and lives in the
+    // enlarged view only — gallery cards show the standard side-by-side.
+    slider: true,
+    sliderScope: "lightbox",
+    // v38.1 (merchant catch): the old verified-only number ignored
+    // clinical results; the default banner now carries no number.
+    bannerCount: "none",
     // v35 — "mix" is identical to "curated" until study tags exist, so
     // the new default never reshuffles a live gallery on deploy.
     galleryOrder: "mix",
@@ -4370,6 +4412,23 @@ export function sanitizeSettings(
   }
   if (typeof next.beforeAfter.slider !== "boolean") {
     next.beforeAfter.slider = DEFAULT_SETTINGS.beforeAfter.slider;
+  }
+  // v38 slider scope — closed enum, junk (and pre-v38 stores, which never
+  // stored one) coerce to the lightbox-only default.
+  if (
+    !RESULTS_SLIDER_SCOPES.includes(
+      next.beforeAfter.sliderScope as ResultsSliderScope,
+    )
+  ) {
+    next.beforeAfter.sliderScope = DEFAULT_SETTINGS.beforeAfter.sliderScope;
+  }
+  // v38.1 banner count — same closed-enum discipline.
+  if (
+    !RESULTS_BANNER_COUNTS.includes(
+      next.beforeAfter.bannerCount as ResultsBannerCount,
+    )
+  ) {
+    next.beforeAfter.bannerCount = DEFAULT_SETTINGS.beforeAfter.bannerCount;
   }
   // v35 results display options — the same LIVE-setting discipline: two
   // closed enums and two plain booleans, junk coerced to the defaults.

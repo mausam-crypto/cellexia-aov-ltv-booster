@@ -2,7 +2,7 @@
 
 This is a complete, custom Shopify app for the Cellexia store (Shopify Plus). It ships an
 embedded Polaris admin, a theme app extension (cart + product-page widgets), and FOUR
-checkout UI extensions — pre-translated into the store's 18 languages (17 translations
+checkout UI extensions — pre-translated into the store's 19 languages (18 translations
 + English).
 
 **Read this file top to bottom before running anything.** Total time: ~30 min for a dev
@@ -188,7 +188,7 @@ and per-product switches. All of this is stored in Shopify **metaobjects**, so:
 - Raw entries are also editable in Shopify admin → Content → Metaobjects.
 
 Widget microcopy (headings, "Verified by…", guarantee copy) is already translated in all
-18 store languages; merchants can override any text per block in the theme editor and
+19 store languages; merchants can override any text per block in the theme editor and
 translate overrides in Translate & Adapt like any theme content.
 
 ## 6.5 Showing a piece only to visitors from a tagged link (v22)
@@ -338,5 +338,5 @@ Storefront console snippet (paste on a product page):
 - `app/models/settings.server.ts` — the settings/feature-flag contract (single source
   of truth; all market/flag logic goes through its helpers)
 - `app/services/` — metafield sync, metaobjects, PDP content, markets, experiments, stats
-- `extensions/cellexia-booster/` — theme extension (blocks, JS, CSS, 18 locale files)
+- `extensions/cellexia-booster/` — theme extension (blocks, JS, CSS, 19 locale files)
 - `extensions/checkout-*/` — checkout UI extensions (React, typed against 2025-07)

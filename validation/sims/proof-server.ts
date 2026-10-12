@@ -1150,7 +1150,7 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     .sort();
   ok(locales.join(",") === catalogs.join(","),
     `UC1: copy table covers EXACTLY the 18 catalog languages (${locales.length})`);
-  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu", "aw", "dr", "iv", "zm", "sa", "pr", "nx"];
+  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu", "aw", "dr", "iv", "zm", "sa", "pr", "nx", "bn"];
   ok(JSON.stringify([...UC.RESULTS_UI_COPY_CODES]) === JSON.stringify(codes),
     "UC1: exported code list matches the storefront whitelist");
   for (const locale of locales) {
@@ -1167,6 +1167,12 @@ function pubs(res: { items: { publication: string }[] }): string[] {
       `UC2: ${locale}.aw carries the @@N@@ weeks sentinel (v33)`);
     ok(table[locale].sa.includes("@@N@@"),
       `UC2: ${locale}.sa carries the @@N@@ total sentinel (v36)`);
+    // v38.1: the numberless banner must stay numberless and on-brand
+    const bn = table[locale].bn;
+    ok(!bn.includes("@@N@@") && !/\d/.test(bn) && !bn.includes("\u2013"),
+      `UC2: ${locale}.bn carries no number, sentinel or en dash (v38.1)`);
+    ok(bn.includes("Cellexi") && /[.。]$/.test(bn),
+      `UC2: ${locale}.bn names the brand (pl inflects "Cellexii") and closes like the catalog banner (v38.1)`);
   }
   ok(table.nb === table.no, "UC3: nb/no are twins (house convention)");
   ok(UC.resultsUiCopy("el") === table.el, "UC4: exact locale resolves");
@@ -1182,12 +1188,16 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     table.en.vsb === "vs. baseline" && table.en.mi === "Instrument measured" &&
     table.en.mp === "Same patient" && table.en.mu === "Unretouched images",
     "UC5: the English source strings are the mock's exact wording");
-  ok(table.en.aw === "After @@N@@ weeks" && table.en.dr === "Drag to compare" &&
+  ok(table.en.aw === "@@N@@ weeks of use" && table.en.dr === "Drag to compare" &&
     table.en.iv === "Individual results may vary." && table.en.zm === "View larger",
     "UC5: the v33 English source strings are pinned");
   ok(table.en.sa === "See all @@N@@ results" && table.en.pr === "Previous result" &&
     table.en.nx === "Next result",
     "UC5: the v36 English source strings are pinned");
+  ok(table.en.bn === "See results from real Cellexia users." &&
+    table.ro.bn === "Vezi rezultatele obținute de utilizatori reali Cellexia." &&
+    table.de.bn === "Sehen Sie die Ergebnisse echter Cellexia-Anwender.",
+    "UC5: the v38.1 numberless banner is pinned (en + the two re-agreed grammars)");
 }
 
 // ==================================== MH: market-handle clean/parse trips

@@ -188,6 +188,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // results proxy, so flips can take the proxy cache ~5 min to land).
     labDesign: settings.beforeAfter.labDesign,
     sliderEnabled: settings.beforeAfter.slider,
+    sliderScope: settings.beforeAfter.sliderScope,
+    bannerCount: settings.beforeAfter.bannerCount,
     galleryOrder: settings.beforeAfter.galleryOrder,
     desktopLayout: settings.beforeAfter.desktopLayout,
     showStudy: settings.beforeAfter.showStudy,
@@ -884,6 +886,8 @@ export default function ProofResultsTab() {
     featureEnabled,
     labDesign,
     sliderEnabled,
+    sliderScope,
+    bannerCount,
     galleryOrder,
     desktopLayout,
     showStudy,
@@ -1033,6 +1037,8 @@ export default function ProofResultsTab() {
   const submitDisplay = (patch: {
     labDesign?: string;
     slider?: boolean;
+    sliderScope?: string;
+    bannerCount?: string;
     galleryOrder?: string;
     desktopLayout?: string;
     showStudy?: boolean;
@@ -1636,11 +1642,66 @@ export default function ProofResultsTab() {
             }}
             disabled={displayFetcher.state !== "idle"}
           />
-          <Checkbox
-            label="Before/after comparison slider"
-            helpText="Shoppers drag a divider over the photos to compare before and after themselves — works with the separate pair and with a combined photo."
-            checked={sliderEnabled}
-            onChange={(checked) => submitDisplay({ slider: checked })}
+          {/* v38: one choice drives two stored fields — slider (on/off)
+              and sliderScope (where it runs while on). Off keeps the
+              stored scope, so switching back on restores it. */}
+          <ChoiceList
+            title="Before/after comparison slider"
+            choices={[
+              {
+                label:
+                  "Standard side by side on cards, slider in the enlarged view (recommended)",
+                value: "lightbox",
+                helpText:
+                  "Every card shows the full before and after at a glance. Tapping a card opens the enlarged view, where shoppers drag a divider to compare.",
+              },
+              {
+                label: "Slider everywhere: on the cards and in the enlarged view",
+                value: "everywhere",
+                helpText:
+                  "Cards open half before, half after, and shoppers drag to compare right in the gallery.",
+              },
+              {
+                label: "Off: standard side by side everywhere",
+                value: "off",
+              },
+            ]}
+            selected={[sliderEnabled ? sliderScope : "off"]}
+            onChange={(selected) => {
+              const next = selected[0];
+              if (next === "off") {
+                if (sliderEnabled) submitDisplay({ slider: false });
+              } else if (next === "lightbox" || next === "everywhere") {
+                if (!sliderEnabled || next !== sliderScope) {
+                  submitDisplay({ slider: true, sliderScope: next });
+                }
+              }
+            }}
+            disabled={displayFetcher.state !== "idle"}
+          />
+          {/* v38.1: the scale banner's number. The pre-v38.1 banner
+              counted verified purchases only, so clinical results never
+              added to it. */}
+          <ChoiceList
+            title="Banner above the gallery"
+            choices={[
+              {
+                label: "No number: “See results from real Cellexia users.”",
+                value: "none",
+              },
+              {
+                label:
+                  "Count every result: “See results from 132 real Cellexia users.”",
+                value: "all",
+                helpText:
+                  "The number is every before/after the shopper can browse on that page: customer and clinical results, including results not tied to one product. Shown in every language.",
+              },
+            ]}
+            selected={[bannerCount]}
+            onChange={(selected) => {
+              const next = selected[0] === "all" ? "all" : "none";
+              if (next !== bannerCount) submitDisplay({ bannerCount: next });
+            }}
             disabled={displayFetcher.state !== "idle"}
           />
           <Divider />
