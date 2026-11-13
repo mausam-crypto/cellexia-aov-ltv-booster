@@ -3703,7 +3703,7 @@ const EVIDENCE = {
   // the $app:cellexia/rewards shop metafield ONLY, JS template layout.
   const fnToml = read("extensions/cellexia-rewards/shopify.extension.toml");
   ok(fnToml.includes('type = "function"'), "v14: cellexia-rewards extension type is function");
-  ok(fnToml.includes('api_version = "2025-10"'), "v14: cellexia-rewards api_version 2025-10");
+  ok(fnToml.includes('api_version = "2026-04"'), "v14: cellexia-rewards api_version 2026-04 (2025-10 deprecated by Shopify, bumped v39)");
   ok(fnToml.includes('handle = "cellexia-rewards"'), "v14: cellexia-rewards handle pinned");
   ok(
     fnToml.includes('target = "cart.lines.discounts.generate.run"') &&

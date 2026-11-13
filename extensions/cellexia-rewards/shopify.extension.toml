@@ -6,7 +6,7 @@
 # (Shopify/function-examples discounts/javascript/discount/default): the
 # export values map to the camelCase named exports of src/index.js
 # (cart-lines-discounts-generate-run -> cartLinesDiscountsGenerateRun).
-api_version = "2025-10"
+api_version = "2026-04"
 
 [[extensions]]
 name = "Cellexia rewards"
