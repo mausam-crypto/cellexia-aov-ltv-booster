@@ -143,6 +143,13 @@ The picker the v26 quantity-selector cards replace lives in `.pdp__info > .pdp__
 - Section order (2026-08 snapshot): `main` (hero-home) → `cta_bar_aYWtJT` → `product_slider_FR8JAB` → `cta_banner_product_4KL4FE` (lip banner) → `brand_logos_P84bfG` → `callouts_cAJacK` → `cta_banner_QyH97h` (+ 2 disabled sliders, not rendered).
 - **Proof-band home anchoring (v8.15): `press.homeAfterSection` stores a section KEY; the band inserts after that wrapper (id-suffix compare on `#main`'s children). Keys survive reordering; a removed key falls back to the end of `#main`.**
 
+## Online-store pages (`page` templates) — the v39 results page
+- The proof embed renders on ONE merchant-chosen page (Proof library → Results page; Liquid matches `page.id` against `cfg.beforeAfter.pageId`). It emits nothing on any other page.
+- **Anchor: end of `#main`** (the non-product default of `pfBandBelowTabs`), i.e. below the page template's own title and content. The band carries `cx-proof-band cx-proof-band--page container` (full content column, not `container--md`).
+- Optional precise placement: an element with `data-cx-mount="results"` anywhere on the page wins over the anchor (`pfMount`). Nothing in the app emits one; it exists for a theme developer who wants the gallery at an exact spot in a custom page template.
+- The page-template DOM beyond `#main` is NOT documented here (the theme source was not available when v39 shipped). If the band's width or spacing is off on the live page, adjust `.cx-proof-band--page` in `cellexia-booster.css`.
+- Only press/endorsements are suppressed on the page (`pfSkipOnPage`); the island itself is emitted for drafts too (`"live": false`) so the preview works without arming.
+
 ## Reviews / other apps
 - Active review platform: **Stamped.io** (`.stamped-product-reviews-badge`, `#stamped-main-widget`; metafields `product.metafields.stamped.reviews_count/reviews_average`). No Trustpilot today — our Trustpilot widget is config-driven (rating/count/URL entered in dashboard).
 - Also installed: Fast Bundle, Klaviyo, Triple Whale, Littledata, Growave (loyalty page), Shopify Forms.

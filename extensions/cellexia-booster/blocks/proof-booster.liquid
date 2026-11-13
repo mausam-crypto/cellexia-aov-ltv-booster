@@ -4,9 +4,6 @@ if request.page_type == 'product' or request.page_type == 'index'
 assign cx_page_ok = true
 endif
 assign cfg = app.metafields.cellexia.config.value
-comment
-brace-literal rule, see pdp-booster
-endcomment
 assign cx_n_token = '{n}'
 assign cx_market = localization.market.handle | default: ''
 assign cx_ctx = 'brand'
@@ -14,6 +11,7 @@ assign cx_pid = 0
 if request.page_type == 'product'
 assign cx_ctx = 'product'
 assign cx_pid = product.id
+assign cx_f = product.metafields.cellexia.pdp_flags.value
 endif
 
 assign cx_p_on = false
@@ -24,11 +22,9 @@ assign cx_p_on = true
 endif
 endif
 assign cx_p_ok = true
-if request.page_type == 'product'
-if product.metafields.cellexia.pdp_flags.value.press == false
+if cx_f.press == false
 assign cx_p_ok = false
 assign cx_p_on = false
-endif
 endif
 assign cx_p_draft = false
 if cfg.preview.armed == true and cx_p_ok
@@ -45,11 +41,9 @@ assign cx_e_on = true
 endif
 endif
 assign cx_e_ok = true
-if request.page_type == 'product'
-if product.metafields.cellexia.pdp_flags.value.derm_endorsements == false
+if cx_f.derm_endorsements == false
 assign cx_e_ok = false
 assign cx_e_on = false
-endif
 endif
 assign cx_e_draft = false
 if cfg.preview.armed == true and cx_e_ok
@@ -66,16 +60,22 @@ assign cx_r_on = true
 endif
 endif
 assign cx_r_ok = true
-if request.page_type == 'product'
-if product.metafields.cellexia.pdp_flags.value.verified_before_after == false
+if cx_f.verified_before_after == false
 assign cx_r_ok = false
 assign cx_r_on = false
-endif
 endif
 assign cx_r_draft = false
 if cfg.preview.armed == true and cx_r_ok
 if cfg.preview.draftFlags.verified_before_after == true or cfg.beforeAfter.enabled == true
 assign cx_r_draft = true
+endif
+endif
+if request.page_type == 'page' and page.id == cfg.beforeAfter.pageId
+assign cx_page_ok = true
+assign cx_ctx = 'page'
+assign cx_r_draft = true
+if cfg.beforeAfter.pageLive != true
+assign cx_r_on = false
 endif
 endif
 

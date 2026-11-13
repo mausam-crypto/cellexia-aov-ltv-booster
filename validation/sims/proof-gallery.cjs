@@ -229,6 +229,8 @@ const EXTRACTED = extractAll(SRC, {
     "resultsCdnThumb", "resultsSwipeStep", "resultsViewerRtl",
     "resultsViewerContent", "resultsViewerPrefetch",
     "resultsViewerHistory", "resultsViewerSwipeBind", "resultsViewerOpen",
+    // v39 dedicated results page
+    "pfSkipOnPage",
   ],
   // extend the vars list separately below (extractAll takes each key once)
 });
@@ -3059,6 +3061,191 @@ function vwFixture() {
     "VW12: the viewer's grafted stage keeps teach mode (hint live)");
 }
 
+// ============================ v39 DEDICATED RESULTS PAGE (PG, island ctx "page")
+//
+// docs/SPEC-v39-results-page.md — the merchant-chosen online-store page
+// renders the SAME section builder in page mode: one root modifier (grid at
+// every breakpoint — pure CSS leverage), no "+N" tile, Show more paging 24
+// over the store the viewer shares, press/endorsements suppressed.
+function pgItems(from, count) {
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const n = from + i;
+    out.push({
+      id: "p" + n,
+      beforeUrl: "https://cdn/pb" + n + ".jpg",
+      afterUrl: "https://cdn/pa" + n + ".jpg",
+      source: "customer",
+      verified: true,
+    });
+  }
+  return out;
+}
+function pgFixture(extra) {
+  return Object.assign({
+    total: 40,
+    verifiedTotal: 40,
+    items: pgItems(1, 24),
+    facets: {},
+    copy: { sa: "See all @@N@@ results", pr: "Previous result", nx: "Next result" },
+  }, extra || {});
+}
+function pgConf(extra) {
+  return Object.assign({ ctx: "page", pid: 0, live: true, str: Object.assign({}, STR) }, extra || {});
+}
+function pgCards(section) {
+  return section.querySelectorAll(".cx-results__rail .cx-results__card").length;
+}
+
+// --- PG1: one root modifier; density + desktop-layout flags do not apply -------------
+{
+  const section = S.resultsBuildSection(pgConf({ cm: 2 }), pgFixture({ ui: { gr: 1 } }));
+  ok(!!section && section.className === "cx-proof cx-results cx-results--page",
+    "PG1: page root = ONLY the page modifier (cm=2 and ui.gr are ignored)");
+  const compact = S.resultsBuildSection(pgConf({ cm: 1 }), pgFixture());
+  ok(compact.className === "cx-proof cx-results cx-results--page",
+    "PG1: the compact tier is ignored too");
+  const brand = S.resultsBuildSection({ ctx: "brand", pid: 0, cm: 2, str: Object.assign({}, STR) },
+    pgFixture({ ui: { gr: 1 } }));
+  ok(brand.className === "cx-proof cx-results cx-results--ultra cx-results--grid",
+    "PG1: the brand twin keeps density + grid modifiers (page mode is ctx-gated)");
+  ok(section.getAttribute("data-cx-feature") === "verified_before_after",
+    "PG1: the page reuses the feature key (no key of its own)");
+}
+
+// --- PG2: no +N tile even with live viewer copy; Show more is the browse control -----
+{
+  const section = S.resultsBuildSection(pgConf(), pgFixture());
+  ok(pgCards(section) === 24, "PG2: the first page paints 24 cards");
+  ok(!section.querySelector(".cx-results__moretile"),
+    "PG2: no +N tile on the page (viewer copy sa/pr/nx present)");
+  const more = section.querySelector(".cx-results__more");
+  ok(!!more && !more.hasAttribute("hidden"), "PG2: Show more is visible while 24 < 40");
+  const brand = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR) }, pgFixture());
+  ok(!!brand.querySelector(".cx-results__moretile") &&
+    brand.querySelector(".cx-results__more").hasAttribute("hidden"),
+    "PG2: the brand twin keeps the tile and hides Show more (VW6 contract untouched)");
+  const all = S.resultsBuildSection(pgConf(), pgFixture({ total: 24, verifiedTotal: 24 }));
+  ok(all.querySelector(".cx-results__more").hasAttribute("hidden"),
+    "PG2: Show more retires when everything is on the page");
+}
+
+// --- PG3: the page pages at 24 — params + the exact Show-more query ------------------
+{
+  const st = { concern: "", age: "", skin: "", duration: "", page: 2 };
+  ok(S.pfQuery(S.resultsParams({ ctx: "page", pid: 0 }, st)) === "&page=2&per=24",
+    "PG3: page ctx -> per=24 (the viewer's page size)");
+  ok(S.pfQuery(S.resultsParams({ ctx: "brand", pid: 0 }, st)) === "&page=2&per=12",
+    "PG3: brand ctx keeps per=12 (R16/VW5 untouched)");
+  ok(S.pfQuery(S.resultsParams({ ctx: "page", pid: 99 }, st)) === "&page=2&per=24",
+    "PG3: the page never scopes to a product (all results)");
+  const section = S.resultsBuildSection(pgConf(), pgFixture());
+  const more = section.querySelector(".cx-results__more");
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.length = 0;
+  S.PF_FETCH_QUEUE.push({ total: 40, verifiedTotal: 40, items: pgItems(25, 16) });
+  click(more);
+  ok(S.PF_FETCH_CALLS.length === 1 && S.PF_FETCH_CALLS[0].qs === "?type=results&page=2&per=24",
+    "PG3: Show more asks for page 2 at per=24 (got " + (S.PF_FETCH_CALLS[0] && S.PF_FETCH_CALLS[0].qs) + ")");
+  ok(pgCards(section) === 40, "PG3: the 16 new cards append (40 on the page)");
+  ok(more.hasAttribute("hidden"), "PG3: Show more retires at the total");
+  // filters reset to page 1 at the page size
+  const filtered = S.resultsBuildSection(pgConf(), pgFixture({
+    facets: { concerns: [{ value: "wrinkles", count: 9 }] },
+  }));
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.length = 0;
+  S.PF_FETCH_QUEUE.push({ total: 9, verifiedTotal: 9, items: pgItems(101, 9) });
+  click(filtered.querySelector(".cx-results__opt"));
+  ok(S.PF_FETCH_CALLS.length === 1 &&
+    S.PF_FETCH_CALLS[0].qs === "?type=results&concern=wrinkles&page=1&per=24",
+    "PG3: a filter pick refetches page 1 at per=24");
+  ok(pgCards(filtered) === 9 && filtered.querySelector(".cx-results__more").hasAttribute("hidden"),
+    "PG3: the filtered grid replaces the cards and retires Show more");
+}
+
+// --- PG4: the viewer shares the store — Show more never skips or repeats a page ------
+{
+  const section = S.resultsBuildSection(pgConf(), pgFixture());
+  const more = section.querySelector(".cx-results__more");
+  S.PF_LB_OPENED.length = 0;
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.length = 0;
+  // Opening the LAST card puts the viewer within 3 of the store's end; its
+  // first step forward runs the approach-end pager (page 2, per 24).
+  click(section.querySelectorAll(".cx-results__media")[23]);
+  const vwRoot = S.PF_LB_OPENED[0];
+  ok(!!vwRoot && vwRoot.querySelector(".cx-results-vw__count").textContent === "24/40",
+    "PG4: a card tap opens the swipe viewer at that card");
+  S.PF_FETCH_QUEUE.push({ total: 40, verifiedTotal: 40, items: pgItems(25, 16) });
+  click(vwRoot.querySelector(".cx-results-vw__btn--next"));
+  ok(S.PF_FETCH_CALLS.length === 1 && S.PF_FETCH_CALLS[0].qs === "?type=results&page=2&per=24",
+    "PG4: the viewer pages the SAME sequence (page 2, per=24)");
+  ok(pgCards(section) === 24 && !more.hasAttribute("hidden"),
+    "PG4: the grid has not moved yet — the store is 16 ahead of it");
+  S.PF_FETCH_CALLS.length = 0;
+  click(more);
+  ok(S.PF_FETCH_CALLS.length === 0,
+    "PG4: Show more renders what the viewer already loaded WITHOUT a fetch");
+  ok(pgCards(section) === 40 && more.hasAttribute("hidden"),
+    "PG4: the grid catches up to the whole store and Show more retires");
+  S.PF_LB_OPENED.length = 0;
+  click(section.querySelectorAll(".cx-results__media")[39]);
+  ok(S.PF_LB_OPENED.length === 1 &&
+    S.PF_LB_OPENED[0].querySelector(".cx-results-vw__count").textContent === "40/40",
+    "PG4: caught-up cards keep their store index (card 40 opens 40/40)");
+}
+
+// --- PG5: an in-flight Show more also catches up to a viewer-extended store ----------
+{
+  // Short first page (2 of 40): the store-following formula asks for page 1
+  // again (floor(2/24)+1) and the id dedupe absorbs the overlap.
+  const section = S.resultsBuildSection(pgConf(), pgFixture({ items: pgItems(1, 2) }));
+  const more = section.querySelector(".cx-results__more");
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.length = 0;
+  S.PF_FETCH_QUEUE.push({ total: 40, verifiedTotal: 40, items: pgItems(1, 24) });
+  click(more);
+  ok(S.PF_FETCH_CALLS[0] && S.PF_FETCH_CALLS[0].qs === "?type=results&page=1&per=24",
+    "PG5: the request follows the STORE size, never a blind page bump");
+  ok(pgCards(section) === 24, "PG5: 22 genuinely-new cards append (2 deduped)");
+  // a failed page keeps what is on screen
+  S.PF_FETCH_QUEUE.length = 0;
+  click(more);
+  ok(pgCards(section) === 24 && !more.hasAttribute("hidden"),
+    "PG5: a failed fetch keeps the grid and leaves Show more available");
+}
+
+// --- PG6: draft note — only a not-live island says "preview" --------------------------
+{
+  const live = S.resultsBuildSection(pgConf({ live: true }), pgFixture());
+  ok(!live.querySelector(".cx-results__pvnote"), "PG6: a live page carries no preview note");
+  const draft = S.resultsBuildSection(pgConf({ live: false }), pgFixture());
+  const note = draft.querySelector(".cx-results__pvnote");
+  ok(!!note && /^Preview: only you can see this gallery\./.test(note.textContent),
+    "PG6: a draft page opens with the preview note");
+  ok(draft.querySelector(".cx-results__banner") &&
+    Array.prototype.indexOf.call(draft.children, note) <
+      Array.prototype.indexOf.call(draft.children, draft.querySelector(".cx-results__banner")),
+    "PG6: the note sits above the banner");
+  const brandDraft = S.resultsBuildSection({ ctx: "brand", pid: 0, live: false, str: Object.assign({}, STR) }, pgFixture());
+  ok(!brandDraft.querySelector(".cx-results__pvnote"),
+    "PG6: draft islands elsewhere (armed preview) are unchanged — no note");
+}
+
+// --- PG7: gallery only — press + endorsements bail on the page -----------------------
+{
+  ok(S.pfSkipOnPage("press", { ctx: "page" }) === true &&
+    S.pfSkipOnPage("endorsements", { ctx: "page" }) === true,
+    "PG7: press and endorsements skip the results page");
+  ok(S.pfSkipOnPage("results", { ctx: "page" }) === false, "PG7: results never skips");
+  ok(S.pfSkipOnPage("press", { ctx: "brand" }) === false &&
+    S.pfSkipOnPage("press", { ctx: "product" }) === false &&
+    S.pfSkipOnPage("endorsements", {}) === false &&
+    S.pfSkipOnPage("press", null) === false,
+    "PG7: every other context is untouched (fail open to the pre-v39 behavior)");
+}
+
 // ======================================= REAL lightbox machinery (LB, v8.21)
 //
 // OV1-OV4 run against a RECORDING pfLbOpen stub, which is precisely why
@@ -3556,6 +3743,46 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m59-combo-after-unstamped",
         find: "    var aftT = resultsAfterTag(item, s, o);\n    if (/\\S/.test(aftT)) {\n      var at = pfEl('span', 'cx-results__tag cx-results__tag--after cx-results__tag--ba cx-results__tag--ba-after');\n      at.textContent = aftT;\n      frame.appendChild(at);",
         replace: "    var aftT = pfStr(s, 'aft');\n    if (/\\S/.test(aftT)) {\n      var at = pfEl('span', 'cx-results__tag cx-results__tag--after cx-results__tag--ba cx-results__tag--ba-after');\n      at.textContent = aftT;\n      frame.appendChild(at);",
+      },
+      {
+        // v39: the page falls back to the rail's page size — grid and
+        // viewer would walk different page sequences (PG3).
+        name: "m63-page-per-12",
+        find: "    if (conf && conf.ctx === 'page') return resultsPageParams(conf, st, st.page, 24);",
+        replace: "    if (conf && conf.ctx === 'page') return resultsPageParams(conf, st, st.page, 12);",
+      },
+      {
+        // v39: the +N tile leaks onto the page and hides Show more (PG2).
+        name: "m64-page-tile-leaks",
+        find: "    if (vwCtx && !pageMode && /\\S/.test(saTpl)) {",
+        replace: "    if (vwCtx && /\\S/.test(saTpl)) {",
+      },
+      {
+        // v39: density / desktop-layout modifiers leak onto the page root
+        // and out-cascade the grid (PG1).
+        name: "m65-page-modifier-leaks",
+        find: "(pageMode ? ' cx-results--page' : (ultra ? ' cx-results--ultra' : compact ? ' cx-results--compact' : '') + (o.gr ? ' cx-results--grid' : ''))",
+        replace: "((pageMode ? ' cx-results--page' : '') + (ultra ? ' cx-results--ultra' : compact ? ' cx-results--compact' : '') + (o.gr ? ' cx-results--grid' : ''))",
+      },
+      {
+        // v39: Show more ignores what the viewer already loaded and
+        // refetches — the grid stalls behind the store (PG4).
+        name: "m66-page-more-ignores-store",
+        find: "          if (st.items.length > shown) {\n            appendCards(st.items.slice(shown), shown);\n            shown = st.items.length;\n            syncMore();\n            return;\n          }\n",
+        replace: "",
+      },
+      {
+        // v39: the skip is inverted — the page would lose its gallery and
+        // keep press/endorsements instead (PG7).
+        name: "m67-page-skip-inverted",
+        find: "    return !!conf && conf.ctx === 'page' && name !== 'results';",
+        replace: "    return !!conf && conf.ctx === 'page' && name === 'results';",
+      },
+      {
+        // v39: the preview note shows on the LIVE page too (PG6).
+        name: "m68-page-note-on-live",
+        find: "    if (pageMode && conf.live !== true) {",
+        replace: "    if (pageMode) {",
       },
     ],
   });

@@ -178,10 +178,14 @@
     return false;
   }
 
-  function pfTrack(feature, type) {
+  function pfTrack(feature, type, meta) {
     if (pfBeaconsOff()) return;
     try {
       var payload = { feature: feature, type: type || 'impression' };
+      // v39: optional free-text dimension (the track proxy's `meta`) — the
+      // dedicated results page tags its impression "page" so the surface
+      // can be told apart without a feature key of its own.
+      if (typeof meta === 'string' && meta) payload.meta = meta;
       if (PF_MARKET) payload.market = PF_MARKET;
       try {
         if (window.Shopify && window.Shopify.currency && window.Shopify.currency.active) {
@@ -311,6 +315,14 @@
   // of <body> and each widget PLACES ITSELF via the shared band below.
   var PF_SLOT_ORDER = ['press', 'endorsements', 'results'];
 
+  function pfSkipOnPage(name, conf) {
+    // v39 dedicated results page (island ctx "page"): the merchant-chosen
+    // online-store page shows the results gallery ONLY. The embed still
+    // emits the press / endorsement islands there (suppressing them in
+    // Liquid would cost budget bytes), so those widgets bail here.
+    return !!conf && conf.ctx === 'page' && name !== 'results';
+  }
+
   function pfPastCxSiblings(anchor) {
     // Deterministic order at a contended anchor: the pdp embed's proof
     // stack (below_tabs placement) and the Amazon sections (tabs_below)
@@ -438,6 +450,10 @@
     var band = document.querySelector('.cx-proof-band[data-cx-band="' + key + '"]');
     if (band) return band;
     band = pfNewBand(key);
+    // v39: on the dedicated results page the gallery IS the page content,
+    // so its band takes the theme's full content column instead of the
+    // medium one the product/home bands share.
+    if (conf && conf.ctx === 'page') band.className = 'cx-proof-band cx-proof-band--page container';
     var placed = false;
     var stack = document.querySelector('.cx-proof-stack');
     var tabs = document.querySelector('.pdp__tabs');
@@ -793,6 +809,7 @@
   function pressInit() {
     var isl = pfIsland('cx-press-config');
     if (!isl) return;
+    if (pfSkipOnPage('press', isl.conf)) return;
     pfWhenAllowed(isl.conf, function () {
       if (document.querySelector('.cx-press')) return; // idempotent
       // v8.1: press is market-scoped — the buyer's market rides the request
@@ -1639,6 +1656,7 @@
   function endoInit() {
     var isl = pfIsland('cx-endo-config');
     if (!isl) return;
+    if (pfSkipOnPage('endorsements', isl.conf)) return;
     pfWhenAllowed(isl.conf, function () {
       if (document.querySelector('.cx-endo')) return; // idempotent
       proofFetch('endorsements', pfProductParams(isl.conf, { page: 1, per: 24 }), function (data) {
@@ -1841,6 +1859,9 @@
     // The RAIL's own fetch params (page-size 12). v36: the viewer pages
     // the SAME filtered sequence at per=24 through resultsPageParams —
     // one body, explicit page/per, byte-identical queries here.
+    // v39: the dedicated results page is a grid, not a rail — it pages at
+    // the viewer's 24 so the two share ONE page sequence over st.items.
+    if (conf && conf.ctx === 'page') return resultsPageParams(conf, st, st.page, 24);
     return resultsPageParams(conf, st, st.page, 12);
   }
 
@@ -3412,11 +3433,27 @@
     // filters, same drawer, same lightbox in every tier.
     var ultra = conf.cm === 2;
     var compact = conf.cm === 1;
+    // v39 dedicated results page (island ctx "page"): the gallery is the
+    // page, so it renders as a real grid at every breakpoint. The density
+    // tiers and the desktop-layout flag are rail/home concepts and do not
+    // apply — ONE modifier replaces them all. The "+N" end tile is off:
+    // Show more pages the grid 24 at a time, cards still open the viewer.
+    var pageMode = conf.ctx === 'page';
     // v35: desktop default is the one-row rail (the vertical-space fix);
     // ui.gr restores the old 4-column desktop grid. Pure CSS leverage on
     // the root — ultra/compact densities out-cascade it and always rail.
-    var root = pfEl('section', 'cx-proof cx-results' + (ultra ? ' cx-results--ultra' : compact ? ' cx-results--compact' : '') + (o.gr ? ' cx-results--grid' : ''), ['data-cx-feature', 'verified_before_after']);
+    var root = pfEl('section', 'cx-proof cx-results' + (pageMode ? ' cx-results--page' : (ultra ? ' cx-results--ultra' : compact ? ' cx-results--compact' : '') + (o.gr ? ' cx-results--grid' : '')), ['data-cx-feature', 'verified_before_after']);
     pfSp(root);
+
+    if (pageMode && conf.live !== true) {
+      // v39: a draft island only ever renders for a server-verified
+      // preview session (pfWhenAllowed) — say so, in the merchant's own
+      // words, so staff never mistake the preview for the live page.
+      var pvNote = pfEl('p', 'cx-results__pvnote');
+      pvNote.textContent = 'Preview: only you can see this gallery. Shoppers will see it once the results page is switched to live in the app.';
+      root.appendChild(pvNote);
+      pfSp(root);
+    }
 
     // Scale banner — the number rides its own <strong> so it can carry
     // the Gobold treatment. Numbers stay text, never markup.
@@ -3591,8 +3628,16 @@
           // v36: the store dedupes by id (cache skew between paged
           // fetches) — only genuinely-new rows reach the rail.
           var fresh = resultsMergeItems(st.items, st.ids, list);
-          appendCards(fresh, st.items.length - fresh.length);
-          shown += fresh.length;
+          if (pageMode) {
+            // v39: the viewer pages this SAME store and may have carried
+            // it past the grid while this fetch was in flight — the grid
+            // catches up to the whole store, not just this response.
+            appendCards(st.items.slice(shown), shown);
+            shown = st.items.length;
+          } else {
+            appendCards(fresh, st.items.length - fresh.length);
+            shown += fresh.length;
+          }
           if (list.length === 0 && st.page > 1) st.page -= 1;
         } else {
           st.items.length = 0;
@@ -3720,6 +3765,20 @@
       moreBtn = pfEl('button', 'cx-results__more', ['type', 'button']);
       moreBtn.textContent = moreLabel;
       moreBtn.addEventListener('click', function () {
+        if (pageMode) {
+          // v39: results the viewer already loaded are shown at once,
+          // no fetch; otherwise ask for the page that follows the STORE
+          // (the viewer's own formula), never a blind page bump.
+          if (st.items.length > shown) {
+            appendCards(st.items.slice(shown), shown);
+            shown = st.items.length;
+            syncMore();
+            return;
+          }
+          st.page = Math.floor(st.items.length / 24) + 1;
+          refetch(true);
+          return;
+        }
         st.page += 1;
         refetch(true);
       });
@@ -3727,7 +3786,7 @@
       pfSp(root);
     }
 
-    if (vwCtx && /\S/.test(saTpl)) {
+    if (vwCtx && !pageMode && /\S/.test(saTpl)) {
       // v36: the "+N" end-of-rail tile — the Show-more replacement. It
       // opens the viewer at the first unseen result (the viewer's own
       // pager fetches that page). Built hidden; syncMore owns its
@@ -3766,7 +3825,7 @@
           if (document.querySelector('.cx-results')) return;
           var node = resultsBuildSection(isl.conf, data);
           if (!node) return;
-          if (pfMount('results', isl.el, node, isl.conf)) pfTrack('verified_before_after');
+          if (pfMount('results', isl.el, node, isl.conf)) pfTrack('verified_before_after', 'impression', isl.conf.ctx === 'page' ? 'page' : '');
         } catch (e) { /* fail closed */ }
       });
     });

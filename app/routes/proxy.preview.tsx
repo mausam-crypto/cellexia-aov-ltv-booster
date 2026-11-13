@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import {
   sanitizeMarketHandle,
+  sanitizePageHandle,
   sanitizeProductHandle,
   tokenHashFor,
   verifyToken,
@@ -180,6 +181,63 @@ const buildHubBody = (
 ${checkoutScript}`;
 };
 
+/**
+ * v39 page target (`&page=<handle>` — the dedicated results page's
+ * "Preview" button): same token gate, same session seeding, but instead of
+ * the hub panel the browser goes straight to that online-store page, where
+ * the proof embed's draft island renders for this verified session only.
+ *
+ * Standalone document ({% layout none %}) on purpose: it exists for one
+ * redirect, and skipping the theme layout means no third-party script ever
+ * sees the token-bearing URL (location.replace also drops it from history).
+ * The page is resolved by Liquid (`pages[handle]`, the all_products
+ * precedent above) so the destination is the storefront's own URL for it,
+ * and a hidden or deleted page gets a plain explanation instead of a 404.
+ * `pageHandle` MUST come from sanitizePageHandle — it sits inside a Liquid
+ * string literal.
+ */
+const buildPageRedirectBody = (token: string, pageHandle: string): string => {
+  const tokenJs = jsString(token);
+  const shell =
+    "margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f6f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1D1D1B;";
+  const card =
+    "max-width:420px;margin:24px;padding:32px;background:#fff;border:1px solid #e5e5e5;border-radius:16px;text-align:center;";
+  return `{% layout none %}{%- assign cx_preview_page = pages['${pageHandle}'] -%}<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Results page preview</title>
+</head>
+<body style="${shell}">
+{% if cx_preview_page.id %}
+  <div style="${card}">
+    <p style="margin:0 0 8px;font-size:18px;font-weight:700;">Opening your results page preview…</p>
+    <p style="margin:0;font-size:14px;color:#6b6b69;">Only this browser tab sees the draft gallery. Shoppers see no change.</p>
+  </div>
+  <script>
+(function () {
+  try {
+    sessionStorage.setItem('cx_preview_token', ${tokenJs});
+    sessionStorage.setItem('cx_preview_ok', '1');
+    sessionStorage.removeItem('cx_preview_market');
+  } catch (e) {
+    /* storage unavailable — the draft gallery simply will not show */
+  }
+  location.replace({{ cx_preview_page.url | json }});
+})();
+  </script>
+{% else %}
+  <div style="${card}">
+    <p style="margin:0 0 8px;font-size:18px;font-weight:700;">This page cannot be previewed yet.</p>
+    <p style="margin:0;font-size:14px;color:#6b6b69;">The page is hidden or no longer exists. In Shopify admin, open Online Store → Pages, set the page to Visible, then try the preview again.</p>
+  </div>
+{% endif %}
+</body>
+</html>`;
+};
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.public.appProxy(request);
   if (!session) {
@@ -190,10 +248,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const token = url.searchParams.get("t") ?? "";
   const productHandle = sanitizeProductHandle(url.searchParams.get("product"));
   const market = sanitizeMarketHandle(url.searchParams.get("market"));
+  const pageHandle = sanitizePageHandle(url.searchParams.get("page"));
 
   const valid = await verifyToken(session.shop, token);
   if (!valid) {
     return new Response(INVALID_BODY, { headers: LIQUID_HEADERS });
+  }
+
+  if (pageHandle) {
+    return new Response(buildPageRedirectBody(token, pageHandle), {
+      headers: LIQUID_HEADERS,
+    });
   }
 
   return new Response(

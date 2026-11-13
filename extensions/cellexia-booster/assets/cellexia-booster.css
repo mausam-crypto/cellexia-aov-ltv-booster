@@ -9191,3 +9191,71 @@ html.cx-compact .mini-cart::after {
 .cx-lightbox:not(.cx-results-vw) .cx-results__ba--teach .cx-results__ba-hint {
   max-inline-size: calc(100% - 100px);
 }
+
+/* ============================================ v39 dedicated results page
+   The merchant-chosen online-store page (island ctx "page"): the gallery
+   IS the page, so the rail becomes a real grid at EVERY breakpoint —
+   one column on phones (full-width before/after pairs), then 2 / 3 / 4.
+   One root modifier (.cx-results--page) replaces the density tiers and
+   the desktop-layout flag, which are rail/home concepts. Sits last in
+   the file on purpose: equal specificity to the --grid/--ultra/--compact
+   rail rules, later wins. Logical properties only (RTL). */
+.cx-proof-band--page {
+  margin-block: 32px 48px;
+}
+
+.cx-results--page .cx-results__rail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  overflow: visible;
+  scroll-snap-type: none;
+  padding-block-end: 0;
+}
+
+.cx-results--page .cx-results__card {
+  flex: none;
+  max-inline-size: none;
+  min-inline-size: 0;
+}
+
+@media (min-width: 600px) {
+  .cx-results--page .cx-results__rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .cx-results--page .cx-results__rail {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .cx-results--page .cx-results__rail {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Show more is the page's browse control (no "+N" tile here): centered
+   under the grid. The shared [hidden] rule is !important and still wins. */
+.cx-results--page .cx-results__more {
+  display: block;
+  margin-inline: auto;
+  margin-block-start: 24px;
+}
+
+/* Draft-only line a verified preview session sees above the gallery —
+   never rendered for shoppers (a live island skips it). */
+.cx-results__pvnote {
+  margin-block: 0 16px;
+  padding: 10px 14px;
+  border: 1px dashed #1d1d1b;
+  border-radius: 10px;
+  background: #faf9f6;
+  color: #1d1d1b;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+}

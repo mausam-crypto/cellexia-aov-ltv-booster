@@ -66,7 +66,9 @@ hook runs the Prisma migrations automatically. Approve the OAuth scopes when pro
 > locales, translations (read + write), markets, metaobjects (+definitions), files,
 > themes, shipping, price lists, discounts (write — v14 KIT codes / gift / shipping
 > discounts run by the app's Discount Function), inventory + locations (read — v14
-> gift-tier stock watch per warehouse).
+> gift-tier stock watch per warehouse), online store pages (read ONLY — v39 lists
+> your pages so staff can pick the before/after results page; the app never
+> creates, edits or deletes a page).
 > **Production note:** the `orders/paid` webhook carries protected customer data — for
 > the production app, request **Protected customer data access → Orders** in the Partner
 > dashboard (App → API access). Without it, order analytics/experiment metrics stay empty

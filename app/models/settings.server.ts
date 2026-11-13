@@ -972,6 +972,22 @@ export interface BoosterSettings {
      *  merchants who want clinical figures to stand on the numbers.
      *  Travels as `payload.ui.ht`. */
     hideLabQuotes: boolean;
+    /** v39 dedicated results page — a sub-surface of this feature (no key
+     *  of its own): the ONE online-store page the proof embed also renders
+     *  the gallery on, as a full grid of every approved result. Numeric
+     *  Shopify page id, 0 = none chosen. The Liquid gate matches on the id
+     *  (never the handle), so renamed/translated handles keep working. The
+     *  app only ever READS pages — it never writes one. */
+    pageId: number;
+    /** v39: handle + title of the chosen page — admin display and the
+     *  preview link only; Liquid never reads them. */
+    pageHandle: string;
+    pageTitle: string;
+    /** v39 (LIVE): shoppers see the gallery on the chosen page only while
+     *  true. False = a draft visible in a verified preview session only.
+     *  Sanitize forces it back to false whenever `pageId` changes, so a
+     *  newly chosen page can never arrive live. */
+    pageLive: boolean;
   };
   batchTransparency: {
     enabled: boolean;
@@ -1972,6 +1988,11 @@ export const DEFAULT_SETTINGS: BoosterSettings = {
     desktopLayout: "row",
     showStudy: true,
     hideLabQuotes: false,
+    // v39 dedicated results page — nothing chosen, nothing live.
+    pageId: 0,
+    pageHandle: "",
+    pageTitle: "",
+    pageLive: false,
   },
   batchTransparency: {
     enabled: false,
@@ -4453,6 +4474,40 @@ export function sanitizeSettings(
   if (typeof next.beforeAfter.hideLabQuotes !== "boolean") {
     next.beforeAfter.hideLabQuotes =
       DEFAULT_SETTINGS.beforeAfter.hideLabQuotes;
+  }
+  // v39 dedicated results page. The id is the only value the storefront
+  // gate reads, so it must be a clean non-negative safe integer (0 = no
+  // page). Handle/title are admin display + the preview link. Two
+  // fail-closed rules: no page → nothing else survives, and a CHANGED page
+  // is never live (going live is always its own explicit click).
+  {
+    const rawPageId: unknown = next.beforeAfter.pageId;
+    next.beforeAfter.pageId =
+      typeof rawPageId === "number" &&
+      Number.isSafeInteger(rawPageId) &&
+      rawPageId > 0
+        ? rawPageId
+        : 0;
+    const rawPageHandle: unknown = next.beforeAfter.pageHandle;
+    next.beforeAfter.pageHandle =
+      typeof rawPageHandle === "string"
+        ? rawPageHandle.trim().slice(0, 255)
+        : "";
+    const rawPageTitle: unknown = next.beforeAfter.pageTitle;
+    next.beforeAfter.pageTitle =
+      typeof rawPageTitle === "string"
+        ? rawPageTitle.trim().slice(0, 120)
+        : "";
+    if (typeof next.beforeAfter.pageLive !== "boolean") {
+      next.beforeAfter.pageLive = false;
+    }
+    if (next.beforeAfter.pageId === 0) {
+      next.beforeAfter.pageHandle = "";
+      next.beforeAfter.pageTitle = "";
+      next.beforeAfter.pageLive = false;
+    } else if (previous.beforeAfter.pageId !== next.beforeAfter.pageId) {
+      next.beforeAfter.pageLive = false;
+    }
   }
   // v8.17 endorsement badge flags + merchant copy overrides. Booleans keep
   // the typeof discipline; copy fields keep the methodology discipline

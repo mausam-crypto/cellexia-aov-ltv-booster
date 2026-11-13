@@ -28,7 +28,9 @@ include_config_on_deploy = true
 # write_discounts          -> v14 rewards: KIT set-savings codes + the free-gift /
 #                             free-shipping automatic discounts (Discount Function nodes)
 # read_inventory/locations -> v14 gift stock watcher (inventoryLevels per warehouse)
-scopes = "read_products,write_products,read_publications,write_publications,read_orders,read_locales,read_translations,read_markets,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_files,write_files,read_themes,read_shipping,read_price_lists,write_price_lists,write_translations,write_discounts,read_inventory,read_locations"
+# read_online_store_pages  -> v39 results page: LIST the store's pages so staff can pick
+#                             one (read-only — the app never creates/edits/deletes a page)
+scopes = "read_products,write_products,read_publications,write_publications,read_orders,read_locales,read_translations,read_markets,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_files,write_files,read_themes,read_shipping,read_price_lists,write_price_lists,write_translations,write_discounts,read_inventory,read_locations,read_online_store_pages"
 
 [auth]
 redirect_urls = [

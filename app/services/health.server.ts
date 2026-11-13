@@ -443,6 +443,31 @@ function detectEmbed(
   return { found: types.length > 0, enabled: enabledTypes.length > 0, types, enabledTypes };
 }
 
+/**
+ * v39: is the "Cellexia proof library" app embed switched on in the
+ * published theme? A thin public wrapper over the private theme read +
+ * detectEmbed pair, for admin screens outside the health run (the results
+ * page tab). `known: false` = the theme could not be read — callers must
+ * word that as "could not check", never as "off".
+ */
+export async function getProofEmbedStatus(
+  admin: AdminGraphqlClient,
+): Promise<{ known: boolean; enabled: boolean; error: string }> {
+  const theme = await fetchThemeFiles(admin);
+  if (!theme.ok) return { known: false, enabled: false, error: theme.error };
+  const raw = theme.contents.get("config/settings_data.json");
+  const settingsData = raw ? parseSettingsData(raw) : null;
+  if (!settingsData) {
+    return {
+      known: false,
+      enabled: false,
+      error: "config/settings_data.json could not be read",
+    };
+  }
+  const proof = detectEmbed(settingsData, "blocks/proof-booster");
+  return { known: true, enabled: proof.found && proof.enabled, error: "" };
+}
+
 /** v8.23: the apps/<handle> segment of an embed block type. */
 function embedAppHandle(type: string | null): string | null {
   const match = /^shopify:\/\/apps\/([^/]+)\/blocks\//.exec(type ?? "");
@@ -1094,7 +1119,7 @@ function extensionPresence(html: string | null): {
   };
 }
 
-async function fetchStorefrontText(url: string): Promise<string | null> {
+export async function fetchStorefrontText(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, {
       redirect: "follow",
@@ -1119,7 +1144,7 @@ function anyThemeFeatureOn(settings: BoosterSettings): boolean {
 
 /** Password-protected storefronts serve a 200 password page — no embed
  *  markup there is not an incident. */
-function looksPasswordProtected(html: string): boolean {
+export function looksPasswordProtected(html: string): boolean {
   return html.includes('action="/password"') || html.includes("id=\"password\"");
 }
 

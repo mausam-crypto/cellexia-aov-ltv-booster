@@ -29,6 +29,7 @@
  *   m3-rank-flattened      PF_BAND_RANK collapses to one rank (P2)
  *   m4-home-anchor-dropped home_after never resolves its section (H)
  *   m5-ha-gate-dropped     pfPlacementKey ignores the ha member (H)
+ *   m6-page-band-class-dropped  the v39 page band keeps the medium container (P6)
  */
 "use strict";
 const fs = require("fs");
@@ -182,6 +183,40 @@ for (const perm of [["above_proof", "below_proof"], ["below_proof", "above_proof
   ok(slots === "press,endorsements,results", "P5: fixed slot order (got " + slots + ")");
 }
 
+// ---- P6 (v39): the dedicated results page ---------------------------------
+// docs/SPEC-v39-results-page.md — island ctx "page": one band at the end of
+// #main (below the page template's own title/content), on the theme's full
+// content column instead of the medium one.
+{
+  const { doc, sandbox, main } = makePage("home");
+  const content = doc.createElement("div");
+  content.className = "page__content";
+  main.appendChild(content);
+  const key = vm.runInContext('pfPlacementKey({ ctx: "page", pl: "a" });', sandbox);
+  ok(key === "below_tabs", "P6: page ctx collapses to the single end-of-main band (got " + key + ")");
+  const band = vm.runInContext('pfBandAt("below_tabs", { ctx: "page" });', sandbox);
+  ok(!!band && band.className === "cx-proof-band cx-proof-band--page container",
+    "P6: the page band takes the full content column (got " + (band && band.className) + ")");
+  const kids = [];
+  for (const c of main.childNodes) if (c.nodeType === 1) kids.push(c);
+  ok(kids.length === 2 && kids[0] === content && kids[1] === band,
+    "P6: the band lands AFTER the page's own content, at the end of #main");
+  const slots = vm.runInContext(
+    '[].map.call(document.querySelector(".cx-proof-band").querySelectorAll("[data-cx-slot]"), function (s) { return s.getAttribute("data-cx-slot"); }).join(",");',
+    sandbox);
+  ok(slots === "press,endorsements,results", "P6: the page band keeps the three fixed slots");
+  const again = vm.runInContext('pfBandAt("below_tabs", { ctx: "page" });', sandbox);
+  ok(again === band, "P6: a second lookup reuses the band (idempotent)");
+  const { sandbox: s2 } = makePage("home");
+  const brandCls = vm.runInContext('pfBandAt("below_tabs", { ctx: "brand" }).className;', s2);
+  ok(brandCls === "cx-proof-band container container--md",
+    "P6: the home band keeps the medium container (page class is ctx-gated)");
+  const { sandbox: s3 } = makePage("home");
+  const bareCls = vm.runInContext('pfBandAt("below_tabs").className;', s3);
+  ok(bareCls === "cx-proof-band container container--md",
+    "P6: a conf-less call keeps the pre-v39 class");
+}
+
 // ---- H (v8.15): press home anchor -----------------------------------------
 {
   // H1: key selection — a valid ha wins on brand ctx only; malformed
@@ -263,6 +298,12 @@ if (!process.env.CX_SIM_SRC) {
       {
         name: "m5-ha-gate-dropped",
         find: "      if (conf && pfHomeAnchorKey(conf)) return 'home_after';",
+        replace: "",
+      },
+      {
+        // v39: the page band keeps the medium container (P6).
+        name: "m6-page-band-class-dropped",
+        find: "    if (conf && conf.ctx === 'page') band.className = 'cx-proof-band cx-proof-band--page container';",
         replace: "",
       },
     ],

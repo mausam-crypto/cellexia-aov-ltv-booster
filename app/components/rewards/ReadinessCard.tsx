@@ -19,6 +19,8 @@ export interface ReadinessRow {
     label: string;
     onClick?: () => void;
     url?: string;
+    /** v39: open `url` in a new tab (Shopify admin / storefront links). */
+    external?: boolean;
     loading?: boolean;
     disabled?: boolean;
     disabledReason?: string;
@@ -29,22 +31,35 @@ export interface ReadinessRow {
   errors?: string[];
 }
 
-export function ReadinessCard({ rows }: { rows: ReadinessRow[] }) {
+const DEFAULT_TITLE = "Ready to go live?";
+const DEFAULT_INTRO =
+  "Four steps, top to bottom. Each row tells you what to do next. Existing discounts in your store are never changed by this app.";
+
+export function ReadinessCard({
+  rows,
+  title = DEFAULT_TITLE,
+  intro = DEFAULT_INTRO,
+}: {
+  rows: ReadinessRow[];
+  /** v39: the card is reused outside rewards (the results-page tab) —
+   *  both default to the original rewards wording. */
+  title?: string;
+  intro?: string;
+}) {
   const allGood = rows.every((row) => row.tone === "success");
   return (
     <Card>
       <BlockStack gap="300">
         <InlineStack align="space-between" blockAlign="center" wrap>
           <Text as="h2" variant="headingMd">
-            Ready to go live?
+            {title}
           </Text>
           <Badge tone={allGood ? "success" : "attention"}>
             {allGood ? "All set" : "Some steps left"}
           </Badge>
         </InlineStack>
         <Text as="p" tone="subdued" variant="bodySm">
-          Four steps, top to bottom. Each row tells you what to do next.
-          Existing discounts in your store are never changed by this app.
+          {intro}
         </Text>
         <BlockStack gap="200">
           {rows.map((row) => (
@@ -87,6 +102,7 @@ export function ReadinessCard({ rows }: { rows: ReadinessRow[] }) {
                     <Button
                       onClick={row.action.onClick}
                       url={row.action.url}
+                      target={row.action.external ? "_blank" : undefined}
                       loading={row.action.loading}
                       disabled={row.action.disabled}
                     >

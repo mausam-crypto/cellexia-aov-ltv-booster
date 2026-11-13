@@ -148,6 +148,23 @@ export function sanitizeProductHandle(handle: unknown): string {
   return handle.toLowerCase().replace(/[^a-z0-9-_]/g, "").slice(0, 255);
 }
 
+/**
+ * v39: an online-store PAGE handle for the preview hub's "open this page"
+ * target. Unlike product handles it is validated, not rewritten — page
+ * handles may carry non-Latin letters, and a silently altered handle would
+ * resolve to the wrong page (or none). The value is interpolated into a
+ * Liquid string literal by the hub, so anything that could close the
+ * literal or open a Liquid/HTML construct fails the whole handle closed.
+ */
+export function sanitizePageHandle(handle: unknown): string {
+  if (typeof handle !== "string") return "";
+  const cleaned = handle.trim();
+  if (cleaned.length === 0 || cleaned.length > 255) return "";
+  // eslint-disable-next-line no-control-regex
+  if (/[\s'"`{}%<>\\/?#&\u0000-\u001f\u007f]/.test(cleaned)) return "";
+  return cleaned;
+}
+
 export function sanitizeMarketHandle(handle: unknown): string {
   if (typeof handle !== "string") return "";
   const cleaned = handle.toLowerCase().trim();
@@ -479,11 +496,20 @@ export async function verifyToken(
  * Builds the shareable preview entry URL (the ONLY page-facing place the raw
  * token is allowed to appear):
  *   https://<shop-domain>/apps/cellexia/preview?t=<raw>&product=<h>&market=<m>
+ *
+ * v39: `pageHandle` adds `&page=<handle>` — the hub then verifies the
+ * token, seeds the preview session and sends the browser straight to that
+ * online-store page instead of showing the hub panel (the dedicated
+ * results page's "Preview" button).
  */
 export function buildPreviewEntryUrl(
   shopDomain: string,
   rawToken: string,
-  options: { productHandle?: string | null; market?: string | null } = {},
+  options: {
+    productHandle?: string | null;
+    market?: string | null;
+    pageHandle?: string | null;
+  } = {},
 ): string {
   const domain = shopDomain
     .replace(/^https?:\/\//i, "")
@@ -495,6 +521,8 @@ export function buildPreviewEntryUrl(
   if (productHandle) params.set("product", productHandle);
   const market = sanitizeMarketHandle(options.market);
   if (market) params.set("market", market);
+  const pageHandle = sanitizePageHandle(options.pageHandle);
+  if (pageHandle) params.set("page", pageHandle);
   return `https://${domain}/apps/cellexia/preview?${params.toString()}`;
 }
 

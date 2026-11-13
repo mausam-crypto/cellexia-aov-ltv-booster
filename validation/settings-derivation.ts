@@ -1698,6 +1698,128 @@ for (const key of FEATURE_KEYS) {
   );
 }
 
+// ---- v39: dedicated results page (beforeAfter.pageId / pageLive) ----------
+// docs/SPEC-v39-results-page.md — the storefront gate reads pageId +
+// pageLive only, so sanitize must (a) keep the id a clean safe integer,
+// (b) never let a page that was just CHOSEN or CHANGED be live, and
+// (c) clear everything when no page is set.
+{
+  const base = () => clone(DEFAULT_SETTINGS) as any;
+  const d = DEFAULT_SETTINGS.beforeAfter as any;
+  ok(
+    d.pageId === 0 && d.pageHandle === "" && d.pageTitle === "" && d.pageLive === false,
+    "v39: defaults — no page, nothing live",
+  );
+
+  // A stored pre-v39 blob has none of the four keys: merge heals it.
+  const stored = base();
+  delete stored.beforeAfter.pageId;
+  delete stored.beforeAfter.pageHandle;
+  delete stored.beforeAfter.pageTitle;
+  delete stored.beforeAfter.pageLive;
+  stored.beforeAfter.enabled = true;
+  const merged = mergeSettings(clone(DEFAULT_SETTINGS), stored) as any;
+  ok(
+    merged.beforeAfter.pageId === 0 &&
+      merged.beforeAfter.pageLive === false &&
+      merged.beforeAfter.enabled === true,
+    "v39: a pre-v39 store heals to no page; the feature switch is untouched",
+  );
+
+  // Choosing a page: stored trimmed, as a draft.
+  const chosen = base();
+  Object.assign(chosen.beforeAfter, {
+    pageId: 123456789012,
+    pageHandle: "  results  ",
+    pageTitle: " Real results ",
+    pageLive: false,
+  });
+  const c1 = sanitizeSettings(chosen, base()).beforeAfter as any;
+  ok(
+    c1.pageId === 123456789012 &&
+      c1.pageHandle === "results" &&
+      c1.pageTitle === "Real results" &&
+      c1.pageLive === false,
+    "v39: a chosen page round-trips (trimmed) as a draft",
+  );
+
+  // Choose + live in ONE patch: the page changed, so it is never live.
+  const sneaky = base();
+  Object.assign(sneaky.beforeAfter, { pageId: 5, pageHandle: "r", pageLive: true });
+  ok(
+    (sanitizeSettings(sneaky, base()).beforeAfter as any).pageLive === false,
+    "v39: a newly chosen page can never arrive live",
+  );
+
+  // Go live on the SAME page: allowed.
+  const prev = base();
+  Object.assign(prev.beforeAfter, { pageId: 5, pageHandle: "r", pageTitle: "R" });
+  const live = clone(prev);
+  live.beforeAfter.pageLive = true;
+  const l1 = sanitizeSettings(clone(live), clone(prev)).beforeAfter as any;
+  ok(l1.pageLive === true && l1.pageId === 5, "v39: going live on the unchanged page sticks");
+  // …and an unrelated later save keeps it live.
+  const later = clone(live);
+  later.beforeAfter.density = "compact";
+  ok(
+    (sanitizeSettings(clone(later), clone(live)).beforeAfter as any).pageLive === true,
+    "v39: an unrelated save leaves a live page live",
+  );
+
+  // Change the page while live: back to draft.
+  const changed = clone(live);
+  changed.beforeAfter.pageId = 6;
+  ok(
+    (sanitizeSettings(changed, clone(live)).beforeAfter as any).pageLive === false,
+    "v39: changing the page while live resets it to a draft",
+  );
+
+  // Remove: everything clears.
+  const removed = clone(live);
+  removed.beforeAfter.pageId = 0;
+  const r1 = sanitizeSettings(removed, clone(live)).beforeAfter as any;
+  ok(
+    r1.pageId === 0 && r1.pageHandle === "" && r1.pageTitle === "" && r1.pageLive === false,
+    "v39: removing the page clears handle, title and live",
+  );
+
+  // Junk ids fail closed to "no page" — even when the junk says live.
+  for (const junk of [-1, 1.5, NaN, Infinity, "12", null, {}, [], true, 2 ** 60]) {
+    const dirty = clone(live);
+    dirty.beforeAfter.pageId = junk;
+    const j = sanitizeSettings(dirty, clone(live)).beforeAfter as any;
+    ok(
+      j.pageId === 0 && j.pageLive === false && j.pageHandle === "",
+      `v39: junk pageId ${String(JSON.stringify(junk))} -> no page, not live`,
+    );
+  }
+  // pageLive is a strict boolean.
+  for (const junk of ["true", 1, null, {}]) {
+    const dirty = clone(prev);
+    dirty.beforeAfter.pageLive = junk;
+    ok(
+      (sanitizeSettings(dirty, clone(prev)).beforeAfter as any).pageLive === false,
+      `v39: junk pageLive ${String(JSON.stringify(junk))} -> false`,
+    );
+  }
+  // Display strings: non-strings drop, long values cap.
+  const noisy = clone(prev);
+  Object.assign(noisy.beforeAfter, { pageHandle: 42, pageTitle: { x: 1 } });
+  const n1 = sanitizeSettings(noisy, clone(prev)).beforeAfter as any;
+  ok(n1.pageHandle === "" && n1.pageTitle === "" && n1.pageId === 5, "v39: non-string handle/title drop to empty");
+  const long = clone(prev);
+  Object.assign(long.beforeAfter, { pageHandle: "h".repeat(400), pageTitle: "t".repeat(400) });
+  const g1 = sanitizeSettings(long, clone(prev)).beforeAfter as any;
+  ok(g1.pageHandle.length === 255 && g1.pageTitle.length === 120, "v39: handle caps at 255, title at 120");
+
+  // The two paths Liquid reads resolve in the emitted object.
+  const emitted = JSON.parse(JSON.stringify(sanitizeSettings(clone(live), clone(prev)))) as any;
+  ok(
+    emitted.beforeAfter.pageId === 5 && emitted.beforeAfter.pageLive === true,
+    "v39: cfg.beforeAfter.pageId / pageLive ride the config mirror as number + boolean",
+  );
+}
+
 if (failures > 0) {
   console.error(`\n${failures}/${checks} CHECKS FAILED`);
   process.exit(1);

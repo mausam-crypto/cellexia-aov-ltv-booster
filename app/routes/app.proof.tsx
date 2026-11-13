@@ -26,6 +26,9 @@ const TAB_PATHS = [
   "/app/proof/press",
   "/app/proof/endorsements",
   "/app/proof/results",
+  // v39: the dedicated results page. Deliberately NOT "/app/proof/results-…"
+  // — tabs are matched with startsWith, so that path would light Results.
+  "/app/proof/page",
 ];
 
 export default function ProofLibraryLayout() {
@@ -54,6 +57,7 @@ export default function ProofLibraryLayout() {
           ? `Results (${counts.results.total} · ${counts.results.pending} pending)`
           : `Results (${counts.results.total})`,
     },
+    { id: "page", content: "Results page" },
   ];
   const selected = Math.max(
     TAB_PATHS.findIndex((path) => location.pathname.startsWith(path)),

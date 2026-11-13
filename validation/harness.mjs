@@ -103,6 +103,11 @@ const CSS = `${EXT}/assets/cellexia-booster.css`;
   // docs/theme-integration.md, matching every other block in the extension)
   // and by de-duplicating five identical schema `info` strings. The pin
   // stays where v14 left it; the rule "slim before you spend" held.
+  // v39 (2026-11-13): NO budget move — the results-page clause in
+  // proof-booster.liquid (+213B) was paid for FIRST in the same file: the
+  // stale 3-line brace-literal comment (-55B) and the three duplicated
+  // `request.page_type == 'product'` opt-out wrappers folded into one
+  // `cx_f` assign (-179B net). 99,454B -> 99,433B.
   const BUDGET = 99_500; // our own margin below the cap
   const FLOOR = 500; // a shipped block/snippet below this has been gutted
   const CEILING = 30_000; // a single file above this needs a Liquid diet
@@ -6568,6 +6573,273 @@ const EVIDENCE = {
   ok(
     !read(`${EXT}/blocks/proof-booster.liquid`).includes("bannerCount"),
     "v38.1: ZERO Liquid bytes and zero locale keys (the sentence rides the proxy copy)",
+  );
+}
+
+// ====================== v39 DEDICATED RESULTS PAGE (one merchant-chosen page)
+// docs/SPEC-v39-results-page.md — staff pick ONE online-store page in the
+// admin; the proof embed then also renders the results gallery there, as a
+// grid of every approved result. Hard promises pinned here: the app only
+// READS pages (read-only scope, no page mutation anywhere), nothing reaches
+// shoppers before an explicit go-live, a changed page is never live, and
+// the Liquid was paid for by slimming (no budget move). Behavior lives in
+// proof-gallery PG*, proof-placement P-page and settings-derivation.
+{
+  const liquid39 = read(`${EXT}/blocks/proof-booster.liquid`);
+  ok(
+    liquid39.includes(
+      "if request.page_type == 'page' and page.id == cfg.beforeAfter.pageId\nassign cx_page_ok = true\nassign cx_ctx = 'page'\nassign cx_r_draft = true\nif cfg.beforeAfter.pageLive != true\nassign cx_r_on = false\nendif\nendif\n",
+    ),
+    "v39: ONE page clause — id match behind the page-type nil guard, page-scoped draft island, cx_r_on off until pageLive",
+  );
+  ok(
+    (liquid39.match(/request\.page_type == 'page'/g) || []).length === 1 &&
+      (liquid39.match(/cfg\.beforeAfter\.pageId/g) || []).length === 1,
+    "v39: page templates are admitted in exactly one place (every other page stays out)",
+  );
+  ok(
+    !liquid39.includes("pageHandle") && !liquid39.includes("page.handle") && !liquid39.includes("pageTitle"),
+    "v39: Liquid matches the page by id only (renamed/translated handles keep working)",
+  );
+  ok(
+    liquid39.indexOf("assign cfg = app.metafields.cellexia.config.value") <
+      liquid39.indexOf("page.id == cfg.beforeAfter.pageId") &&
+      liquid39.indexOf("page.id == cfg.beforeAfter.pageId") < liquid39.indexOf("assign cx_any = false"),
+    "v39: the page clause runs after cfg resolves and before the emission decision",
+  );
+  // The slimming that paid for it: per-product opt-outs through ONE assign,
+  // made only inside the product block (nil elsewhere => nil.x == false is
+  // false => byte-equivalent gating off product pages).
+  ok(
+    liquid39.includes(
+      "if request.page_type == 'product'\nassign cx_ctx = 'product'\nassign cx_pid = product.id\nassign cx_f = product.metafields.cellexia.pdp_flags.value\nendif\n",
+    ) &&
+      (liquid39.match(/assign cx_f = /g) || []).length === 1,
+    "v39 slimming: cx_f is assigned once, inside the product block only",
+  );
+  for (const key of ["press", "derm_endorsements", "verified_before_after"]) {
+    ok(
+      liquid39.includes(`if cx_f.${key} == false\n`),
+      `v39 slimming: the ${key} per-product opt-out reads cx_f`,
+    );
+  }
+  ok(
+    !liquid39.includes("product.metafields.cellexia.pdp_flags.value.") &&
+      !liquid39.includes("comment\n") &&
+      (liquid39.match(/request\.page_type == 'product'/g) || []).length === 2,
+    "v39 slimming: no duplicated product-page wrappers, no in-block comment",
+  );
+
+  const settings39 = read("app/models/settings.server.ts");
+  ok(
+    settings39.includes('    pageId: 0,\n    pageHandle: "",\n    pageTitle: "",\n    pageLive: false,\n'),
+    "v39: defaults — no page chosen, nothing live",
+  );
+  ok(
+    settings39.includes(
+      '    if (next.beforeAfter.pageId === 0) {\n      next.beforeAfter.pageHandle = "";\n      next.beforeAfter.pageTitle = "";\n      next.beforeAfter.pageLive = false;\n    } else if (previous.beforeAfter.pageId !== next.beforeAfter.pageId) {\n      next.beforeAfter.pageLive = false;\n    }',
+    ),
+    "v39: sanitize — no page clears everything; a CHANGED page is never live",
+  );
+  ok(
+    settings39.includes("Number.isSafeInteger(rawPageId) &&") &&
+      settings39.includes('if (typeof next.beforeAfter.pageLive !== "boolean") {\n      next.beforeAfter.pageLive = false;'),
+    "v39: sanitize — the page id is a clean safe integer, pageLive a strict boolean",
+  );
+
+  const proofJs39 = read(PROOF_JS);
+  ok(
+    proofJs39.includes("  function pfSkipOnPage(name, conf) {") &&
+      proofJs39.includes("return !!conf && conf.ctx === 'page' && name !== 'results';") &&
+      proofJs39.includes("if (pfSkipOnPage('press', isl.conf)) return;") &&
+      proofJs39.includes("if (pfSkipOnPage('endorsements', isl.conf)) return;"),
+    "v39: press + endorsements bail on the results page (gallery only)",
+  );
+  ok(
+    proofJs39.includes("if (conf && conf.ctx === 'page') band.className = 'cx-proof-band cx-proof-band--page container';"),
+    "v39: the page band takes the full content column",
+  );
+  ok(
+    proofJs39.includes(
+      "if (conf && conf.ctx === 'page') return resultsPageParams(conf, st, st.page, 24);\n    return resultsPageParams(conf, st, st.page, 12);",
+    ),
+    "v39: the page grid pages at 24 (the viewer's size); every other ctx keeps the pinned 12",
+  );
+  ok(
+    proofJs39.includes("var pageMode = conf.ctx === 'page';") &&
+      proofJs39.includes(
+        "(pageMode ? ' cx-results--page' : (ultra ? ' cx-results--ultra' : compact ? ' cx-results--compact' : '') + (o.gr ? ' cx-results--grid' : ''))",
+      ),
+    "v39: ONE root modifier replaces the density tiers and the desktop-layout flag on the page",
+  );
+  ok(
+    proofJs39.includes("if (vwCtx && !pageMode && /\\S/.test(saTpl)) {"),
+    "v39: no +N end tile on the page (Show more is the browse control)",
+  );
+  ok(
+    proofJs39.includes(
+      "if (st.items.length > shown) {\n            appendCards(st.items.slice(shown), shown);\n            shown = st.items.length;\n            syncMore();\n            return;\n          }\n          st.page = Math.floor(st.items.length / 24) + 1;\n          refetch(true);",
+    ) &&
+      proofJs39.includes(
+        "if (pageMode) {\n            // v39: the viewer pages this SAME store and may have carried\n            // it past the grid while this fetch was in flight — the grid\n            // catches up to the whole store, not just this response.\n            appendCards(st.items.slice(shown), shown);\n            shown = st.items.length;",
+      ),
+    "v39: Show more follows the viewer-shared store (no skipped or repeated page)",
+  );
+  ok(
+    proofJs39.includes("if (pageMode && conf.live !== true) {") &&
+      proofJs39.includes("var pvNote = pfEl('p', 'cx-results__pvnote');") &&
+      proofJs39.includes("pvNote.textContent = "),
+    "v39: a draft page says it is a preview (textContent only)",
+  );
+  ok(
+    proofJs39.includes("  function pfTrack(feature, type, meta) {") &&
+      proofJs39.includes("if (typeof meta === 'string' && meta) payload.meta = meta;") &&
+      proofJs39.includes("pfTrack('verified_before_after', 'impression', isl.conf.ctx === 'page' ? 'page' : '');"),
+    "v39: the page impression is tagged meta 'page' under the same feature key",
+  );
+
+  const css39 = read(CSS);
+  ok(
+    css39.includes(
+      ".cx-results--page .cx-results__rail {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr);\n  gap: 16px;\n  overflow: visible;\n  scroll-snap-type: none;",
+    ),
+    "v39 CSS: the page rail is a one-column grid on phones (no sideways scroll)",
+  );
+  for (const [px, cols] of [[600, 2], [900, 3], [1200, 4]]) {
+    ok(
+      css39.includes(
+        `@media (min-width: ${px}px) {\n  .cx-results--page .cx-results__rail {\n    grid-template-columns: repeat(${cols}, minmax(0, 1fr));`,
+      ),
+      `v39 CSS: ${cols} columns from ${px}px`,
+    );
+  }
+  ok(
+    css39.includes(".cx-results--page .cx-results__card {\n  flex: none;\n  max-inline-size: none;\n  min-inline-size: 0;\n}") &&
+      css39.includes(".cx-proof-band--page {") &&
+      css39.includes(".cx-results__pvnote {") &&
+      css39.includes(".cx-results--page .cx-results__more {"),
+    "v39 CSS: cards un-fix their rail widths; band, preview note and Show more are styled",
+  );
+  {
+    // Equal specificity to every rail modifier => the page rules must come
+    // LAST in the file or a density/grid rule would win the cascade.
+    const pageAt = css39.indexOf(".cx-results--page .cx-results__rail {");
+    const rivals = [
+      ".cx-results--grid .cx-results__rail {",
+      ".cx-results--ultra .cx-results__rail {",
+      ".cx-results--compact .cx-results__rail {",
+      ".cx-results__rail {",
+      ".cx-results__card {",
+    ];
+    ok(
+      pageAt > 0 && rivals.every((sel) => css39.lastIndexOf(`\n${sel}`) < pageAt && css39.lastIndexOf(`  ${sel}`) < pageAt),
+      "v39 CSS: the page grid rules sit after every rail/card/density rule (later wins)",
+    );
+  }
+
+  // Preview straight onto the page, behind the same token gate.
+  const preview39 = read("app/services/preview.server.ts");
+  ok(
+    preview39.includes("export function sanitizePageHandle(handle: unknown): string {") &&
+      preview39.includes("const pageHandle = sanitizePageHandle(options.pageHandle);\n  if (pageHandle) params.set(\"page\", pageHandle);"),
+    "v39: the preview entry URL can target a (validated) page handle",
+  );
+  const hub39 = read("app/routes/proxy.preview.tsx");
+  ok(
+    hub39.includes('const pageHandle = sanitizePageHandle(url.searchParams.get("page"));') &&
+      hub39.includes("{% layout none %}{%- assign cx_preview_page = pages['${pageHandle}'] -%}") &&
+      hub39.includes("location.replace({{ cx_preview_page.url | json }});") &&
+      hub39.includes("sessionStorage.setItem('cx_preview_ok', '1');\n    sessionStorage.removeItem('cx_preview_market');"),
+    "v39: the hub seeds the preview session and redirects to the page's own storefront URL",
+  );
+  ok(
+    hub39.indexOf("const valid = await verifyToken(session.shop, token);") > 0 &&
+      hub39.indexOf("const valid = await verifyToken(session.shop, token);") < hub39.indexOf("  if (pageHandle) {\n    return new Response(buildPageRedirectBody(token, pageHandle)") &&
+      hub39.indexOf("return new Response(INVALID_BODY, { headers: LIQUID_HEADERS });") < hub39.indexOf("  if (pageHandle) {\n    return new Response(buildPageRedirectBody(token, pageHandle)"),
+    "v39: the page redirect is only reachable after the token verified",
+  );
+
+  // Admin tab + the read-only guarantee.
+  ok(exists("app/routes/app.proof.page.tsx") && exists("app/services/results-page.server.ts"), "v39: the Results page tab route and its service exist");
+  const hubTabs39 = read("app/routes/app.proof.tsx");
+  // Line comments inside the array may quote example paths — drop them first.
+  const tabPaths39 = [
+    ...(hubTabs39.split("const TAB_PATHS = [")[1] || "")
+      .split("];")[0]
+      .replace(/^\s*\/\/.*$/gm, "")
+      .matchAll(/"([^"]+)"/g),
+  ].map((m) => m[1]);
+  ok(
+    tabPaths39.includes("/app/proof/page") && tabPaths39.includes("/app/proof/results") && tabPaths39.length === 4,
+    "v39: the hub carries four tabs incl. /app/proof/page",
+  );
+  ok(
+    tabPaths39.every((a) => tabPaths39.every((b) => a === b || !b.startsWith(a))),
+    "v39: no tab path is a prefix of another (tabs are matched with startsWith)",
+  );
+  ok(
+    (hubTabs39.match(/\{ id: "page", content: "Results page" \}/g) || []).length === 1,
+    "v39: the fourth tab is labelled Results page",
+  );
+  const tab39 = read("app/routes/app.proof.page.tsx");
+  ok(
+    tab39.includes('case "choose": {') &&
+      tab39.includes('case "golive": {') &&
+      tab39.includes('case "offline": {') &&
+      tab39.includes('case "remove": {') &&
+      tab39.includes("pageLive: false,\n        },\n      });") &&
+      tab39.includes("const blockers = resultsPageGoLiveBlockers({"),
+    "v39: choose always stores a draft; go-live re-checks the shared rule server-side",
+  );
+  ok(
+    !/resultsPageGoLiveBlockers|GO_LIVE_BLOCKER_TEXT/.test(tab39.split("export default function ResultsPageTab()")[1] || "x resultsPageGoLiveBlockers"),
+    "v39: the tab component never calls .server helpers (the blockers ride the loader)",
+  );
+  const exampleToml39 = read("shopify.app.toml.example");
+  const scopes39 = (exampleToml39.split("\n").find((l) => l.startsWith("scopes = ")) || "").replace(/^scopes = "|"$/g, "").split(",");
+  ok(scopes39.includes("read_online_store_pages"), "v39: .example toml requests read_online_store_pages");
+  ok(
+    !scopes39.includes("write_online_store_pages") && !scopes39.includes("write_content") && !scopes39.includes("write_themes"),
+    "v39: READ-ONLY — no page/content/theme write scope is requested",
+  );
+  const envScopes39 = (read(".env.example").split("\n").find((l) => l.startsWith("SCOPES=")) || "").slice("SCOPES=".length).split(",");
+  ok(
+    envScopes39.length === scopes39.length && scopes39.every((sc) => envScopes39.includes(sc)),
+    "v39: .env.example SCOPES equals the .example toml scopes line",
+  );
+  {
+    // The whole server tree: not one page mutation, in any spelling.
+    const offenders = [];
+    const walk = (dir) => {
+      for (const name of listFiles(dir)) {
+        const rel = `${dir}/${name}`;
+        if (/\.(ts|tsx|mjs|js)$/.test(name)) {
+          if (/\bpage(Create|Update|Delete)\b|\bonlineStorePage(Create|Update|Delete)\b/.test(read(rel))) offenders.push(rel);
+        } else if (!name.includes(".")) {
+          walk(rel);
+        }
+      }
+    };
+    walk("app");
+    ok(offenders.length === 0, `v39: the app never writes a Shopify page (page mutations found in: ${offenders.join(", ") || "none"})`);
+  }
+  const svc39 = read("app/services/results-page.server.ts");
+  ok(
+    // every GraphQL document in the service opens with `query` — no
+    // mutation document exists (prose may still say the word).
+    (svc39.match(/`#graphql/g) || []).length === 3 &&
+      (svc39.match(/`#graphql\s+query /g) || []).length === 3 &&
+      !/`#graphql\s+mutation\b/.test(svc39) &&
+      svc39.includes("pages(first: $first, query: $query, sortKey: TITLE) {") &&
+      svc39.includes("page(id: $id) {") &&
+      svc39.includes('inspectStorefrontIslands(html, ["cx-results-config"])'),
+    "v39: the results-page service is queries only (list, one page, storefront probe)",
+  );
+  ok(
+    read("docs/SPEC-v39-results-page.md").includes("**The app never writes a page.**") &&
+      read("UPDATE.md").includes("read_online_store_pages") &&
+      read("docs/theme-integration.md").includes("## Online-store pages (`page` templates) — the v39 results page"),
+    "v39: the contract, the new scope and the page anchor are documented",
   );
 }
 
