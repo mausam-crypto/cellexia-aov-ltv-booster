@@ -458,10 +458,11 @@ export default function SubscriptionsFeaturesPage() {
                   Joy gives every product its own plans, and a different plan
                   per pack size. Cart cross-sells, pack upgrades, the
                   quantity cards and Frequently bought together therefore use
-                  each product’s (and each pack’s) own Joy plan. A cart
-                  cross-sell names its delivery frequency when it differs
-                  from the cart’s subscription. Plans of the switched-off
-                  Cellexia Subscriptions app are never offered.
+                  each product’s (and each pack’s) own Joy plan. The offers
+                  show the subscription price only; the cart line shows the
+                  delivery frequency once the product is in the cart. Plans
+                  of the switched-off Cellexia Subscriptions app are never
+                  offered.
                 </Text>
                 <Text as="p">
                   The discount shown to shoppers is always read live from the

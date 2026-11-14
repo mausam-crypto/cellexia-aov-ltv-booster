@@ -360,6 +360,11 @@
    "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
    "reason": "v40.2 (merchant decision 2026-11-14, SPEC-v40 §7.2): the pack-upgrade tile no longer prints the tier plan's name (cx-volume__freq span, candidate.planName and the no-name guard removed; companion CSS rule deleted). The upgrade still moves a native line to the tier variant's own plan (candidate.planId) and still restores the original plan on failure. Pinned by the harness negative pin and sims/crosssell-pipeline m41-tile-label-returns.",
    "wave": "v40.2"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+   "reason": "v40.3 (merchant decision 2026-11-14, SPEC-v40 §7.4): the cart cross-sell rows no longer print the row plan's name when its schedule differs from the cart's subscription (cx-crosssell__freq removed from both row builders; crossSellPlanFor's native branch returns {planId, priceCents, name} with no freq field and no longer refuses a nameless differing plan; companion CSS rule deleted — the stylesheet is byte-identical to v39.1 again). Prices, plan resolution and the add payload are unchanged. Pinned by the harness negative pin and sims/crosssell-pipeline m46/m47 (label-returns).",
+   "wave": "v40.3"
   }
  ]
 }

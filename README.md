@@ -134,8 +134,7 @@ orders/paid webhook ──► OrderStat table (AOV, attach rates)
   via `/cart/change.js`, and hide all subscription UI for B2B customers. Since v40 the
   subscription-aware cart offers, Frequently bought together and the quantity stepper follow
   Joy's plans too: Joy gives every product, and every pack size, its own plan, so each offer
-  uses that product's own plan and names the delivery frequency whenever it changes
-  (`docs/SPEC-v40-joy-subscriptions.md`). The switched-off in-house subscription app's plans
+  uses that product's own plan (`docs/SPEC-v40-joy-subscriptions.md`). The switched-off in-house subscription app's plans
   are never offered.
 
 ## Prerequisites

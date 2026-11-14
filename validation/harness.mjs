@@ -4428,9 +4428,9 @@ const EVIDENCE = {
     );
     ok(
       cartJs17.includes("if (anchor.native) {") &&
-        cartJs17.includes("if (!sameSchedule && !nat.name) return null;") &&
-        cartJs17.includes("freq: sameSchedule ? '' : nat.name"),
-      "v40: cross-sell resolves inside the native family and reports a differing schedule by plan name (nameless = not offered)",
+        cartJs17.includes(": nativeVariantAlloc(entry, variant, anchor.name);") &&
+        cartJs17.includes("return { planId: nat.planId, priceCents: nat.price, name: nat.name };"),
+      "v40: cross-sell resolves inside the native family (the anchor's exact plan, else the row variant's own same-named-first plan)",
     );
     ok(
       cartJs17.includes("if (!tierAlloc && nativeLine) {") &&
@@ -4445,10 +4445,11 @@ const EVIDENCE = {
         cartJs17.includes("if (sellingPlanId) restore.selling_plan = sellingPlanId;"),
       "v40: the upgrade add carries the candidate's plan; a failed upgrade restores the ORIGINAL plan",
     );
+    // v40.3 (merchant, 2026-11-14): the cross-sell rows show NO plan name
+    // either — the offers print the subscription price and nothing else.
     ok(
-      cartJs17.includes("if (sub && sub.freq) info.appendChild(el('span', 'cx-crosssell__freq', sub.freq));") &&
-        cartJs17.includes("var freq = cxEl('span', 'cx-crosssell__freq');"),
-      "v40: a differing delivery frequency is rendered on both cross-sell row builders (textContent only)",
+      !cartJs17.includes("cx-crosssell__freq") && !/sub\.freq|freq:/.test(cartJs17) && !cartJs17.includes("sameSchedule"),
+      "v40.3: cross-sell rows carry no delivery-frequency note (no cx-crosssell__freq, no freq field)",
     );
     // v40.2 (merchant, 2026-11-14): the pack-upgrade tile shows NO plan name.
     ok(
@@ -4530,14 +4531,15 @@ const EVIDENCE = {
     );
     const css40 = read(`${EXT}/assets/cellexia-booster.css`);
     ok(
-      css40.includes(".cx-crosssell__freq {") && !css40.includes("cx-volume__freq"),
-      "v40/v40.2: the cross-sell frequency label is styled; the removed tile label left no CSS behind",
+      !css40.includes("cx-crosssell__freq") && !css40.includes("cx-volume__freq"),
+      "v40.2/v40.3: both removed frequency labels left no CSS behind",
     );
 
     const xsim40 = read("validation/sims/crosssell-pipeline.cjs");
     ok(
       ["m33-native-while-live", "m36-native-zero-percent", "m37-native-deny-dropped", "m39-upgrade-keeps-line-plan",
-        "m40-restore-on-tier-plan", "m41-tile-label-returns", "m44-keyword-names-dark-plan", "m51-xp-ttl-ignored"]
+        "m40-restore-on-tier-plan", "m41-tile-label-returns", "m44-keyword-names-dark-plan",
+        "m46-row-label-returns", "m47-manual-label-returns", "m51-xp-ttl-ignored"]
         .every((n) => xsim40.includes(`name: "${n}"`)),
       "v40: crosssell-pipeline sim carries the m33-m51 native mutation block",
     );

@@ -1163,10 +1163,10 @@
   //     "Every 2 Months" on the 1-unit variant, "Every 3 Months" on the
   //     2/3-unit variants), so "the same plan id elsewhere" never holds.
   //     A row resolves to its own variant's offerable plan — the one named
-  //     like the anchor's first. A cross-sell ROW on another schedule than
-  //     the cart's subscription shows that plan's NAME (and is not offered
-  //     without one); the pack-upgrade TILE shows no plan name (v40.2,
-  //     merchant decision).
+  //     like the anchor's first. Neither the pack-upgrade tile (v40.2) nor
+  //     a cross-sell row (v40.3) prints the plan's name: merchant decision —
+  //     the offers show the subscription price only, and the theme's cart
+  //     line shows the plan once the product is in the cart.
 
   var nativeDeny = null; // proxy "xp": in-house plan ids when the island is absent
   var nativeDenyAsked = false; // ONE proxy attempt per page, whatever its outcome
@@ -1357,17 +1357,17 @@
     if (anchor.native) {
       // v40 native family (Joy): the anchor's exact plan when this variant
       // carries it as an offerable allocation, else this variant's OWN
-      // offerable plan, the one named like the anchor's first. freq is the
-      // plan name the row must SHOW — set only when the schedule differs
-      // from the anchor's; a differing plan without a name is not offered.
+      // offerable plan, the one named like the anchor's first.
+      // v40.3 (merchant, 2026-11-14): the row no longer prints the plan
+      // name when its schedule differs from the cart's subscription — like
+      // the pack tile (v40.2), it shows the subscription price and nothing
+      // else; the cart line shows the plan once the product is added.
       var exact = variantPlanAlloc(variant, anchor.planId);
       var nat = exact && nativeAlloc(variant, exact)
         ? { planId: exact.planId, price: Number(exact.price), name: anchor.name }
         : nativeVariantAlloc(entry, variant, anchor.name);
       if (!nat) return null;
-      var sameSchedule = String(nat.planId) === String(anchor.planId) || (!!nat.name && nativeSameName(nat.name, anchor.name));
-      if (!sameSchedule && !nat.name) return null;
-      return { planId: nat.planId, priceCents: nat.price, name: nat.name, freq: sameSchedule ? '' : nat.name };
+      return { planId: nat.planId, priceCents: nat.price, name: nat.name };
     }
     // Prepaid detector (see upgradeCandidates): an allocation priced ABOVE
     // the one-time price is a multi-delivery prepaid charge — never offer it
@@ -2227,13 +2227,6 @@
       }
     }
     info.appendChild(prices);
-    // v40: a native (Joy) row whose plan runs on another schedule than the
-    // cart's subscription names it — never an undisclosed frequency.
-    if (sub && sub.freq) {
-      var freq = cxEl('span', 'cx-crosssell__freq');
-      freq.textContent = sub.freq;
-      info.appendChild(freq);
-    }
     cxSp(info);
     li.appendChild(info);
     cxSp(li);
@@ -2760,7 +2753,6 @@
       }
     }
     info.appendChild(prices);
-    if (sub && sub.freq) info.appendChild(el('span', 'cx-crosssell__freq', sub.freq)); // v40: see crosssellBuildRow
     li.appendChild(info);
     var btn = el('button', 'cx-crosssell__add', t('crosssell.add'));
     btn.type = 'button';

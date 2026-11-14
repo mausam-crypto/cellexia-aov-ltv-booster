@@ -284,8 +284,9 @@ have mis-ordered. Full contract and the live-store facts:
   "Every 2 Months", 2/3 units = "Every 3 Months"). So:
   - a cart **pack upgrade** on a subscribed line moves to the pack's own plan
     (v40 printed the plan's name on the tile; v40.2 removed it, see below);
-  - a cart **cross-sell** row uses that product's own plan, and names the
-    frequency when it differs from the cart's subscription;
+  - a cart **cross-sell** row uses that product's own plan (v40 named the
+    frequency when it differed from the cart's subscription; v40.3 removed
+    that note, see below);
   - on the product page, a **companion** follows the selection only when it
     has a plan with the same name, otherwise it stays one-time (nothing new is
     drawn on the product page).
@@ -380,9 +381,8 @@ selected, every card shows what its own pack costs on a subscription:
 **2. Cart "Save more per unit" tile.** The "Every 3 Months" text added in v40
 is removed. The tile reads "Upgrade to 2 units / €46.03 / unit / Save 19%"
 again. The upgrade itself is unchanged: the line still moves to the pack's own
-Joy plan, and the cart line shows that plan afterwards. The small
-"Every 2 Months" note on a cart cross-sell row (shown only when its frequency
-differs from the cart's subscription) is unchanged.
+Joy plan, and the cart line shows that plan afterwards. (v40.2 kept the small
+"Every 2 Months" note on cart cross-sell rows; v40.3, below, removes it.)
 
 **Deploy notes.** Extension change plus admin help text; deploy both halves as
 usual. No scope, database, locale-key, theme-editor or `shopify.app.toml`
@@ -396,6 +396,25 @@ mutation tests in `sims/quantity-selector`. Both changes were also run in a
 browser on local copies of the real Spanish product and cart pages (the
 store's real product and plan data, Joy's field simulated). Not checked on the
 store itself.
+
+### v40.3 (2026-11-14, your decision) — no frequency note on cart cross-sell rows either
+
+Follow-up to v40.2, same day. v40 printed a small "Every 2 Months" note under
+the price of a cart cross-sell row whenever that product's subscription
+frequency differed from the cart's (for example once the cart is on a 3-month
+pack). It is removed. A subscription-priced cross-sell row now shows the
+subscription price with the one-time price struck, like any other row.
+
+- Nothing else changes: the row still uses that product's own Joy plan, the
+  price is the same, and "Add" still adds the product on that plan.
+- After this release no cart offer prints a delivery frequency. The shopper
+  sees it in Joy's widget on the product page and on the cart line.
+- Extension-only code change (the server half only carries reworded help
+  text). No scope, database, locale-key, theme-editor, `shopify.app.toml` or
+  Liquid change (99,437 / 99,500). The stylesheet is byte-identical to v39.1.
+- 36 suites / 13,394 checks green, plus `tsc` and `npm run build`. Checked in a
+  browser on a local copy of the real Spanish cart page. Not checked on the
+  store itself.
 
 ## 3b. v39 — dedicated before/after results page (turn any Shopify page into the gallery) — what this release changes
 

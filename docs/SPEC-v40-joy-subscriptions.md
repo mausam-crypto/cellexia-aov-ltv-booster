@@ -1,6 +1,6 @@
 # SPEC v40 — Joy Subscriptions: a native selling-plan family
 
-**Cart** `nativeSubs()` / `nativeLinePlan()` / `nativeVariantAlloc()` (cellexia-cart.js) · **PDP** `azNativePlanId()` / `azSubRowPlan()` / `azNativeOn()` / `qselReprice()` (cellexia-pdp.js) · **proxy member** `"xp"` (proxy.cart-data.tsx) · **new markup** `.cx-crosssell__freq` · shipped 2026-11-13, amended by v40.2 on 2026-11-14 (§7).
+**Cart** `nativeSubs()` / `nativeLinePlan()` / `nativeVariantAlloc()` (cellexia-cart.js) · **PDP** `azNativePlanId()` / `azSubRowPlan()` / `azNativeOn()` / `qselReprice()` (cellexia-pdp.js) · **proxy member** `"xp"` (proxy.cart-data.tsx) · shipped 2026-11-13, amended by v40.2 and v40.3 on 2026-11-14 (§7).
 
 The merchant decided to sell subscriptions through **Joy Subscriptions (Avada)** and to
 keep the in-house **Cellexia Subscriptions** app installed but switched off. Everything
@@ -65,12 +65,12 @@ v40 adds a **parallel** family for Joy's plain Shopify selling plans. The v17/v2
    owned-only (merchant decision: cards keep one-time prices under Joy).
 7. **Delivery frequencies.** Joy plan ids are per product and per pack size, so "the
    same plan elsewhere" never holds:
-   - **Cart cross-sell row**: resolves to its variant's own offerable plan, the one
-     **named** like the cart's subscription first; when the name differs the plan name
-     is **shown**; a differing plan without a name is not offered.
-   - **Cart pack-upgrade tile**: resolves the same way, and shows **no** plan name
-     (v40.2, merchant decision 2026-11-14: the tile reads like every other pack tile;
-     the cart line shows the plan once the pack is in the cart).
+   - **Cart cross-sell row** and **cart pack-upgrade tile**: each resolves to its
+     variant's own offerable plan, the one **named** like the cart's subscription first.
+     Neither prints the plan name (merchant decisions 2026-11-14: v40.2 for the tile,
+     v40.3 for the row — the offers show the subscription price only; the theme's cart
+     line shows the plan once the product is in the cart). v40 printed the name whenever
+     the schedule differed from the cart's.
    - **PDP** (FBT rows, similar cards): a row follows the selection only through its
      own offerable plan with the **same name** as the page plan, otherwise it stays
      one-time. Nothing visually new on the product page.
@@ -84,7 +84,7 @@ v40 adds a **parallel** family for Joy's plain Shopify selling plans. The v17/v2
 
 | Surface | In-house LIVE | In-house dark, Joy line / Joy selected | Kill switch off or B2B |
 |---|---|---|---|
-| Cart cross-sell price + add | owned ladder (v17) | row's own Joy plan; name shown if the schedule differs | one-time |
+| Cart cross-sell price + add | owned ladder (v17) | row's own Joy plan (no frequency text, v40.3) | one-time |
 | Cart pack tile on a subscribed line | exact plan only (v17) | tier variant's own Joy plan (no frequency text, v40.2) | no tile |
 | PDP quantity cards (v40.2) | pack's exact-plan price | each pack's own Joy plan price | one-time |
 | Cart switch card, no keyword match | owned fallback (v23) | first offerable Joy plan of the line's variant | hidden (B2B) / keyword only |
@@ -107,8 +107,7 @@ In-house plan ids unknown (island absent **and** no `"xp"`): every native cell a
   (`cx_subs_xp:1`, 10 minutes).
 - `subXsPlanLine()`: an owned line anchors as before (`{planId}`); any other plan line
   anchors only through `nativeLinePlan` (`{planId, native: true, name}`).
-- `crossSellPlanFor()`: native branch returns `{planId, priceCents, name, freq}`;
-  `freq` is the plan name to show, empty when the schedule is the anchor's.
+- `crossSellPlanFor()`: native branch returns `{planId, priceCents, name}`.
 - `upgradeCandidates()`: when the tier variant lacks the line's plan and the line is
   native, the candidate takes the tier variant's offerable plan and gains `planId`.
   `performUpgrade()` sends `candidate.planId`; the failure-restore still re-adds the
@@ -231,7 +230,7 @@ Removed at the merchant's request: the tile is back to "Upgrade to 2 units / €
 unit / Save 19%". The upgrade itself is unchanged (it still moves the line to the pack's
 own Joy plan, and a failed upgrade still restores the original line and plan). With no
 label to show, a tier plan whose name is unknown is no longer a reason to hide the tile.
-The cross-sell row label (invariant 7) is unchanged.
+(v40.2 left the cross-sell row note in place; v40.3 removed it, §7.4.)
 
 ### 7.3 Enforcement
 
@@ -241,3 +240,24 @@ The cross-sell row label (invariant 7) is unchanged.
 - `sims/quantity-selector.cjs` section Q8 (34 checks on the live prices) with mutants
   m13–m21; `sims/crosssell-pipeline.cjs` m41 re-purposed ("the label must not come
   back"), m42 retired; `sims/subscribed-upgrade.cjs` restated.
+
+### 7.4 v40.3 — no delivery-frequency note on cart cross-sell rows
+
+Asked after v40.2 whether the remaining note should stay, the merchant chose to remove
+it too. v40 printed the row plan's name ("Every 2 Months") under the price of a
+cross-sell row whenever its schedule differed from the cart's subscription (for example
+after the cart moved to a 3-month pack). Now a subscription-priced row shows the
+subscription price with the one-time price struck, and nothing else.
+
+- `crossSellPlanFor()` no longer returns `freq`, and no longer refuses a differing plan
+  whose name is unknown (there is nothing left to disclose it with).
+- Both row builders lost the `.cx-crosssell__freq` element; its CSS rule is deleted. The
+  stylesheet is byte-identical to v39.1 again.
+- Unchanged: which plan a row resolves to, its price, the add payload, the click guard.
+- Enforcement: a harness negative pin (no `cx-crosssell__freq`, no `freq` field, in the
+  script or the stylesheet); `sims/crosssell-pipeline.cjs` m46 / m47 re-purposed ("the
+  note must not come back", auto and manual rows), m43 and m48 retired.
+
+After v40.3 no cart offer prints a delivery frequency. The frequency a shopper ends up on
+is shown where it always was: Joy's own widget on the product page, and the theme's cart
+line.

@@ -73,12 +73,10 @@
  *   m39-upgrade-keeps-line-plan  the upgrade add ignores the tier's own plan
  *   m40-restore-on-tier-plan     a failed upgrade restores onto the TIER plan
  *   m41-tile-label-returns       (v40.2) the frequency label is back on the tile
- *   m43-nameless-row-offered     row offered on an undisclosable schedule
  *   m44-keyword-names-dark-plan  keyword may resolve a dark in-house plan
  *   m45-fallback-unguarded       switch fallback takes any allocation
- *   m46-row-label-dropped        auto row hides a differing frequency
- *   m47-manual-label-dropped     manual row hides a differing frequency
- *   m48-row-label-always-empty   resolver never reports a differing schedule
+ *   m46-row-label-returns        (v40.3) a frequency label is back on the auto row
+ *   m47-manual-label-returns     (v40.3) a frequency label is back on the manual row
  *   m49-name-preference-dropped  same-named plan no longer preferred
  *   m50-xp-reasked               the proxy list is re-asked on every render
  *   m51-xp-ttl-ignored           a stale cached list is served forever
@@ -1137,20 +1135,20 @@ async function main() {
     const hit = vm.runInContext("crossSellPlanFor(8, 31)", sim.sandbox);
     ok(!!hit && String(hit.planId) === JOY_B_2M && hit.priceCents === 5415,
       "v40: the row resolves to ITS OWN product's Joy plan (plan ids are per product), at its allocation price");
-    ok(!!hit && hit.freq === "" && hit.name === "Every 2 Months",
-      "v40: same schedule as the cart's subscription (same plan name): no frequency label");
+    ok(!!hit && !("freq" in hit) && hit.name === "Every 2 Months",
+      "v40.3: the resolved row plan carries NO frequency label field");
 
     // The cart's subscription is the 2-unit pack ("Every 3 Months"); the
-    // companion's 1-unit variant only has "Every 2 Months": offered, and the
-    // differing frequency is named.
+    // companion's 1-unit variant only has "Every 2 Months": still offered on
+    // its own plan — and (v40.3, merchant decision) nothing is printed.
     const sim3 = joySim({ sx: SX_DARK });
     sim3.sandbox.state.cart = cartWith([JOY_LINE_3M]);
     const hit3 = vm.runInContext("crossSellPlanFor(8, 31)", sim3.sandbox);
-    ok(!!hit3 && String(hit3.planId) === JOY_B_2M && hit3.freq === "Every 2 Months",
-      "v40: another schedule than the cart's: the row carries the plan NAME to show");
+    ok(!!hit3 && String(hit3.planId) === JOY_B_2M && hit3.priceCents === 5415 && !("freq" in hit3),
+      "v40.3: another schedule than the cart's: the row is offered on its own plan, with no label to show");
     const hit32 = vm.runInContext("crossSellPlanFor(8, 32)", sim3.sandbox);
-    ok(!!hit32 && String(hit32.planId) === JOY_B_3M && hit32.priceCents === 9206 && hit32.freq === "",
-      "v40: a row variant whose plan is named like the anchor's: no label");
+    ok(!!hit32 && String(hit32.planId) === JOY_B_3M && hit32.priceCents === 9206,
+      "v40: a row variant resolves its plan named like the anchor's");
 
     // Two offerable plans on the row variant: the one NAMED like the anchor
     // wins over allocation order.
@@ -1159,7 +1157,7 @@ async function main() {
     const two = joySim({ sx: SX_DARK }, null, { 7: JOY_A, 8: twoP });
     two.sandbox.state.cart = cartWith([JOY_LINE]);
     const hitTwo = vm.runInContext("crossSellPlanFor(8, 31)", two.sandbox);
-    ok(!!hitTwo && String(hitTwo.planId) === JOY_B_2M && hitTwo.freq === "",
+    ok(!!hitTwo && String(hitTwo.planId) === JOY_B_2M,
       "v40: same-named plan preferred over an earlier, cheaper differently-named one");
 
     // The dark in-house plans are never resolved — not when discounted, not
@@ -1184,23 +1182,25 @@ async function main() {
     ok(vm.runInContext("crossSellPlanFor(8, 31)", zero.sandbox) === null,
       "v40: a 0 % plan on the row variant is no offer: row stays one-time");
 
-    // A differing plan WITHOUT a name could not be disclosed: not offered.
+    // v40.3: nothing is printed on the row any more, so a row plan whose
+    // name is unknown is offered like any other.
     const namelessP = jclone(JOY_B);
     namelessP.sellingPlanGroups.splice(0, 1);
     const nameless = joySim({ sx: SX_DARK }, null, { 7: JOY_A, 8: namelessP });
     nameless.sandbox.state.cart = cartWith([JOY_LINE]);
-    ok(vm.runInContext("crossSellPlanFor(8, 31)", nameless.sandbox) === null,
-      "v40: the row's plan has no name and is not the anchor's plan: one-time (never an undisclosed schedule)");
+    const hitNameless = vm.runInContext("crossSellPlanFor(8, 31)", nameless.sandbox);
+    ok(!!hitNameless && String(hitNameless.planId) === JOY_B_2M && hitNameless.priceCents === 5415,
+      "v40.3: the row's plan has no name: still offered on that plan");
 
     // The anchor's EXACT plan on the row variant (same product family):
-    // the exact allocation wins and needs no label.
+    // the exact allocation wins.
     const exactP = jclone(JOY_B);
     exactP.variants[0].planAllocations = [{ planId: JOY_B_2M, price: 5415 }, { planId: JOY_A_2M, price: 5300 }];
     const exact = joySim({ sx: SX_DARK }, null, { 7: JOY_A, 8: exactP });
     exact.sandbox.state.cart = cartWith([JOY_LINE]);
     const hitExact = vm.runInContext("crossSellPlanFor(8, 31)", exact.sandbox);
-    ok(!!hitExact && String(hitExact.planId) === JOY_A_2M && hitExact.priceCents === 5300 && hitExact.freq === "",
-      "v40: the anchor's exact plan on the row variant wins (same plan, no label)");
+    ok(!!hitExact && String(hitExact.planId) === JOY_A_2M && hitExact.priceCents === 5300,
+      "v40: the anchor's exact plan on the row variant wins");
 
     // Families never cross: an OWNED anchor keeps the v17 ladder and can
     // never be handed a Joy plan.
@@ -1217,7 +1217,7 @@ async function main() {
       "v40: owned anchor: the unchanged v17 ladder answers with the in-house plan ({planId, priceCents} only)");
   }
 
-  // v40 row building: price swap + the frequency label only when it differs
+  // v40 row building: price swap only — v40.3: never a frequency label
   {
     const rowInfo = (s, builder, rowVar) => vm.runInContext(`
       (function () {
@@ -1255,11 +1255,14 @@ async function main() {
     sim3.sandbox.__row = AUTO_ROW;
     sim3.sandbox.__mrow = MANUAL_ROW;
     const a3 = rowInfo(sim3, "buildAutoCrossSellRow", "__row");
-    ok(a3.plan === JOY_B_2M && a3.freq === "Every 2 Months",
-      "v40 auto row: another schedule than the cart's: the plan name is SHOWN");
+    ok(a3.plan === JOY_B_2M && a3.cents === "5415" && a3.freq === null,
+      "v40.3 auto row: another schedule than the cart's: own Joy plan + price, NO frequency element");
     const m3 = rowInfo(sim3, "crosssellBuildRow", "__mrow");
-    ok(m3.plan === JOY_B_2M && m3.freq === "Every 2 Months",
-      "v40 manual row: another schedule than the cart's: the plan name is SHOWN");
+    ok(m3.plan === JOY_B_2M && m3.cents === "5415" && m3.freq === null,
+      "v40.3 manual row: another schedule than the cart's: own Joy plan + price, NO frequency element");
+    const rowText3 = vm.runInContext("buildAutoCrossSellRow(__row).textContent + '|' + crosssellBuildRow(__mrow).textContent", sim3.sandbox);
+    ok(rowText3.indexOf("Every") === -1 && rowText3.indexOf("Months") === -1,
+      "v40.3 rows: no plan name anywhere in the row text");
 
     // in-house LIVE: the very same cart renders the classic one-time row
     const live = joySim({ sx: SX_LIVE });
@@ -1312,7 +1315,7 @@ async function main() {
     await flush();
     const eh = vm.runInContext("crossSellPlanFor(8, 31)", enrich.sandbox);
     ok(enrich.calls.fetches.filter((f) => f.url === "/products/neck.js").length === 1 &&
-      !!eh && String(eh.planId) === JOY_B_2M && eh.freq === "",
+      !!eh && String(eh.planId) === JOY_B_2M && eh.priceCents === 5415,
       "v40 enrichment: a native anchor fetches the companion's plan data once, then resolves its Joy plan by name");
   }
 
@@ -2384,11 +2387,6 @@ async function main() {
         replace: "tile.appendChild(el('span', 'cx-volume__unit', t('volume.per_unit', { price: money(candidate.perUnitCents) })));\n      if (candidate.planId != null) tile.appendChild(el('span', 'cx-volume__freq', 'Every 3 Months'));",
       },
       {
-        name: "m43-nameless-row-offered",
-        find: "if (!sameSchedule && !nat.name) return null;",
-        replace: ";",
-      },
-      {
         name: "m44-keyword-names-dark-plan",
         find: "if (subsDenied(alloc.planId) && !subsLive()) continue;",
         replace: ";",
@@ -2399,19 +2397,16 @@ async function main() {
         replace: "if (!fallback && nativeSubs()) fallback = candidate;",
       },
       {
-        name: "m46-row-label-dropped",
-        find: "if (sub && sub.freq) info.appendChild(el('span', 'cx-crosssell__freq', sub.freq)); // v40: see crosssellBuildRow",
-        replace: "; // v40: see crosssellBuildRow",
+        // v40.3: the merchant removed the delivery-frequency note from the
+        // cross-sell rows — it must not come back on either builder.
+        name: "m46-row-label-returns",
+        find: "    info.appendChild(prices);\n    li.appendChild(info);\n    var btn = el('button', 'cx-crosssell__add', t('crosssell.add'));",
+        replace: "    info.appendChild(prices);\n    if (sub && sub.name) info.appendChild(el('span', 'cx-crosssell__freq', sub.name));\n    li.appendChild(info);\n    var btn = el('button', 'cx-crosssell__add', t('crosssell.add'));",
       },
       {
-        name: "m47-manual-label-dropped",
-        find: "if (sub && sub.freq) {\n      var freq = cxEl('span', 'cx-crosssell__freq');",
-        replace: "if (false) {\n      var freq = cxEl('span', 'cx-crosssell__freq');",
-      },
-      {
-        name: "m48-row-label-always-empty",
-        find: "freq: sameSchedule ? '' : nat.name",
-        replace: "freq: ''",
+        name: "m47-manual-label-returns",
+        find: "    info.appendChild(prices);\n    cxSp(info);\n    li.appendChild(info);",
+        replace: "    info.appendChild(prices);\n    if (sub && sub.name) { var fq = cxEl('span', 'cx-crosssell__freq'); fq.textContent = sub.name; info.appendChild(fq); }\n    cxSp(info);\n    li.appendChild(info);",
       },
       {
         name: "m49-name-preference-dropped",
