@@ -4595,6 +4595,34 @@ const EVIDENCE = {
         qssim402.includes("Q8: subscription selected: every card shows ITS pack's subscription price"),
       "v40.2: quantity-selector sim pins the subscription card prices (Q8) with mutants m13-m21",
     );
+    // ---- v40.4 (merchant report 2026-11-14): Joy's widget flickered between
+    // the picked pack's price and the 1-unit price, because Joy's generic
+    // variant listener falls back to the product's first variant on this
+    // theme. The pill wrapper now carries the picked pill's id in the
+    // attribute that listener reads first.
+    ok(
+      pdpJs40.includes("function joyVariantHint(ev) {") &&
+        pdpJs40.includes("if (!document.querySelector('.Avada-SubscriptionData-Block')) return;\n      var el = ev ? ev.target : null;") &&
+        pdpJs40.includes("if (el.tagName === 'BUTTON' && el.getAttribute('data-val-id') != null) { btn = el; break; }") &&
+        pdpJs40.includes("if (wrap.getAttribute('data-variant-id') !== id) wrap.setAttribute('data-variant-id', id);"),
+      "v40.4: the Joy variant hint stamps the clicked pill's id on the .btn__wrap wrapper, only where Joy's block is on the page",
+    );
+    ok(
+      pdpJs40.includes("document.addEventListener('click', joyVariantHint, true); // capture") &&
+        /mountImageBadges\(\);\s*\n[\s\S]{0,200}joyVariantHintBind\(\);\s*\n[\s\S]{0,260}qselMount\(\);\s*\n\s*qselDesignBind\(\);/.test(pdpJs40) &&
+        (pdpJs40.match(/setAttribute\('data-variant-id'/g) || []).length >= 1 &&
+        !/joyVariantHint[\s\S]{0,1500}(fetch\(|dispatchEvent\(|\.click\(\))/.test(
+          pdpJs40.slice(pdpJs40.indexOf("  function joyVariantHint(ev) {"), pdpJs40.indexOf("  function joyVariantHintBind() {")),
+        ),
+      "v40.4: the hint is bound once at init in the capture phase and only writes an attribute (no fetch, no event, no click)",
+    );
+    const qssim404 = read("validation/sims/quantity-selector.cjs");
+    ok(
+      ["m22-joy-hint-gate-dropped", "m23-joy-hint-untrimmed", "m24-joy-hint-not-capture", "m25-joy-hint-wrong-element"]
+        .every((n) => qssim404.includes(`name: "${n}"`)) &&
+        qssim404.includes("Q9: no Joy block on the page: NOTHING is written to the theme"),
+      "v40.4: quantity-selector sim pins the Joy variant hint (Q9) with mutants m22-m25",
+    );
     const usim40 = read("validation/sims/subscribed-upgrade.cjs");
     ok(
       usim40.includes("v40.2: the tile candidate carries NO plan name (the frequency label was removed from the tile)") &&

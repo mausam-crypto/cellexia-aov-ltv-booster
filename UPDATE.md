@@ -416,6 +416,43 @@ subscription price with the one-time price struck, like any other row.
   browser on a local copy of the real Spanish cart page. Not checked on the
   store itself.
 
+### v40.4 (2026-11-14, your report) — Joy's price no longer jumps back and forth after picking a quantity
+
+**What you saw.** After picking a quantity on a Spanish product page, the
+prices in Joy's "Choose Your Treatment" widget sometimes flickered between two
+prices before showing the right one.
+
+**What it was.** Measured on the live page: picking 2 Jars made Joy show €92.06,
+then the 1-jar price €54.15 for a fraction of a second, then €92.06 again;
+picking 3 Jars showed the 1-jar price first. Picking 1 Jar never flickered. The
+cause is in Joy's own script: it has two listeners for a pack change, and on
+this theme its generic one cannot tell which pack was picked and falls back to
+the product's first variant, while its store-specific one is right. This is
+not caused by the quantity cards (the theme's own pills do the same) and it
+predates v40.
+
+**The fix.** Joy's generic listener looks for a `data-variant-id` attribute on
+the element it watches (the theme's pill wrapper). The embed now writes the
+picked pill's id there at the moment of the click, so both of Joy's listeners
+agree and the widget changes price once. Details: `docs/SPEC-v40-joy-subscriptions.md`
+§7.5.
+
+- Only an attribute is written, and only on pages that carry Joy's block
+  (Spain today). Selection and add-to-cart are untouched.
+- It also removes a short window in which Joy's hidden plan field held the
+  1-jar plan after a 2- or 3-jar pick. In one of seven test picks Joy even
+  stayed on the 1-jar price and plan with 2 jars selected.
+- The lasting fix belongs to Joy: it is worth telling their support that
+  their generic variant listener falls back to the first variant on this
+  theme.
+- Extension-only code change. No scope, database, locale-key, theme-editor,
+  `shopify.app.toml` or Liquid change (99,437 / 99,500).
+- 36 suites / 13,411 checks green, plus `tsc` and `npm run build`. Checked on
+  the live Spanish page with the shipped function pasted in unchanged:
+  without it, 4 of 5 picks of 2 or 3 jars flickered and one ended on the 1-jar
+  price; with it, every pick changed the price exactly once. Not checked as a
+  deployed build.
+
 ## 3b. v39 — dedicated before/after results page (turn any Shopify page into the gallery) — what this release changes
 
 Merchant request: retire the old "results" page and make it easy for a

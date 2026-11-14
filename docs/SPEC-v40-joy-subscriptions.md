@@ -1,6 +1,6 @@
 # SPEC v40 — Joy Subscriptions: a native selling-plan family
 
-**Cart** `nativeSubs()` / `nativeLinePlan()` / `nativeVariantAlloc()` (cellexia-cart.js) · **PDP** `azNativePlanId()` / `azSubRowPlan()` / `azNativeOn()` / `qselReprice()` (cellexia-pdp.js) · **proxy member** `"xp"` (proxy.cart-data.tsx) · shipped 2026-11-13, amended by v40.2 and v40.3 on 2026-11-14 (§7).
+**Cart** `nativeSubs()` / `nativeLinePlan()` / `nativeVariantAlloc()` (cellexia-cart.js) · **PDP** `azNativePlanId()` / `azSubRowPlan()` / `azNativeOn()` / `qselReprice()` (cellexia-pdp.js) · **proxy member** `"xp"` (proxy.cart-data.tsx) · shipped 2026-11-13, amended by v40.2, v40.3 and v40.4 on 2026-11-14 (§7).
 
 The merchant decided to sell subscriptions through **Joy Subscriptions (Avada)** and to
 keep the in-house **Cellexia Subscriptions** app installed but switched off. Everything
@@ -261,3 +261,60 @@ subscription price with the one-time price struck, and nothing else.
 After v40.3 no cart offer prints a delivery frequency. The frequency a shopper ends up on
 is shown where it always was: Joy's own widget on the product page, and the theme's cart
 line.
+
+### 7.5 v40.4 — Joy's widget no longer flickers between two prices after a pack pick
+
+**Report.** After picking a quantity, the prices in Joy's "Choose Your Treatment"
+widget sometimes jumped back and forth before showing the right one.
+
+**Measured on the live Spanish page (build 81, v40.2).** Picking 2 Jars: Joy showed
+€92.06, then €54.15 (the 1-jar price) for about 60 ms, then €92.06. Picking 3 Jars:
+€54.15 first, then €129.96. Picking 1 Jar: no flicker. During the wrong phase Joy's
+hidden `selling_plan` field held the 1-unit plan, which the 2/3-unit variants do not
+carry, so an add-to-cart click in that window would have been refused. The same
+back-and-forth was already in the event log recorded on 2026-11-13, before v40 was
+deployed, and it happens with the theme's own pills too: it is not caused by the
+quantity cards (a card tap relays one click to the pill).
+
+**Cause (Joy's script, `avada-subscription-main.min.js`).** Joy learns about a pack
+change from two listeners of its own:
+
+1. A store-specific handler (`customVariantClickCellxialabs`): a click listener on every
+   `button[data-val-id]` that calls `fetch('/cart?variant=<data-val-id>')`. Correct.
+2. A generic listener: document-level `click` / `change` on its "variant selector"
+   (`AVADA_SUBSCRIPTION.customSelector.variantSelector`, set to `.btn__wrap.d-flex`, the
+   pill wrapper). 50 ms later it resolves the variant from the matched element, in this
+   order: a `data-id` or `data-variant-id` attribute on it; a `script[data-resource]`
+   JSON; the URL's `?variant=`; a `[name="id"]` field or option selects near it; and
+   finally **the product's first variant**. On this theme nothing before the fallback
+   exists, so it always announces the 1-unit variant (`avada:variant:changed` carried
+   the first variant's id on every pick).
+
+The two answers race; the widget renders both.
+
+**Fix on our side.** `joyVariantHint` (cellexia-pdp.js), one capture-phase document
+click listener bound at init: when a theme pill (`button[data-val-id]` inside
+`.btn__wrap`) is clicked on a page that carries Joy's block, it writes that pill's
+trimmed id as `data-variant-id` on the `.btn__wrap` wrapper. The write happens inside
+the click dispatch, well before Joy's 50 ms read, so Joy's generic listener now
+resolves the same variant as its specific one. Verified on the live page with the
+shipped function pasted in unchanged, same session, same sequence of picks. Without it:
+4 of 5 picks of 2 or 3 jars flickered, and one ended with the widget on the 1-jar price
+and plan while 2 jars were selected. With it: `avada:variant:changed` carried the picked
+variant and the widget changed price exactly once on every pick (6 of 6).
+
+- Attribute write only. No fetch, no event, no click, no change to selection or to
+  what is added to the cart.
+- Nothing is written on pages without Joy's block (every market but Spain today).
+- The attribute is true whenever it is present (it is the pill just clicked). The dark
+  in-house buy box also reads `[data-variant-id]` as a passive marker, ranked below the
+  theme's own active pill; a correct value does it no harm.
+- If Joy changes its resolver, the worst case is the old flicker.
+
+**The durable fix is Joy's.** Their generic listener should not fall back to the first
+variant when it cannot resolve one, or the custom "variant selector" for this store
+should be removed so only their store-specific handler runs. Worth reporting to Joy
+support with the description above.
+
+**Enforcement.** Harness v40.4 pins (gate, capture bind at init, attribute write only);
+`sims/quantity-selector.cjs` section Q9 (13 checks) with mutants m22–m25.

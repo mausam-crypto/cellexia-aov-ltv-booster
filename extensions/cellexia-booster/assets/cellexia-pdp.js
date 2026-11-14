@@ -7738,6 +7738,66 @@
     } catch (e) { /* noop */ }
   }
 
+  // ------------------------- v40.4 Joy variant hint (SPEC-v40 §7.5)
+  //
+  // Merchant report (2026-11-14): after picking a quantity, the prices in
+  // Joy's "Choose Your Treatment" widget sometimes jump back and forth
+  // before settling. Measured live: on every 2- or 3-pack pick the widget
+  // showed the right price, then the 1-UNIT price, then the right price
+  // again within ~170 ms — and its hidden plan field briefly held the
+  // 1-unit plan (an add-to-cart click in that window would be refused).
+  //
+  // Cause, in Joy's own script: it learns about a pack change from TWO
+  // listeners that disagree on this theme. Its store-specific click handler
+  // on the pills names the clicked pill's variant. Its generic listener (a
+  // document-level click on its "variant selector", here the pill wrapper
+  // .btn__wrap.d-flex, read 50 ms later) cannot work the variant out from
+  // that wrapper and FALLS BACK TO THE PRODUCT'S FIRST VARIANT. The theme's
+  // own pills trigger it exactly like our cards do (a card tap relays one
+  // click to the pill), and it predates v40.
+  //
+  // That generic resolver looks, before anything else, for a
+  // data-variant-id (or data-id) attribute on the element it matched. So
+  // the wrapper is given exactly that: the id of the pill being clicked,
+  // written in the capture phase of the same click — long before Joy's
+  // 50 ms read. Both of Joy's listeners then name the same variant and the
+  // widget goes straight to the right price. One attribute on one theme
+  // element, only on pages that carry Joy's block; nothing else is
+  // touched, and without Joy's script the attribute is inert.
+
+  var joyHintBound = false;
+
+  function joyVariantHint(ev) {
+    try {
+      if (!document.querySelector('.Avada-SubscriptionData-Block')) return;
+      var el = ev ? ev.target : null;
+      var btn = null;
+      for (var up = 0; el && el.nodeType === 1 && up < 4; up++) {
+        if (el.tagName === 'BUTTON' && el.getAttribute('data-val-id') != null) { btn = el; break; }
+        el = el.parentNode;
+      }
+      if (!btn) return;
+      var wrap = btn.parentNode;
+      for (var w = 0; wrap && wrap.nodeType === 1 && w < 3; w++) {
+        if ((' ' + (wrap.className || '') + ' ').indexOf(' btn__wrap ') !== -1) break;
+        wrap = wrap.parentNode;
+      }
+      if (!wrap || wrap.nodeType !== 1 || (' ' + (wrap.className || '') + ' ').indexOf(' btn__wrap ') === -1) return;
+      // pdp-options.liquid leaks whitespace into the last pill's id — trim.
+      var id = String(btn.getAttribute('data-val-id')).replace(/^\s+|\s+$/g, '');
+      if (!/^\d+$/.test(id)) return;
+      if (wrap.getAttribute('data-variant-id') !== id) wrap.setAttribute('data-variant-id', id);
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function joyVariantHintBind() {
+    if (joyHintBound) return;
+    joyHintBound = true;
+    try {
+      document.addEventListener('click', joyVariantHint, true); // capture: before every handler's timers
+    } catch (e) { /* noop */ }
+  }
+
   // ------------- v40.2 quantity cards follow the selected subscription
   //
   // Merchant report (2026-11-14, live Spanish market): with "Continuous
@@ -8360,6 +8420,10 @@
       // --- v20 image badges: a width on the theme's own badges, ahead of
       // every mount below (it paints nothing and beacons nothing) ---
       mountImageBadges();
+
+      // --- v40.4: tell Joy's widget which pack was picked (one capture
+      // listener, independent of every mount below) ---
+      joyVariantHintBind();
 
       // --- v26 quantity selector cards: replaces the theme's size pills
       // inside .pdp__options (own anchors, independent of the .pdp__grey

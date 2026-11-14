@@ -33,6 +33,11 @@
  * (the app-proxy response; a recorder), window.setTimeout records its
  * callbacks (fired by hand), azNativeOn / azNativeSettle and
  * document.addEventListener are recorders.
+ *
+ * v40.4 (merchant report 2026-11-14): section Q9 runs the REAL
+ * joyVariantHint — the data-variant-id it stamps on the theme's pill
+ * wrapper so Joy's generic variant listener stops falling back to the
+ * first variant (the price flicker in Joy's widget).
  */
 "use strict";
 const path = require("path");
@@ -59,6 +64,8 @@ const EXTRACTED = extractAll(SRC, {
     // v40.2 subscription pricing
     "qselApi", "qselSubWired", "qselSubAsked", "qselSubQueued",
     "AZ_CFG", "AZ_CFG_READ", "azSubPlans", "azSubNames", "azSubDeny",
+    // v40.4 Joy variant hint
+    "joyHintBound",
   ],
   functions: [
     "pdpMember",
@@ -107,6 +114,9 @@ const EXTRACTED = extractAll(SRC, {
     "qselReprice",
     "qselRepriceSoon",
     "qselSubWire",
+    // v40.4 Joy variant hint
+    "joyVariantHint",
+    "joyVariantHintBind",
   ],
 });
 
@@ -144,8 +154,10 @@ function makeContext() {
   const beacons = [];
   // v40.2 recorders
   const docListeners = {};
-  doc.addEventListener = function (type, fn) {
+  const docCapture = {}; // v40.4: the third addEventListener argument, per type
+  doc.addEventListener = function (type, fn, capture) {
     (docListeners[type] = docListeners[type] || []).push(fn);
+    (docCapture[type] = docCapture[type] || []).push(capture);
   };
   const timers = [];
   const nativeTicks = [];
@@ -184,7 +196,7 @@ function makeContext() {
   };
   vm.createContext(sandbox);
   vm.runInContext(EXTRACTED, sandbox);
-  return { sandbox, doc, beacons, docListeners, timers, nativeTicks, proxy };
+  return { sandbox, doc, beacons, docListeners, docCapture, timers, nativeTicks, proxy };
 }
 
 function call(ctx, name, ...args) {
@@ -1040,6 +1052,89 @@ function mountLive(opts) {
   }
 }
 
+// ------------------------------------ Q9: v40.4 Joy variant hint
+//
+// Joy's generic variant listener reads data-variant-id from the element its
+// "variant selector" matches (the pill wrapper .btn__wrap.d-flex) 50 ms
+// after a click, and falls back to the product's FIRST variant when it finds
+// none — the back-and-forth prices the merchant saw. joyVariantHint stamps
+// the clicked pill's id on that wrapper in the capture phase of the click.
+
+{
+  const mk = (joyBlock) => {
+    const ctx = makeContext();
+    const page = makePicker(ctx, IDS);
+    if (joyBlock) {
+      const block = new El("div");
+      block.className = "Avada-SubscriptionData-Block";
+      ctx.doc.body.appendChild(block);
+    }
+    call(ctx, "joyVariantHintBind");
+    const btnWrap = page.wrap.querySelector(".btn__wrap");
+    const click = (target) => (ctx.docListeners.click || []).forEach((fn) => fn({ target }));
+    return { ctx, page, btnWrap, click, hint: () => btnWrap.getAttribute("data-variant-id") };
+  };
+
+  const m = mk(true);
+  ok((m.ctx.docListeners.click || []).length === 1 && m.ctx.docCapture.click[0] === true,
+    "Q9: one document click listener, in the CAPTURE phase (ahead of Joy's 50 ms read)");
+  call(m.ctx, "joyVariantHintBind");
+  ok(m.ctx.docListeners.click.length === 1, "Q9: binding twice adds nothing");
+  ok(m.hint() === null, "Q9: nothing is written before a pick");
+
+  m.click(m.page.buttons[1]);
+  ok(m.hint() === IDS[1], "Q9: picking the 2-unit pill stamps ITS variant id on the pill wrapper");
+  ok(m.page.buttons[1].getAttribute("data-variant-id") === null && m.page.wrap.getAttribute("data-variant-id") === null,
+    "Q9: only the .btn__wrap element is stamped (the element Joy's selector matches)");
+
+  // a click that lands on a child of the pill (its label span)
+  const inner = new El("span");
+  m.page.buttons[0].appendChild(inner);
+  m.click(inner);
+  ok(m.hint() === IDS[0], "Q9: a click on a pill's child resolves to that pill");
+
+  // the theme leaks a trailing newline into the LAST pill's data-val-id
+  ok(m.page.buttons[2].getAttribute("data-val-id") !== IDS[2], "Q9 fixture: the last pill's id carries the theme's whitespace");
+  m.click(m.page.buttons[2]);
+  ok(m.hint() === IDS[2], "Q9: the last pill's id is trimmed before it is stamped");
+
+  // things that are not a pill pick
+  m.click(m.btnWrap);
+  m.click(m.page.wrap.querySelector("label"));
+  const stray = new El("button");
+  m.page.options.appendChild(stray);
+  m.click(stray);
+  const outside = new El("button");
+  outside.setAttribute("data-val-id", "999");
+  m.ctx.doc.body.appendChild(outside);
+  m.click(outside);
+  m.click(null);
+  (m.ctx.docListeners.click || []).forEach((fn) => fn(undefined));
+  ok(m.hint() === IDS[2],
+    "Q9: the wrapper, the label, a plain button, a data-val-id button outside the picker and target-less events change nothing");
+
+  // a pill whose id is not a variant id is not evidence
+  const bad = mk(true);
+  bad.page.buttons[1].setAttribute("data-val-id", "2 Jars");
+  bad.click(bad.page.buttons[1]);
+  ok(bad.hint() === null, "Q9: a non-numeric pill id is never stamped");
+
+  // no Joy on the page (every market but Spain today): the theme is left alone
+  const none = mk(false);
+  none.click(none.page.buttons[1]);
+  ok(none.hint() === null, "Q9: no Joy block on the page: NOTHING is written to the theme");
+
+  // a card tap relays a click to the pill — the cards and the hint coexist
+  const both = mk(true);
+  both.ctx.sandbox.cfg = { qs: euro(LIVE_VARIANTS) };
+  call(both.ctx, "qselMount");
+  const cards = both.ctx.doc.querySelectorAll(".cx-qsel__card");
+  cards[1]._fire("click");
+  ok(both.page.buttons[1]._clicks === 1, "Q9: with the hint bound a card tap still relays exactly one pill click");
+  both.click(both.page.buttons[1]); // the relayed click as the document sees it
+  ok(both.hint() === IDS[1], "Q9: ...and that relayed click stamps the wrapper");
+}
+
 // --------------------------------------------------------------- summary
 
 console.log(
@@ -1193,6 +1288,31 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m21-plan-fetch-hammered",
         find: "    qselSubAsked = true;",
         replace: "    ;",
+      },
+      {
+        // v40.4: the hint is written only where Joy's widget is on the page.
+        name: "m22-joy-hint-gate-dropped",
+        find: "      if (!document.querySelector('.Avada-SubscriptionData-Block')) return;\n      var el = ev ? ev.target : null;",
+        replace: "      var el = ev ? ev.target : null;",
+      },
+      {
+        // The last pill's id carries the theme's whitespace: untrimmed it
+        // would never be stamped and Joy would keep flickering on that pack.
+        name: "m23-joy-hint-untrimmed",
+        find: "      var id = String(btn.getAttribute('data-val-id')).replace(/^\\s+|\\s+$/g, '');",
+        replace: "      var id = String(btn.getAttribute('data-val-id'));",
+      },
+      {
+        // Capture phase: the stamp must precede every handler's timers.
+        name: "m24-joy-hint-not-capture",
+        find: "      document.addEventListener('click', joyVariantHint, true); // capture: before every handler's timers",
+        replace: "      document.addEventListener('click', joyVariantHint); // capture: before every handler's timers",
+      },
+      {
+        // Joy reads the element its selector matches — the wrapper, not the pill.
+        name: "m25-joy-hint-wrong-element",
+        find: "      if (wrap.getAttribute('data-variant-id') !== id) wrap.setAttribute('data-variant-id', id);",
+        replace: "      if (wrap.getAttribute('data-variant-id') !== id) btn.setAttribute('data-variant-id', id);",
       },
     ],
   });

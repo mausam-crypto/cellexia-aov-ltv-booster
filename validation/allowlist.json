@@ -365,6 +365,11 @@
    "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
    "reason": "v40.3 (merchant decision 2026-11-14, SPEC-v40 §7.4): the cart cross-sell rows no longer print the row plan's name when its schedule differs from the cart's subscription (cx-crosssell__freq removed from both row builders; crossSellPlanFor's native branch returns {planId, priceCents, name} with no freq field and no longer refuses a nameless differing plan; companion CSS rule deleted — the stylesheet is byte-identical to v39.1 again). Prices, plan resolution and the add payload are unchanged. Pinned by the harness negative pin and sims/crosssell-pipeline m46/m47 (label-returns).",
    "wave": "v40.3"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v40.4 (merchant report 2026-11-14, SPEC-v40 §7.5): joyVariantHint / joyVariantHintBind — one capture-phase document click listener that, on pages carrying Joy's block, stamps the clicked theme pill's variant id (trimmed data-val-id) as data-variant-id on the pill wrapper (.btn__wrap). Joy's generic variant listener reads that attribute first and otherwise falls back to the product's FIRST variant on this theme, which made its widget flicker right -> 1-unit -> right prices on every 2/3-pack pick. Attribute write only: no fetch, no event, no click; nothing in markets without Joy. Pinned by the harness v40.4 pins and sims/quantity-selector Q9 + mutants m22-m25.",
+   "wave": "v40.4"
   }
  ]
 }
