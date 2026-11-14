@@ -4434,9 +4434,9 @@ const EVIDENCE = {
     );
     ok(
       cartJs17.includes("if (!tierAlloc && nativeLine) {") &&
-        cartJs17.includes("if (tierPlan && !tierPlan.name) tierPlan = null;") &&
-        cartJs17.includes("planName: tierPlan && !nativeSameName(tierPlan.name, nativeLine.name) ? tierPlan.name : ''"),
-      "v40: a Joy line's pack tile moves to the tier variant's own offerable plan — only when that plan has a name to show",
+        cartJs17.includes("tierPlan = nativeVariantAlloc(product, tierVariant, nativeLine.name);") &&
+        cartJs17.includes("planId: tierPlan ? tierPlan.planId : null"),
+      "v40: a Joy line's pack tile moves to the tier variant's own offerable plan and carries that plan's id",
     );
     ok(
       cartJs17.includes("var addPlanId = sellingPlanId;") &&
@@ -4446,10 +4446,14 @@ const EVIDENCE = {
       "v40: the upgrade add carries the candidate's plan; a failed upgrade restores the ORIGINAL plan",
     );
     ok(
-      cartJs17.includes("if (candidate.planName) tile.appendChild(el('span', 'cx-volume__freq', candidate.planName));") &&
-        cartJs17.includes("if (sub && sub.freq) info.appendChild(el('span', 'cx-crosssell__freq', sub.freq));") &&
+      cartJs17.includes("if (sub && sub.freq) info.appendChild(el('span', 'cx-crosssell__freq', sub.freq));") &&
         cartJs17.includes("var freq = cxEl('span', 'cx-crosssell__freq');"),
-      "v40: the new delivery frequency is rendered on the tile and on both cross-sell row builders (textContent only)",
+      "v40: a differing delivery frequency is rendered on both cross-sell row builders (textContent only)",
+    );
+    // v40.2 (merchant, 2026-11-14): the pack-upgrade tile shows NO plan name.
+    ok(
+      !cartJs17.includes("cx-volume__freq") && !/candidate\.planName|planName:/.test(cartJs17),
+      "v40.2: the pack-upgrade tile carries no delivery-frequency label (no cx-volume__freq, no planName)",
     );
     ok(
       cartJs17.includes("if (!fallback && nativeSubs() && nativeAlloc(variant, alloc)) fallback = candidate;") &&
@@ -4526,14 +4530,14 @@ const EVIDENCE = {
     );
     const css40 = read(`${EXT}/assets/cellexia-booster.css`);
     ok(
-      css40.includes(".cx-volume__freq {") && css40.includes(".cx-crosssell__freq {"),
-      "v40: both frequency labels are styled",
+      css40.includes(".cx-crosssell__freq {") && !css40.includes("cx-volume__freq"),
+      "v40/v40.2: the cross-sell frequency label is styled; the removed tile label left no CSS behind",
     );
 
     const xsim40 = read("validation/sims/crosssell-pipeline.cjs");
     ok(
       ["m33-native-while-live", "m36-native-zero-percent", "m37-native-deny-dropped", "m39-upgrade-keeps-line-plan",
-        "m40-restore-on-tier-plan", "m41-tile-label-dropped", "m44-keyword-names-dark-plan", "m51-xp-ttl-ignored"]
+        "m40-restore-on-tier-plan", "m41-tile-label-returns", "m44-keyword-names-dark-plan", "m51-xp-ttl-ignored"]
         .every((n) => xsim40.includes(`name: "${n}"`)),
       "v40: crosssell-pipeline sim carries the m33-m51 native mutation block",
     );
@@ -4550,9 +4554,48 @@ const EVIDENCE = {
         qsim40.includes("S10c: native mode cancels the clamping click"),
       "v40: quantity-sync sim pins the Joy tick clamp and the cancelled clamping click",
     );
+    // ---- v40.2 (merchant report 2026-11-14): the quantity cards follow the
+    // selected subscription. Display only — the add stays the theme's own.
+    ok(
+      pdpJs40.includes("function qselPriceBlock(d, v, base, sub) {") &&
+        pdpJs40.includes("var p = typeof sub === 'number' ? sub : v.p;") &&
+        pdpJs40.includes("var save = q * base - p;") &&
+        pdpJs40.includes("} else if (typeof sub === 'number' && q === 1 && base > 0 && sub < base) {"),
+      "v40.2: the card price block takes the tier's subscription price; the baseline stays the one-time 1-unit price",
+    );
+    ok(
+      pdpJs40.includes("function azSubRowPlan(variantId, pagePlanId, own) {") &&
+        pdpJs40.includes("if (!want && !own) return null;") &&
+        pdpJs40.includes("if (own && !first) first = { id: String(a.planId), price: p };") &&
+        pdpJs40.includes("var plan = azSubRowPlan(v.id, planId, true);") &&
+        pdpJs40.includes("if (!plan || !(typeof v.p === 'number' && plan.price > 0 && plan.price < v.p)) return null;"),
+      "v40.2: a card resolves ITS OWN pack's offerable plan (same deny-list and strict-price rules as FBT), never above its one-time price",
+    );
+    ok(
+      pdpJs40.includes("if (c.sub === sig) continue; // idempotent: nothing to repaint") &&
+        pdpJs40.includes("if (qselSubQueued) return;") &&
+        pdpJs40.includes("qselShipSync(api.d, c, sub == null ? c.v.p : sub);"),
+      "v40.2: re-pricing is coalesced, idempotent, and the free-shipping line follows the charged price",
+    );
+    ok(
+      pdpJs40.includes("document.addEventListener('cx:buybox:change', qselRepriceSoon);") &&
+        pdpJs40.includes("azNativeOn(qselRepriceSoon);") &&
+        pdpJs40.includes("qselRepriceSoon(); // v40.2: the quantity cards may have been waiting for these prices") &&
+        pdpJs40.includes("if (qselApi && document.querySelector('.Avada-SubscriptionData-Block')) qselSubEnsure(qselApi);") &&
+        pdpJs40.includes("if (qselSubAsked || qselSubKnown(api)) return;"),
+      "v40.2: cards re-price on Joy ticks, buy-box changes and any landed plan data; ONE proxy call, only where a subscription widget is on the page",
+    );
+    const qssim402 = read("validation/sims/quantity-selector.cjs");
+    ok(
+      ["m13-sub-price-ignored", "m14-own-pack-fallback-dropped", "m15-reprice-not-idempotent", "m17-ship-not-synced",
+        "m18-card-deny-dropped", "m19-prefetch-everywhere", "m21-plan-fetch-hammered"]
+        .every((n) => qssim402.includes(`name: "${n}"`)) &&
+        qssim402.includes("Q8: subscription selected: every card shows ITS pack's subscription price"),
+      "v40.2: quantity-selector sim pins the subscription card prices (Q8) with mutants m13-m21",
+    );
     const usim40 = read("validation/sims/subscribed-upgrade.cjs");
     ok(
-      usim40.includes("v40: tier plan without a name: NO tile (never an undisclosed schedule change)") &&
+      usim40.includes("v40.2: the tile candidate carries NO plan name (the frequency label was removed from the tile)") &&
         usim40.includes("v40: in-house app LIVE: a Joy line gets NO tile (the native family is off)"),
       "v40: subscribed-upgrade sim pins the Joy tier-tile rules",
     );

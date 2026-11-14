@@ -187,6 +187,9 @@ function makeContext() {
     azNativeOn: function (fn) {
       nativeTicks.push(fn);
     },
+    // v40.2: the cards' subscription re-pricing is wired from qselMount;
+    // sims/quantity-selector runs the real chain — a no-op here.
+    qselSubWire: function () {},
     MutationObserver: FakeMutationObserver,
     cfg: {},
     console,

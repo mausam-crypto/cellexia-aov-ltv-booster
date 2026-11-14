@@ -1,6 +1,6 @@
 # SPEC v40 — Joy Subscriptions: a native selling-plan family
 
-**Cart** `nativeSubs()` / `nativeLinePlan()` / `nativeVariantAlloc()` (cellexia-cart.js) · **PDP** `azNativePlanId()` / `azSubRowPlan()` / `azNativeOn()` (cellexia-pdp.js) · **proxy member** `"xp"` (proxy.cart-data.tsx) · **new markup** `.cx-volume__freq`, `.cx-crosssell__freq` · shipped 2026-11-13.
+**Cart** `nativeSubs()` / `nativeLinePlan()` / `nativeVariantAlloc()` (cellexia-cart.js) · **PDP** `azNativePlanId()` / `azSubRowPlan()` / `azNativeOn()` / `qselReprice()` (cellexia-pdp.js) · **proxy member** `"xp"` (proxy.cart-data.tsx) · **new markup** `.cx-crosssell__freq` · shipped 2026-11-13, amended by v40.2 on 2026-11-14 (§7).
 
 The merchant decided to sell subscriptions through **Joy Subscriptions (Avada)** and to
 keep the in-house **Cellexia Subscriptions** app installed but switched off. Everything
@@ -63,11 +63,14 @@ v40 adds a **parallel** family for Joy's plain Shopify selling plans. The v17/v2
    offerable on its **own** variant. Native PDP context needs Joy's field to hold a
    plan. Nothing proof-less was added; the home/collection card-price decorator stays
    owned-only (merchant decision: cards keep one-time prices under Joy).
-7. **A delivery frequency is never changed or added silently.** Joy plan ids are per
-   product and per pack size, so "the same plan elsewhere" never holds:
-   - **Cart** (tile, cross-sell row): the row resolves to its variant's own offerable
-     plan, the one **named** like the cart's subscription first; when the name differs
-     the plan name is **shown**; a differing plan without a name is not offered.
+7. **Delivery frequencies.** Joy plan ids are per product and per pack size, so "the
+   same plan elsewhere" never holds:
+   - **Cart cross-sell row**: resolves to its variant's own offerable plan, the one
+     **named** like the cart's subscription first; when the name differs the plan name
+     is **shown**; a differing plan without a name is not offered.
+   - **Cart pack-upgrade tile**: resolves the same way, and shows **no** plan name
+     (v40.2, merchant decision 2026-11-14: the tile reads like every other pack tile;
+     the cart line shows the plan once the pack is in the cart).
    - **PDP** (FBT rows, similar cards): a row follows the selection only through its
      own offerable plan with the **same name** as the page plan, otherwise it stays
      one-time. Nothing visually new on the product page.
@@ -82,7 +85,8 @@ v40 adds a **parallel** family for Joy's plain Shopify selling plans. The v17/v2
 | Surface | In-house LIVE | In-house dark, Joy line / Joy selected | Kill switch off or B2B |
 |---|---|---|---|
 | Cart cross-sell price + add | owned ladder (v17) | row's own Joy plan; name shown if the schedule differs | one-time |
-| Cart pack tile on a subscribed line | exact plan only (v17) | tier variant's own Joy plan, new frequency shown | no tile |
+| Cart pack tile on a subscribed line | exact plan only (v17) | tier variant's own Joy plan (no frequency text, v40.2) | no tile |
+| PDP quantity cards (v40.2) | pack's exact-plan price | each pack's own Joy plan price | one-time |
 | Cart switch card, no keyword match | owned fallback (v23) | first offerable Joy plan of the line's variant | hidden (B2B) / keyword only |
 | Home / collection card prices | owned (v17.2/v23) | **one-time** | one-time |
 | PDP FBT + similar | page plan's exact allocation (v17.1) | row's own same-named Joy plan, else one-time | one-time |
@@ -106,9 +110,9 @@ In-house plan ids unknown (island absent **and** no `"xp"`): every native cell a
 - `crossSellPlanFor()`: native branch returns `{planId, priceCents, name, freq}`;
   `freq` is the plan name to show, empty when the schedule is the anchor's.
 - `upgradeCandidates()`: when the tier variant lacks the line's plan and the line is
-  native, the candidate takes the tier variant's offerable plan and gains `planId` and
-  `planName`. `performUpgrade()` sends `candidate.planId`; the failure-restore still
-  re-adds the **original** variant on the **original** plan.
+  native, the candidate takes the tier variant's offerable plan and gains `planId`.
+  `performUpgrade()` sends `candidate.planId`; the failure-restore still re-adds the
+  **original** variant on the **original** plan.
 - `findPlanForItem()`: guarded native fallback; the keyword path skips in-house plans
   while that app is not live.
 - Untouched: `subsAware`, `subsLive`, `ownedPlan`, `ownedCadenceAlloc`, the card
@@ -147,7 +151,6 @@ In-house plan ids unknown (island absent **and** no `"xp"`): every native cell a
   every market, so the card must be scoped, in its own market scope, to the markets
   where Joy's widget is shown. It is off today.
 - The switch card itself does not print the delivery frequency (unchanged since v4.7).
-- The quantity cards (`cx-qsel`) show one-time prices, as in every version.
 - The subscription nudge still anchors to the theme's hidden `sm-rc-widget`; check its
   placement before enabling it in a Joy market.
 - On a product page whose selection is the 2/3-unit pack ("Every 3 Months"), FBT
@@ -155,6 +158,8 @@ In-house plan ids unknown (island absent **and** no `"xp"`): every native cell a
   "Every 2 Months" plans.
 
 ## 6. Enforcement
+
+(v40.2 additions are listed in §7.)
 
 - Harness v40 block: the native gates, the deny-list source, the strict price rule,
   the disclosure rules, the upgrade payload and restore, the label emission, the PDP
@@ -169,3 +174,70 @@ In-house plan ids unknown (island absent **and** no `"xp"`): every native cell a
   newly mutation-tested (f1–f10).
 - `sims/quantity-sync.cjs`: S10b (Joy tick clamp), S10c (cancelled clamping click);
   mutants m20, m21.
+
+## 7. v40.2 (2026-11-14) — two changes after the first day live
+
+Merchant feedback on the deployed v40 (Spanish market).
+
+### 7.1 Quantity cards follow the selected subscription
+
+**Report.** With "Continuous Treatment" selected in Joy's "Choose Your Treatment"
+widget (its default), the quantity cards still showed one-time prices (1 Jar €57.00,
+2 Jars €48.45 each, 3 Jars €45.60 each) next to an add-to-cart button saying €54.15.
+The island carries one-time prices only, and v26 deliberately had no subscription
+interplay.
+
+**Now.** While a subscription is selected (`azSubPlanId()`: Joy's hidden field, or an
+answering in-house buy box), every card shows what **its own pack** costs on a
+subscription:
+
+| Card | One-time | Subscription selected |
+|---|---|---|
+| 1 Jar | €57.00 | €54.15 · ~~€57.00~~ · Save €2.85 |
+| 2 Jars | €48.45 each · ~~€57.00 each~~ · Save €17.10 | €46.03 each · ~~€57.00 each~~ · Save €21.94 |
+| 3 Jars | €45.60 each · ~~€57.00 each~~ · Save €34.20 | €43.32 each · ~~€57.00 each~~ · Save €41.04 |
+
+Rules:
+
+1. **Each pack's own plan.** `azSubRowPlan(variantId, pagePlanId, own = true)`: the page
+   plan's exact allocation on that variant when offerable, else that variant's own
+   offerable plan — same-named first, otherwise its first one. That is the plan Joy
+   switches to when the shopper picks the pack (1 unit "Every 2 Months", 2/3 units
+   "Every 3 Months"). Same deny-list and strict-price rules as FBT (invariants 4, 5):
+   in-house ids unknown = cards stay one-time.
+2. **One baseline.** The struck price and the save chip keep comparing against the
+   **one-time 1-unit price** in both modes (the v17 rule for subscribed tiles: pack
+   saving and subscription discount combined). The 1-unit card therefore gains a struck
+   price and a chip under a subscription, so the whole list shares one baseline.
+3. **A pack without an offerable plan keeps its one-time price**, and a subscription
+   figure is never shown unless it is below the card's own one-time price.
+4. **The free-shipping micro-line follows the charged price** (`qselShipSync`).
+5. **Display only.** Selection, relay to the theme pill, and the add (the theme's own,
+   with Joy's field) are untouched. Flipping back to one-time restores the original
+   block.
+6. **Data.** The page product's allocations come from the app proxy
+   (`cart-data?handles=<page handle>`, which also carries `"xp"`): one call per page,
+   made at mount when Joy's server-rendered `.Avada-SubscriptionData-Block` is on the
+   page, or on the first selected plan otherwise. Never in a market without a
+   subscription widget. Plan data registered by FBT / similar (`azSubRegister`)
+   re-prices the cards too.
+7. **Cheap.** Joy fires 7–14 events per change: re-pricing is coalesced into one task
+   (`qselRepriceSoon`) and repaints nothing when the verdict is unchanged.
+
+### 7.2 No delivery-frequency text on the cart pack-upgrade tile
+
+The v40 tile printed the pack's plan name ("Every 3 Months") under the per-unit price.
+Removed at the merchant's request: the tile is back to "Upgrade to 2 units / €46.03 /
+unit / Save 19%". The upgrade itself is unchanged (it still moves the line to the pack's
+own Joy plan, and a failed upgrade still restores the original line and plan). With no
+label to show, a tier plan whose name is unknown is no longer a reason to hide the tile.
+The cross-sell row label (invariant 7) is unchanged.
+
+### 7.3 Enforcement
+
+- Harness: v40.2 pins (price block, own-pack resolver, coalescing / idempotence / ship
+  sync, wiring and the one-call rule) and a negative pin that the cart script and the
+  stylesheet contain no `cx-volume__freq`.
+- `sims/quantity-selector.cjs` section Q8 (34 checks on the live prices) with mutants
+  m13–m21; `sims/crosssell-pipeline.cjs` m41 re-purposed ("the label must not come
+  back"), m42 retired; `sims/subscribed-upgrade.cjs` restated.

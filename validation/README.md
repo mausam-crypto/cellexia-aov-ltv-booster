@@ -127,8 +127,8 @@ under ~3 minutes.
     to a subscribed line only when the target variant allocates the line's
     plan (422 guard), plus savings-math fallbacks and plan lookup. v40: the
     native (Joy) family on the live fixture shape — a Joy line's tile moves
-    to the tier variant's own offerable plan and carries its id and name
-    (no name = no tile), in-house plans are never resolved, and in-house
+    to the tier variant's own offerable plan and carries its id (v40.2: no
+    plan name on the tile), in-house plans are never resolved, and in-house
     LIVE / B2B / kill switch / unknown in-house ids keep the old verdicts.
   - **survey-methodology.cjs** — real surveyBuildPanel (v6.11): merchant
     methodology token substitution ({{ total }}/{{ yes }}/{{ percent }} →

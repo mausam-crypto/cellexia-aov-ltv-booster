@@ -262,7 +262,7 @@ have mis-ordered. Full contract and the live-store facts:
 |---|---|---|
 | Discount Functions, checkout extensions, "remove subscription" | worked | unchanged |
 | Cart cross-sell: subscription prices + plan on the add | off (one-time rows) | on, each row on its own Joy plan |
-| Cart pack-upgrade tile on a subscribed line | off (no tile) | on; moves to the pack's own Joy plan and shows its frequency |
+| Cart pack-upgrade tile on a subscribed line | off (no tile) | on; moves to the pack's own Joy plan (v40 showed its frequency; removed in v40.2, below) |
 | Cart "switch to subscription" card | found no plan (keyword matches no Joy plan name) | falls back to the product's first discounted Joy plan |
 | PDP Frequently bought together / You might also like | off (one-time) | follow Joy's selected option |
 | PDP quantity stepper with Subscribe selected | no cap: 4+ units would add one-time packs, or show a volume price the discount refuses | capped at the top tier, as with the in-house app |
@@ -283,7 +283,7 @@ have mis-ordered. Full contract and the live-store facts:
 - **Joy's plans differ per product and per pack size** (live: 1 unit =
   "Every 2 Months", 2/3 units = "Every 3 Months"). So:
   - a cart **pack upgrade** on a subscribed line moves to the pack's own plan
-    and the tile shows the new delivery frequency (the plan's own name);
+    (v40 printed the plan's name on the tile; v40.2 removed it, see below);
   - a cart **cross-sell** row uses that product's own plan, and names the
     frequency when it differs from the cart's subscription;
   - on the product page, a **companion** follows the selection only when it
@@ -342,6 +342,60 @@ have mis-ordered. Full contract and the live-store facts:
   Joy's field. No request was refused and the console stayed clean.
 - **Not** checked on the store itself: the deployed behaviour end to end
   (see the list in `_handoff-v40/DEV-INSTRUCTIONS-v40.md`).
+
+### v40.2 (2026-11-14, your feedback on the live site) — quantity cards show subscription prices; no frequency text on the pack-upgrade tile
+
+Two changes after the first day of v40 on the Spanish market. Contract:
+`docs/SPEC-v40-joy-subscriptions.md` §7. (v40.1, shipped the same day, is the
+results-page fix described in §3b "v39.2"; this zip contains it.)
+
+**1. Quantity cards follow the selected subscription.** With "Continuous
+Treatment" selected in Joy's "Choose Your Treatment" widget (its default), the
+"Choose quantity" cards kept showing one-time prices next to an add-to-cart
+button that showed the subscription price. Now, while a subscription is
+selected, every card shows what its own pack costs on a subscription:
+
+| Card | One-time selected | Subscription selected |
+|---|---|---|
+| 1 Jar | €57.00 | €54.15, €57.00 struck, Save €2.85 |
+| 2 Jars | €48.45 each, Save €17.10 | €46.03 each, Save €21.94 |
+| 3 Jars | €45.60 each, Save €34.20 | €43.32 each, Save €41.04 |
+
+- Each pack uses its **own** Joy plan price (2 and 3 jars are on Joy's
+  "Every 3 Months" plan), which is what the shopper is charged after picking
+  that pack.
+- The struck price and the "Save" amount keep comparing against the one-time
+  single-unit price, so the saving shown is pack discount plus subscription
+  discount. The 1-unit card gains a struck price and a "Save" chip while a
+  subscription is selected.
+- The "Free shipping" line on a card follows the price actually charged.
+- Switching Joy back to "Basic Purchase" restores the one-time cards.
+- Display only: which pack is selected, and what is added to the cart, are
+  unchanged.
+- A pack with no discounted Joy plan keeps its one-time price. The switched-off
+  in-house app's plans are never used.
+- One extra app-proxy request per product page, only where Joy's widget is on
+  the page (Spain today). No request in other markets.
+
+**2. Cart "Save more per unit" tile.** The "Every 3 Months" text added in v40
+is removed. The tile reads "Upgrade to 2 units / €46.03 / unit / Save 19%"
+again. The upgrade itself is unchanged: the line still moves to the pack's own
+Joy plan, and the cart line shows that plan afterwards. The small
+"Every 2 Months" note on a cart cross-sell row (shown only when its frequency
+differs from the cart's subscription) is unchanged.
+
+**Deploy notes.** Extension change plus admin help text; deploy both halves as
+usual. No scope, database, locale-key, theme-editor or `shopify.app.toml`
+change, and NO Liquid change (99,437 / 99,500). Either half alone is safe. It
+needs the v40 server already live (it is: the proxy returns `"xp"`); against an
+older server the cards simply keep one-time prices.
+
+**Proof.** 36 suites / 13,392 checks green (was 13,349), plus `tsc` and
+`npm run build`. 43 new checks (34 of them on the live prices) and 9 new
+mutation tests in `sims/quantity-selector`. Both changes were also run in a
+browser on local copies of the real Spanish product and cart pages (the
+store's real product and plan data, Joy's field simulated). Not checked on the
+store itself.
 
 ## 3b. v39 — dedicated before/after results page (turn any Shopify page into the gallery) — what this release changes
 

@@ -209,6 +209,9 @@ function makeSim(opts) {
     AZ_CFG_READ: false,
     track: (k, t) => calls.tracks.push(t ? k + ":" + t : k),
     decodeEntities: (s) => s,
+    // v40.2: azSubRegister pokes the quantity cards (sims/quantity-selector
+    // exercises the real one); a recorder here.
+    qselRepriceSoon: () => { calls.qselPokes = (calls.qselPokes || 0) + 1; },
     // scripted network at the azFetchJSON seam (documented stub)
     azFetchJSON: (url) => {
       if (url.indexOf("recommendations/products.json") !== -1) {
@@ -1190,7 +1193,7 @@ async function main() {
       },
       {
         name: "f7-name-rule-dropped",
-        find: "if (String(azSubNames[String(a.planId)] || '').toLowerCase() === want) return { id: String(a.planId), price: p };",
+        find: "if (want && String(azSubNames[String(a.planId)] || '').toLowerCase() === want) return { id: String(a.planId), price: p };",
         replace: "return { id: String(a.planId), price: p };",
       },
       {

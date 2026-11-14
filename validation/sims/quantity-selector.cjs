@@ -23,6 +23,16 @@
  * is the track() function's own first line, pinned by the house sims that
  * extract it); theme buttons get a recording .click() — exactly the surface
  * the relay drives; focus() is absent (the module try/catches it).
+ *
+ * v40.2 (merchant report 2026-11-14): the cards follow the subscription
+ * selected in the subscription widget — section Q8 runs the REAL
+ * qselReprice / qselSubWire chain on the live prices (1 Jar 57.00 / 54.15,
+ * 2 Jars 96.90 / 92.06, 3 Jars 136.80 / 129.96) together with the REAL
+ * plan reader and resolver (azSubPlanId, azSubRowPlan own mode). Extra
+ * documented stubs for it: azFetchJSON is a scripted SYNCHRONOUS thenable
+ * (the app-proxy response; a recorder), window.setTimeout records its
+ * callbacks (fired by hand), azNativeOn / azNativeSettle and
+ * document.addEventListener are recorders.
  */
 "use strict";
 const path = require("path");
@@ -44,7 +54,12 @@ const SRC_PATH = process.env.CX_SIM_SRC || REAL_SRC;
 const SRC = fs.readFileSync(SRC_PATH, "utf8");
 
 const EXTRACTED = extractAll(SRC, {
-  vars: ["PREVIEW", "CX_QSEL_STR", "CX_QSEL_UNITS", "CX_AZ_ICONS", "qselMounted"],
+  vars: [
+    "PREVIEW", "CX_QSEL_STR", "CX_QSEL_UNITS", "CX_AZ_ICONS", "qselMounted",
+    // v40.2 subscription pricing
+    "qselApi", "qselSubWired", "qselSubAsked", "qselSubQueued",
+    "AZ_CFG", "AZ_CFG_READ", "azSubPlans", "azSubNames", "azSubDeny",
+  ],
   functions: [
     "pdpMember",
     "pdpMemberAllowed",
@@ -70,6 +85,28 @@ const EXTRACTED = extractAll(SRC, {
     "qselPaint",
     "qselBind",
     "qselMount",
+    // v40.2 subscription pricing: the real reader, resolver and re-pricer
+    "routeRoot",
+    "azReadConfig",
+    "azProductData",
+    "azFetchHandleData",
+    "azSubRegister",
+    "azSubDenyLoad",
+    "azSubDenied",
+    "azSubInhouse",
+    "azSubNative",
+    "azNativePlanId",
+    "azSubPlanId",
+    "azSubPrice",
+    "azSubRowPlan",
+    "qselPageHandle",
+    "qselSubKnown",
+    "qselSubEnsure",
+    "qselSubCents",
+    "qselShipSync",
+    "qselReprice",
+    "qselRepriceSoon",
+    "qselSubWire",
   ],
 });
 
@@ -85,23 +122,69 @@ function ok(cond, label) {
 
 // ------------------------------------------------------------------ sandbox
 
+// A promise-shaped value that settles synchronously — keeps this suite
+// single-pass while the real azFetchHandleData(...).then(...) chain runs.
+function syncThen(value) {
+  return {
+    then(fn) {
+      try { return syncThen(fn(value)); } catch (e) { return syncFail(e); }
+    },
+    catch() { return this; },
+  };
+}
+function syncFail(err) {
+  return {
+    then() { return this; },
+    catch(fn) { return syncThen(fn(err)); },
+  };
+}
+
 function makeContext() {
   const doc = makeDocument();
   const beacons = [];
+  // v40.2 recorders
+  const docListeners = {};
+  doc.addEventListener = function (type, fn) {
+    (docListeners[type] = docListeners[type] || []).push(fn);
+  };
+  const timers = [];
+  const nativeTicks = [];
+  const proxy = { calls: [], response: null };
   const sandbox = {
     document: doc,
     window: {
       Shopify: { currency: { active: "EUR" } },
+      location: { pathname: "/products/cellular-renewal-cream" },
+      setTimeout: function (fn) {
+        timers.push(fn);
+        return timers.length;
+      },
     },
     track: function (feature, type, meta) {
       beacons.push([feature, type || "impression", meta || ""]);
     },
+    // the Joy tick bridge and the late-mount settle (real ones: sims/fbt)
+    azNativeOn: function (fn) {
+      nativeTicks.push(fn);
+    },
+    azNativeSettle: function () {
+      sandbox.__settles = (sandbox.__settles || 0) + 1;
+    },
+    // the app proxy at the azFetchJSON seam
+    azFetchJSON: function (url) {
+      proxy.calls.push(url);
+      return proxy.response instanceof Error ? syncFail(proxy.response) : syncThen(proxy.response);
+    },
+    encodeURIComponent,
+    decodeURIComponent,
+    JSON,
+    Object,
     cfg: {},
     console,
   };
   vm.createContext(sandbox);
   vm.runInContext(EXTRACTED, sandbox);
-  return { sandbox, doc, beacons };
+  return { sandbox, doc, beacons, docListeners, timers, nativeTicks, proxy };
 }
 
 function call(ctx, name, ...args) {
@@ -679,6 +762,284 @@ function mountLive(opts) {
   ok(https.querySelectorAll(".cx-qsel__img").length === 2, "Q7: absolute https accepted");
 }
 
+// ------------------------- Q8: v40.2 cards follow the selected subscription
+//
+// Fixture = the LIVE Spanish product (cellular-renewal-cream, 2026-11-14):
+// one-time 57.00 / 96.90 / 136.80; Joy "Every 2 Months" on the 1-unit
+// variant (54.15), Joy "Every 3 Months" on the 2/3-unit variants (92.06 /
+// 129.96); the dark in-house app's three 0 % plans on every variant; free
+// shipping from 80.00.
+
+{
+  const JOY_2M = "718347501943";
+  const JOY_3M = "718347534711";
+  const INH = ["718653555063", "718653587831", "718653620599"];
+  const inh = (price) => INH.map((id) => ({ planId: id, price }));
+  const SUB_VARIANTS = [
+    { id: 42692253646984, t: "1 Jar", p: 5700, im: "//cdn.shopify.com/x.jpg" },
+    { id: 42692253679752, t: "2 Jars - 15% Off", p: 9690, im: "//cdn.shopify.com/x.jpg" },
+    { id: 42739675168904, t: "3 Jars - 20% Off", p: 13680, im: "//cdn.shopify.com/x.jpg" },
+  ];
+  const proxyEntry = (allocs) => ({
+    variants: SUB_VARIANTS.map((v, i) => ({
+      id: v.id, price: v.p, available: true, position: i + 1,
+      planAllocations: allocs ? allocs[i] : [[{ planId: JOY_2M, price: 5415 }], [{ planId: JOY_3M, price: 9206 }], [{ planId: JOY_3M, price: 12996 }]][i].concat(inh(v.p)),
+    })),
+    sellingPlanGroups: [
+      { id: "g2", name: "Every 2 months", plans: [{ id: JOY_2M, name: "Every 2 Months" }] },
+      { id: "g3", name: "Every 3 months", plans: [{ id: JOY_3M, name: "Every 3 Months" }] },
+      { id: "gM", name: "Main", plans: [
+        { id: INH[0], name: "Every 3 weeks" }, { id: INH[1], name: "Every 2 months" }, { id: INH[2], name: "Every 3 months" },
+      ] },
+    ],
+  });
+  const proxyBody = (entry, xp) => {
+    const out = { productsByHandle: { "cellular-renewal-cream": entry } };
+    if (xp !== undefined) out.xp = xp;
+    return out;
+  };
+
+  // A page as the theme + Joy leave it: picker, the az island, .pdp__grey,
+  // optionally Joy's server-rendered data block and its hidden plan field.
+  function mountSub(o) {
+    o = Object.assign({ joyBlock: true, fst: 8000, az: {}, azIsland: true, entry: proxyEntry(), xp: INH }, o || {});
+    const ctx = makeContext();
+    const page = makePicker(ctx, IDS);
+    if (o.azIsland) {
+      const island = new El("script");
+      island.id = "cx-az-config";
+      island.textContent = JSON.stringify(Object.assign({
+        product: { id: 1, handle: "cellular-renewal-cream", selectedVariant: IDS[0] },
+      }, o.az));
+      ctx.doc.body.appendChild(island);
+    }
+    const grey = new El("div");
+    grey.className = "pdp__grey";
+    ctx.doc.body.appendChild(grey);
+    if (o.joyBlock) {
+      const block = new El("div");
+      block.className = "Avada-SubscriptionData-Block";
+      ctx.doc.body.appendChild(block);
+    }
+    ctx.proxy.response = proxyBody(o.entry, o.xp);
+    const qs = { live: true, l: "en", mf: "€{{amount}}", v: SUB_VARIANTS };
+    if (o.fst) qs.fst = o.fst;
+    ctx.sandbox.cfg = { qs };
+    if (o.win) Object.assign(ctx.sandbox.window, o.win);
+    call(ctx, "qselMount");
+    const root = ctx.doc.querySelector(".cx-qsel");
+    const cards = root ? root.querySelectorAll(".cx-qsel__card") : [];
+    // Joy's hidden field: created on first use, "" = one-time selected.
+    let field = null;
+    const joy = (value) => {
+      if (!field) {
+        field = new El("input");
+        field.setAttribute("type", "hidden");
+        field.setAttribute("name", "selling_plan");
+        grey.appendChild(field);
+      }
+      field.value = value;
+    };
+    // one Joy announcement = one tick; the re-price runs one task later
+    const fire = () => {
+      const n = ctx.timers.length;
+      ctx.timers.splice(0).forEach((fn) => fn());
+      return n;
+    };
+    const tick = () => { ctx.nativeTicks.forEach((fn) => fn()); return fire(); };
+    const text = (card, cls) => { const e = card.querySelector(cls); return e ? e.textContent : null; };
+    const read = () => cards.map((c) => [
+      text(c, ".cx-qsel__now"), text(c, ".cx-qsel__was"), text(c, ".cx-qsel__save"),
+      c.querySelector(".cx-qsel__ship") ? "ship" : "-",
+    ].join(" | "));
+    return { ctx, page, root, cards, joy, tick, fire, read };
+  }
+  const ONE_TIME = [
+    "€57.00 |  |  | -", // no struck price, no chip (absent parts read as empty)
+    "€48.45 each | €57.00 each | Save €17.10 | ship",
+    "€45.60 each | €57.00 each | Save €34.20 | ship",
+  ];
+  const SUBSCRIBED = [
+    "€54.15 | €57.00 | Save €2.85 | -",
+    "€46.03 each | €57.00 each | Save €21.94 | ship",
+    "€43.32 each | €57.00 each | Save €41.04 | ship",
+  ];
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+  // --- the live path: Joy block on the page, subscription selected by default
+  {
+    const m = mountSub();
+    ok(m.cards.length === 3, "Q8: cards mount on the live subscription fixture");
+    ok(m.ctx.nativeTicks.length === 1 && (m.ctx.docListeners["cx:buybox:change"] || []).length === 1 && m.ctx.sandbox.__settles === 1,
+      "Q8: one Joy tick handler, one buy-box listener, the late-mount settle armed");
+    ok(m.ctx.proxy.calls.length === 1 && /cart-data\?handles=cellular-renewal-cream$/.test(m.ctx.proxy.calls[0]),
+      "Q8: Joy's data block on the page: ONE app-proxy call for the page product's plan prices, at mount");
+    m.fire();
+    ok(same(m.read(), ONE_TIME), "Q8: nothing selected yet: the one-time cards, unchanged (" + m.read().join(" // ") + ")");
+
+    m.joy(JOY_2M);
+    ok(m.tick() === 1, "Q8: a Joy announcement schedules exactly one re-price");
+    ok(same(m.read(), SUBSCRIBED),
+      "Q8: subscription selected: every card shows ITS pack's subscription price (" + m.read().join(" // ") + ")");
+    ok(m.read()[0] === "€54.15 | €57.00 | Save €2.85 | -",
+      "Q8: 1 Jar = 54.15, the one-time 57.00 struck, save chip 2.85");
+    ok(m.read()[1].indexOf("€46.03 each") === 0 && m.read()[2].indexOf("€43.32 each") === 0,
+      "Q8: packs priced from THEIR OWN plan (Every 3 Months) although the page plan is Every 2 Months");
+
+    // idempotence: Joy fires 7–14 events per change — one timer, no repaint
+    const nodes = m.cards.map((c) => c.querySelector(".cx-qsel__price"));
+    m.ctx.nativeTicks.forEach((fn) => { for (let i = 0; i < 12; i++) fn(); });
+    ok(m.ctx.timers.length === 1, "Q8: a burst of 12 ticks coalesces into ONE re-price");
+    m.fire();
+    ok(m.cards.every((c, i) => c.querySelector(".cx-qsel__price") === nodes[i]),
+      "Q8: an unchanged verdict repaints nothing (same price nodes)");
+    ok(m.ctx.proxy.calls.length === 1, "Q8: the plan prices are never fetched twice");
+
+    // the pack the shopper picks does not change any card's price
+    m.cards[1]._fire("click");
+    m.joy(JOY_3M); // Joy follows the variant
+    m.tick();
+    ok(same(m.read(), SUBSCRIBED) && m.page.buttons[1]._clicks === 1 && m.cards[1].getAttribute("aria-checked") === "true",
+      "Q8: picking the 2-Jar card: relay + selection work as before, prices stay per pack");
+
+    // back to one-time: the original blocks, byte for byte
+    m.joy("");
+    m.tick();
+    ok(same(m.read(), ONE_TIME), "Q8: Joy back on one-time: the one-time cards return (" + m.read().join(" // ") + ")");
+    ok(m.cards[0].querySelectorAll(".cx-qsel__was").length === 0 && m.cards[0].querySelectorAll(".cx-qsel__save").length === 0,
+      "Q8: the 1-unit card loses its struck price and chip again");
+  }
+
+  // --- no Joy block (a market without subscriptions): nothing is fetched
+  {
+    const m = mountSub({ joyBlock: false });
+    m.fire();
+    ok(m.ctx.proxy.calls.length === 0 && same(m.read(), ONE_TIME),
+      "Q8: no subscription widget on the page: ZERO proxy calls, one-time cards");
+    // a plan gets selected later (any widget): fetched then, once
+    m.joy(JOY_2M);
+    m.tick();
+    m.fire();
+    ok(m.ctx.proxy.calls.length === 1 && same(m.read(), SUBSCRIBED),
+      "Q8: a plan selected without the hint: fetched on first need, then the cards follow");
+  }
+
+  // --- plan data that another widget fetched re-prices the cards too
+  {
+    const m = mountSub({ joyBlock: false });
+    m.joy(JOY_2M);
+    m.ctx.sandbox.__entry = proxyEntry();
+    vm.runInContext("azSubDeny = " + JSON.stringify(INH) + "; azSubRegister(__entry)", m.ctx.sandbox);
+    ok(m.ctx.timers.length >= 1, "Q8: registered plan data pokes the cards");
+    m.fire();
+    ok(same(m.read(), SUBSCRIBED) && m.ctx.proxy.calls.length === 0,
+      "Q8: FBT-fetched data is enough: cards follow with no call of their own");
+  }
+
+  // --- fail closed
+  {
+    const old = mountSub({ xp: undefined });
+    old.joy(JOY_2M);
+    old.tick();
+    ok(same(old.read(), ONE_TIME), "Q8: server without xp (in-house plan ids unknown): cards stay one-time");
+
+    const b2b = mountSub({ win: { isB2BCustomer: true } });
+    b2b.joy(JOY_2M);
+    b2b.tick();
+    ok(same(b2b.read(), ONE_TIME), "Q8: B2B: cards stay one-time");
+
+    const off = mountSub({ az: { subOff: 1 } });
+    off.joy(JOY_2M);
+    off.tick();
+    ok(same(off.read(), ONE_TIME), "Q8: kill switch (subOff:1): cards stay one-time");
+
+    const noAz = mountSub({ azIsland: false });
+    noAz.joy(JOY_2M);
+    noAz.tick();
+    ok(same(noAz.read(), ONE_TIME), "Q8: no az island (kill switch unreadable): cards stay one-time");
+
+    const failed = mountSub();
+    failed.ctx.proxy.response = new Error("502");
+    const failedB = mountSub({ joyBlock: false });
+    failedB.ctx.proxy.response = new Error("502");
+    failedB.joy(JOY_2M);
+    failedB.tick();
+    failedB.tick();
+    ok(same(failedB.read(), ONE_TIME) && failedB.ctx.proxy.calls.length === 1,
+      "Q8: proxy failure: one-time cards, asked once, never hammered");
+
+    // in-house plans are never a card price: here they are DISCOUNTED and
+    // ordered first on the 2-Jar variant, and the only plans on the 3-Jar one
+    const allocs = [
+      [{ planId: JOY_2M, price: 5415 }].concat(inh(5700)),
+      inh(9000).concat([{ planId: JOY_3M, price: 9206 }]),
+      inh(12000),
+    ];
+    const deny = mountSub({ entry: proxyEntry(allocs) });
+    deny.joy(JOY_2M);
+    deny.tick();
+    ok(deny.read()[1].indexOf("€46.03 each") === 0,
+      "Q8: a discounted in-house plan ordered first is skipped for the Joy plan (" + deny.read()[1] + ")");
+    ok(deny.read()[2] === ONE_TIME[2], "Q8: a pack with only in-house plans keeps its one-time price");
+
+    // a 0 % plan / a prepaid lump on a pack is no subscription price
+    const flatAllocs = [
+      [{ planId: JOY_2M, price: 5415 }],
+      [{ planId: JOY_3M, price: 9690 }],
+      [{ planId: JOY_3M, price: 41040 }],
+    ];
+    const flat = mountSub({ entry: proxyEntry(flatAllocs) });
+    flat.joy(JOY_2M);
+    flat.tick();
+    ok(flat.read()[0] === SUBSCRIBED[0] && flat.read()[1] === ONE_TIME[1] && flat.read()[2] === ONE_TIME[2],
+      "Q8: a pack plan priced AT one-time or above it: that card keeps its one-time price");
+  }
+
+  // --- the free-shipping micro-line follows the price actually charged
+  {
+    const m = mountSub({ fst: 9500 });
+    ok(m.read()[1].slice(-4) === "ship" && m.read()[0].slice(-1) === "-",
+      "Q8 ship: one-time 2 Jars (96.90) clears a 95.00 threshold");
+    m.joy(JOY_2M);
+    m.tick();
+    ok(m.read()[1].slice(-1) === "-" && m.read()[2].slice(-4) === "ship",
+      "Q8 ship: on subscription 2 Jars cost 92.06 — the free-shipping line is REMOVED; 3 Jars keep it");
+    m.joy("");
+    m.tick();
+    ok(m.read()[1].slice(-4) === "ship" && m.cards[1].querySelectorAll(".cx-qsel__ship").length === 1,
+      "Q8 ship: back on one-time the line returns, once");
+  }
+
+  // --- the in-house buy box, when it answers, decides (exact plan only)
+  {
+    const allocs = SUB_VARIANTS.map((v) => [{ planId: "700", price: Math.round(v.p * 0.9) }]);
+    const m = mountSub({ entry: proxyEntry(allocs), win: { CellexiaSubs: { getState: () => ({ mode: "subscription", sellingPlanId: "700" }) } } });
+    (m.ctx.docListeners["cx:buybox:change"] || []).forEach((fn) => fn());
+    m.fire();
+    ok(m.read()[0] === "€51.30 | €57.00 | Save €5.70 | -" && m.read()[1].indexOf("€43.60 each") === 0,
+      "Q8 buy box: an answering in-house buy box prices the cards from ITS plan's exact allocation (" + m.read()[0] + ")");
+    const one = mountSub({ win: { CellexiaSubs: { getState: () => ({ mode: "one_time", sellingPlanId: null }) } } });
+    one.joy(JOY_2M);
+    one.tick();
+    ok(same(one.read(), ONE_TIME), "Q8 buy box: a buy box answering one-time is never overruled by Joy's field");
+  }
+
+  // --- the price block itself: sub is optional, absent = the pre-v40.2 block
+  {
+    const ctx = makeContext();
+    const d = { l: "en", mf: "€{{amount}}" };
+    const flatten = (el) => el.children.map((c) => c.className + ":" + c.textContent).join(" ");
+    const a = flatten(call(ctx, "qselPriceBlock", d, SUB_VARIANTS[1], 5700));
+    const b = flatten(call(ctx, "qselPriceBlock", d, SUB_VARIANTS[1], 5700, null));
+    ok(a === b && a === "cx-qsel__now:€48.45 each cx-qsel__was:€57.00 each cx-qsel__save:Save €17.10",
+      "Q8 block: no sub price = the one-time block, unchanged");
+    ok(flatten(call(ctx, "qselPriceBlock", d, SUB_VARIANTS[0], 5700, 5700)) === "cx-qsel__now:€57.00",
+      "Q8 block: a 1-unit sub price that is not below the one-time price shows no strike and no chip");
+    ok(flatten(call(ctx, "qselPriceBlock", d, SUB_VARIANTS[0], 0, 5415)) === "cx-qsel__now:€54.15",
+      "Q8 block: no 1-unit baseline: plain subscription price, no fabricated saving");
+  }
+}
+
 // --------------------------------------------------------------- summary
 
 console.log(
@@ -773,6 +1134,65 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m10-ship-comparison-flipped",
         find: "typeof v.p === 'number' && v.p >= d.fst) {",
         replace: "typeof v.p === 'number' && v.p < d.fst) {",
+      },
+      {
+        // v40.2: the cards must show the SUBSCRIPTION price while one is
+        // selected — the merchant's report.
+        name: "m13-sub-price-ignored",
+        find: "    var p = typeof sub === 'number' ? sub : v.p;",
+        replace: "    var p = v.p;",
+      },
+      {
+        // A pack's own plan (another schedule than the page plan) is what
+        // Joy switches to: without the own-pack fallback the packs would
+        // keep one-time prices.
+        name: "m14-own-pack-fallback-dropped",
+        find: "      if (own && !first) first = { id: String(a.planId), price: p };",
+        replace: "      ;",
+      },
+      {
+        // Joy fires 7–14 events per change: an unchanged verdict must not
+        // rebuild the price nodes.
+        name: "m15-reprice-not-idempotent",
+        find: "        if (c.sub === sig) continue; // idempotent: nothing to repaint",
+        replace: "        ; // idempotent: nothing to repaint",
+      },
+      {
+        // ...and a burst of ticks must be one re-price.
+        name: "m16-ticks-not-coalesced",
+        find: "    if (qselSubQueued) return;",
+        replace: "    ;",
+      },
+      {
+        // The free-shipping claim follows the price actually charged.
+        name: "m17-ship-not-synced",
+        find: "        qselShipSync(api.d, c, sub == null ? c.v.p : sub);",
+        replace: "        ;",
+      },
+      {
+        // A dark in-house plan is never a card price.
+        name: "m18-card-deny-dropped",
+        find: "      if (!a || a.planId == null || azSubDenied(a.planId)) continue;",
+        replace: "      if (!a || a.planId == null) continue;",
+      },
+      {
+        // No subscription widget on the page = no proxy call at mount.
+        name: "m19-prefetch-everywhere",
+        find: "      if (qselApi && document.querySelector('.Avada-SubscriptionData-Block')) qselSubEnsure(qselApi);",
+        replace: "      if (qselApi) qselSubEnsure(qselApi);",
+      },
+      {
+        // The 1-unit card under a subscription shows the struck one-time
+        // price and the save chip, like the packs.
+        name: "m20-one-unit-strike-dropped",
+        find: "    } else if (typeof sub === 'number' && q === 1 && base > 0 && sub < base) {",
+        replace: "    } else if (false) {",
+      },
+      {
+        // A failed / unanswered plan fetch is asked once per page.
+        name: "m21-plan-fetch-hammered",
+        find: "    qselSubAsked = true;",
+        replace: "    ;",
       },
     ],
   });

@@ -275,19 +275,6 @@ body.customer--b2b .cx-sub-remove {
   background: #b1cded;
 }
 
-/* v40: the delivery frequency a subscribed pack upgrade moves to (the
-   selling plan's own name — same text the theme prints on the cart line). */
-.cx-volume__freq {
-  font-size: 12px;
-  line-height: 1.3;
-  color: #1d1d1b;
-}
-
-.cx-volume__freq::before {
-  content: "\21BB";
-  margin-inline-end: 4px;
-}
-
 /* ----------------------------------------------------- subscription switch */
 
 .cx-subswitch {

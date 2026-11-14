@@ -72,8 +72,7 @@
  *   m38-native-branch-dropped    a native anchor falls into the owned ladder
  *   m39-upgrade-keeps-line-plan  the upgrade add ignores the tier's own plan
  *   m40-restore-on-tier-plan     a failed upgrade restores onto the TIER plan
- *   m41-tile-label-dropped       plan-changing tile shows no frequency
- *   m42-nameless-tile-offered    tile offered for a plan that has no name
+ *   m41-tile-label-returns       (v40.2) the frequency label is back on the tile
  *   m43-nameless-row-offered     row offered on an undisclosable schedule
  *   m44-keyword-names-dark-plan  keyword may resolve a dark in-house plan
  *   m45-fallback-unguarded       switch fallback takes any allocation
@@ -1354,8 +1353,19 @@ async function main() {
         }
         return out;
       })()`, sim.sandbox);
-    ok(labels.length === 2 && labels[0] === "Every 3 Months" && labels[1] === "Every 3 Months",
-      "v40 tile: the new delivery frequency (the plan's own name) is shown on every plan-changing tile");
+    // v40.2 (merchant, 2026-11-14): the tile no longer prints the plan name —
+    // it reads like every other pack tile.
+    ok(labels.length === 2 && labels[0] === null && labels[1] === null,
+      "v40.2 tile: NO delivery-frequency label on a plan-changing tile");
+    const tileTexts = vm.runInContext(`
+      (function () {
+        var tiles = buildVolumeGroup(__line, __cands, false).querySelectorAll('.cx-volume__tile');
+        var out = [];
+        for (var i = 0; i < tiles.length; i++) out.push(tiles[i].textContent);
+        return out;
+      })()`, sim.sandbox);
+    ok(tileTexts.length === 2 && tileTexts.every((x) => x.indexOf("Every") === -1 && x.indexOf("Months") === -1),
+      "v40.2 tile: no plan name anywhere in the tile text");
     vm.runInContext("performUpgrade(__line, __cands[0], null)", sim.sandbox);
     await flush();
     const chg = bodies(sim, "/cart/change.js");
@@ -1396,7 +1406,7 @@ async function main() {
     const sameLabels = vm.runInContext(
       "buildVolumeGroup(__line, __cands, false).querySelectorAll('.cx-volume__freq').length", same.sandbox);
     ok(same.sandbox.__cands.length === 2 && sameLabels === 0,
-      "v40 tile: a same-plan upgrade shows NO frequency label");
+      "v40.2 tile: a same-plan upgrade shows no frequency label either");
     vm.runInContext("performUpgrade(__line, __cands[0], null)", same.sandbox);
     await flush();
     const sadds = bodies(same, "/cart/add.js");
@@ -1406,7 +1416,8 @@ async function main() {
 
   // v40 tile + switch-card guards (the same extracted functions the drawer runs)
   {
-    // A tier plan WITHOUT a name could not be disclosed: no tile at all.
+    // v40.2: the tile carries no plan name, so a tier plan whose name is
+    // unknown is offered like any other (the add only needs the allocation).
     const namelessP = jclone(JOY_A);
     namelessP.sellingPlanGroups.splice(1, 1); // drop the "Every 3 months" group
     const nameless = makeSim({
@@ -1415,8 +1426,9 @@ async function main() {
     });
     nameless.sandbox.state.products = { 7: namelessP };
     nameless.sandbox.__line = JOY_LINE;
-    ok(vm.runInContext("upgradeCandidates(__line)", nameless.sandbox).length === 0,
-      "v40 tile: the pack's plan has no name: NO tile (never an undisclosed schedule change)");
+    const namelessC = vm.runInContext("upgradeCandidates(__line)", nameless.sandbox);
+    ok(namelessC.length === 2 && String(namelessC[0].planId) === JOY_A_3M && namelessC[0].addPriceCents === 9206,
+      "v40.2 tile: the pack's plan has no name: the tile is still offered on that plan");
 
     // Switch card (findPlanForItem): the in-house allocations are discounted
     // and come first; neither the keyword-less fallback nor a loose keyword
@@ -2365,14 +2377,11 @@ async function main() {
         replace: "if (addPlanId) restore.selling_plan = addPlanId;",
       },
       {
-        name: "m41-tile-label-dropped",
-        find: "if (candidate.planName) tile.appendChild(el('span', 'cx-volume__freq', candidate.planName));",
-        replace: ";",
-      },
-      {
-        name: "m42-nameless-tile-offered",
-        find: "if (tierPlan && !tierPlan.name) tierPlan = null;",
-        replace: ";",
+        // v40.2: the merchant removed the delivery-frequency label from the
+        // pack tile — it must not come back.
+        name: "m41-tile-label-returns",
+        find: "tile.appendChild(el('span', 'cx-volume__unit', t('volume.per_unit', { price: money(candidate.perUnitCents) })));",
+        replace: "tile.appendChild(el('span', 'cx-volume__unit', t('volume.per_unit', { price: money(candidate.perUnitCents) })));\n      if (candidate.planId != null) tile.appendChild(el('span', 'cx-volume__freq', 'Every 3 Months'));",
       },
       {
         name: "m43-nameless-row-offered",

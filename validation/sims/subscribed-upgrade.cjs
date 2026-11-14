@@ -20,7 +20,8 @@
  * dark in-house app's 0 % plans sit on every variant. With the in-house
  * app not live and its plan ids known (cfg.sx.p), a Joy line's tier tile
  * moves to the tier variant's own offerable plan and carries that plan's
- * id and name; the switch card's keyword-less fallback is the first
+ * id (v40.2: no plan name — the merchant removed the frequency label from
+ * the tile); the switch card's keyword-less fallback is the first
  * offerable allocation. Island absent / in-house LIVE / B2B / kill switch
  * = exactly the pre-v40 verdicts above.
  */
@@ -439,8 +440,8 @@ const joyClone = () => JSON.parse(JSON.stringify(JOY_PRODUCT));
   ok(out.length === 2 && out[0].addPriceCents === 9206 && out[0].perUnitCents === Math.round(9206 / 2) &&
     out[1].addPriceCents === 12996 && out[1].perUnitCents === Math.round(12996 / 3),
     "v40: tiles priced from the tier's own Joy allocation (9206 / 12996), never one-time");
-  ok(out.length === 2 && out[0].planName === "Every 3 Months" && out[1].planName === "Every 3 Months",
-    "v40: the schedule changes (2 -> 3 months) so the tile carries the new plan NAME");
+  ok(out.length === 2 && !("planName" in out[0]) && !("planName" in out[1]),
+    "v40.2: the tile candidate carries NO plan name (the frequency label was removed from the tile)");
   ok(out.length === 2 && out[0].percent === Math.round(((2 * 5700 - 9206) / (2 * 5700)) * 100),
     "v40: save badge vs qty x the full one-time 1-unit price (19%)");
 
@@ -472,8 +473,8 @@ const joyClone = () => JSON.parse(JSON.stringify(JOY_PRODUCT));
 
   // Plain (one-time) lines are untouched by any of this.
   const plain = candidates(sb, LINE_JOY_PLAIN);
-  ok(plain.length === 2 && plain[0].addPriceCents === 9690 && plain[0].planId === null && plain[0].planName === "",
-    "v40: one-time line: one-time tiles, no plan id, no frequency label");
+  ok(plain.length === 2 && plain[0].addPriceCents === 9690 && plain[0].planId === null,
+    "v40: one-time line: one-time tiles, no plan id");
 }
 
 // --- v40 families never cross ---------------------------------------------------
@@ -482,7 +483,7 @@ const joyClone = () => JSON.parse(JSON.stringify(JOY_PRODUCT));
   // so the pre-v40 exact path answers — and never hands out a Joy plan.
   const sb = makeSandbox({ settings: JOY_SETTINGS, products: { 950: JOY_PRODUCT }, cfg: { sx: SX_DARK } });
   const out = candidates(sb, LINE_INHOUSE);
-  ok(out.length === 2 && out[0].planId === null && out[0].planName === "" && out[0].addPriceCents === 9690,
+  ok(out.length === 2 && out[0].planId === null && out[0].addPriceCents === 9690,
     "v40: in-house plan line: exact-plan tiles as before, planId null (never moved onto a Joy plan)");
 
   // The tier variant's in-house allocation gets a REAL discount and sits
@@ -505,22 +506,25 @@ const joyClone = () => JSON.parse(JSON.stringify(JOY_PRODUCT));
 
 // --- v40 offerable rule + disclosure ---------------------------------------------
 {
-  // The tier plan has NO name (its group is missing from the product data):
-  // the schedule change could not be shown, so there is no tile.
+  // v40.2: the tile shows no plan name any more, so a tier plan whose name
+  // is unknown (its group is missing from the product data) is offered like
+  // any other — the allocation itself is what the add needs.
   const nameless = { 950: joyClone() };
   nameless[950].sellingPlanGroups.splice(1, 1);
   const sb = makeSandbox({ settings: JOY_SETTINGS, products: nameless, cfg: { sx: SX_DARK } });
-  ok(candidates(sb, LINE_JOY).length === 0,
-    "v40: tier plan without a name: NO tile (never an undisclosed schedule change)");
+  const outN = candidates(sb, LINE_JOY);
+  ok(outN.length === 2 && String(outN[0].planId) === String(JOY_3M) && outN[0].addPriceCents === 9206,
+    "v40.2: tier plan without a name: the tile is still offered on that plan");
 
-  // Another plan id on the tier but the SAME name: nothing changes for the
-  // shopper — tile offered, plan id carried, no frequency label.
+  // Two offerable plans on the tier: the one NAMED like the line's plan
+  // (same schedule) is the one the upgrade moves to.
   const same = { 950: joyClone() };
-  same[950].sellingPlanGroups[1].plans[0].name = "every 2 months";
+  same[950].variants[1].planAllocations = [{ planId: JOY_3M, price: 9206 }, { planId: 555001, price: 9300 }];
+  same[950].sellingPlanGroups.push({ name: "Alt", plans: [{ id: 555001, name: "every 2 months", valueType: "percentage", value: 4 }] });
   const sb2 = makeSandbox({ settings: JOY_SETTINGS, products: same, cfg: { sx: SX_DARK } });
   const out2 = candidates(sb2, LINE_JOY);
-  ok(out2.length === 2 && String(out2[0].planId) === String(JOY_3M) && out2[0].planName === "",
-    "v40: tier plan named like the line's (case-insensitive): tile without a frequency label");
+  ok(out2.length === 2 && String(out2[0].planId) === "555001" && out2[0].addPriceCents === 9300,
+    "v40: a tier plan named like the line's (case-insensitive) is preferred over an earlier one");
 
   // A 0 % Joy plan on the tier is no offer; a prepaid lump (above one-time)
   // is refused by the same strict rule.
@@ -544,7 +548,7 @@ const joyClone = () => JSON.parse(JSON.stringify(JOY_PRODUCT));
   exact[950].variants[1].planAllocations = [{ planId: JOY_2M, price: 9100 }, { planId: JOY_3M, price: 9206 }];
   const sb5 = makeSandbox({ settings: JOY_SETTINGS, products: exact, cfg: { sx: SX_DARK } });
   const out5 = candidates(sb5, LINE_JOY);
-  ok(out5.length === 2 && out5[0].addPriceCents === 9100 && out5[0].planId === null && out5[0].planName === "",
+  ok(out5.length === 2 && out5[0].addPriceCents === 9100 && out5[0].planId === null,
     "v40: tier that allocates the line's exact plan: the pre-v40 same-plan tile wins");
 }
 

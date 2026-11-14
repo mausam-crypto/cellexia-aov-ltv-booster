@@ -759,7 +759,7 @@ export default function CartFeaturesPage() {
                 />
                 <Checkbox
                   label="Subscription prices in cart offers"
-                  helpText="When the shopper's cart already holds a subscription line (Joy Subscriptions), pack upgrades and cross-sells use the real subscription prices and keep the subscription. A pack upgrade moves to that pack's own plan and shows its delivery frequency. On product pages, Frequently bought together and You might also like follow the option selected in the subscription widget the same way. Turning this off returns everything to one-time behavior instantly. It never offers subscriptions to one-time carts."
+                  helpText="When the shopper's cart already holds a subscription line (Joy Subscriptions), pack upgrades and cross-sells use the real subscription prices and keep the subscription. A pack upgrade moves to that pack's own plan. On product pages, the quantity cards, Frequently bought together and You might also like follow the option selected in the subscription widget the same way. Turning this off returns everything to one-time behavior instantly. It never offers subscriptions to one-time carts."
                   checked={state.subscriptionAware}
                   onChange={(subscriptionAware) =>
                     setState((previous) => ({ ...previous, subscriptionAware }))

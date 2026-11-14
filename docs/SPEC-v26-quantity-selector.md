@@ -147,8 +147,10 @@ The middle-tier badge is `volume.most_popular` verbatim since v27 (launched as
 ## 5. What this feature deliberately does NOT do
 
 - No auto-selection of higher tiers, no preselected "recommended" (invariant 7).
-- No subscription interplay: the sm-rc/CellexiaSubs widgets read the same hidden selects
-  they always did (invariant 1 keeps their input identical).
+- No subscription interplay with the SELECTION: the sm-rc/CellexiaSubs widgets read the
+  same hidden selects they always did (invariant 1 keeps their input identical).
+  (v40.2, 2026-11-14: the card PRICES do follow the subscription selected in the
+  subscription widget — display only, see `SPEC-v40-joy-subscriptions.md` §7.)
 - No per-product overrides and no T&A copy hooks in v26 (fixed chrome, invariant 5) —
   a future wave can add settings-copy overrides via the v8.19 copy scope if asked.
 - No layout work above 6 variants (cap) or on multi-option products (bail).

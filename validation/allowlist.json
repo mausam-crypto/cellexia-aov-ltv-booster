@@ -350,6 +350,16 @@
    "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
    "reason": "v39.2 (merchant catch 2026-11-14): the results gallery root gains the bare `cx` class as a PREFIX on its existing classes ('cx cx-proof cx-results…'). It is the opt-out marker of the merchant's separate cellexia-reviews app, whose collect() skips every a[href*=\"/products/\"] inside `.cx` and which otherwise adopted v39.1's \"Product used\" cards ([class*=\"card\"]) and anchored a star badge on .cx-results__clin-title, inside the clinical panel header. No styles attach to a bare `.cx` in either app (harness-pinned); the lightbox/viewer was already covered by that app's .cx-lightbox rule. Pinned by sims/proof-gallery.cjs PG15 + mutant m82 and the harness v39.2 block.",
    "wave": "v39.2"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v40.2 (merchant report 2026-11-14, SPEC-v40 §7.1): the quantity cards follow the subscription selected in the subscription widget. qselPriceBlock takes an optional subscription price (baseline stays the one-time 1-unit price; the 1-unit card gains the struck price + save chip); qselReprice / qselRepriceSoon / qselSubCents / qselShipSync / qselSubEnsure / qselSubKnown / qselPageHandle / qselSubWire re-price the mounted cards on Joy ticks, buy-box changes and landed plan data (coalesced, idempotent, ONE app-proxy call only where a subscription widget is on the page); azSubRowPlan gains the own-pack mode (a pack of the page product resolves its own offerable plan even on another schedule); azSubRegister and azNativeSettle poke the cards. Display only — selection, relay and the theme add are untouched. Pinned by the harness v40.2 pins and sims/quantity-selector Q8 + mutants m13-m21.",
+   "wave": "v40.2"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+   "reason": "v40.2 (merchant decision 2026-11-14, SPEC-v40 §7.2): the pack-upgrade tile no longer prints the tier plan's name (cx-volume__freq span, candidate.planName and the no-name guard removed; companion CSS rule deleted). The upgrade still moves a native line to the tier variant's own plan (candidate.planId) and still restores the original plan on failure. Pinned by the harness negative pin and sims/crosssell-pipeline m41-tile-label-returns.",
+   "wave": "v40.2"
   }
  ]
 }

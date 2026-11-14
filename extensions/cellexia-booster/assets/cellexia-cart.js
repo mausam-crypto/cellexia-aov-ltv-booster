@@ -933,8 +933,10 @@
     // v40: Joy puts each pack size on its OWN plan (live store: 1 unit =
     // "Every 2 Months", 2/3 units = "Every 3 Months"), so the exact-plan
     // rule below never finds a tier for a Joy line. A NATIVE line may move
-    // to the tier variant's own offerable plan instead — merchant decision:
-    // offer it, and show the new delivery frequency on the tile.
+    // to the tier variant's own offerable plan instead (merchant decision).
+    // v40.2 (merchant, 2026-11-14): the tile no longer prints that plan's
+    // name — it reads exactly like every other pack tile; the cart line
+    // shows the plan once the pack is in the cart.
     var nativeLine = linePlanId != null ? nativeLinePlan(item) : null;
     var out = [];
     volumeOffers().forEach(function (offer) {
@@ -956,8 +958,6 @@
         tierAlloc = variantPlanAlloc(tierVariant, linePlanId);
         if (!tierAlloc && nativeLine) {
           tierPlan = nativeVariantAlloc(product, tierVariant, nativeLine.name);
-          // No name = the schedule change could not be shown = no tile.
-          if (tierPlan && !tierPlan.name) tierPlan = null;
           if (tierPlan) tierAlloc = { planId: tierPlan.planId, price: tierPlan.price };
         }
         if (!tierAlloc || !(Number(tierAlloc.price) > 0)) return;
@@ -977,10 +977,8 @@
         perUnitCents: Math.round(addPriceCents / qty),
         addPriceCents: addPriceCents,
         // v40: the plan the upgrade add must carry when it differs from the
-        // line's (null = keep the line's own plan, the pre-v40 path), and
-        // the frequency label the tile shows when the schedule changes.
-        planId: tierPlan ? tierPlan.planId : null,
-        planName: tierPlan && !nativeSameName(tierPlan.name, nativeLine.name) ? tierPlan.name : ''
+        // line's (null = keep the line's own plan, the pre-v40 path).
+        planId: tierPlan ? tierPlan.planId : null
       });
     });
     return out;
@@ -1165,9 +1163,10 @@
   //     "Every 2 Months" on the 1-unit variant, "Every 3 Months" on the
   //     2/3-unit variants), so "the same plan id elsewhere" never holds.
   //     A row resolves to its own variant's offerable plan — the one named
-  //     like the anchor's first — and whenever that changes the delivery
-  //     frequency the plan NAME is shown; a plan with no name is never
-  //     offered (no undisclosed schedule, ever).
+  //     like the anchor's first. A cross-sell ROW on another schedule than
+  //     the cart's subscription shows that plan's NAME (and is not offered
+  //     without one); the pack-upgrade TILE shows no plan name (v40.2,
+  //     merchant decision).
 
   var nativeDeny = null; // proxy "xp": in-house plan ids when the island is absent
   var nativeDenyAsked = false; // ONE proxy attempt per page, whatever its outcome
@@ -1956,10 +1955,6 @@
       if (isHighlight) tile.appendChild(el('span', 'cx-volume__chip', t('volume.best_value')));
       tile.appendChild(el('span', 'cx-volume__qty', t('volume.upgrade_to', { count: candidate.quantity })));
       tile.appendChild(el('span', 'cx-volume__unit', t('volume.per_unit', { price: money(candidate.perUnitCents) })));
-      // v40: the upgrade moves the subscription to another plan — show its
-      // name (the delivery frequency, in the shopper's language; the same
-      // text the theme prints on the cart line afterwards).
-      if (candidate.planName) tile.appendChild(el('span', 'cx-volume__freq', candidate.planName));
       if (candidate.percent > 0) {
         tile.appendChild(el('span', 'cx-volume__save', t('volume.save_pct', { percent: candidate.percent })));
       }

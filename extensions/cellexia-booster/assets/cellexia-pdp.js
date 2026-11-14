@@ -4557,6 +4557,7 @@
         if (plans[p] && plans[p].id != null) azSubNames[String(plans[p].id)] = String(plans[p].name || '');
       }
     }
+    qselRepriceSoon(); // v40.2: the quantity cards may have been waiting for these prices
   }
 
   // ------------- v40 native selling plans (Joy Subscriptions, SPEC-v40)
@@ -4665,7 +4666,7 @@
     return null;
   }
 
-  function azSubRowPlan(variantId, pagePlanId) {
+  function azSubRowPlan(variantId, pagePlanId, own) {
     // The plan a row (this item, an FBT companion, a similar card) prices
     // and adds with while pagePlanId is selected: { id, price } or null =
     // the row stays one-time, price AND add.
@@ -4673,6 +4674,12 @@
     //     variant, exactly as before v40 (azSubPrice).
     //   native (Joy): that same exact allocation when it is offerable, else
     //     the row variant's own offerable plan NAMED like the page plan.
+    // v40.2 — own = the variant is another PACK SIZE of the page product
+    // itself (the quantity cards). Selecting that pack makes Joy switch to
+    // that variant's own plan, whatever it is called (live: 1 unit = "Every
+    // 2 Months", 2/3 units = "Every 3 Months"), so with no same-named plan
+    // the variant's first offerable plan answers. Display only: the add is
+    // the theme's own, carrying Joy's own field.
     if (!pagePlanId) return null;
     var exact = azSubPrice(variantId, pagePlanId);
     if (!azSubNative()) return exact != null ? { id: String(pagePlanId), price: exact } : null;
@@ -4681,15 +4688,17 @@
     if (!rec) return null;
     if (exact != null) return exact < rec.oneTime ? { id: String(pagePlanId), price: exact } : null;
     var want = String(azSubNames[String(pagePlanId)] || '').toLowerCase();
-    if (!want) return null;
+    if (!want && !own) return null;
+    var first = null;
     for (var i = 0; i < rec.plans.length; i++) {
       var a = rec.plans[i];
       if (!a || a.planId == null || azSubDenied(a.planId)) continue;
       var p = Number(a.price);
       if (!(p > 0 && p < rec.oneTime)) continue;
-      if (String(azSubNames[String(a.planId)] || '').toLowerCase() === want) return { id: String(a.planId), price: p };
+      if (want && String(azSubNames[String(a.planId)] || '').toLowerCase() === want) return { id: String(a.planId), price: p };
+      if (own && !first) first = { id: String(a.planId), price: p };
     }
-    return null;
+    return first;
   }
 
   function azSubPriceRow(row, planId) {
@@ -5425,6 +5434,7 @@
         if (now !== last) {
           last = now;
           azSubSync();
+          qselRepriceSoon(); // v40.2
         }
       };
       if (window.addEventListener) window.addEventListener('load', function () { window.setTimeout(check, 0); });
@@ -7483,12 +7493,19 @@
     return box;
   }
 
-  function qselPriceBlock(d, v, base) {
+  function qselPriceBlock(d, v, base, sub) {
+    // v40.2: sub = this tier's SUBSCRIPTION price (cents) while a
+    // subscription is selected in the subscription widget and this variant
+    // carries an offerable plan; undefined/null = the one-time price, the
+    // pre-v40.2 block byte for byte. base stays the ONE-TIME 1-unit price
+    // in both modes (the v17 merchant rule for subscribed tiles: the saving
+    // shown combines the pack discount and the subscription discount).
     var box = cxEl('span', 'cx-qsel__price');
     var q = qselQty(v.t);
+    var p = typeof sub === 'number' ? sub : v.p;
     var each = 0;
-    if (base > 0 && q >= 2 && typeof v.p === 'number') {
-      each = Math.floor(v.p / q);
+    if (base > 0 && q >= 2 && typeof p === 'number') {
+      each = Math.floor(p / q);
       // Honesty gate: per-unit framing only when it is a real discount.
       if (!(each < base)) each = 0;
     }
@@ -7499,14 +7516,26 @@
       var was = cxEl('span', 'cx-qsel__was');
       was.textContent = qselTpl(d, 'each', qselMoney(base, d));
       box.appendChild(was);
-      var save = q * base - v.p;
+      var save = q * base - p;
       if (save > 0) {
         var chip = cxEl('span', 'cx-qsel__save');
         chip.textContent = qselTpl(d, 'save', qselMoney(save, d));
         box.appendChild(chip);
       }
+    } else if (typeof sub === 'number' && q === 1 && base > 0 && sub < base) {
+      // The 1-unit card under a subscription: its price, the one-time price
+      // struck and the same save chip the packs carry — one baseline for
+      // the whole list.
+      now.textContent = qselMoney(sub, d);
+      box.appendChild(now);
+      var was1 = cxEl('span', 'cx-qsel__was');
+      was1.textContent = qselMoney(base, d);
+      box.appendChild(was1);
+      var chip1 = cxEl('span', 'cx-qsel__save');
+      chip1.textContent = qselTpl(d, 'save', qselMoney(base - sub, d));
+      box.appendChild(chip1);
     } else {
-      now.textContent = qselMoney(v.p, d);
+      now.textContent = qselMoney(p, d);
       box.appendChild(now);
     }
     return box;
@@ -7669,7 +7698,7 @@
         if (i === list.length - 1) badge = qselStr(d, 'b3');
         else if (i === 1 && list.length >= 3) badge = qselStr(d, 'b2');
         var card = qselCard(d, v, base, badge);
-        cards.push({ card: card, btn: pair.el, q: qselQty(v.t) });
+        cards.push({ card: card, btn: pair.el, q: qselQty(v.t), v: v, sub: '' });
         group.appendChild(card);
       }
       root.appendChild(group);
@@ -7689,9 +7718,10 @@
       wrap.className += ' cx-qsel-src';
       wrap.setAttribute('aria-hidden', 'true');
       qselPaint(cards, selected);
-      qselApi = { cards: cards, choose: choose, paint: function (idx) { qselPaint(cards, idx); } };
+      qselApi = { cards: cards, choose: choose, paint: function (idx) { qselPaint(cards, idx); }, d: d, base: base };
       qselMounted = true;
       track('quantity_selector');
+      qselSubWire(); // v40.2: the prices follow the selected subscription
     } catch (e) { /* never break the theme */ }
   }
 
@@ -7706,6 +7736,141 @@
         qselMount();
       });
     } catch (e) { /* noop */ }
+  }
+
+  // ------------- v40.2 quantity cards follow the selected subscription
+  //
+  // Merchant report (2026-11-14, live Spanish market): with "Continuous
+  // Treatment" selected in Joy's "Choose Your Treatment" widget — its
+  // default — the cards kept showing ONE-TIME prices (1 Jar 57.00, 2 Jars
+  // 48.45 each) next to an add-to-cart button that said 54.15.
+  //
+  // While a subscription is selected (azSubPlanId: Joy's hidden field, or
+  // the in-house buy box), every card shows what ITS pack costs on a
+  // subscription: that variant's own plan allocation (azSubRowPlan, own
+  // mode — the same offerable / in-house-deny rules as FBT). The per-unit
+  // line, the struck one-time price, the save chip and the free-shipping
+  // micro-line are recomputed from that price; a pack without an offerable
+  // plan keeps its one-time price. Flip back to one-time and the original
+  // block returns.
+  //
+  // The island carries one-time prices only (no Liquid budget for more), so
+  // the page product's allocations come from the app proxy: ONE call, made
+  // as soon as a subscription widget is known to be on the page (Joy's
+  // server-rendered data block) or a plan is first selected — never in a
+  // market without subscriptions. Whatever plan data FBT / similar fetch
+  // re-prices the cards too (azSubRegister). Display only: the theme's own
+  // add-to-cart, with Joy's own field, is untouched.
+
+  var qselSubWired = false;
+  var qselSubAsked = false;  // one page-product plan fetch per page
+  var qselSubQueued = false; // coalesces the 7–14 Joy ticks of one change
+
+  function qselPageHandle() {
+    try {
+      azReadConfig();
+      var p = azProductData();
+      if (p && typeof p.handle === 'string' && p.handle) return p.handle;
+    } catch (e) { /* fall through to the URL */ }
+    try {
+      var m = /\/products\/([^\/?#]+)/.exec(String(window.location.pathname || ''));
+      return m ? decodeURIComponent(m[1]) : '';
+    } catch (e2) { return ''; }
+  }
+
+  function qselSubKnown(api) {
+    // Plan data registered for every card's variant.
+    for (var i = 0; i < api.cards.length; i++) {
+      if (!azSubPlans[String(api.cards[i].v.id)]) return false;
+    }
+    return true;
+  }
+
+  function qselSubEnsure(api) {
+    if (qselSubAsked || qselSubKnown(api)) return;
+    var handle = qselPageHandle();
+    if (!handle) return;
+    qselSubAsked = true;
+    azFetchHandleData([handle]).then(function (byHandle) {
+      for (var k in byHandle) {
+        if (Object.prototype.hasOwnProperty.call(byHandle, k) && byHandle[k]) azSubRegister(byHandle[k]);
+      }
+    });
+  }
+
+  function qselSubCents(v, planId) {
+    // This card's subscription price, or null = it keeps its one-time price
+    // (no plan data yet, no offerable plan on the variant, in-house plan
+    // ids unknown, or a figure that is not below the card's own price).
+    var plan = azSubRowPlan(v.id, planId, true);
+    if (!plan || !(typeof v.p === 'number' && plan.price > 0 && plan.price < v.p)) return null;
+    return plan.price;
+  }
+
+  function qselShipSync(d, c, cents) {
+    // The free-shipping micro-line follows the price actually charged.
+    var row = c.card.querySelector('.cx-qsel__row');
+    if (!row) return;
+    var has = row.querySelector('.cx-qsel__ship');
+    var want = typeof d.fst === 'number' && d.fst > 0 && typeof cents === 'number' && cents >= d.fst;
+    if (want && !has) {
+      var ship = cxEl('span', 'cx-qsel__ship');
+      ship.appendChild(cxIcon('truck', 12));
+      var shipLabel = cxEl('span', 'cx-qsel__ship-label');
+      shipLabel.textContent = qselStr(d, 'fs');
+      ship.appendChild(shipLabel);
+      row.appendChild(ship);
+    } else if (!want && has) {
+      row.removeChild(has);
+    }
+  }
+
+  function qselReprice() {
+    try {
+      var api = qselApi;
+      if (!api || !api.d) return;
+      var planId = null;
+      try {
+        azReadConfig(); // the reader fails closed until the az island is parsed
+        planId = azSubPlanId();
+      } catch (e0) { planId = null; }
+      if (planId) qselSubEnsure(api);
+      for (var i = 0; i < api.cards.length; i++) {
+        var c = api.cards[i];
+        var sub = planId ? qselSubCents(c.v, planId) : null;
+        var sig = sub == null ? '' : String(sub);
+        if (c.sub === sig) continue; // idempotent: nothing to repaint
+        c.sub = sig;
+        var old = c.card.querySelector('.cx-qsel__price');
+        if (old && old.parentNode) old.parentNode.removeChild(old);
+        c.card.appendChild(qselPriceBlock(api.d, c.v, api.base, sub));
+        qselShipSync(api.d, c, sub == null ? c.v.p : sub);
+      }
+    } catch (e) { /* never break the theme */ }
+  }
+
+  function qselRepriceSoon() {
+    if (qselSubQueued) return;
+    qselSubQueued = true;
+    window.setTimeout(function () {
+      qselSubQueued = false;
+      qselReprice();
+    }, 0);
+  }
+
+  function qselSubWire() {
+    try {
+      if (!qselSubWired) {
+        qselSubWired = true;
+        document.addEventListener('cx:buybox:change', qselRepriceSoon);
+        azNativeOn(qselRepriceSoon);
+        azNativeSettle();
+      }
+      // Joy prints its data block server-side: have the pack prices ready
+      // before its widget (which mounts later) selects the subscription.
+      if (qselApi && document.querySelector('.Avada-SubscriptionData-Block')) qselSubEnsure(qselApi);
+      qselRepriceSoon();
+    } catch (e) { /* never break the theme */ }
   }
 
   // ------------------------------------------------ v31 quantity stepper sync
