@@ -644,6 +644,142 @@ environment variable, no locale key, no theme-editor step.
 Pinned by `proof-translation` section L (+ mutants m7, m8),
 `proof-gallery` PG13b and the harness v39.3 block.
 
+### v39.4 (2026-11-14, your report — ships in the v40.6 zip) — the gallery reads natively in every language
+
+Reported on the French store after v39.3 went live: translated study names
+were cut off with "…", the concern options were capitalised word by word
+("Perte De Fermeté"), and some fixed wording read like machine translation
+("Mesuré cliniquement", "Mesuré par instruments", "De vraies personnes. De
+vrais résultats.").
+
+**What was wrong, measured on the live store (build 84, all 17 translated
+languages, all 610 results)**
+
+- **Study names:** the tag under a result was limited to one line, and a
+  translated name is up to twice as long as the English one.
+- **Capitals:** a style rule title-cased every filter option. That is
+  English headline style; no other language writes labels that way.
+- **Short labels:** DeepL translates a one- or two-word label with no
+  sentence around it, so it picks the everyday meaning. Examples that were
+  live: "Hydration" as drinking fluids (German, Dutch, Danish, Swedish,
+  Norwegian, Hungarian, Japanese); "Radiance" as radiation (Dutch) and as
+  a ray of light (Finnish); "frown lines" and "forehead lines" both "Rides
+  du front" in French, so the Concern filter listed the same option twice;
+  Dutch "Cellulitis", which is the infection; Italian "Diradimento" (a
+  misspelling); Romanian and Norwegian phrases that are not phrases.
+- **Same label, several wordings:** measurement labels and job titles were
+  translated once per result, so "Skin Firmness" appeared in four Greek
+  wordings in the same gallery, and 237 copies of "Wrinkle Depth" were
+  billed per language.
+- **Job titles** came out masculine for every doctor ("Facharzt",
+  "Dermatólogo"), and as "advisor" in Danish and Swedish.
+
+**What changed**
+
+- **Study names wrap** onto two or three lines instead of being cut. The
+  tag still cannot widen a card.
+- **No forced capitals.** Every label is shown as written for its
+  language. A concern always prints as words, in English too
+  ("Loss of firmness", never the raw "loss-of-firmness").
+- **A built-in glossary** (`app/services/results-glossary.server.ts`):
+  hand-written labels for the 23 concern tags, 16 measurement names and 12
+  job titles in use today, in all 17 languages, each checked by a second
+  independent reviewer. They are the terms a skincare shopper expects
+  ("Pattes d'oie", "Rides du lion", "Ovale du visage", "Krähenfüße",
+  "Hautfeuchtigkeit"). Job titles do not state a gender, because the app
+  does not know it: languages that mark gender name the speciality
+  ("especialista en dermatología", "Klinische Dermatologie").
+- **Priority:** a wording saved by hand in the app always wins, then the
+  glossary, then DeepL, then the original text. The glossary applies the
+  moment the server is deployed: no translate run is needed, and the wrong
+  DeepL rows already stored stop being shown.
+- **Anything not in the glossary** (a new tag, a new measurement) still
+  goes to DeepL, now with a context hint per kind of label, a fixed source
+  language, and **once per distinct text**: every result that carries the
+  label gets the same wording, and a new result whose labels are already
+  translated costs nothing.
+- **Fixed wording rewritten** in the copy table
+  (`results-ui-copy.server.ts`), all languages re-read:
+  - French: "Mesures cliniques à 8 semaines", "Mesures instrumentales",
+    "Des résultats réels, sur de vraies personnes.", photo tag "Après 8
+    semaines", button "Agrandir".
+  - The first option of every filter no longer needs gender agreement
+    (French "Tout", Spanish "Todo", Italian "Tutto", Portuguese "Tudo").
+  - Romanian and Hungarian count sentences hold for every number.
+  - "Product used" no longer reads as "second-hand product" in Swedish,
+    Norwegian, Hungarian and Finnish.
+- **The three trust marks** under the measurements ("Mesures
+  instrumentales · Même personne · Photos non retouchées") no longer let a
+  long word run over its neighbour on narrow cards. They restack by the
+  width they get: icon beside the label on wide cards, icon above the
+  label on phone and product-page cards, one per line in the 4-column
+  results page.
+- **Fix:** correcting a measurement label or a job title by hand in a
+  result's "Translations" panel now takes effect. It was saved against the
+  wrong source text and silently ignored on the storefront.
+
+### The banner above the gallery
+
+"See results from 132 real Cellexia users." read as if only 132 people had
+bought. The merchant chose the sentence without a number: "See results
+from real Cellexia users." It already exists in every language (the
+v38.1 option); this release only polishes its Italian and European
+Portuguese wording. **It is a setting, not code:** in the app, **Proof →
+Results → "Banner above the gallery" → "No number"**. The store currently
+has "Count every result" selected, so the number stays until that is
+switched.
+
+### After deploying
+
+Nothing to click for the glossary and the display fixes: they are live
+with the deploy (the feed is cached for up to 5 minutes). Pressing
+**Proof → Results → "Translate into all languages"** once is still worth
+doing: it replaces the old DeepL rows with the glossary wording in the
+admin lists, so staff see what shoppers see. It sends nothing to DeepL for
+glossary terms.
+
+No new scope, no database change (`prisma db push` not needed), no
+environment variable, no locale key, no theme-editor step. Liquid is
+untouched.
+
+### For the store team
+
+- One result carries the concern tag `unitedkingdom` (a country typed in
+  the Concern field). It shows as a Concern option in every language.
+- 12 results have the measurement label typed as `lip-volume`; the
+  glossary shows it correctly, the English store shows it as typed.
+- One measurement note reads "Measured wiMeasured with 20 MHz ultrasound
+  (dermal echogenicity)th Antera 3D" (a paste inside a sentence).
+- The job titles are deliberately gender-neutral. To show a specific
+  title for one doctor, edit it in that result's "Translations" panel.
+
+Pinned by `proof-translation` sections L and N (+ mutants m7 to m10),
+`proof-gallery` R2/R11/R13/PG11/PG13/PG13b and the harness v39.4 block.
+
+### v39.5 (2026-11-14, your request — ships in the v40.7 zip) — find a result in the app
+
+The Results tab listed 610 results over many pages with no way to look
+one up, so the entry wrongly tagged `unitedkingdom` could not be found
+without paging through everything.
+
+- **A "Find a result" box** above the list (Proof → Results). Type part of
+  a concern tag, a country, a study name, a doctor's name or words from a
+  testimonial, then press Enter or **Find**. A concern can be typed as a
+  tag or as words: "unitedkingdom", "United Kingdom" and "loss of
+  firmness" all work. A line under the box says how many results match;
+  **Show all results** clears it. It combines with the
+  All / Pending / Approved / Hidden buttons.
+- **"Show this result" / "Show these results"** next to every concern tag
+  in the "Study names and concern tags — translations" list: one click
+  lists exactly the results carrying that tag.
+
+To fix the stray entry: type `unitedkingdom` in the box, open the one
+result that comes up, and correct its Concern field.
+
+App server only (`app.proof.results.tsx`, `proof.server.ts`); the
+storefront is untouched. Pinned by `proof-server` section FD and the
+harness v39.5 checks.
+
 ## 3c. v38 — before/after gallery: standard side-by-side cards, compare slider in the enlarged view — what this release changes
 
 Merchant request: choose between the compare slider everywhere (the v33

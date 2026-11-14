@@ -4686,7 +4686,11 @@ body.customer--b2b .cx-sub-remove {
   line-height: 1;
   padding: 9px 12px;
   cursor: pointer;
-  text-transform: capitalize;
+  /* v39.4: NO text-transform here. "capitalize" title-cased every word
+     ("Perte De Fermeté", "Moins De 8 Semaines"), which no language but
+     English headline style accepts. Every label reaches this button
+     already cased for its language (catalog strings, proxy labels,
+     resultsSlugLabel for a bare tag). */
 }
 
 .cx-results__opt[aria-pressed="true"] {
@@ -5198,11 +5202,21 @@ body.customer--b2b .cx-sub-remove {
   margin-block-start: 10px;
   border-block-start: 1px solid rgba(27, 106, 77, 0.16);
   padding-block-start: 9px;
+  /* v39.4: the row is a size container, so the marks restack by the
+     width they actually get (rail card, grid card, lightbox), not by the
+     viewport. It holds the three marks only: no popover lives inside. */
+  container-type: inline-size;
 }
 
+/* v39.4: a mark never goes narrower than its longest word (min-content
+   floor); what is left of the row is shared equally. They used to be
+   equal thirds that could shrink to nothing, so a long word
+   ("instrumentales", "Unretuschierte", "Muokkaamattomat") ran over the
+   divider of its third while "Même personne" had room to spare. Where
+   even the floors do not fit, the row wraps instead of overflowing. */
 .cx-results__clin-mark {
   flex: 1 1 0;
-  min-inline-size: 0;
+  min-inline-size: min-content;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -5222,8 +5236,55 @@ body.customer--b2b .cx-sub-remove {
   color: #1b6a4d;
 }
 
+/* its longest word is the label's floor (no min-inline-size: 0 here);
+   break-word only ever acts on a single word wider than a whole row */
 .cx-results__clin-mark-t {
-  min-inline-size: 0;
+  overflow-wrap: break-word;
+}
+
+/* v39.4 restacking by row width (10px type; measured on the 17 store
+   languages, the widest set is German at ~268px beside the icons):
+     290px and up   icon beside its label, three across (the classic row)
+     under 290px    icon ABOVE its label, three across: the icon no
+                    longer costs each mark 20px of width
+     under 210px    one mark per line, icon beside label (the 4-column
+                    results-page grid): no three labels fit across
+   The media query repeats the middle step for phone cards in browsers
+   without container queries. */
+@container (max-width: 290px) {
+  .cx-results__clin-mark {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 3px;
+    padding-inline: 4px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .cx-results__card .cx-results__clin-mark {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 3px;
+    padding-inline: 4px;
+    text-align: center;
+  }
+}
+
+@container (max-width: 210px) {
+  .cx-results__card .cx-results__clin-mark,
+  .cx-results__clin-mark {
+    flex: 1 1 100%;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 6px;
+    padding-inline: 2px;
+    text-align: start;
+  }
+
+  .cx-results__clin-mark + .cx-results__clin-mark {
+    border-inline-start: 0;
+  }
 }
 
 /* ---- v33 clinical-study design (beforeAfter.labDesign "study") -----
@@ -5531,6 +5592,17 @@ body.customer--b2b .cx-sub-remove {
   justify-content: center;
   gap: 8px;
   font-size: 12px;
+}
+
+/* v39.4: at the lightbox's 12px the same restack happens a little wider */
+@container (max-width: 340px) {
+  .cx-lightbox .cx-results__clin-mark {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 4px;
+    padding-inline: 4px;
+    text-align: center;
+  }
 }
 
 .cx-lightbox .cx-results__attr {
@@ -6227,17 +6299,22 @@ body.customer--b2b .cx-sub-remove {
 
 /* Study-name tag — a muted outline chip in the badges row naming the
    clinical study an entry came from. Deliberately quieter than the
-   verified/lab pills (data, not a claim) and ellipsized so a long study
-   name can never stretch a card. */
+   verified/lab pills (data, not a claim). v39.4: it WRAPS instead of
+   ellipsizing — a translated study name runs up to twice the English
+   length ("Étude de 8 semaines sur l'hydratation et le renouvellement
+   cutané du visage") and a cut name reads as broken. The chip can never
+   stretch a card (max-inline-size), long single words still break
+   (overflow-wrap), and the 10px radius is a full pill on one line and a
+   soft rectangle on two or three. */
 .cx-results__study-name {
   display: inline-block;
   max-inline-size: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
   padding: 3px 8px;
   border: 1px solid #e5e5e3;
-  border-radius: 999px;
+  border-radius: 10px;
   font-size: 10px;
   line-height: 1.4;
   letter-spacing: 0.02em;

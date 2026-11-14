@@ -25,6 +25,7 @@ import {
   Pagination,
   Select,
   Text,
+  TextField,
   Thumbnail,
 } from "@shopify/polaris";
 import { ImageIcon } from "@shopify/polaris-icons";
@@ -154,10 +155,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : undefined;
   const pageParam = url.searchParams.get("page") ?? "";
   const page = /^\d+$/.test(pageParam) ? Number(pageParam) : 1;
+  // v39.5: find a result — free-text search (q) or one exact concern tag
+  // (concern, set by "Show these results" in the label list).
+  const search = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
+  const concern = (url.searchParams.get("concern") ?? "").trim().slice(0, 120);
 
   const [list, settings, markets, locales, translationConfig, presets] =
     await Promise.all([
-      listResults(session.shop, { status, page }),
+      listResults(session.shop, { status, page, search, concern }),
       getSettings(session.shop),
       listMarkets(admin),
       getTargetLocales(admin),
@@ -1214,6 +1219,32 @@ export default function ProofResultsTab() {
       ? importFetcher.data
       : null;
 
+  // v39.5: find a result. `q` searches the concern tag, country, study
+  // name, doctor name and testimonial; `concern` is one exact tag.
+  const searchFilter = searchParams.get("q") ?? "";
+  const concernFilter = searchParams.get("concern") ?? "";
+  const [searchDraft, setSearchDraft] = useState(searchFilter);
+  useEffect(() => {
+    setSearchDraft(searchFilter);
+  }, [searchFilter]);
+  const setFind = (next: { q?: string; concern?: string }) => {
+    setSearchParams(
+      (previous) => {
+        const params = new URLSearchParams(previous);
+        const q = (next.q ?? "").trim();
+        const tag = (next.concern ?? "").trim();
+        if (q === "") params.delete("q");
+        else params.set("q", q);
+        if (tag === "") params.delete("concern");
+        else params.set("concern", tag);
+        params.delete("page");
+        return params;
+      },
+      { preventScrollReset: true },
+    );
+  };
+  const finding = searchFilter !== "" || concernFilter !== "";
+
   const statusFilter = searchParams.get("status") ?? "";
   const setStatusFilter = (status: string) => {
     setSearchParams(
@@ -1379,9 +1410,12 @@ export default function ProofResultsTab() {
                     <Text as="p" variant="bodySm" tone="subdued">
                       Each study name and concern tag is translated once and
                       shown on every result that carries it, and in the
-                      gallery&apos;s Concern filter. “Translate into all
-                      languages” fills in the missing ones; open a label to
-                      check or correct its wording in any language.
+                      gallery&apos;s Concern filter. Concern tags the app
+                      knows carry a built-in native translation (marked
+                      “built-in”), which shoppers see instead of the
+                      automatic one. “Translate into all languages” fills in
+                      the rest; open a label to check or correct its wording
+                      in any language. A wording saved here always wins.
                     </Text>
                     {resultLabels.map((label) => (
                       <BlockStack key={`${label.kind} ${label.raw}`} gap="100">
@@ -1390,6 +1424,22 @@ export default function ProofResultsTab() {
                             {label.source}
                           </Text>
                           {` · ${label.kind === "study" ? "study name" : "concern tag"} · ${label.count} result${label.count === 1 ? "" : "s"}`}
+                          {label.kind === "concern" ? (
+                            <>
+                              {" · "}
+                              <Button
+                                variant="plain"
+                                onClick={() => {
+                                  setFind({ concern: label.raw });
+                                  document
+                                    .getElementById("cx-results-find")
+                                    ?.scrollIntoView({ block: "start" });
+                                }}
+                              >
+                                {`Show ${label.count === 1 ? "this result" : "these results"}`}
+                              </Button>
+                            </>
+                          ) : null}
                         </Text>
                         <ProofTranslationsSection
                           fields={[
@@ -1470,6 +1520,53 @@ export default function ProofResultsTab() {
             </Box>
           </Collapsible>
 
+          {/* v39.5: find a result (merchant ask: locate the entry tagged
+              "unitedkingdom"). Enter or the button runs the search. */}
+          <div
+            id="cx-results-find"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                setFind({ q: searchDraft });
+              }
+            }}
+          >
+            <TextField
+              label="Find a result"
+              labelHidden
+              placeholder="Find a result: concern tag, country, study, doctor or testimonial text"
+              value={searchDraft}
+              onChange={setSearchDraft}
+              autoComplete="off"
+              clearButton
+              onClearButtonClick={() => {
+                setSearchDraft("");
+                if (finding) setFind({});
+              }}
+              connectedRight={
+                <Button onClick={() => setFind({ q: searchDraft })}>Find</Button>
+              }
+            />
+          </div>
+          {finding ? (
+            <InlineStack gap="200" blockAlign="center" wrap>
+              <Text as="p" variant="bodySm">
+                {concernFilter !== ""
+                  ? `${list.total} result${list.total === 1 ? "" : "s"} with the concern tag “${concernFilter}”`
+                  : `${list.total} result${list.total === 1 ? "" : "s"} matching “${searchFilter}”`}
+              </Text>
+              <Button
+                variant="plain"
+                onClick={() => {
+                  setSearchDraft("");
+                  setFind({});
+                }}
+              >
+                Show all results
+              </Button>
+            </InlineStack>
+          ) : null}
+
           <InlineStack gap="200">
             {[
               { label: "All", value: "" },
@@ -1490,9 +1587,11 @@ export default function ProofResultsTab() {
 
           {list.items.length === 0 ? (
             <Text as="p" tone="subdued">
-              {statusFilter === ""
-                ? "No results yet — add one above or import the legacy before/after entries."
-                : "No results with this status."}
+              {finding
+                ? "No result matches. Try part of the tag or a different word, or press “Show all results”."
+                : statusFilter === ""
+                  ? "No results yet — add one above or import the legacy before/after entries."
+                  : "No results with this status."}
             </Text>
           ) : (
             <BlockStack gap="300">

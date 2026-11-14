@@ -35,6 +35,11 @@ import {
   curatedCopyTranslation,
   curatedTranslationsFor,
 } from "./copy-curated.server";
+import {
+  curatedResultLabel,
+  curatedResultLabelsFor,
+  resultFieldGlossaryKind,
+} from "./results-glossary.server";
 import type { ProofType } from "./proof.server";
 
 interface AdminGraphqlClient {
@@ -153,6 +158,58 @@ const RESULT_LABEL_CONTEXT: Record<ResultLabelKind, string> = {
   concern:
     "Skin or hair concern treated by a cosmetic skincare product, shown as a short filter label in a before/after photo gallery (for example: dullness = skin lacking radiance; jowls = sagging lower cheeks).",
 };
+
+/**
+ * v39.4: the SHORT per-entry result fields: a measurement label
+ * (`m{i}l`), its note (`m{i}i`) and the attribution role. They repeat
+ * across hundreds of entries ("Wrinkle Depth" sat on 237 results), and
+ * v25 sent each occurrence to DeepL with no context: one English label
+ * came back in up to four wordings, some of them wrong ("Hydration" as
+ * drinking fluids). Each kind now gets its own DeepL context, a fixed
+ * source language, and ONE translation per distinct text and language
+ * (see translateProofEntries). Labels and roles the glossary knows never
+ * reach DeepL at all (results-glossary.server.ts).
+ */
+export type ResultShortKind = "measure" | "note" | "role";
+
+export function resultShortFieldKind(field: string): ResultShortKind | null {
+  if (/^m[0-5]l$/.test(field)) return "measure";
+  if (/^m[0-5]i$/.test(field)) return "note";
+  if (field === "attributionRole") return "role";
+  return null;
+}
+
+const RESULT_SHORT_CONTEXT: Record<ResultShortKind, string> = {
+  measure:
+    "Name of a clinical skin or hair measurement of a cosmetic skincare product, shown as a short tile label above its percentage change (for example: Hydration = moisture level of the skin, not drinking; Radiance = luminosity of the complexion, not radiation).",
+  note:
+    "Short methodology note under a clinical skin measurement of a cosmetic skincare product: it names the instrument or method used.",
+  role:
+    "Professional title of a dermatologist, printed after the doctor's name under a clinical before/after result. Use a form that does not state the doctor's gender where the language allows it.",
+};
+
+/**
+ * v39.4: the BUILT-IN native translation of one source field, or null:
+ * the curated endorsement copy (v15.5) or the results glossary (concern
+ * tags, measurement labels, attribution roles). Ranking everywhere: a
+ * fresh MANUAL row > built-in > a fresh auto (DeepL) row > the source.
+ */
+function builtInTranslation(
+  source: { resourceType: string; field: string; text: string },
+  locale: string,
+): string | null {
+  if (source.resourceType === "copy") {
+    return curatedCopyTranslation(locale, source.text);
+  }
+  if (source.resourceType === "concern") {
+    return curatedResultLabel("concern", locale, source.text);
+  }
+  if (source.resourceType === "result") {
+    const kind = resultFieldGlossaryKind(source.field);
+    return kind ? curatedResultLabel(kind, locale, source.text) : null;
+  }
+  return null;
+}
 
 /** Distinct study names (lab rows) and concern slugs of the given rows. */
 function distinctResultLabels(
@@ -401,11 +458,9 @@ export async function translateProofEntries(
       // this exact source text: it is written as the auto row directly
       // (never billed to DeepL) and REFRESHES a stale-or-different auto
       // row, so the admin reviewer and the storefront agree. Manual rows
-      // (above) still win.
-      const curated =
-        source.resourceType === "copy"
-          ? curatedCopyTranslation(locale, source.text)
-          : null;
+      // (above) still win. v39.4: the results glossary (concern tags,
+      // measurement labels, attribution roles) rides the same path.
+      const curated = builtInTranslation(source, locale);
       if (curated !== null) {
         if (
           row &&
@@ -452,8 +507,71 @@ export async function translateProofEntries(
     // one-word label is too short to auto-detect reliably).
     const isLabel = (source: SourceField) =>
       (RESULT_LABEL_KINDS as string[]).includes(source.resourceType);
+    // v39.4: short per-entry result fields batch per kind, like the
+    // shared labels: own context, fixed source language.
+    const shortKind = (source: SourceField): ResultShortKind | null =>
+      source.resourceType === "result" ? resultShortFieldKind(source.field) : null;
     const labelSourceLang =
       normalizeProofLocale(primary).split("-")[0].toUpperCase() || undefined;
+    // v39.4 translation memory: a short field whose exact text already
+    // has a fresh auto translation in this language (on ANY entry) reuses
+    // it instead of asking DeepL again: one wording per label, and a new
+    // entry with known labels costs nothing.
+    const stillPending: SourceField[] = [];
+    const shortPending = pending.filter((source) => shortKind(source) !== null);
+    const memory = new Map<string, string>();
+    if (shortPending.length > 0) {
+      try {
+        const known = await prisma.proofTranslation.findMany({
+          where: {
+            shop,
+            resourceType: "result",
+            locale,
+            manual: false,
+            sourceDigest: {
+              in: [...new Set(shortPending.map((source) => proofSourceDigest(source.text)))],
+            },
+          },
+        });
+        // most-used wording wins; ties resolve by text for determinism
+        const tally = new Map<string, Map<string, number>>();
+        for (const row of known) {
+          const kind = resultShortFieldKind(row.field);
+          if (!kind || !/\S/.test(row.value)) continue;
+          const key = `${kind}\u0000${row.sourceDigest}`;
+          const counts = tally.get(key) ?? new Map<string, number>();
+          counts.set(row.value, (counts.get(row.value) ?? 0) + 1);
+          tally.set(key, counts);
+        }
+        for (const [key, counts] of tally) {
+          const best = [...counts.entries()].sort(
+            (a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0),
+          )[0];
+          if (best) memory.set(key, best[0]);
+        }
+      } catch {
+        // memory is an optimisation: without it the texts go to DeepL
+      }
+    }
+    for (const source of pending) {
+      const kind = shortKind(source);
+      const remembered = kind
+        ? memory.get(`${kind}\u0000${proofSourceDigest(source.text)}`)
+        : undefined;
+      if (remembered === undefined) {
+        stillPending.push(source);
+        continue;
+      }
+      const written = await writeAutoTranslation(shop, source, locale, remembered);
+      if (written === "written") translated += 1;
+      else if (written === "manual") skipped += 1;
+      else {
+        failures.push({
+          locale,
+          error: `could not store ${source.field} for ${source.resourceId}`,
+        });
+      }
+    }
     const groups: {
       rows: SourceField[];
       protect: boolean;
@@ -461,29 +579,42 @@ export async function translateProofEntries(
       sourceLang?: string;
     }[] = [
       {
-        rows: pending.filter(
-          (source) => source.resourceType !== "copy" && !isLabel(source),
+        rows: stillPending.filter(
+          (source) =>
+            source.resourceType !== "copy" && !isLabel(source) && shortKind(source) === null,
         ),
         protect: false,
       },
       {
-        rows: pending.filter((source) => source.resourceType === "copy"),
+        rows: stillPending.filter((source) => source.resourceType === "copy"),
         protect: true,
       },
       ...RESULT_LABEL_KINDS.map((kind) => ({
-        rows: pending.filter((source) => source.resourceType === kind),
+        rows: stillPending.filter((source) => source.resourceType === kind),
         protect: false,
         context: RESULT_LABEL_CONTEXT[kind],
+        sourceLang: labelSourceLang,
+      })),
+      ...(["measure", "note", "role"] as ResultShortKind[]).map((kind) => ({
+        rows: stillPending.filter((source) => shortKind(source) === kind),
+        protect: false,
+        context: RESULT_SHORT_CONTEXT[kind],
         sourceLang: labelSourceLang,
       })),
     ];
     let localeFailed = false;
     for (const group of groups) {
       if (localeFailed) break;
-      for (const slice of chunk(group.rows, 50)) {
+      // v39.4: each DISTINCT text of a group is sent once and its
+      // translation written to every field that carries it.
+      const byText = new Map<string, SourceField[]>();
+      for (const source of group.rows) {
+        byText.set(source.text, [...(byText.get(source.text) ?? []), source]);
+      }
+      for (const slice of chunk([...byText.keys()], 50)) {
         const batch = await deeplTranslateBatch(
           config.apiKey,
-          slice.map((source) => source.text),
+          slice,
           targetLang,
           group.sourceLang,
           { protectPlaceholders: group.protect, context: group.context },
@@ -494,21 +625,22 @@ export async function translateProofEntries(
           break;
         }
         for (let i = 0; i < slice.length; i += 1) {
-          const source = slice[i];
-          // A whitespace-only result would re-bill forever if left unwritten
-          // (review catch PT-5): store the SOURCE text instead — it is what
-          // the storefront would serve anyway; the digest stops resends.
-          const value = /\S/.test(batch.translations[i])
-            ? batch.translations[i]
-            : source.text;
-          const written = await writeAutoTranslation(shop, source, locale, value);
-          if (written === "written") translated += 1;
-          else if (written === "manual") skipped += 1;
-          else {
-            failures.push({
-              locale,
-              error: `could not store ${source.field} for ${source.resourceId}`,
-            });
+          for (const source of byText.get(slice[i]) ?? []) {
+            // A whitespace-only result would re-bill forever if left unwritten
+            // (review catch PT-5): store the SOURCE text instead — it is what
+            // the storefront would serve anyway; the digest stops resends.
+            const value = /\S/.test(batch.translations[i])
+              ? batch.translations[i]
+              : source.text;
+            const written = await writeAutoTranslation(shop, source, locale, value);
+            if (written === "written") translated += 1;
+            else if (written === "manual") skipped += 1;
+            else {
+              failures.push({
+                locale,
+                error: `could not store ${source.field} for ${source.resourceId}`,
+              });
+            }
           }
         }
       }
@@ -605,8 +737,7 @@ export async function proofTranslationStatusFor(
       );
       // v15.5: a curated (built-in) translation counts as fresh coverage —
       // it is what the storefront serves whenever no manual row exists.
-      const curated =
-        type === "copy" ? curatedCopyTranslation(locale, source.text) : null;
+      const curated = builtInTranslation(source, locale);
       if (!row) {
         if (curated !== null) fresh += 1;
         continue;
@@ -701,6 +832,26 @@ export async function getProofTranslationOverlay(
       }
     }
   }
+  // v39.4: the RESULTS GLOSSARY — measurement labels and attribution roles
+  // with a hand-written native label serve it, whatever DeepL stored
+  // (results-glossary.server.ts). Same ranking as the curated copy above:
+  // a fresh MANUAL row > glossary > fresh auto row > source. Keyed by the
+  // CURRENT source text, so an edited label stops matching by itself.
+  if (type === "results" && sources) {
+    for (const [resourceId, fieldsBySource] of sources) {
+      for (const [field, sourceText] of Object.entries(fieldsBySource)) {
+        const kind = resultFieldGlossaryKind(field);
+        if (!kind || !/\S/.test(sourceText)) continue;
+        const servedManual = manualWon.has(`${resourceId}\u0000${field}`);
+        if (servedManual) continue;
+        const builtIn = curatedResultLabel(kind, wanted, sourceText);
+        if (builtIn === null) continue;
+        const fields = overlay.get(resourceId) ?? {};
+        fields[field] = builtIn;
+        overlay.set(resourceId, fields);
+      }
+    }
+  }
   return overlay;
 }
 
@@ -742,6 +893,7 @@ export async function getResultLabelOverlay(
   });
   // base-language rows first, so an exact-locale row overwrites them
   rows.sort((a, b) => Number(a.locale === target) - Number(b.locale === target));
+  const manualConcerns = new Set<string>();
   for (const row of rows) {
     const hit = rawById.get(`${row.resourceType}\u0000${row.resourceId}`);
     if (!hit || !/\S/.test(row.value)) continue;
@@ -749,6 +901,18 @@ export async function getResultLabelOverlay(
     // stale in theory (its id IS the digest) — check anyway, cheaply
     if (row.sourceDigest !== proofSourceDigest(resultLabelSource(hit.kind, hit.raw))) continue;
     (hit.kind === "study" ? out.studies : out.concerns).set(hit.raw, row.value);
+    if (hit.kind === "concern") {
+      if (row.manual) manualConcerns.add(hit.raw);
+      else manualConcerns.delete(hit.raw);
+    }
+  }
+  // v39.4: the results glossary names a known concern tag natively even
+  // when NO row exists (a deploy fixes shoppers at once) and over any
+  // DeepL row. Only a MANUAL label saved in the app outranks it.
+  for (const raw of wanted.concerns) {
+    if (!/\S/.test(raw) || manualConcerns.has(raw)) continue;
+    const builtIn = curatedResultLabel("concern", target, raw);
+    if (builtIn !== null) out.concerns.set(raw, builtIn);
   }
   return out;
 }
@@ -798,18 +962,40 @@ export async function listResultLabels(shop: string): Promise<ResultLabelEntry[]
     .map(({ kind, raw }) => {
       const source = resultLabelSource(kind, raw);
       const digest = proofSourceDigest(source);
+      const translations: ProofTranslationListRow[] = (
+        byId.get(`${kind}\u0000${resultLabelId(kind, raw)}`) ?? []
+      ).map((row) => ({
+        locale: row.locale,
+        field: row.field,
+        value: row.value,
+        manual: row.manual,
+        outdated: row.sourceDigest !== digest,
+      }));
+      // v39.4: a concern the glossary knows shows its BUILT-IN label under
+      // every language that has one, in place of any non-manual row: the
+      // list displays exactly what shoppers read.
+      if (kind === "concern") {
+        for (const [locale, builtIn] of curatedResultLabelsFor("concern", raw)) {
+          const at = translations.findIndex((row) => row.locale === locale);
+          if (at >= 0 && translations[at].manual) continue;
+          const entry: ProofTranslationListRow = {
+            locale,
+            field: RESULT_LABEL_FIELD,
+            value: builtIn,
+            manual: false,
+            outdated: false,
+            curated: true,
+          };
+          if (at >= 0) translations[at] = entry;
+          else translations.push(entry);
+        }
+      }
       return {
         kind,
         raw,
         source,
         count: counts.get(`${kind}\u0000${raw}`) ?? 0,
-        translations: (byId.get(`${kind}\u0000${resultLabelId(kind, raw)}`) ?? []).map((row) => ({
-          locale: row.locale,
-          field: row.field,
-          value: row.value,
-          manual: row.manual,
-          outdated: row.sourceDigest !== digest,
-        })),
+        translations,
       };
     })
     .filter((entry) => /\S/.test(entry.source))
@@ -981,7 +1167,17 @@ export async function getProofSourceText(
     return field === "credentials" ? (row.credentials ?? "") : row.quote;
   }
   const row = await prisma.customerResult.findFirst({ where: { id: resourceId, shop } });
-  return row ? (row.testimonial ?? "") : null;
+  if (!row) return null;
+  // v39.4 fix: every result field reads ITS OWN source. This used to return
+  // the testimonial for all of them, so a manual translation of a
+  // measurement label or of the attribution role was stored under the
+  // testimonial's digest and the storefront skipped it as stale.
+  if (field === "testimonial") return row.testimonial ?? "";
+  if (field === "attributionRole") return row.attributionRole ?? "";
+  for (const [key, text] of measurementSourceFields(row.measurements)) {
+    if (key === field) return text;
+  }
+  return "";
 }
 
 /** Batched per-item translations for a listed admin page (one query). */
@@ -1031,6 +1227,32 @@ export async function listProofTranslationsForMany(
   // v15.5: the copy scope shows the CURATED (built-in) translation wherever
   // one serves — every locale that has one, in place of any non-manual
   // row — so the reviewer displays exactly what shoppers read.
+  if (type === "results") {
+    // v39.4: same for the results glossary (measurement labels, roles)
+    for (const source of sources) {
+      const kind =
+        source.resourceType === "result" ? resultFieldGlossaryKind(source.field) : null;
+      if (!kind) continue;
+      for (const [locale, builtIn] of curatedResultLabelsFor(kind, source.text)) {
+        const list = out.get(source.resourceId) ?? [];
+        const at = list.findIndex(
+          (row) => row.locale === locale && row.field === source.field,
+        );
+        if (at >= 0 && list[at].manual) continue;
+        const entry: ProofTranslationListRow = {
+          locale,
+          field: source.field,
+          value: builtIn,
+          manual: false,
+          outdated: false,
+          curated: true,
+        };
+        if (at >= 0) list[at] = entry;
+        else list.push(entry);
+        out.set(source.resourceId, list);
+      }
+    }
+  }
   if (type === "copy") {
     for (const source of sources) {
       for (const [locale, curated] of curatedTranslationsFor(source.text)) {

@@ -1953,11 +1953,14 @@
 
   function resultsMetaLine(item, s, pg) {
     // age · skin · concern · weeks of use · country — present fields only.
-    // v39.1: pg (results page) prints the concern slug as words.
+    // v39.4: a concern always prints as WORDS — the proxy's label in the
+    // page language, else the tag spelled out ("Loss of firmness"), on
+    // every surface (pg is kept for the call sites; it no longer gates
+    // the wording). A raw "loss-of-firmness" never reaches a shopper.
     var bits = [];
     if (item.age) bits.push(resultsFacetLabel('ages', item.age, s));
     if (item.skin) bits.push(resultsFacetLabel('skins', item.skin, s));
-    if (item.concern) bits.push(item.cl || (pg ? resultsSlugLabel(item.concern) : item.concern));
+    if (item.concern) bits.push(item.cl || resultsSlugLabel(item.concern));
     if (item.weeks) {
       var wk = pfStr(s, 'wk');
       if (/\S/.test(wk)) bits.push(wk.replace('@@N@@', String(item.weeks)));
@@ -2004,7 +2007,11 @@
     p.appendChild(name);
     if (item.ar) {
       var role = pfEl('span', 'cx-results__attr-role');
-      role.textContent = ', ' + item.ar;
+      // v39.4: the name/title separator follows the page language
+      // (Japanese "、", Arabic "،"); every other language keeps ", ".
+      var lang = '';
+      try { lang = String(document.documentElement.lang || '').toLowerCase().slice(0, 2); } catch (e) { lang = ''; }
+      role.textContent = (lang === 'ja' ? '\u3001' : lang === 'ar' ? '\u060C ' : ', ') + item.ar;
       p.appendChild(role);
     }
     return p;
@@ -3947,7 +3954,9 @@
           if (g.opts[ci].value === value && g.opts[ci].label) return g.opts[ci].label;
         }
       }
-      if (pageMode && g.id === 'concerns') return resultsSlugLabel(value);
+      // v39.4: no label from the proxy → the tag as words, everywhere
+      // (the option buttons no longer title-case their text in CSS).
+      if (g.id === 'concerns') return resultsSlugLabel(value);
       return resultsFacetLabel(g.id, value, s);
     }
 

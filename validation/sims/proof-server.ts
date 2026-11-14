@@ -1132,6 +1132,41 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     "SB6: row errors cap at 12 + an honest overflow line");
 }
 
+// ====== FD: v39.5 admin "Find a result" — search + exact concern tag
+
+{
+  const shop = "find.myshopify.com";
+  const seedFind = (t: string, over: Record<string, unknown>) =>
+    seedResult(shop, { beforeUrl: "https://cdn/" + t + ".jpg", testimonial: t, ...over });
+  seedFind("stray", { concern: "unitedkingdom", country: "UK" });
+  seedFind("firm one", { concern: "loss-of-firmness", country: "US" });
+  seedFind("firm two", { concern: "loss-of-firmness", country: "IE", status: "hidden" });
+  seedFind("glowing review", { concern: "dullness", country: "US" });
+  seedFind("lab row", { concern: "glow", source: "lab", study: "Sydney 8-week study", attributionName: "Dr. Miriam Ashworth" });
+  seedResult("other.myshopify.com", { beforeUrl: "https://cdn/x.jpg", concern: "unitedkingdom" });
+  const found = async (options: Record<string, unknown>) =>
+    (await P.listResults(shop, options)).items.map((i: { testimonial: string | null }) => i.testimonial).sort().join("|");
+  ok((await P.listResults(shop, {})).total === 5, "FD1: no filter lists every result of the shop");
+  ok((await found({ search: "unitedkingdom" })) === "stray",
+    "FD1: typing the stray tag finds the one entry (this shop only)");
+  ok((await found({ search: "United Kingdom" })) === "stray",
+    "FD1: the tag is found from its spaced, capitalised spelling too");
+  ok((await found({ search: "Loss of firmness" })) === "firm one|firm two",
+    "FD1: a concern typed as words finds its hyphenated tag");
+  ok((await found({ search: "Sydney" })) === "lab row" && (await found({ search: "Ashworth" })) === "lab row",
+    "FD1: study names and doctor names are searchable");
+  ok((await found({ search: "glow" })) === "glowing review|lab row",
+    "FD2: free-text search is a contains match (tag AND testimonial)");
+  ok((await found({ concern: "glow" })) === "lab row",
+    "FD2: the exact concern filter matches the tag only");
+  ok((await found({ concern: "loss-of-firmness", status: "hidden" })) === "firm two",
+    "FD2: the concern filter combines with the status chips");
+  ok((await found({ concern: "loss" })) === "" && (await found({ search: "no-such-thing" })) === "",
+    "FD2: a partial exact tag or an unknown word finds nothing");
+  ok((await P.listResults(shop, { search: "   ", concern: "  " })).total === 5,
+    "FD3: blank search and blank concern are ignored");
+}
+
 // ===================== UC: v25 results-ui-copy table (18 native locales)
 
 {

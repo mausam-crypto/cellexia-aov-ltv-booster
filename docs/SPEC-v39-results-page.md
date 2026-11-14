@@ -289,3 +289,79 @@ proper noun", v8 "concern slugs are data").
 
 Pinned by `proof-translation` L1–L7 (+ m7, m8), `proof-gallery` PG13b and
 the harness v39.3 block.
+
+## v39.4 — native wording: glossary, wrapping study tag, no CSS casing
+
+Merchant report on the live French store (build 84): study names
+ellipsized, filter options title-cased ("Perte De Fermeté"), fixed chrome
+reading as machine translation. A crawl of the live feed (17 languages ×
+610 results) showed the larger problem: DeepL mistranslates context-free
+short labels, and per-entry translation gave one label several wordings.
+
+**Contract**
+
+- **Glossary** (`app/services/results-glossary.server.ts`, pure module).
+  Kinds `concern`, `measure`, `role`; one table per storefront language
+  (17; `nb`/`no` twins; bare `pt` reads `pt-pt`); keyed by the English
+  source with case, hyphens, underscores and spacing ignored
+  (`resultGlossaryKey`). English and unknown terms return `null`.
+- **Ranking**, everywhere a result label is resolved: fresh MANUAL row >
+  glossary > fresh auto (DeepL) row > source.
+  - `getProofTranslationOverlay(…, "results", …)`: fields `m{i}l`
+    (measure) and `attributionRole` (role), keyed by the CURRENT source
+    text handed by the proxy; an edited source stops matching.
+  - `getResultLabelOverlay`: concern labels, served even with no row.
+  - `translateProofEntries`: a glossary term is written as the auto row
+    (never sent to DeepL) and replaces a different auto row.
+  - Admin lists mark these rows `curated` ("built-in").
+- **Short per-entry fields** (`resultShortFieldKind`: `measure` = `m{i}l`,
+  `note` = `m{i}i`, `role` = `attributionRole`) not covered by the
+  glossary: own DeepL `context` and fixed `source_lang` per kind; each
+  distinct text of a batch is sent once and fanned out to every field
+  carrying it; a text that already has a fresh auto row in the language
+  (same kind, same digest, any entry) reuses the most-used wording
+  instead of calling DeepL.
+- **`getProofSourceText`** returns the field's own source for results
+  (`testimonial`, `attributionRole`, `m{i}l`, `m{i}i`). It returned the
+  testimonial for all of them, so manual rows for labels and roles were
+  stored with the wrong digest and skipped as stale at serve time.
+- **Widget** (`cellexia-proof.js`): a concern prints `item.cl` (proxy
+  label) else `resultsSlugLabel(slug)` on every surface, card line and
+  filter options; the name/title separator is "、" for `ja`, "، " for
+  `ar`, ", " otherwise (from `document.documentElement.lang`).
+- **CSS**: `.cx-results__study-name` wraps (`white-space: normal`,
+  `overflow-wrap: anywhere`, 10px radius); `.cx-results__opt` has no
+  `text-transform`; `.cx-results__clin-marks` is an inline-size container
+  and its marks floor at `min-content`, restacking at 290px (icon above
+  label) and 210px (one mark per line), with a `max-width: 480px` media
+  fallback for card marks.
+- **Copy table** (`results-ui-copy.server.ts`): wording pass on all 19
+  tables; rules recorded in the file header (`al` without gender
+  agreement, `@@N@@` strings valid for every N, no participle calques).
+
+**Not done**
+
+- Study names, measurement notes and testimonials stay with DeepL (full
+  phrases translate acceptably). Existing rows are not re-translated.
+- No shared editor for measurement labels and roles: a manual correction
+  is still per result.
+- The banner sentence with a count ("See results from N real Cellexia
+  users.") is unchanged in code. The merchant chose the numberless banner
+  (`beforeAfter.bannerCount = "none"`, copy code `bn`), which is a setting
+  switched in the Results tab; `bn` got two wording touches (it, pt-pt).
+
+Pinned by `proof-translation` L and N (+ m7 to m10), `proof-gallery`
+R2/R11/R13/PG11/PG13/PG13b and the harness v39.4 block.
+
+## v39.5 — admin: find a result
+
+`listResults` gains `concern` (exact tag) beside the existing `search`,
+which the Results route now passes for the first time: loader params `q`
+(search, 120 chars) and `concern`. Search is a `contains` over
+testimonial, concern, country, study and attributionName; the query is
+also tried in tag shape (lower-cased, spaces to hyphens, separators
+removed) against `concern`. UI: a Find box above the list
+(`#cx-results-find`, Enter or button), a match-count line with "Show all
+results", and a "Show these results" link per concern tag in the label
+list. Both params reset `page` and survive the status chips and
+pagination. No storefront change. Pinned by `proof-server` FD1–FD3.

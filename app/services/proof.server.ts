@@ -241,6 +241,8 @@ export interface ProofListOptions {
   status?: string;
   /** Case-insensitive-ish contains search (SQLite `contains` is used). */
   search?: string;
+  /** v39.5, results only: EXACT concern tag ("unitedkingdom"). */
+  concern?: string;
   /** 1-based. */
   page?: number;
   per?: number;
@@ -717,15 +719,33 @@ export async function listResults(
 ): Promise<ProofListResult<CustomerResult>> {
   assertProofModels();
   const search = cleanText(options.search, SINGLE_LINE_MAX);
+  // v39.5: the Results tab can finally USE this search (it was built in v8
+  // but never wired to the page), so staff can find a stray entry such as
+  // the result tagged "unitedkingdom". Concern tags are lower-case slugs:
+  // the query is also tried in tag shape, so "Loss of firmness" finds
+  // "loss-of-firmness" and "United Kingdom" finds "unitedkingdom".
+  const lowered = search.toLowerCase();
+  const tagForms = [
+    ...new Set([
+      search,
+      lowered,
+      lowered.replace(/[\s_]+/g, "-"),
+      lowered.replace(/[\s_-]+/g, ""),
+    ]),
+  ].filter((form) => form !== "");
+  const concern = cleanText(options.concern, SINGLE_LINE_MAX);
   const where = {
     shop,
     ...(options.status ? { status: options.status } : {}),
+    ...(concern !== "" ? { concern } : {}),
     ...(search !== ""
       ? {
           OR: [
             { testimonial: { contains: search } },
-            { concern: { contains: search } },
+            ...tagForms.map((form) => ({ concern: { contains: form } })),
             { country: { contains: search } },
+            { study: { contains: search } },
+            { attributionName: { contains: search } },
           ],
         }
       : {}),

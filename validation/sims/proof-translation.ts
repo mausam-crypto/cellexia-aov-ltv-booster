@@ -40,6 +40,14 @@
  *   m3-overlay-rank-flipped   base-language rows beat exact rows (T8)
  *   m5-curated-serve-dropped  shoppers keep the DeepL rows (CU1)
  *   m6-curated-beats-manual   curated overrides the merchant's manual (CU1)
+ *   N   v39.4 results glossary (the real results-glossary.server.ts):
+ *       table integrity, loose English keys, serve-time ranking manual >
+ *       glossary > auto > source for measurement labels, roles and concern
+ *       tags; the run never bills glossary terms, sends each distinct short
+ *       text once per language and reuses known wordings for new entries;
+ *       getProofSourceText reads each field's own source (manual-save fix).
+ *   m7-glossary-serve-dropped / m8-glossary-beats-manual /
+ *   m9-concern-glossary-beats-manual / m10-dedupe-fanout-dropped
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -278,6 +286,23 @@ const CURATED_REPOINT = [
   '} from "../../../app/services/copy-curated.server";',
 ].join("\n");
 
+// v39.4: the results glossary is a PURE module too: the sim runs the REAL
+// one, repointed the same way.
+const GLOSSARY_IMPORT = [
+  "import {",
+  "  curatedResultLabel,",
+  "  curatedResultLabelsFor,",
+  "  resultFieldGlossaryKind,",
+  '} from "./results-glossary.server";',
+].join("\n");
+const GLOSSARY_REPOINT = [
+  "import {",
+  "  curatedResultLabel,",
+  "  curatedResultLabelsFor,",
+  "  resultFieldGlossaryKind,",
+  '} from "../../../app/services/results-glossary.server";',
+].join("\n");
+
 // v8.19: the copy scope reads settings — inject an in-memory blob so the
 // sim controls the merchant copy sources.
 const SETTINGS_IMPORT = 'import { getSettings } from "../models/settings.server";';
@@ -289,7 +314,7 @@ const SETTINGS_STUB = [
 
 async function loadModel(): Promise<any> {
   const src = fs.readFileSync(SRC_PATH, "utf8");
-  for (const anchor of [PRISMA_IMPORT, TRANSLATION_IMPORT, PROOF_TYPE_IMPORT, SETTINGS_IMPORT, CURATED_IMPORT]) {
+  for (const anchor of [PRISMA_IMPORT, TRANSLATION_IMPORT, PROOF_TYPE_IMPORT, SETTINGS_IMPORT, CURATED_IMPORT, GLOSSARY_IMPORT]) {
     if (!src.includes(anchor)) {
       throw new Error(
         "proof-translation loader: import anchor not found — update the loader: " + anchor,
@@ -301,7 +326,8 @@ async function loadModel(): Promise<any> {
     .replace(TRANSLATION_IMPORT, TRANSLATION_STUB)
     .replace(PROOF_TYPE_IMPORT, PROOF_TYPE_REPOINT)
     .replace(SETTINGS_IMPORT, SETTINGS_STUB)
-    .replace(CURATED_IMPORT, CURATED_REPOINT);
+    .replace(CURATED_IMPORT, CURATED_REPOINT)
+    .replace(GLOSSARY_IMPORT, GLOSSARY_REPOINT);
   const genDir = path.join(ROOT, "validation", "lib", ".gen");
   fs.mkdirSync(genDir, { recursive: true });
   // Mutant child runs write a SEPARATE basename so the repo-resident
@@ -319,6 +345,11 @@ async function loadModel(): Promise<any> {
 }
 
 const T = await loadModel();
+// v39.4: the REAL results glossary (pure module) — expectations are read
+// from it, never hard-coded twice.
+const G = await import(
+  pathToFileURL(path.join(ROOT, "app", "services", "results-glossary.server.ts")).href
+);
 const SHOP = "sim.myshopify.com";
 const ADMIN: any = { graphql: async () => ({ json: async () => ({}) }) };
 
@@ -498,8 +529,11 @@ const result1 = db._seed("customerResult", {
     "T7b: info notes translate too");
   const role = db._tables.proofTranslation.find(
     (r: StubRow) => r.resourceId === result2.id && r.locale === "fr" && r.field === "attributionRole");
-  ok(!!role && role.value === "[FR] Consultant Dermatologist",
-    "T7b: the attribution ROLE translates (the name never becomes a source)");
+  // v39.4: "Consultant Dermatologist" is a GLOSSARY role — the run writes
+  // the built-in title (never DeepL's); the name still never translates.
+  ok(!!role && role.value === G.curatedResultLabel("role", "fr", "Consultant Dermatologist") &&
+    !role.value.startsWith("[FR]"),
+    "T7b: the attribution ROLE translates (built-in title; the name never becomes a source)");
   ok(!db._tables.proofTranslation.some(
     (r: StubRow) => r.resourceId === result2.id && r.field === "attributionName"),
     "T7b: attribution NAME is a proper noun — never translated");
@@ -517,8 +551,9 @@ const result1 = db._seed("customerResult", {
   );
   const fields = overlay.get(result2.id);
   ok(!!fields && fields.m0l === "[FR] Under-eye wrinkle depth" &&
-    fields.attributionRole === "[FR] Consultant Dermatologist",
-    "T7b: serve-time overlay returns the clinical fields for the page locale");
+    fields.attributionRole === G.curatedResultLabel("role", "fr", "Consultant Dermatologist") &&
+    fields.m1l === G.curatedResultLabel("measure", "fr", "Skin firmness"),
+    "T7b: serve-time overlay returns the clinical fields for the page locale (DeepL for an unknown label, the glossary for known ones)");
 
   // manual review accepts the new field codes and still rejects unknowns
   const manual = await T.saveManualProofTranslation(
@@ -997,6 +1032,8 @@ const CUR = await import(
   const lab1 = lab({});
   const lab2 = lab({});
   const lab3 = lab({ concern: "dullness" });
+  // v39.4: a tag the glossary does NOT know still goes to DeepL
+  const lab4 = lab({ concern: "post-procedure-redness" });
   // a CUSTOMER row never serves a study tag: its column must not translate
   db._seed("customerResult", {
     shop: SHOP, status: "approved", source: "customer", verified: true,
@@ -1014,17 +1051,24 @@ const CUR = await import(
   ok(run.ok === true && run.failures.length === 0, "L2: results run ok");
   const frTexts = sent.filter((c) => c.targetLang === "FR").flatMap((c) => c.texts);
   ok(frTexts.filter((t) => t === STUDY).length === 1,
-    "L2: a study name shared by 3 entries is sent ONCE per language");
-  ok(frTexts.filter((t) => t === "Loss of firmness").length === 1 && frTexts.includes("Dullness"),
-    "L2: each distinct concern is sent once, as words");
+    "L2: a study name shared by 4 entries is sent ONCE per language");
+  ok(frTexts.filter((t) => t === "Post procedure redness").length === 1,
+    "L2: a concern the glossary does not know is sent once, as words");
+  ok(!frTexts.includes("Loss of firmness") && !frTexts.includes("Dullness"),
+    "L2 (v39.4): glossary concerns are never sent to DeepL");
+  const firmFr = db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceType === "concern" && r.resourceId === "loss-of-firmness" && r.locale === "fr");
+  ok(!!firmFr && firmFr.value === G.curatedResultLabel("concern", "fr", "loss-of-firmness") &&
+     firmFr.manual === false,
+    "L2 (v39.4): the run writes the glossary label as the auto row (reviewer and storefront agree)");
   ok(!sent.flatMap((c) => c.texts).some((t) => t.includes("stray study")),
     "L2: a customer row's study column never translates");
-  const labelBatches = sent.filter((c) => c.texts.includes(STUDY) || c.texts.includes("Dullness"));
+  const labelBatches = sent.filter((c) => c.texts.includes(STUDY) || c.texts.includes("Post procedure redness"));
   ok(labelBatches.length > 0 && labelBatches.every(
       (c) => typeof c.context === "string" && c.context.length > 20 &&
         c.sourceLang === "EN" && c.protect === false),
     "L2: label batches carry the context hint and the shop's source language");
-  ok(labelBatches.every((c) => !(c.texts.includes(STUDY) && c.texts.includes("Dullness"))),
+  ok(labelBatches.every((c) => !(c.texts.includes(STUDY) && c.texts.includes("Post procedure redness"))),
     "L2: study names and concern tags batch separately (own context each)");
   const studyFr = db._tables.proofTranslation.find(
     (r: StubRow) => r.resourceType === "study" && r.locale === "fr");
@@ -1046,25 +1090,34 @@ const CUR = await import(
 
   // storefront overlay
   const over = await T.getResultLabelOverlay(SHOP, "fr-ca", {
-    studies: [STUDY, "Unknown study"], concerns: ["loss-of-firmness", "dullness", "never-seen"],
+    studies: [STUDY, "Unknown study"],
+    concerns: ["loss-of-firmness", "dullness", "post-procedure-redness", "never-seen"],
   });
   ok(over.studies.get(STUDY) === "[FR] " + STUDY && !over.studies.has("Unknown study"),
     "L5: overlay serves the study name (regional locale falls back to the base language)");
-  ok(over.concerns.get("loss-of-firmness") === "[FR] Loss of firmness" &&
-     over.concerns.get("dullness") === "[FR] Dullness" && !over.concerns.has("never-seen"),
-    "L5: overlay keys concern labels by slug; unknown values stay absent");
-  const none = await T.getResultLabelOverlay(SHOP, "ja", { studies: [STUDY], concerns: ["dullness"] });
-  ok(none.studies.size === 0 && none.concerns.size === 0,
+  ok(over.concerns.get("loss-of-firmness") === "Perte de fermeté" &&
+     over.concerns.get("dullness") === "Teint terne" &&
+     over.concerns.get("post-procedure-redness") === "[FR] Post procedure redness" &&
+     !over.concerns.has("never-seen"),
+    "L5: overlay keys concern labels by slug (glossary for known tags, DeepL row otherwise); unknown values stay absent");
+  const none = await T.getResultLabelOverlay(SHOP, "ja", {
+    studies: [STUDY], concerns: ["dullness", "post-procedure-redness"],
+  });
+  ok(none.studies.size === 0 && !none.concerns.has("post-procedure-redness"),
     "L5: a language with no rows serves the source text");
+  ok(none.concerns.get("dullness") === G.curatedResultLabel("concern", "ja", "dullness"),
+    "L5 (v39.4): a glossary concern serves with NO row at all (a deploy fixes shoppers at once)");
+  const english = await T.getResultLabelOverlay(SHOP, "en", { studies: [STUDY], concerns: ["dullness"] });
+  ok(english.concerns.size === 0, "L5 (v39.4): the English storefront gets no glossary label (the tag's words serve)");
 
   // manual review
-  const saved = await T.saveManualResultLabel(SHOP, "concern", "dullness", "fr", "  Teint terne ");
+  const saved = await T.saveManualResultLabel(SHOP, "concern", "dullness", "fr", "  Manque d'éclat ");
   ok(saved.ok === true, "L6: a concern label can be corrected by hand");
   const before3 = captures.length;
   await T.translateProofEntries(SHOP, ADMIN, ["results"]);
   const over2 = await T.getResultLabelOverlay(SHOP, "fr", { studies: [], concerns: ["dullness"] });
-  ok(over2.concerns.get("dullness") === "Teint terne" && captures.length === before3,
-    "L6: the manual wording serves and a translate run never overwrites it");
+  ok(over2.concerns.get("dullness") === "Manque d'éclat" && captures.length === before3,
+    "L6: the manual wording serves (it outranks the glossary) and a translate run never overwrites it");
   ok((await T.saveManualResultLabel(SHOP, "concern", "not-a-tag", "fr", "x")).ok === false &&
      (await T.saveManualResultLabel(SHOP, "study", "Customer-only stray study", "fr", "x")).ok === false &&
      (await T.saveManualResultLabel(SHOP, "press", "dullness", "fr", "x")).ok === false &&
@@ -1073,17 +1126,242 @@ const CUR = await import(
   const listed = await T.listResultLabels(SHOP);
   const dull = listed.find((l: any) => l.kind === "concern" && l.raw === "dullness");
   const study = listed.find((l: any) => l.kind === "study");
-  ok(!!study && study.raw === STUDY && study.count === 3 && listed[0].kind === "study",
+  ok(!!study && study.raw === STUDY && study.count === 4 && listed[0].kind === "study",
     "L7: the editor lists the study once with its entry count, studies first");
   ok(!!dull && dull.source === "Dullness" && dull.count === 1 &&
-     dull.translations.some((t: any) => t.locale === "fr" && t.manual && t.value === "Teint terne"),
-    "L7: the editor shows the manual concern translation");
+     dull.translations.some((t: any) => t.locale === "fr" && t.manual && !t.curated && t.value === "Manque d'éclat") &&
+     dull.translations.some((t: any) => t.locale === "de" && t.curated === true && !t.manual &&
+       t.value === G.curatedResultLabel("concern", "de", "dullness")),
+    "L7: the editor shows the manual concern translation, and the built-in label in the other languages");
   ok(listed.filter((l: any) => l.kind === "study").length === 1,
     "L7: the customer row's stray study is not listed");
   await T.saveManualResultLabel(SHOP, "concern", "dullness", "fr", "");
   const over3 = await T.getResultLabelOverlay(SHOP, "fr", { studies: [], concerns: ["dullness"] });
-  ok(!over3.concerns.has("dullness"), "L6: clearing a manual label falls back to the source");
-  void lab1; void lab3;
+  ok(over3.concerns.get("dullness") === "Teint terne",
+    "L6 (v39.4): clearing a manual label falls back to the glossary label");
+  void lab1; void lab3; void lab4;
+}
+
+// --- N (v39.4): the results glossary + one translation per distinct label --------
+{
+  // N1: table integrity — every language carries every term, natively cased
+  const locales = Object.keys(G.RESULT_GLOSSARY).sort();
+  const catalogs = fs
+    .readdirSync(path.join(ROOT, "extensions", "cellexia-booster", "locales"))
+    .filter((f: string) => f.endsWith(".json") && !f.startsWith("en."))
+    .map((f: string) => f.replace(".json", "").toLowerCase())
+    .sort();
+  ok(locales.join(",") === catalogs.join(","),
+    "N1: the glossary covers EXACTLY the non-English catalog languages (" + locales.length + ")");
+  ok(G.RESULT_GLOSSARY.nb === G.RESULT_GLOSSARY.no, "N1: nb/no are twins (house convention)");
+  let complete = true;
+  let clean = true;
+  let distinctConcerns = true;
+  for (const locale of locales) {
+    for (const kind of G.RESULT_GLOSSARY_KINDS) {
+      const table = G.RESULT_GLOSSARY[locale][kind] as Record<string, string>;
+      const keys = [...G.RESULT_GLOSSARY_KEYS[kind]] as string[];
+      if (Object.keys(table).sort().join("|") !== [...keys].sort().join("|")) complete = false;
+      for (const key of keys) {
+        const value = table[key];
+        if (typeof value !== "string" || !/\S/.test(value)) { complete = false; continue; }
+        if (value.includes("\u2014") || value !== value.trim() || /[.。]$/.test(value)) clean = false;
+        if (G.resultGlossaryKey(key) !== key) clean = false;
+      }
+    }
+    const concernLabels = Object.values(G.RESULT_GLOSSARY[locale].concern as Record<string, string>);
+    if (new Set(concernLabels).size !== concernLabels.length) distinctConcerns = false;
+  }
+  ok(complete, "N1: every language table translates every listed term of every kind");
+  ok(clean, "N1: no em dash, stray space or trailing period; keys are stored normalized");
+  ok(distinctConcerns,
+    "N1: no two concerns share a label inside one language (the filter would list it twice)");
+  const lowerRoleLocales = ["fr", "es", "it", "pt-pt", "pt-br", "nl", "da", "sv", "nb", "fi", "pl", "ro", "hu", "el"];
+  ok(lowerRoleLocales.every((locale) =>
+      Object.values(G.RESULT_GLOSSARY[locale].role as Record<string, string>).every(
+        (v) => v.charAt(0) === v.charAt(0).toLowerCase())) &&
+     Object.values(G.RESULT_GLOSSARY.de.role as Record<string, string>).every(
+        (v) => v.charAt(0) === v.charAt(0).toUpperCase()),
+    "N1: role titles start lower-case after the doctor's name; German keeps its noun capitals");
+  ok(lowerRoleLocales.concat(["de"]).every((locale) =>
+      Object.values(G.RESULT_GLOSSARY[locale].concern as Record<string, string>)
+        .concat(Object.values(G.RESULT_GLOSSARY[locale].measure as Record<string, string>))
+        .every((v) => v.charAt(0) === v.charAt(0).toUpperCase())),
+    "N1: concern and measurement labels start with a capital (they stand alone)");
+  // the two live defects that started v39.4
+  ok(G.curatedResultLabel("concern", "fr", "frown-lines") === "Rides du lion" &&
+     G.curatedResultLabel("concern", "fr", "forehead-lines") === "Rides du front",
+    "N1: French frown lines and forehead lines are two different labels");
+  ok(G.curatedResultLabel("measure", "de", "Hydration") === "Hautfeuchtigkeit" &&
+     G.curatedResultLabel("concern", "nl", "cellulite") === "Cellulite",
+    "N1: German Hydration is skin moisture, Dutch cellulite is not the infection");
+  // lookup rules
+  ok(G.curatedResultLabel("role", "fr", "Board-Certified Dermatologist") ===
+       G.curatedResultLabel("role", "fr", "board certified   dermatologist") &&
+     G.curatedResultLabel("measure", "fr", "lip-volume") === "Volume des lèvres" &&
+     G.curatedResultLabel("concern", "fr", "Loss of firmness") === "Perte de fermeté",
+    "N2: case, hyphens and spacing are ignored (a tag, its words and a typed label all hit)");
+  ok(G.curatedResultLabel("concern", "FR", "dullness") === "Teint terne" &&
+     G.curatedResultLabel("concern", "fr-ca", "dullness") === "Teint terne" &&
+     G.curatedResultLabel("concern", "pt", "dullness") === G.curatedResultLabel("concern", "pt-pt", "dullness") &&
+     G.curatedResultLabel("concern", "pt-BR", "dullness") !== G.curatedResultLabel("concern", "pt-PT", "dullness"),
+    "N2: locale lookup is case-insensitive, regional falls back to base, bare pt reads pt-pt, pt-BR its own table");
+  ok(G.curatedResultLabel("concern", "en", "dullness") === null &&
+     G.curatedResultLabel("concern", "xx", "dullness") === null &&
+     G.curatedResultLabel("concern", "fr", "unitedkingdom") === null &&
+     G.curatedResultLabel("concern", "fr", "") === null &&
+     G.curatedResultLabel("concern", "fr", "constructor") === null &&
+     G.curatedResultLabel("measure", "fr", "dullness") === null,
+    "N2: English, unknown locales, unknown terms, prototype names and the wrong kind return null (DeepL / source path)");
+  ok(G.resultFieldGlossaryKind("m0l") === "measure" && G.resultFieldGlossaryKind("m5l") === "measure" &&
+     G.resultFieldGlossaryKind("attributionRole") === "role" && G.resultFieldGlossaryKind("m0i") === null &&
+     G.resultFieldGlossaryKind("testimonial") === null && G.resultFieldGlossaryKind("m6l") === null,
+    "N2: only measurement LABELS and the role are glossary fields (notes and testimonials stay free text)");
+  ok(T.resultShortFieldKind("m2l") === "measure" && T.resultShortFieldKind("m2i") === "note" &&
+     T.resultShortFieldKind("attributionRole") === "role" && T.resultShortFieldKind("testimonial") === null,
+    "N2: the short-field kinds (own DeepL context each)");
+
+  // N3: serve-time ranking — fresh manual > glossary > fresh auto > source
+  const mk = (extra: StubRow) => db._seed("customerResult", {
+    shop: SHOP, status: "approved", source: "lab", verified: false,
+    beforeUrl: null, afterUrl: null, combinedUrl: "https://cdn/n.png",
+    ageRange: null, skinType: null, concern: null, durationWeeks: 8, country: null,
+    testimonial: null, videoUrl: null, productGids: "[]", legacyGid: null,
+    study: null, attributionName: "Dr. A. Example", ...extra,
+  });
+  const MEAS = JSON.stringify([
+    { label: "Hydration", dir: "up", pct: 20, info: "Measured with a Corneometer" },
+    { label: "Sebum Balance Index", dir: "down", pct: 9, info: "Measured with a Corneometer" },
+  ]);
+  const n1 = mk({ measurements: MEAS, attributionRole: "Board-Certified Dermatologist" });
+  const n2 = mk({ measurements: MEAS, attributionRole: "Chief Dermatology Officer" });
+  const srcOf = () => ({
+    testimonial: "", attributionRole: "Board-Certified Dermatologist",
+    m0l: "Hydration", m0i: "Measured with a Corneometer",
+    m1l: "Sebum Balance Index", m1i: "Measured with a Corneometer",
+  });
+  // a stale-quality DeepL row, exactly what v39.3 left in the store's database
+  db._seed("proofTranslation", {
+    shop: SHOP, resourceType: "result", resourceId: n1.id, locale: "de", field: "m0l",
+    value: "Flüssigkeitszufuhr", sourceDigest: T.proofSourceDigest("Hydration"), manual: false,
+  });
+  const serve = async (locale: string, sources: Record<string, string> = srcOf()) =>
+    (await T.getProofTranslationOverlay(SHOP, "results", [n1.id], locale, new Map([[n1.id, sources]])))
+      .get(n1.id) ?? {};
+  const de1 = await serve("de");
+  ok(de1.m0l === "Hautfeuchtigkeit",
+    "N3: the glossary label beats a fresh DeepL row at serve time (no translate run needed)");
+  ok(de1.attributionRole === G.curatedResultLabel("role", "de", "Board-Certified Dermatologist") &&
+     de1.m1l === undefined && de1.m0i === undefined,
+    "N3: the glossary role serves with no row; unknown labels and notes have nothing yet (source serves)");
+  ok((await serve("en")).m0l === undefined, "N3: the English storefront is never overlaid");
+  ok((await serve("de", { ...srcOf(), m0l: "Hydration level (corneometry)" })).m0l === undefined,
+    "N3: an EDITED label stops matching the glossary and the stale row (its new source serves)");
+  const pressOnly = await T.getProofTranslationOverlay(
+    SHOP, "press", [press1.id], "de", new Map([[press1.id, { quote: "Hydration" }]]));
+  ok(pressOnly.get(press1.id)?.quote !== "Hautfeuchtigkeit",
+    "N3: the glossary applies to the results scope only");
+
+  // N7 (bug fix): the manual-save path reads each field's OWN source
+  ok((await T.getProofSourceText(SHOP, "results", n1.id, "m0l")) === "Hydration" &&
+     (await T.getProofSourceText(SHOP, "results", n1.id, "m1i")) === "Measured with a Corneometer" &&
+     (await T.getProofSourceText(SHOP, "results", n1.id, "attributionRole")) === "Board-Certified Dermatologist" &&
+     (await T.getProofSourceText(SHOP, "results", n1.id, "testimonial")) === "" &&
+     (await T.getProofSourceText(SHOP, "results", n1.id, "m4l")) === "" &&
+     (await T.getProofSourceText(SHOP, "results", "nope", "m0l")) === null,
+    "N7: getProofSourceText returns the label / note / role itself, never the testimonial");
+  const manualSrc = await T.getProofSourceText(SHOP, "results", n1.id, "m0l");
+  await T.saveManualProofTranslation(SHOP, "results", n1.id, "de", "m0l", "Feuchtigkeitsgehalt", manualSrc);
+  ok((await serve("de")).m0l === "Feuchtigkeitsgehalt",
+    "N3/N7: a MANUAL label saved through the admin path serves, above the glossary");
+  await T.saveManualProofTranslation(SHOP, "results", n1.id, "de", "m0l", "", manualSrc);
+  ok((await serve("de")).m0l === "Hautfeuchtigkeit",
+    "N3: clearing the manual label falls back to the glossary");
+
+  // N4/N5: the translate run — glossary never billed, each distinct text sent once
+  const beforeN = captures.length;
+  const runN = await T.translateProofEntries(SHOP, ADMIN, ["results"]);
+  const sentN = captures.slice(beforeN);
+  ok(runN.ok === true && runN.failures.length === 0, "N4: results run ok");
+  const allTexts = sentN.flatMap((c) => c.texts);
+  ok(!allTexts.includes("Hydration") && !allTexts.includes("Board-Certified Dermatologist"),
+    "N4: glossary labels and roles are never sent to DeepL");
+  const deTexts = sentN.filter((c) => c.targetLang === "DE").flatMap((c) => c.texts);
+  ok(deTexts.filter((t) => t === "Sebum Balance Index").length === 1 &&
+     deTexts.filter((t) => t === "Measured with a Corneometer").length === 1 &&
+     deTexts.filter((t) => t === "Chief Dermatology Officer").length === 1,
+    "N5: a label and a note carried by 2 entries (4 fields) are each sent ONCE per language");
+  const rowsFor = (id: string, locale: string) => db._tables.proofTranslation.filter(
+    (r: StubRow) => r.resourceType === "result" && r.resourceId === id && r.locale === locale);
+  const valueOf = (id: string, locale: string, field: string) =>
+    rowsFor(id, locale).find((r: StubRow) => r.field === field)?.value;
+  ok(valueOf(n1.id, "de", "m1l") === "[DE] Sebum Balance Index" &&
+     valueOf(n2.id, "de", "m1l") === "[DE] Sebum Balance Index" &&
+     valueOf(n1.id, "de", "m0i") === "[DE] Measured with a Corneometer" &&
+     valueOf(n2.id, "de", "m1i") === "[DE] Measured with a Corneometer",
+    "N5: the one translation is written to every field that carries the text");
+  ok(valueOf(n1.id, "de", "m0l") === "Hautfeuchtigkeit" && valueOf(n2.id, "fr", "m0l") === "Hydratation" &&
+     valueOf(n1.id, "fr", "attributionRole") === G.curatedResultLabel("role", "fr", "Board-Certified Dermatologist"),
+    "N4: the run REPLACES the old DeepL row with the glossary label and writes it for new entries");
+  const shortBatches = sentN.filter((c) =>
+    c.texts.includes("Sebum Balance Index") || c.texts.includes("Measured with a Corneometer") ||
+    c.texts.includes("Chief Dermatology Officer"));
+  ok(shortBatches.length > 0 && shortBatches.every((c) =>
+      typeof c.context === "string" && c.context.length > 40 && c.sourceLang === "EN" && c.protect === false),
+    "N5: short-field batches carry a context hint and the shop's source language");
+  ok(shortBatches.every((c) =>
+      Number(c.texts.includes("Sebum Balance Index")) + Number(c.texts.includes("Measured with a Corneometer")) +
+      Number(c.texts.includes("Chief Dermatology Officer")) === 1) &&
+     new Set(shortBatches.filter((c) => c.targetLang === "DE").map((c) => c.context)).size === 3,
+    "N5: labels, notes and roles batch separately (own context each)");
+  const statusN = await T.proofTranslationStatusFor(SHOP, "results", ["fr", "de", "pt-PT"]);
+  ok(statusN.fresh === statusN.expected && statusN.outdated === 0,
+    "N4: glossary coverage counts as translated (" + statusN.fresh + "/" + statusN.expected + ")");
+  const beforeN2 = captures.length;
+  await T.translateProofEntries(SHOP, ADMIN, ["results"]);
+  ok(captures.length === beforeN2, "N4: an unchanged second run sends nothing");
+
+  // N6: translation memory — a NEW entry with known texts costs nothing
+  const n3 = mk({ measurements: MEAS, attributionRole: "Chief Dermatology Officer" });
+  const beforeN3 = captures.length;
+  const runN3 = await T.translateProofEntries(SHOP, ADMIN, ["results"], [n3.id]);
+  ok(runN3.ok === true && captures.length === beforeN3,
+    "N6: saving a new entry whose labels, notes and role are already translated sends NOTHING to DeepL");
+  ok(valueOf(n3.id, "de", "m1l") === "[DE] Sebum Balance Index" &&
+     valueOf(n3.id, "fr", "m1i") === "[FR] Measured with a Corneometer" &&
+     valueOf(n3.id, "pt-pt", "attributionRole") === "[PT-PT] Chief Dermatology Officer" &&
+     valueOf(n3.id, "de", "m0l") === "Hautfeuchtigkeit",
+    "N6: the new entry reuses the existing wording (one wording per label and language)");
+  // memory keys by kind: a NOTE never borrows a LABEL's translation of the same text
+  const n4 = mk({
+    measurements: JSON.stringify([{ label: "Barrier Score", dir: "up", pct: 5, info: "Sebum Balance Index" }]),
+    attributionRole: null,
+  });
+  const beforeN4 = captures.length;
+  await T.translateProofEntries(SHOP, ADMIN, ["results"], [n4.id]);
+  const sentN4 = captures.slice(beforeN4).filter((c) => c.targetLang === "DE").flatMap((c) => c.texts);
+  ok(sentN4.includes("Sebum Balance Index") && sentN4.includes("Barrier Score"),
+    "N6: memory is per kind — the same text as a NOTE is translated in its own context");
+
+  // N8: the admin reviewer shows what shoppers read
+  const many = await T.listProofTranslationsForMany(SHOP, "results", [n1.id]);
+  const rowsN1 = many.get(n1.id) ?? [];
+  const deLabel = rowsN1.find((r: any) => r.locale === "de" && r.field === "m0l");
+  const deUnknown = rowsN1.find((r: any) => r.locale === "de" && r.field === "m1l");
+  ok(!!deLabel && deLabel.curated === true && deLabel.manual === false && deLabel.value === "Hautfeuchtigkeit",
+    "N8: a glossary label is listed as built-in");
+  ok(!!deUnknown && !deUnknown.curated && deUnknown.value === "[DE] Sebum Balance Index",
+    "N8: a DeepL label stays listed as auto");
+  await T.saveManualProofTranslation(SHOP, "results", n1.id, "de", "m0l", "Feuchtigkeitsgehalt", "Hydration");
+  const many2 = await T.listProofTranslationsForMany(SHOP, "results", [n1.id]);
+  const deManual = (many2.get(n1.id) ?? []).find((r: any) => r.locale === "de" && r.field === "m0l");
+  ok(!!deManual && deManual.manual === true && !deManual.curated && deManual.value === "Feuchtigkeitsgehalt",
+    "N8: a manual label is shown as manual, never overlaid by the built-in one");
+  const beforeN5 = captures.length;
+  await T.translateProofEntries(SHOP, ADMIN, ["results"]);
+  ok(valueOf(n1.id, "de", "m0l") === "Feuchtigkeitsgehalt" && captures.length === beforeN5,
+    "N8: a translate run never overwrites the manual label with the glossary");
+  void n2; void n4;
 }
 
 // ----------------------------------------------------------------- mutants
@@ -1112,8 +1390,8 @@ if (!process.env.CX_SIM_SRC) {
       {
         // v8.19: copy loses its {n} protection — C1/C3 pin the flag.
         name: "m4-copy-protect-dropped",
-        find: "        rows: pending.filter((source) => source.resourceType === \"copy\"),\n        protect: true,",
-        replace: "        rows: pending.filter((source) => source.resourceType === \"copy\"),\n        protect: false,",
+        find: "        rows: stillPending.filter((source) => source.resourceType === \"copy\"),\n        protect: true,",
+        replace: "        rows: stillPending.filter((source) => source.resourceType === \"copy\"),\n        protect: false,",
       },
       {
         // v8.19b: the blank-source emission guard dropped — a blanked
@@ -1162,6 +1440,32 @@ if (!process.env.CX_SIM_SRC) {
         name: "m6-curated-beats-manual",
         find: "        if (manualWon.has(`${resourceId}\\u0000${field}`)) continue;",
         replace: "        if (false) continue;",
+      },
+      {
+        // v39.4: serve-time glossary dropped — shoppers would keep DeepL's
+        // "Flüssigkeitszufuhr" until someone re-ran the translation (N3 catches).
+        name: "m7-glossary-serve-dropped",
+        find: "        const builtIn = curatedResultLabel(kind, wanted, sourceText);",
+        replace: "        const builtIn: string | null = null;",
+      },
+      {
+        // v39.4: the glossary must never override a manual label (N3 catches).
+        name: "m8-glossary-beats-manual",
+        find: "        if (servedManual) continue;",
+        replace: "        if (false) continue;",
+      },
+      {
+        // v39.4: same for a concern label corrected by hand (L6 catches).
+        name: "m9-concern-glossary-beats-manual",
+        find: "    if (!/\\S/.test(raw) || manualConcerns.has(raw)) continue;",
+        replace: "    if (!/\\S/.test(raw)) continue;",
+      },
+      {
+        // v39.4: per-text fan-out dropped — only the FIRST field carrying a
+        // repeated label would get its translation (N5 catches).
+        name: "m10-dedupe-fanout-dropped",
+        find: "          for (const source of byText.get(slice[i]) ?? []) {",
+        replace: "          for (const source of (byText.get(slice[i]) ?? []).slice(0, 1)) {",
       },
     ],
   });

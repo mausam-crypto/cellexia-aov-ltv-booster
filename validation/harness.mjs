@@ -3416,10 +3416,10 @@ const EVIDENCE = {
     const ptSrc = read("app/services/proof-translation.server.ts");
     ok(
       ptSrc.includes(
-        'rows: pending.filter(\n          (source) => source.resourceType !== "copy" && !isLabel(source),\n        ),\n        protect: false,',
+        'rows: stillPending.filter(\n          (source) =>\n            source.resourceType !== "copy" && !isLabel(source) && shortKind(source) === null,\n        ),\n        protect: false,',
       ) &&
         ptSrc.includes(
-          'rows: pending.filter((source) => source.resourceType === "copy"),\n        protect: true,',
+          'rows: stillPending.filter((source) => source.resourceType === "copy"),\n        protect: true,',
         ) &&
         ptSrc.includes("{ protectPlaceholders: group.protect, context: group.context }"),
       "v8.13b/v8.19: prose batches unprotected, copy batches protect {n}",
@@ -4131,7 +4131,8 @@ const EVIDENCE = {
   // reviewer + status honesty.
   ok(
     ptSrc155.includes('} from "./copy-curated.server";') &&
-      ptSrc155.includes("? curatedCopyTranslation(locale, source.text)") &&
+      ptSrc155.includes("const curated = builtInTranslation(source, locale);") &&
+      ptSrc155.includes('if (source.resourceType === "copy") {\n    return curatedCopyTranslation(locale, source.text);\n  }') &&
       ptSrc155.includes("const written = await writeAutoTranslation(shop, source, locale, curated);"),
     "v15.5: translateProofEntries writes curated copy rows directly (never billed to DeepL)",
   );
@@ -4144,7 +4145,7 @@ const EVIDENCE = {
   ok(
     ptSrc155.includes("for (const [locale, curated] of curatedTranslationsFor(source.text)) {") &&
       ptSrc155.includes("curated: true,") &&
-      ptSrc155.includes('type === "copy" ? curatedCopyTranslation(locale, source.text) : null;'),
+      ptSrc155.split("const curated = builtInTranslation(source, locale);").length === 3,
     "v15.5: the admin reviewer shows curated rows as built-in and the status counts them as fresh",
   );
   ok(
@@ -5708,11 +5709,139 @@ const EVIDENCE = {
     const proofJs = read(`${EXT}/assets/cellexia-proof.js`);
     ok(
       proofJs.includes("cl: typeof it.concernLabel === 'string'") &&
-        proofJs.includes("bits.push(item.cl || (pg ? resultsSlugLabel(item.concern) : item.concern));") &&
+        proofJs.includes("bits.push(item.cl || resultsSlugLabel(item.concern));") &&
         proofJs.includes("if (g.opts[ci].value === value && g.opts[ci].label) return g.opts[ci].label;"),
       "v39.3: the widget prints the translated concern label (card line + filter)",
     );
   }
+}
+
+// ============================================================== v39.4
+// Native wording pass (merchant catch on the live French store): study
+// names were ellipsized, filter options were title-cased by CSS ("Perte
+// De Fermeté"), fixed chrome read as machine translation, and DeepL got
+// the short labels wrong. Behaviour is pinned in sims/proof-translation
+// (section N) and sims/proof-gallery; these are the wiring tripwires.
+{
+  const css394 = read(`${EXT}/assets/cellexia-booster.css`);
+  const blockOf = (selector) => {
+    const at = css394.indexOf(`\n${selector} {`);
+    return at === -1 ? "" : css394.slice(at, css394.indexOf("\n}", at));
+  };
+  const studyBlock = blockOf(".cx-results__study-name");
+  ok(
+    studyBlock.includes("white-space: normal;") &&
+      studyBlock.includes("overflow-wrap: anywhere;") &&
+      studyBlock.includes("max-inline-size: 100%;") &&
+      !studyBlock.includes("text-overflow") &&
+      !studyBlock.includes("nowrap"),
+    "v39.4: the study-name tag wraps (never ellipsized) and still cannot stretch a card",
+  );
+  const optBlock = blockOf(".cx-results__opt");
+  ok(
+    optBlock.length > 0 && !/text-transform:\s*capitalize/.test(optBlock) &&
+      !/\n\s*text-transform:\s*capitalize;/.test(css394.replace(/\/\*[\s\S]*?\*\//g, "")),
+    "v39.4: no CSS title-casing of filter options (or anywhere else in the stylesheet)",
+  );
+  const js394 = read(`${EXT}/assets/cellexia-proof.js`);
+  ok(
+    js394.includes("if (item.concern) bits.push(item.cl || resultsSlugLabel(item.concern));") &&
+      js394.includes("if (g.id === 'concerns') return resultsSlugLabel(value);") &&
+      !js394.includes("if (pageMode && g.id === 'concerns') return resultsSlugLabel(value);"),
+    "v39.4: a concern prints as words on every surface (a raw tag never reaches a shopper)",
+  );
+  ok(
+    js394.includes("role.textContent = (lang === 'ja' ? '\\u3001' : lang === 'ar' ? '\\u060C ' : ', ') + item.ar;"),
+    "v39.4: the name/title separator follows the page language (ja, ar)",
+  );
+  const pt394 = read("app/services/proof-translation.server.ts");
+  ok(
+    pt394.includes('} from "./results-glossary.server";') &&
+      pt394.includes("function builtInTranslation(") &&
+      pt394.includes('if (type === "results" && sources) {') &&
+      pt394.includes("const builtIn = curatedResultLabel(kind, wanted, sourceText);") &&
+      pt394.includes('const builtIn = curatedResultLabel("concern", target, raw);') &&
+      pt394.includes("if (!/\\S/.test(raw) || manualConcerns.has(raw)) continue;"),
+    "v39.4: the results glossary ranks manual > glossary > DeepL > source at serve time (entry fields + concern labels)",
+  );
+  ok(
+    pt394.includes("const byText = new Map<string, SourceField[]>();") &&
+      pt394.includes("for (const slice of chunk([...byText.keys()], 50)) {") &&
+      pt394.includes("const memory = new Map<string, string>();") &&
+      pt394.includes('...(["measure", "note", "role"] as ResultShortKind[]).map((kind) => ({') &&
+      pt394.includes("context: RESULT_SHORT_CONTEXT[kind],"),
+    "v39.4: short result fields get a DeepL context each, one request per distinct text, and reuse known wordings",
+  );
+  ok(
+    pt394.includes('if (field === "attributionRole") return row.attributionRole ?? "";') &&
+      pt394.includes("for (const [key, text] of measurementSourceFields(row.measurements)) {\n    if (key === field) return text;"),
+    "v39.4: getProofSourceText reads each result field's own source (manual label edits serve)",
+  );
+  const glossary394 = read("app/services/results-glossary.server.ts");
+  ok(
+    !/^import /m.test(glossary394) &&
+      glossary394.includes("export function curatedResultLabel(") &&
+      glossary394.includes("export function resultGlossaryKey(") &&
+      bytesOf("app/services/results-glossary.server.ts") > 30000,
+    "v39.4: results-glossary.server.ts is a pure module holding the native tables (deep validation in proof-translation N)",
+  );
+  const copy394 = read("app/services/results-ui-copy.server.ts");
+  ok(
+    copy394.includes('rp: "Des résultats réels, sur de vraies personnes."') &&
+      copy394.includes('ma: "Mesures cliniques à @@N@@ semaines"') &&
+      copy394.includes('mi: "Mesures instrumentales"') &&
+      !copy394.includes('ma: "Mesuré cliniquement') &&
+      !copy394.includes('mi: "Mesuré par instruments') &&
+      !copy394.includes('rp: "De vraies personnes. De vrais résultats."'),
+    "v39.4: the three French strings the merchant flagged are rewritten",
+  );
+  ok(
+    copy394.includes('al: "Tout"') && copy394.includes('al: "Todo"') &&
+      copy394.includes('al: "Tutto"') && copy394.split('al: "Tudo"').length === 3 &&
+      !/al: "(Tous|Todos|Tutti)"/.test(copy394),
+    "v39.4: the All option needs no gender agreement in fr/es/it/pt",
+  );
+  ok(
+    copy394.includes('sa: "Vezi toate rezultatele (@@N@@)"') &&
+      copy394.includes('sa: "Nézd meg az összes eredményt (@@N@@)"') &&
+      copy394.includes('ma: "Măsurători clinice în săptămâna @@N@@"'),
+    "v39.4: ro/hu count strings hold for every N (no de-from-20 / a-az agreement)",
+  );
+  const marksBlock = blockOf(".cx-results__clin-marks");
+  const markBlock = blockOf(".cx-results__clin-mark");
+  ok(
+    marksBlock.includes("container-type: inline-size;") &&
+      marksBlock.includes("flex-wrap: wrap;") &&
+      markBlock.includes("flex: 1 1 0;") &&
+      markBlock.includes("min-inline-size: min-content;") &&
+      !/min-inline-size:\s*0/.test(blockOf(".cx-results__clin-mark-t")) &&
+      css394.includes("@container (max-width: 290px) {\n  .cx-results__clin-mark {\n    flex-direction: column;") &&
+      css394.includes("@container (max-width: 210px) {") &&
+      css394.includes("@media (max-width: 480px) {\n  .cx-results__card .cx-results__clin-mark {\n    flex-direction: column;"),
+    "v39.4: trust marks floor at their longest word and restack by the row's real width (290px / 210px, phone fallback)",
+  );
+  ok(
+    copy394.includes('aw: "Après @@N@@ semaines"') && copy394.includes('aw: "Nach @@N@@ Wochen"'),
+    "v39.4: the French and German after-photo tags are the short native form",
+  );
+  const admin394 = read("app/routes/app.proof.results.tsx");
+  ok(
+    admin394.includes("listResults(session.shop, { status, page, search, concern }),") &&
+      admin394.includes('const search = (url.searchParams.get("q") ?? "").trim().slice(0, 120);') &&
+      admin394.includes('id="cx-results-find"') &&
+      admin394.includes("setFind({ concern: label.raw });") &&
+      admin394.includes("Show all results"),
+    "v39.5: the Results tab has a Find box (q) and a per-tag exact filter (concern)",
+  );
+  ok(
+    read("app/services/proof.server.ts").includes('...(concern !== "" ? { concern } : {}),') &&
+      read("app/services/proof.server.ts").includes("...tagForms.map((form) => ({ concern: { contains: form } })),"),
+    "v39.5: listResults filters by exact concern tag and searches tags in tag shape",
+  );
+  ok(
+    admin394.includes("knows carry a built-in native translation"),
+    "v39.4: the admin label list explains built-in translations",
+  );
 }
 
 // ================================================= v26 QUANTITY SELECTOR

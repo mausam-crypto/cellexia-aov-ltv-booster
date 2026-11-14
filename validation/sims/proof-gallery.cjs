@@ -828,8 +828,8 @@ ok(SRC.indexOf("endoInitials") === -1 && SRC.indexOf("cx-endo__monogram") === -1
   ok(!!card.querySelector(".cx-results__play"), "R2: play badge for a video row");
   ok(!!card.querySelector(".cx-results__badge--verified"), "R2: verified badge");
   ok(!card.querySelector(".cx-results__badge--lab"), "R2: no lab badge for a customer row");
-  ok(card.querySelector(".cx-results__meta").textContent === "25-34 years · Dry · wrinkles · 8 weeks of use · Germany",
-    "R2: meta microline composes age · skin · concern · weeks · country");
+  ok(card.querySelector(".cx-results__meta").textContent === "25-34 years · Dry · Wrinkles · 8 weeks of use · Germany",
+    "R2: meta microline composes age · skin · concern (as words, v39.4) · weeks · country");
   ok(card.querySelector(".cx-results__quote").textContent === "My skin changed.",
     "R2: testimonial rendered");
 }
@@ -946,7 +946,7 @@ ok(SRC.indexOf("endoInitials") === -1 && SRC.indexOf("cx-endo__monogram") === -1
   ok(section.querySelectorAll(".cx-results__group").length === 4, "R11: 4 drawer groups");
   const opts = section.querySelectorAll(".cx-results__opt");
   ok(opts.length === 6, "R11: one option per facet value");
-  ok(opts[0].textContent === "wrinkles 12", "R11: option shows value + count");
+  ok(opts[0].textContent === "Wrinkles 12", "R11: option shows the concern as words + count (v39.4)");
   ok(section.querySelector(".cx-results__drawer").hasAttribute("hidden"), "R11: drawer starts closed");
 }
 
@@ -974,7 +974,7 @@ ok(SRC.indexOf("endoInitials") === -1 && SRC.indexOf("cx-endo__monogram") === -1
   ok(S.PF_FETCH_CALLS[0].qs === "?type=results&concern=wrinkles&page=1&per=12&product=9",
     "R13: pick refetches page 1 with the exact filter query");
   ok(drawer.hasAttribute("hidden"), "R13: selection closes the drawer");
-  ok(chips[0].textContent === "Concern: wrinkles", "R13: active chip label = Group: Value");
+  ok(chips[0].textContent === "Concern: Wrinkles", "R13: active chip label = Group: Value (concern as words, v39.4)");
   ok(chips[0].className === "cx-results__chip cx-results__chip--on", "R13: active chip carries --on");
   ok(!section.querySelector(".cx-results__chip--clear").hasAttribute("hidden"),
     "R13: clear chip appears with an active filter");
@@ -3506,8 +3506,8 @@ function pgRailCards(section) {
   ok(brand.querySelector(".cx-results__drawer").hasAttribute("hidden"),
     "PG11: in the brand twin any chip closes the open panel");
   ok(brand.querySelectorAll(".cx-results__opt--all").length === 0 &&
-    bGroups[0].querySelectorAll(".cx-results__opt")[0].textContent.indexOf("frown-lines") === 0,
-    "PG11: the brand twin has no All option and keeps the raw concern slug");
+    bGroups[0].querySelectorAll(".cx-results__opt")[0].textContent.indexOf("Frown lines") === 0,
+    "PG11: the brand twin has no All option; its concern prints as words too (v39.4)");
 }
 
 // --- PG12: page photos are sized renditions; the first row loads eagerly ---------------
@@ -3591,8 +3591,9 @@ function pgRailCards(section) {
     !/frown-lines/.test(pgRailCards(fresh)[0].querySelector(".cx-results__meta").textContent),
     "PG13: the page card's meta line prints the concern as words");
   const brand = S.resultsBuildSection(pgBrandConf(), pgProdFixture());
-  ok(/frown-lines/.test(pgRailCards(brand)[0].querySelector(".cx-results__meta").textContent),
-    "PG13: the brand twin keeps the raw slug");
+  ok(/Frown lines/.test(pgRailCards(brand)[0].querySelector(".cx-results__meta").textContent) &&
+    !/frown-lines/.test(pgRailCards(brand)[0].querySelector(".cx-results__meta").textContent),
+    "PG13: the brand twin prints the concern as words too: a raw tag never reaches a shopper (v39.4)");
 }
 
 // --- PG13b (v39.3): translated concern labels from the proxy ------------------------------
@@ -3611,8 +3612,8 @@ function pgRailCards(section) {
   ok(/Rides du lion/.test(bMeta) && !/frown/i.test(bMeta),
     "PG13b: the card line prints the translated concern (got " + bMeta + ")");
   const bOpts = brand.querySelectorAll(".cx-results__group")[0].querySelectorAll(".cx-results__opt");
-  ok(bOpts[0].textContent.indexOf("Rides du lion") === 0 && bOpts[1].textContent.indexOf("glow") === 0,
-    "PG13b: filter options print the label; an untranslated one keeps its old form");
+  ok(bOpts[0].textContent.indexOf("Rides du lion") === 0 && bOpts[1].textContent.indexOf("Glow") === 0,
+    "PG13b: filter options print the label; an untranslated one prints as words (v39.4)");
   S.PF_FETCH_CALLS.length = 0;
   S.PF_FETCH_QUEUE.length = 0;
   S.PF_FETCH_QUEUE.push(tr({ total: 9 }));
@@ -3634,9 +3635,9 @@ function pgRailCards(section) {
     items: pgProdItems().map((item) => Object.assign(item, { concernLabel: 7 })),
     facets: { concerns: [{ value: "frown-lines", count: 9, label: { x: 1 } }] },
   }));
-  ok(/frown-lines/.test(pgRailCards(bad)[0].querySelector(".cx-results__meta").textContent) &&
-    bad.querySelectorAll(".cx-results__opt")[0].textContent.indexOf("frown-lines") === 0,
-    "PG13b: a non-string label is ignored");
+  ok(/Frown lines/.test(pgRailCards(bad)[0].querySelector(".cx-results__meta").textContent) &&
+    bad.querySelectorAll(".cx-results__opt")[0].textContent.indexOf("Frown lines") === 0,
+    "PG13b: a non-string label is ignored (the tag's words serve)");
 }
 
 // --- PG14: loading placeholder, title-gap classes, and the early first response --------
