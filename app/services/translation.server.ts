@@ -260,7 +260,10 @@ export async function deeplTranslateBatch(
   // prose — press quotes, endorsements, testimonials) opt out, so a
   // brace-styled word in a quote is translated normally instead of being
   // frozen (and flipping its whole slice to XML mode) for nothing.
-  options?: { protectPlaceholders?: boolean },
+  // v39.3: `context` is DeepL's free (never billed, never translated) hint —
+  // short labels ("Dullness") translate as the skincare term they are
+  // instead of the everyday word.
+  options?: { protectPlaceholders?: boolean; context?: string },
 ): Promise<DeeplBatchResult> {
   const out: string[] = [];
   for (const slice of chunk(texts, DEEPL_TEXTS_PER_REQUEST)) {
@@ -280,6 +283,7 @@ export async function deeplTranslateBatch(
             target_lang: targetLang,
             ...(sourceLang ? { source_lang: sourceLang } : {}),
             preserve_formatting: true,
+            ...(options?.context ? { context: options.context } : {}),
             // JSON requests take ignore_tags as an ARRAY (the comma-separated
             // form is form-encoding only) — the string form is HTTP 400.
             ...(protect ? { tag_handling: "xml", ignore_tags: ["cx"] } : {}),

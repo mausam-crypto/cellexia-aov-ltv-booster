@@ -260,3 +260,32 @@ Pinned by `proof-gallery` PG15 (+ m82) and the harness v39.2 block, which
 also fails if anything ever styles a bare `.cx`. Cross-app contract:
 `docs/theme-integration.md`, "The separate Cellexia reviews app".
 
+## v39.3 — study names and concern tags translate
+
+Owner report (2026-11-14, French product page): study names and concern
+tags stayed English. Reverses two earlier decisions (v35 "study name is a
+proper noun", v8 "concern slugs are data").
+
+- **Shared labels.** `proof-translation.server.ts` adds two resource types
+  to the results scope: `study` (resourceId = sha256 of the name, source =
+  the name; lab rows only) and `concern` (resourceId = the slug, source =
+  the slug as words, `concernSlugWords`). One field, `label`. One row per
+  distinct value and language, whatever the number of entries.
+- **Translate run.** `loadSourceFields("results")` emits them; narrowed
+  (auto-on-save) runs look existing rows up by the sources' own ids so a
+  save never re-bills them. Label batches carry a DeepL `context` hint and
+  a fixed `source_lang` (the shop primary).
+- **Serve.** `getResultLabelOverlay` in the results branch of
+  `proxy.proof.tsx`: `item.study` replaced in place, `item.concernLabel`
+  and `facets.concerns[].label` added. The slug remains the filter value.
+  Failure of the overlay serves the untranslated payload.
+- **Widget.** `item.cl`, `opts[].label`; `resultsMetaLine` and `optLabel`
+  prefer the label, then the v39.1 behaviour (words on the page, raw slug
+  elsewhere). The shop's primary language is unchanged.
+- **Admin.** `listResultLabels` / `saveManualResultLabel`, intent
+  `save_label_translation`, rendered with `ProofTranslationsSection`.
+- **Not done:** no built-in dictionary; wording quality is DeepL's until a
+  label is corrected by hand.
+
+Pinned by `proof-translation` L1–L7 (+ m7, m8), `proof-gallery` PG13b and
+the harness v39.3 block.

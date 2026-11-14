@@ -1923,6 +1923,8 @@
         age: typeof it.ageRange === 'string' && /\S/.test(it.ageRange) ? it.ageRange : '',
         skin: typeof it.skinType === 'string' && /\S/.test(it.skinType) ? it.skinType : '',
         concern: typeof it.concern === 'string' && /\S/.test(it.concern) ? it.concern : '',
+        // v39.3: the concern tag in the page language, when the proxy has one.
+        cl: typeof it.concernLabel === 'string' && /\S/.test(it.concernLabel) ? it.concernLabel : '',
         weeks: pfPosInt(it.durationWeeks) ? it.durationWeeks : 0,
         country: typeof it.country === 'string' ? it.country : '',
         text: typeof it.testimonial === 'string' && /\S/.test(it.testimonial) ? it.testimonial : '',
@@ -1955,7 +1957,7 @@
     var bits = [];
     if (item.age) bits.push(resultsFacetLabel('ages', item.age, s));
     if (item.skin) bits.push(resultsFacetLabel('skins', item.skin, s));
-    if (item.concern) bits.push(pg ? resultsSlugLabel(item.concern) : item.concern);
+    if (item.concern) bits.push(item.cl || (pg ? resultsSlugLabel(item.concern) : item.concern));
     if (item.weeks) {
       var wk = pfStr(s, 'wk');
       if (/\S/.test(wk)) bits.push(wk.replace('@@N@@', String(item.weeks)));
@@ -2010,8 +2012,9 @@
 
   function resultsStudyTag(item, o) {
     // v35: a small muted tag naming the clinical study an entry came from
-    // (its study-batch name) — raw merchant text via textContent, never a
-    // locale string (proper noun). Skipped when the merchant turned study
+    // (its study-batch name) — merchant text via textContent, never a
+    // locale string (v39.3: the proxy serves it in the page language when
+    // a translation exists). Skipped when the merchant turned study
     // tags off (ui.ns) or the entry carries none; item.st is already
     // lab-gated in resultsValidItems.
     if (!item.st || (o && o.ns)) return null;
@@ -3421,7 +3424,8 @@
 
   function resultsSlugLabel(value) {
     // Concern tags are merchant slugs ("frown-lines"); the results page
-    // prints them as words ("Frown lines"). Still data: no translation.
+    // prints them as words ("Frown lines") — the fallback wherever the
+    // proxy carried no translated label (v39.3).
     var text = typeof value === 'string' ? value.replace(/[-_]+/g, ' ').replace(/^\s+|\s+$/g, '') : '';
     return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
   }
@@ -3661,7 +3665,12 @@
       for (var j = 0; j < list.length; j++) {
         var o = list[j] && typeof list[j] === 'object' ? list[j] : {};
         if (typeof o.value === 'string' && /\S/.test(o.value)) {
-          opts.push({ value: o.value, count: pfPosInt(o.count) ? o.count : 0 });
+          opts.push({
+            value: o.value,
+            count: pfPosInt(o.count) ? o.count : 0,
+            // v39.3: a translated concern label rides the option.
+            label: typeof o.label === 'string' && /\S/.test(o.label) ? o.label : ''
+          });
         }
       }
       if (opts.length > 0) out.push({ id: defs[i].id, param: defs[i].param, label: defs[i].label, opts: opts });
@@ -3931,6 +3940,13 @@
       // v39.1: a product option reads its title from the page's product
       // map; on the results page concern slugs print as words.
       if (g.id === 'products') return pm && pm[value] ? pm[value].t : '';
+      // v39.3: a concern the proxy translated prints its label everywhere
+      // (filter options, the selected chip) — the slug stays the value.
+      if (g.id === 'concerns') {
+        for (var ci = 0; ci < g.opts.length; ci++) {
+          if (g.opts[ci].value === value && g.opts[ci].label) return g.opts[ci].label;
+        }
+      }
       if (pageMode && g.id === 'concerns') return resultsSlugLabel(value);
       return resultsFacetLabel(g.id, value, s);
     }

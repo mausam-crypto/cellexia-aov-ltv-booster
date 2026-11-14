@@ -63,9 +63,11 @@ export const RESULT_MEASUREMENT_FIELDS: string[] = [];
 for (let i = 0; i < 6; i++) RESULT_MEASUREMENT_FIELDS.push(`m${i}l`, `m${i}i`);
 
 /** Which entry fields are prose (translatable). Everything else — names,
- *  publication wordmarks, URLs, ISO codes, concern slugs — never leaves
- *  the shop's primary language (attribution NAMES are proper nouns and
- *  stay; the attribution ROLE is prose). */
+ *  publication wordmarks, URLs, ISO codes — never leaves the shop's
+ *  primary language (attribution NAMES are proper nouns and stay; the
+ *  attribution ROLE is prose). v39.3: study names and concern tags DO
+ *  translate, as shared labels (RESULT_LABEL_KINDS below), not as
+ *  per-entry fields. */
 export const TRANSLATABLE_PROOF_FIELDS: Record<ProofScope, string[]> = {
   press: ["quote"],
   endorsements: ["quote", "credentials"],
@@ -104,6 +106,73 @@ const RESOURCE_TYPE: Record<ProofScope, string> = {
 
 export function proofSourceDigest(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/**
+ * v39.3: SHARED result labels — the study name and the concern tag. Both
+ * repeat across dozens of entries (one study batch = one name), so each
+ * distinct value is translated ONCE and stored under its own resource
+ * type instead of once per entry:
+ *   - "study":   resourceId = sha256 of the study name, source = the name
+ *   - "concern": resourceId = the slug ("loss-of-firmness"), source = the
+ *     slug as words ("Loss of firmness")
+ * One field ("label"). They ride the "results" scope everywhere (the
+ * Results tab's translate button, the auto-on-save hook, the status line).
+ */
+export type ResultLabelKind = "study" | "concern";
+export const RESULT_LABEL_KINDS: ResultLabelKind[] = ["study", "concern"];
+export const RESULT_LABEL_FIELD = "label";
+
+/** Every DB resourceType a scope's rows live under. */
+const SCOPE_RESOURCE_TYPES: Record<ProofScope, string[]> = {
+  press: ["press"],
+  endorsements: ["endorsement"],
+  results: ["result", ...RESULT_LABEL_KINDS],
+  copy: ["copy"],
+};
+
+/** "loss-of-firmness" → "Loss of firmness" — the widget's
+ *  resultsSlugLabel twin, and the text DeepL is handed. */
+export function concernSlugWords(slug: string): string {
+  const text = slug.replace(/[-_]+/g, " ").trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : "";
+}
+
+export function resultLabelId(kind: ResultLabelKind, raw: string): string {
+  return kind === "study" ? proofSourceDigest(raw) : raw;
+}
+
+export function resultLabelSource(kind: ResultLabelKind, raw: string): string {
+  return kind === "study" ? raw : concernSlugWords(raw);
+}
+
+/** DeepL context hints (free; see deeplTranslateBatch). */
+const RESULT_LABEL_CONTEXT: Record<ResultLabelKind, string> = {
+  study:
+    "Title of a clinical study of a cosmetic skincare product, shown as a small caption under a before/after photo.",
+  concern:
+    "Skin or hair concern treated by a cosmetic skincare product, shown as a short filter label in a before/after photo gallery (for example: dullness = skin lacking radiance; jowls = sagging lower cheeks).",
+};
+
+/** Distinct study names (lab rows) and concern slugs of the given rows. */
+function distinctResultLabels(
+  rows: { source: string; study: string | null; concern: string | null }[],
+): { kind: ResultLabelKind; raw: string }[] {
+  const seen = new Set<string>();
+  const out: { kind: ResultLabelKind; raw: string }[] = [];
+  const push = (kind: ResultLabelKind, raw: string | null) => {
+    if (typeof raw !== "string" || !/\S/.test(raw)) return;
+    const key = `${kind}\u0000${raw}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ kind, raw });
+  };
+  for (const row of rows) {
+    // the storefront serves a study tag on LAB rows only
+    if (row.source === "lab") push("study", row.study);
+    push("concern", row.concern);
+  }
+  return out;
 }
 
 export function normalizeProofLocale(locale: string): string {
@@ -180,7 +249,18 @@ async function loadSourceFields(
     }
   }
   if (types.includes("results")) {
-    for (const row of await prisma.customerResult.findMany({ where: { shop, ...idFilter } })) {
+    const resultRows = await prisma.customerResult.findMany({ where: { shop, ...idFilter } });
+    for (const { kind, raw } of distinctResultLabels(resultRows)) {
+      const text = resultLabelSource(kind, raw);
+      if (!/\S/.test(text)) continue;
+      out.push({
+        resourceType: kind,
+        resourceId: resultLabelId(kind, raw),
+        field: RESULT_LABEL_FIELD,
+        text,
+      });
+    }
+    for (const row of resultRows) {
       if (row.testimonial && /\S/.test(row.testimonial)) {
         out.push({ resourceType: "result", resourceId: row.id, field: "testimonial", text: row.testimonial });
       }
@@ -271,10 +351,16 @@ export async function translateProofEntries(
   if (sources.length === 0) {
     return { ok: true, translated: 0, skipped: 0, failures: [] };
   }
+  // v39.3: narrowed runs look rows up by the SOURCES' resource ids — the
+  // shared study/concern labels of a saved entry are keyed by their own
+  // ids, never the entry's (looking up by entry id alone would re-bill
+  // them on every save).
   const existing = await prisma.proofTranslation.findMany({
     where: {
       shop,
-      ...(ids && ids.length > 0 ? { resourceId: { in: ids } } : {}),
+      ...(ids && ids.length > 0
+        ? { resourceId: { in: [...new Set(sources.map((s) => s.resourceId))] } }
+        : {}),
     },
   });
   const byKey = new Map(
@@ -361,15 +447,35 @@ export async function translateProofEntries(
     // brace-styled words (protectPlaceholders:false, v8.13b), while the
     // copy overrides carry the {n} count token that must survive DeepL
     // verbatim (protectPlaceholders:true, the metaobject convention).
-    const groups = [
+    // v39.3: the shared result labels batch on their own too — short
+    // labels need DeepL's context hint and a FIXED source language (a
+    // one-word label is too short to auto-detect reliably).
+    const isLabel = (source: SourceField) =>
+      (RESULT_LABEL_KINDS as string[]).includes(source.resourceType);
+    const labelSourceLang =
+      normalizeProofLocale(primary).split("-")[0].toUpperCase() || undefined;
+    const groups: {
+      rows: SourceField[];
+      protect: boolean;
+      context?: string;
+      sourceLang?: string;
+    }[] = [
       {
-        rows: pending.filter((source) => source.resourceType !== "copy"),
+        rows: pending.filter(
+          (source) => source.resourceType !== "copy" && !isLabel(source),
+        ),
         protect: false,
       },
       {
         rows: pending.filter((source) => source.resourceType === "copy"),
         protect: true,
       },
+      ...RESULT_LABEL_KINDS.map((kind) => ({
+        rows: pending.filter((source) => source.resourceType === kind),
+        protect: false,
+        context: RESULT_LABEL_CONTEXT[kind],
+        sourceLang: labelSourceLang,
+      })),
     ];
     let localeFailed = false;
     for (const group of groups) {
@@ -379,8 +485,8 @@ export async function translateProofEntries(
           config.apiKey,
           slice.map((source) => source.text),
           targetLang,
-          undefined,
-          { protectPlaceholders: group.protect },
+          group.sourceLang,
+          { protectPlaceholders: group.protect, context: group.context },
         );
         if (!batch.ok || batch.translations.length !== slice.length) {
           failures.push({ locale, error: batch.error ?? "translation batch failed" });
@@ -482,11 +588,11 @@ export async function proofTranslationStatusFor(
   const targets = targetLocales.map(normalizeProofLocale);
   const sources = await loadSourceFields(shop, [type]);
   const rows = await prisma.proofTranslation.findMany({
-    where: { shop, resourceType: RESOURCE_TYPE[type] },
+    where: { shop, resourceType: { in: SCOPE_RESOURCE_TYPES[type] } },
   });
   const byKey = new Map(
     rows.map((row) => [
-      `${row.resourceId}\u0000${row.locale}\u0000${row.field}`,
+      `${row.resourceType}\u0000${row.resourceId}\u0000${row.locale}\u0000${row.field}`,
       row,
     ]),
   );
@@ -494,7 +600,9 @@ export async function proofTranslationStatusFor(
   let outdated = 0;
   for (const source of sources) {
     for (const locale of targets) {
-      const row = byKey.get(`${source.resourceId}\u0000${locale}\u0000${source.field}`);
+      const row = byKey.get(
+        `${source.resourceType}\u0000${source.resourceId}\u0000${locale}\u0000${source.field}`,
+      );
       // v15.5: a curated (built-in) translation counts as fresh coverage —
       // it is what the storefront serves whenever no manual row exists.
       const curated =
@@ -594,6 +702,177 @@ export async function getProofTranslationOverlay(
     }
   }
   return overlay;
+}
+
+/**
+ * v39.3 public-proxy overlay for the SHARED result labels: translated study
+ * names (keyed by the study name) and concern labels (keyed by the slug)
+ * for the storefront page locale — exact locale first, then the base
+ * language. A value that has no row is simply absent: the caller keeps
+ * the source text.
+ */
+export async function getResultLabelOverlay(
+  shop: string,
+  locale: string,
+  wanted: { studies: string[]; concerns: string[] },
+): Promise<{ studies: Map<string, string>; concerns: Map<string, string> }> {
+  const out = {
+    studies: new Map<string, string>(),
+    concerns: new Map<string, string>(),
+  };
+  const target = normalizeProofLocale(locale);
+  if (!target) return out;
+  const base = target.split("-")[0];
+  const rawById = new Map<string, { kind: ResultLabelKind; raw: string }>();
+  for (const raw of wanted.studies) {
+    if (/\S/.test(raw)) rawById.set(`study\u0000${resultLabelId("study", raw)}`, { kind: "study", raw });
+  }
+  for (const raw of wanted.concerns) {
+    if (/\S/.test(raw)) rawById.set(`concern\u0000${resultLabelId("concern", raw)}`, { kind: "concern", raw });
+  }
+  if (rawById.size === 0) return out;
+  const rows = await prisma.proofTranslation.findMany({
+    where: {
+      shop,
+      resourceType: { in: RESULT_LABEL_KINDS },
+      resourceId: { in: [...rawById.values()].map(({ kind, raw }) => resultLabelId(kind, raw)) },
+      field: RESULT_LABEL_FIELD,
+      locale: target === base ? target : { in: [target, base] },
+    },
+  });
+  // base-language rows first, so an exact-locale row overwrites them
+  rows.sort((a, b) => Number(a.locale === target) - Number(b.locale === target));
+  for (const row of rows) {
+    const hit = rawById.get(`${row.resourceType}\u0000${row.resourceId}`);
+    if (!hit || !/\S/.test(row.value)) continue;
+    // a concern slug's wording is derived, so only a study row can go
+    // stale in theory (its id IS the digest) — check anyway, cheaply
+    if (row.sourceDigest !== proofSourceDigest(resultLabelSource(hit.kind, hit.raw))) continue;
+    (hit.kind === "study" ? out.studies : out.concerns).set(hit.raw, row.value);
+  }
+  return out;
+}
+
+/** One shared label with its stored translations (the admin editor). */
+export interface ResultLabelEntry {
+  kind: ResultLabelKind;
+  /** The study name, or the concern slug. */
+  raw: string;
+  /** What shoppers read in the shop's primary language. */
+  source: string;
+  /** How many entries carry it. */
+  count: number;
+  translations: ProofTranslationListRow[];
+}
+
+/** Every study name and concern tag in the library, with translations —
+ *  studies first, then concerns, each most-used first. */
+export async function listResultLabels(shop: string): Promise<ResultLabelEntry[]> {
+  const resultRows = await prisma.customerResult.findMany({
+    where: { shop },
+    select: { source: true, study: true, concern: true },
+  });
+  const counts = new Map<string, number>();
+  for (const row of resultRows) {
+    for (const { kind, raw } of distinctResultLabels([row])) {
+      const key = `${kind}\u0000${raw}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  const labels = distinctResultLabels(resultRows);
+  if (labels.length === 0) return [];
+  const rows = await prisma.proofTranslation.findMany({
+    where: {
+      shop,
+      resourceType: { in: RESULT_LABEL_KINDS },
+      field: RESULT_LABEL_FIELD,
+    },
+    orderBy: [{ locale: "asc" }],
+  });
+  const byId = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = `${row.resourceType}\u0000${row.resourceId}`;
+    byId.set(key, [...(byId.get(key) ?? []), row]);
+  }
+  return labels
+    .map(({ kind, raw }) => {
+      const source = resultLabelSource(kind, raw);
+      const digest = proofSourceDigest(source);
+      return {
+        kind,
+        raw,
+        source,
+        count: counts.get(`${kind}\u0000${raw}`) ?? 0,
+        translations: (byId.get(`${kind}\u0000${resultLabelId(kind, raw)}`) ?? []).map((row) => ({
+          locale: row.locale,
+          field: row.field,
+          value: row.value,
+          manual: row.manual,
+          outdated: row.sourceDigest !== digest,
+        })),
+      };
+    })
+    .filter((entry) => /\S/.test(entry.source))
+    .sort(
+      (a, b) =>
+        Number(a.kind === "concern") - Number(b.kind === "concern") ||
+        b.count - a.count ||
+        a.source.localeCompare(b.source),
+    );
+}
+
+/** Manual review of one shared label: save (or, blank, clear) its
+ *  translation. The label must exist in the library right now — the raw
+ *  value comes from the client, the source text never does. */
+export async function saveManualResultLabel(
+  shop: string,
+  kind: string,
+  raw: string,
+  locale: string,
+  value: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!(RESULT_LABEL_KINDS as string[]).includes(kind)) {
+    return { ok: false, error: "Unknown label type" };
+  }
+  const labelKind = kind as ResultLabelKind;
+  const normalized = normalizeProofLocale(locale);
+  if (!PROOF_LOCALE_PATTERN.test(normalized)) {
+    return { ok: false, error: "Invalid locale" };
+  }
+  const inUse = await prisma.customerResult.findFirst({
+    where:
+      labelKind === "study"
+        ? { shop, source: "lab", study: raw }
+        : { shop, concern: raw },
+    select: { id: true },
+  });
+  const source = resultLabelSource(labelKind, raw);
+  if (!inUse || !/\S/.test(source)) {
+    return { ok: false, error: "Label not found" };
+  }
+  const key = {
+    shop,
+    resourceType: labelKind,
+    resourceId: resultLabelId(labelKind, raw),
+    locale: normalized,
+    field: RESULT_LABEL_FIELD,
+  };
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    await prisma.proofTranslation.deleteMany({ where: key });
+    return { ok: true };
+  }
+  const data = {
+    value: trimmed.slice(0, 200),
+    sourceDigest: proofSourceDigest(source),
+    manual: true,
+  };
+  await prisma.proofTranslation.upsert({
+    where: { shop_resourceType_resourceId_locale_field: key },
+    create: { ...key, ...data },
+    update: data,
+  });
+  return { ok: true };
 }
 
 /** Manual review: save (or clear) one translation. Blank value DELETES the

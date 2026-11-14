@@ -158,6 +158,9 @@ interface Capture {
   targetLang: string;
   /** v8.19: the protectPlaceholders flag of this batch (copy=true, prose=false). */
   protect: boolean | undefined;
+  /** v39.3: DeepL context hint + fixed source language (shared labels only). */
+  context?: string;
+  sourceLang?: unknown;
 }
 const captures: Capture[] = [];
 let failLocales = new Set<string>();
@@ -167,9 +170,12 @@ let failLocales = new Set<string>();
     texts: string[],
     targetLang: string,
     _source?: unknown,
-    options?: { protectPlaceholders?: boolean },
+    options?: { protectPlaceholders?: boolean; context?: string },
   ) => {
-    captures.push({ texts: [...texts], targetLang, protect: options?.protectPlaceholders });
+    captures.push({
+      texts: [...texts], targetLang, protect: options?.protectPlaceholders,
+      context: options?.context, sourceLang: _source,
+    });
     const hook = (globalThis as any).__CX_PT_MIDRUN;
     if (hook) await hook(targetLang, texts);
     if (failLocales.has(targetLang)) {
@@ -345,9 +351,14 @@ const result1 = db._seed("customerResult", {
   const run = await T.translateProofEntries(SHOP, ADMIN);
   ok(run.ok === true && run.failures.length === 0, "T1: full run ok");
   // 5 prose fields (2 press quotes, endo quote + credentials, testimonial)
-  // × 3 locales = 15 rows
-  ok(db._tables.proofTranslation.length === 15,
-    "T1: 5 fields x 3 locales stored (got " + db._tables.proofTranslation.length + ")");
+  // + v39.3: the result's concern tag as ONE shared label = 6 sources
+  // × 3 locales = 18 rows
+  ok(db._tables.proofTranslation.length === 18,
+    "T1: 6 sources x 3 locales stored (got " + db._tables.proofTranslation.length + ")");
+  const frConcern = db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceType === "concern" && r.resourceId === "wrinkles" && r.locale === "fr");
+  ok(!!frConcern && frConcern.field === "label" && frConcern.value === "[FR] Wrinkles",
+    "T1 (v39.3): the concern tag translates as a shared label, from its worded slug");
   const frQuote = db._tables.proofTranslation.find(
     (r: StubRow) => r.resourceId === press1.id && r.locale === "fr" && r.field === "quote");
   ok(!!frQuote && frQuote.value === "[FR] A quiet revolution in skincare.",
@@ -972,6 +983,109 @@ const CUR = await import(
     "C6: a copy-scoped run sends only copy fields");
 }
 
+// --- L (v39.3): shared result labels — study names + concern tags ---------------
+{
+  const STUDY = "Facial Radiance and Renewal Clinical Study";
+  const lab = (extra: StubRow) => db._seed("customerResult", {
+    shop: SHOP, status: "approved", source: "lab", verified: false,
+    beforeUrl: null, afterUrl: null, combinedUrl: "https://cdn/c.png",
+    ageRange: "45-54", skinType: "dry", durationWeeks: 8, country: "US",
+    testimonial: null, videoUrl: null, productGids: "[]", legacyGid: null,
+    measurements: null, attributionRole: null, study: STUDY,
+    concern: "loss-of-firmness", ...extra,
+  });
+  const lab1 = lab({});
+  const lab2 = lab({});
+  const lab3 = lab({ concern: "dullness" });
+  // a CUSTOMER row never serves a study tag: its column must not translate
+  db._seed("customerResult", {
+    shop: SHOP, status: "approved", source: "customer", verified: true,
+    beforeUrl: "https://cdn/b2.jpg", afterUrl: "https://cdn/a2.jpg",
+    testimonial: null, study: "Customer-only stray study", concern: null,
+    productGids: "[]", legacyGid: null,
+  });
+  ok(T.concernSlugWords("loss-of-firmness") === "Loss of firmness" &&
+     T.concernSlugWords("under_eye") === "Under eye" && T.concernSlugWords("--") === "",
+    "L1: concern slugs word like the widget's resultsSlugLabel");
+
+  const before = captures.length;
+  const run = await T.translateProofEntries(SHOP, ADMIN, ["results"]);
+  const sent = captures.slice(before);
+  ok(run.ok === true && run.failures.length === 0, "L2: results run ok");
+  const frTexts = sent.filter((c) => c.targetLang === "FR").flatMap((c) => c.texts);
+  ok(frTexts.filter((t) => t === STUDY).length === 1,
+    "L2: a study name shared by 3 entries is sent ONCE per language");
+  ok(frTexts.filter((t) => t === "Loss of firmness").length === 1 && frTexts.includes("Dullness"),
+    "L2: each distinct concern is sent once, as words");
+  ok(!sent.flatMap((c) => c.texts).some((t) => t.includes("stray study")),
+    "L2: a customer row's study column never translates");
+  const labelBatches = sent.filter((c) => c.texts.includes(STUDY) || c.texts.includes("Dullness"));
+  ok(labelBatches.length > 0 && labelBatches.every(
+      (c) => typeof c.context === "string" && c.context.length > 20 &&
+        c.sourceLang === "EN" && c.protect === false),
+    "L2: label batches carry the context hint and the shop's source language");
+  ok(labelBatches.every((c) => !(c.texts.includes(STUDY) && c.texts.includes("Dullness"))),
+    "L2: study names and concern tags batch separately (own context each)");
+  const studyFr = db._tables.proofTranslation.find(
+    (r: StubRow) => r.resourceType === "study" && r.locale === "fr");
+  ok(!!studyFr && studyFr.resourceId === T.proofSourceDigest(STUDY) &&
+     studyFr.field === "label" && studyFr.value === "[FR] " + STUDY,
+    "L2: the study row is keyed by the name's digest");
+
+  // incremental + the auto-on-save narrowed path must not re-bill labels
+  const before2 = captures.length;
+  await T.translateProofEntries(SHOP, ADMIN, ["results"]);
+  await T.translateProofEntries(SHOP, ADMIN, ["results"], [lab2.id]);
+  ok(captures.length === before2,
+    "L3: full and entry-narrowed re-runs send nothing (labels are looked up by their own ids)");
+
+  // coverage counts the labels as fresh
+  const status = await T.proofTranslationStatusFor(SHOP, "results", ["fr", "de", "pt-PT"]);
+  ok(status.expected > 0 && status.fresh === status.expected && status.outdated === 0,
+    "L4: the status line counts shared labels as translated (" + status.fresh + "/" + status.expected + ")");
+
+  // storefront overlay
+  const over = await T.getResultLabelOverlay(SHOP, "fr-ca", {
+    studies: [STUDY, "Unknown study"], concerns: ["loss-of-firmness", "dullness", "never-seen"],
+  });
+  ok(over.studies.get(STUDY) === "[FR] " + STUDY && !over.studies.has("Unknown study"),
+    "L5: overlay serves the study name (regional locale falls back to the base language)");
+  ok(over.concerns.get("loss-of-firmness") === "[FR] Loss of firmness" &&
+     over.concerns.get("dullness") === "[FR] Dullness" && !over.concerns.has("never-seen"),
+    "L5: overlay keys concern labels by slug; unknown values stay absent");
+  const none = await T.getResultLabelOverlay(SHOP, "ja", { studies: [STUDY], concerns: ["dullness"] });
+  ok(none.studies.size === 0 && none.concerns.size === 0,
+    "L5: a language with no rows serves the source text");
+
+  // manual review
+  const saved = await T.saveManualResultLabel(SHOP, "concern", "dullness", "fr", "  Teint terne ");
+  ok(saved.ok === true, "L6: a concern label can be corrected by hand");
+  const before3 = captures.length;
+  await T.translateProofEntries(SHOP, ADMIN, ["results"]);
+  const over2 = await T.getResultLabelOverlay(SHOP, "fr", { studies: [], concerns: ["dullness"] });
+  ok(over2.concerns.get("dullness") === "Teint terne" && captures.length === before3,
+    "L6: the manual wording serves and a translate run never overwrites it");
+  ok((await T.saveManualResultLabel(SHOP, "concern", "not-a-tag", "fr", "x")).ok === false &&
+     (await T.saveManualResultLabel(SHOP, "study", "Customer-only stray study", "fr", "x")).ok === false &&
+     (await T.saveManualResultLabel(SHOP, "press", "dullness", "fr", "x")).ok === false &&
+     (await T.saveManualResultLabel(SHOP, "concern", "dullness", "FR!", "x")).ok === false,
+    "L6: unknown labels, label types and locales are rejected");
+  const listed = await T.listResultLabels(SHOP);
+  const dull = listed.find((l: any) => l.kind === "concern" && l.raw === "dullness");
+  const study = listed.find((l: any) => l.kind === "study");
+  ok(!!study && study.raw === STUDY && study.count === 3 && listed[0].kind === "study",
+    "L7: the editor lists the study once with its entry count, studies first");
+  ok(!!dull && dull.source === "Dullness" && dull.count === 1 &&
+     dull.translations.some((t: any) => t.locale === "fr" && t.manual && t.value === "Teint terne"),
+    "L7: the editor shows the manual concern translation");
+  ok(listed.filter((l: any) => l.kind === "study").length === 1,
+    "L7: the customer row's stray study is not listed");
+  await T.saveManualResultLabel(SHOP, "concern", "dullness", "fr", "");
+  const over3 = await T.getResultLabelOverlay(SHOP, "fr", { studies: [], concerns: ["dullness"] });
+  ok(!over3.concerns.has("dullness"), "L6: clearing a manual label falls back to the source");
+  void lab1; void lab3;
+}
+
 // ----------------------------------------------------------------- mutants
 if (!process.env.CX_SIM_SRC) {
   const { createRequire } = await import("node:module");
@@ -1017,6 +1131,19 @@ if (!process.env.CX_SIM_SRC) {
         name: "m4-race-write-unconditional",
         find: "    const updated = await prisma.proofTranslation.updateMany({\n      where: { ...where, manual: false },",
         replace: "    const updated = await prisma.proofTranslation.updateMany({\n      where: { ...where },",
+      },
+      {
+        // v39.3: narrowed runs looking rows up by ENTRY id again — every
+        // save would re-bill the entry's shared labels (L3 catches).
+        name: "m7-label-lookup-by-entry-id",
+        find: "        ? { resourceId: { in: [...new Set(sources.map((s) => s.resourceId))] } }",
+        replace: "        ? { resourceId: { in: ids } }",
+      },
+      {
+        // v39.3: study tags of customer rows leaking into translation (L2).
+        name: "m8-customer-study-translated",
+        find: "    if (row.source === \"lab\") push(\"study\", row.study);",
+        replace: "    push(\"study\", row.study);",
       },
       {
         name: "m3-overlay-rank-flipped",

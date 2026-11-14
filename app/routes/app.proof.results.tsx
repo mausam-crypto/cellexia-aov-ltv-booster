@@ -61,8 +61,10 @@ import {
   getProofSourceText,
   translatableProofTargets,
   listProofTranslationsForMany,
+  listResultLabels,
   proofTranslationStatusFor,
   saveManualProofTranslation,
+  saveManualResultLabel,
   translateProofEntries,
 } from "../services/proof-translation.server";
 import { getTargetLocales, getTranslationConfig } from "../services/translation.server";
@@ -167,8 +169,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     locales.targets,
   );
   const localesUnavailable = (locales.errors?.length ?? 0) > 0;
-  const [translationStatus, itemTranslations] = await Promise.all([
+  const [translationStatus, resultLabels, itemTranslations] = await Promise.all([
     proofTranslationStatusFor(session.shop, "results", targetLocales),
+    // v39.3: study names + concern tags (shared labels, translated once each)
+    listResultLabels(session.shop),
     listProofTranslationsForMany(
       session.shop,
       "results",
@@ -199,6 +203,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     targetLocales,
     translationStatus,
     itemTranslations: Object.fromEntries(itemTranslations),
+    resultLabels,
     localesUnavailable,
     hasDeeplKey: translationConfig.apiKey !== "",
     autoTranslate: translationConfig.autoOnSave,
@@ -375,6 +380,21 @@ export const action = async ({
       }
       const saved = await saveManualProofTranslation(
         session.shop, "results", id, locale, field, value, source,
+      );
+      return {
+        intent: "save_translation",
+        ok: saved.ok,
+        errors: saved.error ? [saved.error] : [],
+      };
+    }
+    case "save_label_translation": {
+      // v39.3: one study name / concern tag in one language (manual review)
+      const saved = await saveManualResultLabel(
+        session.shop,
+        String(formData.get("kind") ?? ""),
+        String(formData.get("raw") ?? ""),
+        String(formData.get("locale") ?? ""),
+        String(formData.get("value") ?? ""),
       );
       return {
         intent: "save_translation",
@@ -896,6 +916,7 @@ export default function ProofResultsTab() {
     targetLocales,
     translationStatus,
     itemTranslations,
+    resultLabels,
     localesUnavailable,
     hasDeeplKey,
     autoTranslate,
@@ -909,6 +930,7 @@ export default function ProofResultsTab() {
   // fetchers — a long DeepL run must never disable moderation buttons, a
   // manual translation save must never cancel (or be cancelled by) a
   // translate run, and the translate button must reflect ITS OWN flight.
+  const [labelsOpen, setLabelsOpen] = useState(false);
   const translateFetcher = useFetcher<typeof action>();
   const manualFetcher = useFetcher<typeof action>();
   const translating = translateFetcher.state !== "idle";
@@ -1159,6 +1181,21 @@ export default function ProofResultsTab() {
     manualFetcher.submit(formData, { method: "post" });
   };
 
+  const submitLabelTranslation = (
+    kind: string,
+    raw: string,
+    locale: string,
+    value: string,
+  ) => {
+    const formData = new FormData();
+    formData.set("intent", "save_label_translation");
+    formData.set("kind", kind);
+    formData.set("raw", raw);
+    formData.set("locale", locale);
+    formData.set("value", value);
+    manualFetcher.submit(formData, { method: "post" });
+  };
+
   const submitRow = (fields: Record<string, string>) => {
     const formData = new FormData();
     for (const [key, value] of Object.entries(fields)) {
@@ -1319,9 +1356,63 @@ export default function ProofResultsTab() {
               : targetLocales.length === 0
                 ? "Your shop has one published language — nothing to translate."
                 : hasDeeplKey
-                  ? `Testimonials auto-translate into ${translationStatus.targetLocales} languages${autoTranslate ? " on save" : ""} — ${translationStatus.fresh} of ${translationStatus.expected} fields translated${translationStatus.outdated > 0 ? `, ${translationStatus.outdated} outdated` : ""}. Review per entry under “Translations”.`
+                  ? `Testimonials, study names and concern tags auto-translate into ${translationStatus.targetLocales} languages${autoTranslate ? " on save" : ""} — ${translationStatus.fresh} of ${translationStatus.expected} fields translated${translationStatus.outdated > 0 ? `, ${translationStatus.outdated} outdated` : ""}. Review per entry under “Translations”.`
                   : "Add a DeepL key on the Languages page to auto-translate testimonials into every published language."}
           </Text>
+
+          {resultLabels.length > 0 && targetLocales.length > 0 ? (
+            <BlockStack gap="200">
+              <Button
+                variant="plain"
+                disclosure={labelsOpen ? "up" : "down"}
+                onClick={() => setLabelsOpen((previous) => !previous)}
+              >
+                {`Study names and concern tags — translations (${resultLabels.length})`}
+              </Button>
+              <Collapsible id="cx-results-labels" open={labelsOpen}>
+                <Box
+                  padding="300"
+                  background="bg-surface-secondary"
+                  borderRadius="200"
+                >
+                  <BlockStack gap="300">
+                    <Text as="p" variant="bodySm" tone="subdued">
+                      Each study name and concern tag is translated once and
+                      shown on every result that carries it, and in the
+                      gallery&apos;s Concern filter. “Translate into all
+                      languages” fills in the missing ones; open a label to
+                      check or correct its wording in any language.
+                    </Text>
+                    {resultLabels.map((label) => (
+                      <BlockStack key={`${label.kind} ${label.raw}`} gap="100">
+                        <Text as="p" variant="bodyMd">
+                          <Text as="span" fontWeight="semibold">
+                            {label.source}
+                          </Text>
+                          {` · ${label.kind === "study" ? "study name" : "concern tag"} · ${label.count} result${label.count === 1 ? "" : "s"}`}
+                        </Text>
+                        <ProofTranslationsSection
+                          fields={[
+                            {
+                              field: "label",
+                              label: label.source,
+                              sourceText: label.source,
+                            },
+                          ]}
+                          targetLocales={targetLocales}
+                          translations={label.translations}
+                          onSave={(locale, _field, value) =>
+                            submitLabelTranslation(label.kind, label.raw, locale, value)
+                          }
+                          saving={manualSaving}
+                        />
+                      </BlockStack>
+                    ))}
+                  </BlockStack>
+                </Box>
+              </Collapsible>
+            </BlockStack>
+          ) : null}
 
           <Collapsible id="cx-results-add" open={addOpen}>
             <Box

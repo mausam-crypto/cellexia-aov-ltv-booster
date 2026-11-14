@@ -1693,6 +1693,8 @@ export interface PublicResult {
   ageRange: string | null;
   skinType: string | null;
   concern: string | null;
+  /** v39.3: the concern tag in the page language (results proxy overlay). */
+  concernLabel?: string;
   durationWeeks: number | null;
   country: string | null;
   testimonial: string | null;
@@ -1720,6 +1722,9 @@ export interface PublicResult {
 export interface FacetCount {
   value: string;
   count: number;
+  /** v39.3: the concern tag in the page language (results proxy overlay);
+   *  absent = the widget prints the value as before. */
+  label?: string;
 }
 
 export interface PublicResultsFacets {

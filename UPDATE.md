@@ -598,6 +598,52 @@ Cross-app contract (what each side relies on) is written up in
 `docs/theme-integration.md`, "The separate Cellexia reviews app". No Liquid
 change, no new scope, no database change.
 
+### v39.3 (2026-11-14, your report — ships in the v40.5 zip) — study names and concern tags are translated
+
+On the French product page the gallery showed the study name under each
+clinical result in English ("Facial Radiance and Renewal Clinical Study"),
+and the concern in the card line and in the Concern filter as the raw
+English tag ("dullness", "loss-of-firmness"). Everything around them was
+already French.
+
+**Why:** both were deliberately excluded from translation (v35 treated the
+study name as a proper noun, v8 treated the concern as data). They are
+ordinary words to a shopper, so they now translate.
+
+**What changed**
+
+- **One translation per distinct value.** A study name is shared by a
+  whole batch and a concern by dozens of entries, so each is stored once
+  as a *shared label* in the existing `ProofTranslation` table (resource
+  types `study` and `concern`), not once per entry. The store has about 24
+  concerns and a few dozen study names; one run sends each to DeepL once
+  per language.
+- **DeepL gets a context hint** for these short labels (the free `context`
+  parameter) and the shop's primary language as the source, so "Dullness"
+  is translated as a skin concern.
+- **Storefront feed** (`/apps/cellexia/proof?type=results&locale=…`): the
+  study name is served in the page language; each concern keeps its tag as
+  the filter value and gains a display label (`concernLabel` on items,
+  `label` on the Concern filter options). The widget prints the label and
+  falls back to the old behaviour when there is none. No Liquid change.
+- **Admin, Results tab:** "Translate into all languages" (and
+  auto-translate on save) now covers them. A new collapsible list, "Study
+  names and concern tags — translations", lets staff check or correct any
+  label in any language; a hand-edited label is never overwritten.
+
+### ⚠️ One click after deploying
+
+Nothing appears translated until the labels have been translated once:
+open **Proof → Results** in the app and press **"Translate into all
+languages"**. After that, new studies and concerns translate on save (when
+auto-translate is on). The storefront feed is cached for up to 5 minutes.
+
+No new scope, no database change (`prisma db push` not needed), no
+environment variable, no locale key, no theme-editor step.
+
+Pinned by `proof-translation` section L (+ mutants m7, m8),
+`proof-gallery` PG13b and the harness v39.3 block.
+
 ## 3c. v38 — before/after gallery: standard side-by-side cards, compare slider in the enlarged view — what this release changes
 
 Merchant request: choose between the compare slider everywhere (the v33

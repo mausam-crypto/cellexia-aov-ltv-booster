@@ -3595,6 +3595,50 @@ function pgRailCards(section) {
     "PG13: the brand twin keeps the raw slug");
 }
 
+// --- PG13b (v39.3): translated concern labels from the proxy ------------------------------
+{
+  const tr = (extra) => pgProdFixture(Object.assign({
+    items: pgProdItems().map((item) => Object.assign(item, { concernLabel: "Rides du lion" })),
+    facets: {
+      products: [{ value: "111", count: 20 }, { value: "222", count: 12 }],
+      concerns: [{ value: "frown-lines", count: 9, label: "Rides du lion" }, { value: "glow", count: 2 }],
+      skins: [{ value: "dry", count: 4 }],
+    },
+  }, extra || {}));
+  // product-page / brand context (the classic drawer)
+  const brand = S.resultsBuildSection(pgBrandConf(), tr());
+  const bMeta = pgRailCards(brand)[0].querySelector(".cx-results__meta").textContent;
+  ok(/Rides du lion/.test(bMeta) && !/frown/i.test(bMeta),
+    "PG13b: the card line prints the translated concern (got " + bMeta + ")");
+  const bOpts = brand.querySelectorAll(".cx-results__group")[0].querySelectorAll(".cx-results__opt");
+  ok(bOpts[0].textContent.indexOf("Rides du lion") === 0 && bOpts[1].textContent.indexOf("glow") === 0,
+    "PG13b: filter options print the label; an untranslated one keeps its old form");
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.length = 0;
+  S.PF_FETCH_QUEUE.push(tr({ total: 9 }));
+  click(bOpts[0]);
+  ok(S.PF_FETCH_CALLS.length === 1 && /[?&]concern=frown-lines(&|$)/.test(S.PF_FETCH_CALLS[0].qs),
+    "PG13b: the filter still sends the slug (got " + (S.PF_FETCH_CALLS[0] || {}).qs + ")");
+  ok(/Rides du lion/.test(brand.querySelectorAll(".cx-results__chip")[0].textContent),
+    "PG13b: the selected chip prints the label");
+  // dedicated results page
+  const page = S.resultsBuildSection(pgConf(), tr());
+  const pMeta = pgRailCards(page)[0].querySelector(".cx-results__meta").textContent;
+  ok(/Rides du lion/.test(pMeta) && !/Frown lines/.test(pMeta),
+    "PG13b: the results page prefers the label over the worded slug");
+  const pOpts = page.querySelectorAll(".cx-results__group")[1].querySelectorAll(".cx-results__opt");
+  ok(pOpts[1].textContent.indexOf("Rides du lion") === 0 && pOpts[2].textContent.indexOf("Glow") === 0,
+    "PG13b: page filter options print the label, else the worded slug");
+  // hostile / malformed labels fall back
+  const bad = S.resultsBuildSection(pgBrandConf(), tr({
+    items: pgProdItems().map((item) => Object.assign(item, { concernLabel: 7 })),
+    facets: { concerns: [{ value: "frown-lines", count: 9, label: { x: 1 } }] },
+  }));
+  ok(/frown-lines/.test(pgRailCards(bad)[0].querySelector(".cx-results__meta").textContent) &&
+    bad.querySelectorAll(".cx-results__opt")[0].textContent.indexOf("frown-lines") === 0,
+    "PG13b: a non-string label is ignored");
+}
+
 // --- PG14: loading placeholder, title-gap classes, and the early first response --------
 {
   const sk = S.resultsPageSkeleton();

@@ -3416,12 +3416,12 @@ const EVIDENCE = {
     const ptSrc = read("app/services/proof-translation.server.ts");
     ok(
       ptSrc.includes(
-        'rows: pending.filter((source) => source.resourceType !== "copy"),\n        protect: false,',
+        'rows: pending.filter(\n          (source) => source.resourceType !== "copy" && !isLabel(source),\n        ),\n        protect: false,',
       ) &&
         ptSrc.includes(
           'rows: pending.filter((source) => source.resourceType === "copy"),\n        protect: true,',
         ) &&
-        ptSrc.includes("{ protectPlaceholders: group.protect }"),
+        ptSrc.includes("{ protectPlaceholders: group.protect, context: group.context }"),
       "v8.13b/v8.19: prose batches unprotected, copy batches protect {n}",
     );
   }
@@ -5679,11 +5679,40 @@ const EVIDENCE = {
     "v35: applying a preset fills the entry's study tag with the preset's name",
   );
 
-  // ---- study names never translate (proper noun, the attributionName rule)
-  ok(
-    !read("app/services/proof-translation.server.ts").includes('"study"'),
-    "v35: study is NOT in the translatable-field allowlist",
-  );
+  // ---- v39.3 (owner request, 2026-11-14): study names and concern tags DO
+  // translate — as SHARED labels (one translation per distinct value),
+  // never as per-entry fields, and the proxy + widget carry them.
+  {
+    const ptSrc = read("app/services/proof-translation.server.ts");
+    const allow = ptSrc.slice(
+      ptSrc.indexOf("export const TRANSLATABLE_PROOF_FIELDS"),
+      ptSrc.indexOf("/** DB resourceType keys"),
+    );
+    ok(
+      allow.length > 100 && !allow.includes('"study"') && !allow.includes('"concern"'),
+      "v39.3: study/concern are NOT per-entry translatable fields",
+    );
+    ok(
+      ptSrc.includes('export const RESULT_LABEL_KINDS: ResultLabelKind[] = ["study", "concern"];') &&
+        ptSrc.includes('results: ["result", ...RESULT_LABEL_KINDS],'),
+      "v39.3: study names + concern tags are shared labels of the results scope",
+    );
+    const proxySrc = read("app/routes/proxy.proof.tsx");
+    ok(
+      proxySrc.includes("getResultLabelOverlay(shop, locale, {") &&
+        proxySrc.includes("if (study) item.study = study;") &&
+        proxySrc.includes("if (concern) item.concernLabel = concern;") &&
+        proxySrc.includes("if (concern) facet.label = concern;"),
+      "v39.3: the results proxy overlays study names and concern labels",
+    );
+    const proofJs = read(`${EXT}/assets/cellexia-proof.js`);
+    ok(
+      proofJs.includes("cl: typeof it.concernLabel === 'string'") &&
+        proofJs.includes("bits.push(item.cl || (pg ? resultsSlugLabel(item.concern) : item.concern));") &&
+        proofJs.includes("if (g.opts[ci].value === value && g.opts[ci].label) return g.opts[ci].label;"),
+      "v39.3: the widget prints the translated concern label (card line + filter)",
+    );
+  }
 }
 
 // ================================================= v26 QUANTITY SELECTOR

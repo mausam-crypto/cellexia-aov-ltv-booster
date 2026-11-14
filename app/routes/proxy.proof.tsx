@@ -15,6 +15,7 @@ import {
   overlayContentToIslandCodes,
   OVERLAY_CONTENT_ISLAND_CODES,
   getProofTranslationOverlay,
+  getResultLabelOverlay,
 } from "../services/proof-translation.server";
 import { getSettings } from "../models/settings.server";
 import { resultsUiCopy } from "../services/results-ui-copy.server";
@@ -331,6 +332,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 const info = fields[`m${i}i`];
                 if (info && m.info) m.info = info;
               });
+            }
+          } catch {
+            // untranslated payload serves
+          }
+        }
+        // v39.3: study names and concern tags in the page language. They
+        // are shared labels (one translation per distinct value, see
+        // proof-translation.server.ts): the study name is replaced in
+        // place; a concern keeps its slug (the filter value) and gains a
+        // display label, on the items and on the filter options. Same
+        // enhancement contract as above — any failure serves the
+        // untranslated payload.
+        if (locale && payload.items.length > 0) {
+          try {
+            const labels = await getResultLabelOverlay(shop, locale, {
+              studies: payload.items.flatMap((item) => (item.study ? [item.study] : [])),
+              concerns: [
+                ...payload.items.flatMap((item) => (item.concern ? [item.concern] : [])),
+                ...payload.facets.concerns.map((facet) => facet.value),
+              ],
+            });
+            for (const item of payload.items) {
+              const study = item.study ? labels.studies.get(item.study) : undefined;
+              if (study) item.study = study;
+              const concern = item.concern ? labels.concerns.get(item.concern) : undefined;
+              if (concern) item.concernLabel = concern;
+            }
+            for (const facet of payload.facets.concerns) {
+              const concern = labels.concerns.get(facet.value);
+              if (concern) facet.label = concern;
             }
           } catch {
             // untranslated payload serves
