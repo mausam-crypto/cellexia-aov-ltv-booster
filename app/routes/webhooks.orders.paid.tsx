@@ -10,6 +10,11 @@ interface OrderLineItem {
   title?: string;
   sku?: string | null;
   product_id?: number | null;
+  /** Webhook API 2026-10+: the line's selling plan id (null on one-time
+   *  lines). ABSENT on the 2025-10 payload this app subscribes with. */
+  selling_plan_id?: number | string | null;
+  /** Never part of an order webhook payload (it is an AJAX-cart field);
+   *  kept as a tolerated shape only. */
   selling_plan_allocation?: { selling_plan?: { id?: number } } | null;
   properties?: { name: string; value: string }[] | null;
 }
@@ -20,6 +25,7 @@ interface OrderAddress {
 
 interface OrderPayload {
   id: number;
+  admin_graphql_api_id?: string | null;
   total_price?: string;
   total_price_set?: {
     shop_money?: { amount?: string; currency_code?: string } | null;
@@ -36,6 +42,23 @@ interface OrderPayload {
 }
 
 const COUNTRY_CODE_PATTERN = /^[A-Za-z]{2}$/;
+
+/** v40: which lines of the order were bought on a selling plan. App-agnostic
+ *  (Joy Subscriptions, or any other app built on Shopify selling plans);
+ *  needs only the already-granted read_orders scope. */
+const ORDER_SELLING_PLANS_QUERY = `#graphql
+  query CxOrderSellingPlans($id: ID!) {
+    order(id: $id) {
+      lineItems(first: 100) {
+        nodes {
+          sellingPlan {
+            sellingPlanId
+            name
+          }
+        }
+      }
+    }
+  }`;
 
 /**
  * Rolls each paid order into an OrderStat row so the dashboard can report
@@ -125,9 +148,47 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const lineItems = order.line_items ?? [];
 
   const unitCount = lineItems.reduce((sum, li) => sum + (li.quantity || 0), 0);
-  const hasSubscription = lineItems.some(
-    (li) => li.selling_plan_allocation?.selling_plan,
+  // v40: the subscription flag. Before v40 this read
+  // `line_items[].selling_plan_allocation`, a field order webhooks never
+  // carry, so every order counted as one-time and the dashboard's
+  // subscription rate stayed at 0 with ANY subscription app. Order webhook
+  // line items only gained `selling_plan_id` in API version 2026-10; this
+  // app's webhooks are pinned to 2025-10, so:
+  //   1. a payload that carries the key is trusted as-is (future-proof);
+  //   2. otherwise ONE Admin GraphQL lookup of the order's line items
+  //      answers it (best-effort: any failure leaves the flag false and
+  //      never fails the webhook).
+  let hasSubscription = lineItems.some(
+    (li) =>
+      (li.selling_plan_id != null && String(li.selling_plan_id) !== "") ||
+      !!li.selling_plan_allocation?.selling_plan,
   );
+  const payloadCarriesPlans = lineItems.some((li) =>
+    Object.prototype.hasOwnProperty.call(li, "selling_plan_id"),
+  );
+  if (!hasSubscription && !payloadCarriesPlans && admin && lineItems.length > 0) {
+    try {
+      const response = await admin.graphql(ORDER_SELLING_PLANS_QUERY, {
+        variables: {
+          id: order.admin_graphql_api_id || `gid://shopify/Order/${order.id}`,
+        },
+      });
+      const json = (await response.json()) as {
+        data?: {
+          order?: {
+            lineItems?: {
+              nodes?: ({ sellingPlan?: { sellingPlanId?: string | null; name?: string | null } | null } | null)[];
+            } | null;
+          } | null;
+        };
+      };
+      hasSubscription = (json.data?.order?.lineItems?.nodes ?? []).some(
+        (node) => !!node?.sellingPlan,
+      );
+    } catch (error) {
+      console.error(`Selling-plan lookup failed for order ${order.id} on ${shop}:`, error);
+    }
+  }
   const hasProtection = lineItems.some(
     (li) =>
       li.title?.toLowerCase().includes("order protection") ||

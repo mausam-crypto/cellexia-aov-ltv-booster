@@ -37,6 +37,15 @@
  *       its catalog's results.banner_verified with the count removed
  *       and the grammar re-agreed (de/fi/hu genitive plurals, ro drops
  *       its ": N în total" tail). Deliberately carries NO @@N@@.
+ *   v39.1 — the dedicated results page's filter bar and product labels
+ *   (rendered ONLY in page mode; every other surface ignores them):
+ *   fp  the Product filter's label ("Product")
+ *   fb  the filter bar's lead-in ("Filter by")
+ *   al  the first option of every filter, which clears it ("All")
+ *   rn  the result counter beside the filters; @@N@@ = results matching
+ *       the current filters. "Label: number" in every language on
+ *       purpose: it needs no singular/plural agreement.
+ *   pu  the eyebrow over the product a result belongs to ("Product used")
  */
 
 export interface ResultsUiCopy {
@@ -54,6 +63,11 @@ export interface ResultsUiCopy {
   pr: string;
   nx: string;
   bn: string;
+  fp: string;
+  fb: string;
+  al: string;
+  rn: string;
+  pu: string;
 }
 
 export const RESULTS_UI_COPY_CODES = [
@@ -71,6 +85,11 @@ export const RESULTS_UI_COPY_CODES = [
   "pr",
   "nx",
   "bn",
+  "fp",
+  "fb",
+  "al",
+  "rn",
+  "pu",
 ] as const;
 
 const NO_TABLE: ResultsUiCopy = {
@@ -88,6 +107,11 @@ const NO_TABLE: ResultsUiCopy = {
   pr: "Forrige resultat",
   nx: "Neste resultat",
   bn: "Se resultater fra ekte Cellexia-brukere.",
+  fp: "Produkt",
+  fb: "Filtrer etter",
+  al: "Alle",
+  rn: "Resultater: @@N@@",
+  pu: "Brukt produkt",
 };
 
 /** Keyed by NORMALIZED (lowercase) storefront locale — the proxy
@@ -110,6 +134,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Previous result",
     nx: "Next result",
     bn: "See results from real Cellexia users.",
+    fp: "Product",
+    fb: "Filter by",
+    al: "All",
+    rn: "Results: @@N@@",
+    pu: "Product used",
   },
   ar: {
     rp: "أشخاص حقيقيون. نتائج حقيقية.",
@@ -126,6 +155,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "النتيجة السابقة",
     nx: "النتيجة التالية",
     bn: "اطّلع على نتائج مستخدمي Cellexia الحقيقيين.",
+    fp: "المنتج",
+    fb: "تصفية حسب",
+    al: "الكل",
+    rn: "النتائج: @@N@@",
+    pu: "المنتج المستخدم",
   },
   da: {
     rp: "Ægte mennesker. Ægte resultater.",
@@ -142,6 +176,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Forrige resultat",
     nx: "Næste resultat",
     bn: "Se resultater fra ægte Cellexia-brugere.",
+    fp: "Produkt",
+    fb: "Filtrér efter",
+    al: "Alle",
+    rn: "Resultater: @@N@@",
+    pu: "Anvendt produkt",
   },
   de: {
     rp: "Echte Menschen. Echte Ergebnisse.",
@@ -158,6 +197,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Vorheriges Ergebnis",
     nx: "Nächstes Ergebnis",
     bn: "Sehen Sie die Ergebnisse echter Cellexia-Anwender.",
+    fp: "Produkt",
+    fb: "Filtern nach",
+    al: "Alle",
+    rn: "Ergebnisse: @@N@@",
+    pu: "Verwendetes Produkt",
   },
   el: {
     rp: "Αληθινοί άνθρωποι. Αληθινά αποτελέσματα.",
@@ -174,6 +218,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Προηγούμενο αποτέλεσμα",
     nx: "Επόμενο αποτέλεσμα",
     bn: "Δες αποτελέσματα από αληθινούς χρήστες Cellexia.",
+    fp: "Προϊόν",
+    fb: "Φιλτράρισμα ανά",
+    al: "Όλα",
+    rn: "Αποτελέσματα: @@N@@",
+    pu: "Προϊόν που χρησιμοποιήθηκε",
   },
   es: {
     rp: "Personas reales. Resultados reales.",
@@ -190,6 +239,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Resultado anterior",
     nx: "Resultado siguiente",
     bn: "Descubre los resultados de usuarios reales de Cellexia.",
+    fp: "Producto",
+    fb: "Filtrar por",
+    al: "Todos",
+    rn: "Resultados: @@N@@",
+    pu: "Producto utilizado",
   },
   fi: {
     rp: "Aitoja ihmisiä. Aitoja tuloksia.",
@@ -206,6 +260,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Edellinen tulos",
     nx: "Seuraava tulos",
     bn: "Katso aitojen Cellexia-käyttäjien tulokset.",
+    fp: "Tuote",
+    fb: "Suodata",
+    al: "Kaikki",
+    rn: "Tuloksia: @@N@@",
+    pu: "Käytetty tuote",
   },
   fr: {
     rp: "De vraies personnes. De vrais résultats.",
@@ -222,6 +281,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Résultat précédent",
     nx: "Résultat suivant",
     bn: "Découvrez les résultats de vrais utilisateurs Cellexia.",
+    fp: "Produit",
+    fb: "Filtrer par",
+    al: "Tous",
+    rn: "Résultats : @@N@@",
+    pu: "Produit utilisé",
   },
   hu: {
     rp: "Valódi emberek. Valódi eredmények.",
@@ -238,6 +302,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Előző eredmény",
     nx: "Következő eredmény",
     bn: "Nézd meg valódi Cellexia-felhasználók eredményeit.",
+    fp: "Termék",
+    fb: "Szűrés",
+    al: "Összes",
+    rn: "Eredmények: @@N@@",
+    pu: "Használt termék",
   },
   it: {
     rp: "Persone vere. Risultati veri.",
@@ -254,6 +323,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Risultato precedente",
     nx: "Risultato successivo",
     bn: "Guarda i risultati di veri utenti Cellexia.",
+    fp: "Prodotto",
+    fb: "Filtra per",
+    al: "Tutti",
+    rn: "Risultati: @@N@@",
+    pu: "Prodotto utilizzato",
   },
   ja: {
     rp: "実際の使用者による、本物の結果。",
@@ -270,6 +344,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "前の結果",
     nx: "次の結果",
     bn: "実際のCellexiaユーザーの結果をご覧ください。",
+    fp: "製品",
+    fb: "絞り込み",
+    al: "すべて",
+    rn: "結果：@@N@@件",
+    pu: "使用製品",
   },
   nb: NO_TABLE,
   nl: {
@@ -287,6 +366,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Vorig resultaat",
     nx: "Volgend resultaat",
     bn: "Bekijk resultaten van echte Cellexia-gebruikers.",
+    fp: "Product",
+    fb: "Filter op",
+    al: "Alle",
+    rn: "Resultaten: @@N@@",
+    pu: "Gebruikt product",
   },
   no: NO_TABLE,
   pl: {
@@ -304,6 +388,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Poprzedni wynik",
     nx: "Następny wynik",
     bn: "Zobacz efekty prawdziwych użytkowników Cellexii.",
+    fp: "Produkt",
+    fb: "Filtruj według",
+    al: "Wszystkie",
+    rn: "Wyniki: @@N@@",
+    pu: "Zastosowany produkt",
   },
   "pt-br": {
     rp: "Pessoas reais. Resultados reais.",
@@ -320,6 +409,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Resultado anterior",
     nx: "Próximo resultado",
     bn: "Veja os resultados de usuários reais da Cellexia.",
+    fp: "Produto",
+    fb: "Filtrar por",
+    al: "Todos",
+    rn: "Resultados: @@N@@",
+    pu: "Produto utilizado",
   },
   "pt-pt": {
     rp: "Pessoas reais. Resultados reais.",
@@ -336,6 +430,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Resultado anterior",
     nx: "Resultado seguinte",
     bn: "Veja os resultados de utilizadores reais de Cellexia.",
+    fp: "Produto",
+    fb: "Filtrar por",
+    al: "Todos",
+    rn: "Resultados: @@N@@",
+    pu: "Produto utilizado",
   },
   ro: {
     rp: "Oameni reali. Rezultate reale.",
@@ -352,6 +451,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Rezultatul anterior",
     nx: "Rezultatul următor",
     bn: "Vezi rezultatele obținute de utilizatori reali Cellexia.",
+    fp: "Produs",
+    fb: "Filtrează după",
+    al: "Toate",
+    rn: "Rezultate: @@N@@",
+    pu: "Produs utilizat",
   },
   sv: {
     rp: "Riktiga människor. Riktiga resultat.",
@@ -368,6 +472,11 @@ export const RESULTS_UI_COPY: Record<string, ResultsUiCopy> = {
     pr: "Föregående resultat",
     nx: "Nästa resultat",
     bn: "Se resultat från riktiga Cellexia-användare.",
+    fp: "Produkt",
+    fb: "Filtrera efter",
+    al: "Alla",
+    rn: "Resultat: @@N@@",
+    pu: "Använd produkt",
   },
 };
 

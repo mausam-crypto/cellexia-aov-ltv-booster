@@ -1150,7 +1150,7 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     .sort();
   ok(locales.join(",") === catalogs.join(","),
     `UC1: copy table covers EXACTLY the 18 catalog languages (${locales.length})`);
-  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu", "aw", "dr", "iv", "zm", "sa", "pr", "nx", "bn"];
+  const codes = ["rp", "ma", "vsb", "mi", "mp", "mu", "aw", "dr", "iv", "zm", "sa", "pr", "nx", "bn", "fp", "fb", "al", "rn", "pu"];
   ok(JSON.stringify([...UC.RESULTS_UI_COPY_CODES]) === JSON.stringify(codes),
     "UC1: exported code list matches the storefront whitelist");
   for (const locale of locales) {
@@ -1198,6 +1198,182 @@ function pubs(res: { items: { publication: string }[] }): string[] {
     table.ro.bn === "Vezi rezultatele obținute de utilizatori reali Cellexia." &&
     table.de.bn === "Sehen Sie die Ergebnisse echter Cellexia-Anwender.",
     "UC5: the v38.1 numberless banner is pinned (en + the two re-agreed grammars)");
+}
+
+// ============ PF: v39.1 results-page product data (docs/SPEC-v39-results-page.md)
+
+{
+  const shop = "pagefilter.myshopify.com";
+  const tag = (...gids: string[]) => JSON.stringify(gids);
+  seedResult(shop, { beforeUrl: "https://cdn/p1.jpg", productGids: tag(GID_P), concern: "wrinkles" });
+  seedResult(shop, { beforeUrl: "https://cdn/p2.jpg", productGids: tag(GID_P), concern: "firmness" });
+  seedResult(shop, { beforeUrl: "https://cdn/q1.jpg", productGids: tag(GID_Q), concern: "wrinkles" });
+  seedResult(shop, { beforeUrl: "https://cdn/q2.jpg", productGids: tag(GID_Q) });
+  seedResult(shop, { beforeUrl: "https://cdn/q3.jpg", productGids: tag(GID_Q) });
+  seedResult(shop, { beforeUrl: "https://cdn/pq.jpg", productGids: tag(GID_P, GID_Q) });
+  seedResult(shop, { beforeUrl: "https://cdn/brand.jpg", concern: "wrinkles" });
+  seedResult(shop, { beforeUrl: "https://cdn/hidden.jpg", status: "hidden", productGids: tag(GID_P) });
+  seedResult(shop, { testimonial: "imageless", productGids: tag(GID_P) });
+
+  const plain = await P.getPublicResults(shop, null, {}, 1, 24);
+  ok(plain.total === 7 && plain.facets.products === undefined &&
+    plain.items.every((item: Record<string, unknown>) => !("products" in item)),
+    "PF1: without withProducts the payload is the pre-v39.1 one (no products facet, no item member)");
+
+  const page = await P.getPublicResults(shop, null, {}, 1, 24, "curated", { withProducts: true });
+  ok(JSON.stringify(page.facets.products) === '[{"value":"222","count":4},{"value":"111","count":3}]',
+    "PF2: products facet counts tagged results per product, most first; a two-product result counts for both; " +
+    "hidden and image-less rows never count (got " + JSON.stringify(page.facets.products) + ")");
+  const byUrl = new Map(page.items.map((item: { beforeUrl: string; products: string[] }) => [item.beforeUrl, item.products]));
+  ok(JSON.stringify(byUrl.get("https://cdn/p1.jpg")) === '["111"]' &&
+    JSON.stringify(byUrl.get("https://cdn/pq.jpg")) === '["111","222"]' &&
+    JSON.stringify(byUrl.get("https://cdn/brand.jpg")) === "[]",
+    "PF3: every item carries its numeric product ids ([] for a brand-level result)");
+  ok(page.total === 7 && page.verifiedTotal === plain.verifiedTotal,
+    "PF3: asking for product data changes no total");
+
+  const onlyP = await P.getPublicResults(shop, null, { product: GID_P }, 1, 24, "curated", { withProducts: true });
+  ok(onlyP.total === 3 &&
+    onlyP.items.every((item: { products: string[] }) => item.products.includes("111")),
+    "PF4: the product filter serves ONLY results tagged for that product (brand-level excluded)");
+  ok(JSON.stringify(onlyP.facets.products) === JSON.stringify(page.facets.products) &&
+    onlyP.facets.concerns.length === page.facets.concerns.length,
+    "PF5: facets stay stable while the product filter is on (counts never collapse)");
+  const combo = await P.getPublicResults(shop, null, { product: GID_P, concern: "wrinkles" }, 1, 24);
+  ok(combo.total === 1 && combo.items[0].beforeUrl === "https://cdn/p1.jpg",
+    "PF6: the product filter combines with the other filters");
+  const none = await P.getPublicResults(shop, null, { product: "gid://shopify/Product/999" }, 1, 24);
+  ok(none.total === 0 && none.items.length === 0, "PF7: a product with no tagged results serves an empty set");
+  const forP = await P.getPublicResults(shop, GID_P, {}, 1, 24);
+  ok(forP.total === 4, "PF8: the product PAGE's prioritisation argument is untouched (tagged + brand-level)");
+  ok(P.productNumericId(GID_P) === "111" && P.productNumericId("gid://shopify/Collection/1") === "" &&
+    P.productNumericId("111") === "",
+    "PF9: productNumericId reads product gids only");
+}
+
+// ========== RP: v39.1 results-products.server.ts (names for the results page)
+
+{
+  const RP = await import(
+    pathToFileURL(path.join(ROOT, "app", "services", "results-products.server.ts")).href
+  );
+  ok(RP.shopifyLocaleCode("pt-pt") === "pt-PT" && RP.shopifyLocaleCode("EN") === "en" &&
+    RP.shopifyLocaleCode(" fr ") === "fr" && RP.shopifyLocaleCode("zh-cn") === "zh-CN",
+    "RP1: proxy locales map to Shopify's codes (upper-case region)");
+  ok(RP.shopifyLocaleCode(null) === null && RP.shopifyLocaleCode("") === null &&
+    RP.shopifyLocaleCode('en"){x}') === null && RP.shopifyLocaleCode("english") === null,
+    "RP1: anything that is not a locale code is refused");
+  ok(JSON.stringify(RP.cleanProductIds(["111", "111", "x", 5, "", "222", "1".repeat(21)])) === '["111","222"]',
+    "RP2: product ids are numeric strings, deduped");
+  ok(RP.cleanProductIds(Array.from({ length: 400 }, (_, i) => String(i + 1))).length === RP.RESULT_PRODUCTS_MAX,
+    "RP2: at most one nodes() page of ids");
+
+  const node = (id: string, over: Record<string, unknown> = {}) => ({
+    id: `gid://shopify/Product/${id}`,
+    title: `Title ${id}`,
+    handle: `handle-${id}`,
+    onlineStoreUrl: `https://shop.example/products/handle-${id}`,
+    featuredImage: { url: `https://cdn.shopify.com/${id}.jpg` },
+    ...over,
+  });
+  const built = RP.buildResultProductMap([
+    node("1"),
+    node("2", { translations: [{ key: "handle", value: "x" }, { key: "title", value: "Titre 2" }] }),
+    node("3", { translations: [{ key: "title", value: "   " }] }),
+    node("4", { onlineStoreUrl: null, featuredImage: null }),
+    node("5", { featuredImage: { url: "http://insecure/5.jpg" } }),
+    node("6", { title: "  " }),
+    node("7", { handle: "a/b" }),
+    null,
+    { id: "gid://shopify/Collection/8", title: "Collection", handle: "c" },
+    node("9", { title: "x".repeat(300) }),
+  ]);
+  ok(Object.keys(built).sort().join(",") === "1,2,3,4,5,9",
+    "RP3: deleted nodes, non-products, blank titles and unsafe handles drop out (got " + Object.keys(built) + ")");
+  ok(JSON.stringify(built["1"]) === '{"t":"Title 1","h":"handle-1","i":"https://cdn.shopify.com/1.jpg","u":1}',
+    "RP3: the lean storefront shape (t, h, i, u)");
+  ok(built["2"].t === "Titre 2" && built["3"].t === "Title 3",
+    "RP4: a title translation wins; a blank one falls back to the primary title");
+  ok(!("u" in built["4"]) && !("i" in built["4"]) && !("i" in built["5"]),
+    "RP5: no link flag off the Online Store; no image unless https");
+  ok(built["9"].t.length === 120, "RP5: titles are capped");
+
+  interface Call { query: string; variables: Record<string, unknown> }
+  function fakeAdmin(mode: "ok" | "translated-fails" | "all-fail" | "throws") {
+    const calls: Call[] = [];
+    return {
+      calls,
+      graphql: async (query: string, options?: { variables?: Record<string, unknown> }) => {
+        calls.push({ query, variables: options?.variables ?? {} });
+        if (mode === "throws") throw new Error("network");
+        const translated = query.includes("translations(locale: $locale)");
+        if (mode === "all-fail" || (mode === "translated-fails" && translated)) {
+          return new Response(JSON.stringify({ errors: [{ message: "Access denied" }] }));
+        }
+        const ids = (options?.variables?.ids as string[]) ?? [];
+        const nodes = ids.map((gid) => {
+          const id = gid.split("/").pop() as string;
+          if (id === "404") return null;
+          return node(id, translated ? { translations: [{ key: "title", value: `T-${options?.variables?.locale}-${id}` }] } : {});
+        });
+        return new Response(JSON.stringify({ data: { nodes } }));
+      },
+    };
+  }
+  const shop = "names.myshopify.com";
+  const t0 = 1_000_000;
+
+  RP.clearResultProductsCache();
+  let admin = fakeAdmin("ok");
+  let map = await RP.getResultProducts(admin, shop, ["111", "404", "bad"], "fr", t0);
+  ok(admin.calls.length === 1 && admin.calls[0].variables.locale === "fr" &&
+    JSON.stringify(admin.calls[0].variables.ids) === '["gid://shopify/Product/111","gid://shopify/Product/404"]',
+    "RP6: ONE translated read for the clean ids");
+  ok(map["111"].t === "T-fr-111" && !("404" in map), "RP6: translated titles serve; a deleted product drops out");
+  map = await RP.getResultProducts(admin, shop, ["111", "404"], "fr", t0 + 5 * 60 * 1000);
+  ok(admin.calls.length === 1 && map["111"].t === "T-fr-111",
+    "RP7: a repeat within ten minutes is served from memory (a deleted id is remembered too)");
+  await RP.getResultProducts(admin, shop, ["111"], "de", t0);
+  ok(admin.calls.length === 2 && admin.calls[1].variables.locale === "de", "RP7: each language is cached on its own");
+  await RP.getResultProducts(admin, shop, ["111", "222"], "fr", t0);
+  ok(admin.calls.length === 3, "RP7: an id the cache was never asked for forces a fresh read");
+  await RP.getResultProducts(admin, shop, ["111"], "fr", t0 + 11 * 60 * 1000);
+  ok(admin.calls.length === 4, "RP7: after ten minutes the cache refreshes");
+  await RP.getResultProducts(admin, "other.myshopify.com", ["111"], "fr", t0 + 11 * 60 * 1000);
+  ok(admin.calls.length === 5, "RP7: shops never share a cache entry");
+
+  RP.clearResultProductsCache();
+  admin = fakeAdmin("ok");
+  map = await RP.getResultProducts(admin, shop, ["111"], null, t0);
+  ok(admin.calls.length === 1 && !admin.calls[0].query.includes("translations(") && map["111"].t === "Title 111",
+    "RP8: no locale -> the plain query and primary titles");
+
+  RP.clearResultProductsCache();
+  admin = fakeAdmin("translated-fails");
+  map = await RP.getResultProducts(admin, shop, ["111"], "fr", t0);
+  ok(admin.calls.length === 2 && map["111"].t === "Title 111",
+    "RP9: a failed translated read falls back to primary titles (names still show)");
+
+  RP.clearResultProductsCache();
+  admin = fakeAdmin("all-fail");
+  map = await RP.getResultProducts(admin, shop, ["111"], "fr", t0);
+  ok(Object.keys(map).length === 0 && admin.calls.length === 2, "RP10: a failed lookup serves {} (the page shows no product names)");
+  await RP.getResultProducts(admin, shop, ["111"], "fr", t0 + 30 * 1000);
+  ok(admin.calls.length === 2, "RP10: a failure is remembered for a minute (no retry per shopper)");
+  await RP.getResultProducts(admin, shop, ["111"], "fr", t0 + 61 * 1000);
+  ok(admin.calls.length === 4, "RP10: after a minute the lookup is tried again");
+
+  RP.clearResultProductsCache();
+  admin = fakeAdmin("throws");
+  map = await RP.getResultProducts(admin, shop, ["111"], "fr", t0);
+  ok(Object.keys(map).length === 0, "RP11: a thrown transport error never escapes");
+  ok(Object.keys(await RP.getResultProducts(null, shop, ["111"], "fr", t0 + 5 * 60 * 1000)).length === 0 &&
+    Object.keys(await RP.getResultProducts(fakeAdmin("ok"), shop, [], "fr", t0 + 5 * 60 * 1000)).length === 0,
+    "RP11: no admin client or no ids -> {} without a call");
+  const src = fs.readFileSync(path.join(ROOT, "app", "services", "results-products.server.ts"), "utf8");
+  ok((src.match(/`#graphql\s+query /g) || []).length === 2 && !/`#graphql\s+mutation/.test(src),
+    "RP12: the service only reads (two queries, no mutation)");
+  RP.clearResultProductsCache();
 }
 
 // ==================================== MH: market-handle clean/parse trips
@@ -1454,6 +1630,26 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m16-mix-lab-gate-dropped",
         find: "    const key = row.source === \"lab\" && row.study ? `s:${row.study}` : \"\";",
         replace: "    const key = row.study ? `s:${row.study}` : \"\";",
+      },
+      {
+        // v39.1: the product filter ignored — picking a product on the
+        // results page would serve the whole library (PF4 catches).
+        name: "m17-product-filter-ignored",
+        find: "  if (\n    filters.product &&\n    !parseProductGids(row.productGids).includes(filters.product)\n  ) {\n    return false;\n  }\n",
+        replace: "",
+      },
+      {
+        // v39.1: the products facet leaks into every results response —
+        // product pages and the home band would carry it (PF1 catches).
+        name: "m18-products-facet-leaks",
+        find: "  if (withProducts) facets.products = productFacetCounts(scoped);",
+        replace: "  facets.products = productFacetCounts(scoped);",
+      },
+      {
+        // v39.1: item product ids served everywhere (PF1 catches).
+        name: "m19-item-products-leak",
+        find: "      if (withProducts) {\n        item.products = parseProductGids(row.productGids)",
+        replace: "      {\n        item.products = parseProductGids(row.productGids)",
       },
     ],
   });

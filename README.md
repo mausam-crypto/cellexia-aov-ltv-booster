@@ -10,7 +10,7 @@ languages via **Translate & Adapt**, and integrate with **Joy Subscription** (na
 |---|---|---|
 | Cart drawer | Free-shipping progress bar (threshold configurable, default 150) | Theme app embed |
 | Cart drawer | Volume upgrade tiles — swap a 1-unit line to the 2-unit (−15%) or 3-unit (−20%) variant in one tap | Theme app embed |
-| Cart drawer | One-tap switch of a one-time line to the **Continuous Treatment Plan** (Joy selling plan, −5%) | Theme app embed |
+| Cart drawer | One-tap switch of a one-time line to its **Joy subscription plan** (the product's own discounted selling plan, −5%) | Theme app embed |
 | Cart drawer | Compact trust row (secure checkout · guarantee · Trustpilot) | Theme app embed |
 | Cart drawer + PDP | **Set savings (v14, v15)** — auto-applies the app's OWN codes SET2/SET3/SET4/SET6 (5/10/15/20 %) when the cart holds 2/3/4/6 *different* products (default "compact" preset; "extended" 2/3/5/10 → SET2/SET3/SET5/SET10 at 5/10/20/30 %, or custom); v15: existing store discounts are NEVER touched — the app *steps aside* for the codes in `yieldToCodes` (default KIT2/KIT3/KIT5/KIT10: a shopper using one keeps it, the app never adds/stacks its SET code); nudge to the next tier, cross-sell reframed "Complete your set & save", PDP buy-box line + FBT/YMAL captions; enforced by the app's Discount Function; rewards data isolated in its own live-only `#cx-rw-config` tag | Theme app embed + Discount Function |
 | Cart drawer | **Gift tiers (v14)** — free gift lines auto-added/removed at per-market spend thresholds (100 % off by the Function), rewards meter (gifts + free shipping milestones), gift pools with fallback order and sample sets, per-warehouse stock watch | Theme app embed + Discount Function |
@@ -130,8 +130,13 @@ orders/paid webhook ──► OrderStat table (AOV, attach rates)
   upsell swaps the line to the higher-tier variant (preserving any selling plan), it never just
   bumps quantity.
 - **Joy Subscription**: Joy creates native Shopify selling plans. Widgets read the real discount
-  from `selling_plan.price_adjustments[0].value` (5% is only the default), switch lines to a plan
-  via `/cart/change.js`, and hide all subscription UI for B2B customers.
+  from the variant's own plan allocation price (5% is only the default), switch lines to a plan
+  via `/cart/change.js`, and hide all subscription UI for B2B customers. Since v40 the
+  subscription-aware cart offers, Frequently bought together and the quantity stepper follow
+  Joy's plans too: Joy gives every product, and every pack size, its own plan, so each offer
+  uses that product's own plan and names the delivery frequency whenever it changes
+  (`docs/SPEC-v40-joy-subscriptions.md`). The switched-off in-house subscription app's plans
+  are never offered.
 
 ## Prerequisites
 
@@ -196,7 +201,7 @@ Host the Remix backend anywhere Node runs (Fly.io, Render, Heroku…). Set env v
 - To *change* a string in any language: Translate & Adapt → Online Store → Theme → **App embeds /
   App blocks** (text overrides you typed in the theme editor appear here and are translatable
   per language).
-- Joy plan names ("Continuous Treatment Plan") are native selling plans → translate them in
+- Joy plan names (its delivery frequencies, e.g. "Every 2 Months") are native selling plans → translate them in
   Translate & Adapt under Products → the subscription plan resource.
 - The Localization page inside the app shows your published shop languages next to the languages
   the widgets ship with.

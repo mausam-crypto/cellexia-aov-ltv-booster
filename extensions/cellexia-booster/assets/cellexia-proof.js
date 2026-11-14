@@ -1741,7 +1741,8 @@
     x: ['M5.5 5.5l9 9', 'M14.5 5.5l-9 9'],
     drag: ['M7.5 6.5 4 10l3.5 3.5', 'M12.5 6.5 16 10l-3.5 3.5'],
     zoom: ['M12.4 12.4 16.5 16.5', 'M9 7v4', 'M7 9h4'],
-    chev: ['M5.5 8 10 12.5 14.5 8']
+    chev: ['M5.5 8 10 12.5 14.5 8'],
+    funnel: ['M3.5 5h13l-5 5.8v4.4l-3 1.3v-5.7z']
   };
 
   function resultsIcon(kind, size) {
@@ -1770,7 +1771,9 @@
     // island strings and entry text are untouched. Raw-read convention:
     // these never pass Liquid's t-filter escaping (v8.22 precedent).
     if (!conf || !conf.str || !data || !data.copy || typeof data.copy !== 'object') return;
-    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx', 'bn'];
+    // v39.1: fp/fb/al/rn/pu are the results page's filter bar + product
+    // labels — merged everywhere, rendered in page mode only.
+    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx', 'bn', 'fp', 'fb', 'al', 'rn', 'pu'];
     for (var i = 0; i < keys.length; i++) {
       var value = data.copy[keys[i]];
       if (typeof value === 'string' && /\S/.test(value)) conf.str[keys[i]] = value;
@@ -1876,6 +1879,13 @@
       page: page,
       per: per
     };
+    // v39.1: the dedicated results page asks the proxy for product data
+    // (ctx=page) and carries its product filter (prod, numeric id). Every
+    // other context sends exactly the pre-v39.1 query.
+    if (conf && conf.ctx === 'page') {
+      p.ctx = 'page';
+      p.prod = st.prod;
+    }
     // v33: while the MERCHANT previews, a per-minute token busts the
     // proxy's 60s/300s cache so display-option flips show up promptly.
     // Shoppers never send it (pfPreviewVerified is the preview gate).
@@ -1930,18 +1940,22 @@
         ar: typeof it.attributionRole === 'string' && /\S/.test(it.attributionRole) ? it.attributionRole : '',
         // v35: the study tag — LAB ROWS ONLY (the measurements gate
         // pattern; the server already serves null for customer rows).
-        st: lab && typeof it.study === 'string' && /\S/.test(it.study) ? it.study : ''
+        st: lab && typeof it.study === 'string' && /\S/.test(it.study) ? it.study : '',
+        // v39.1: numeric ids of the products this result is tagged for —
+        // the proxy serves them to the dedicated results page only.
+        pd: resultsValidProductIds(it.products)
       });
     }
     return out;
   }
 
-  function resultsMetaLine(item, s) {
+  function resultsMetaLine(item, s, pg) {
     // age · skin · concern · weeks of use · country — present fields only.
+    // v39.1: pg (results page) prints the concern slug as words.
     var bits = [];
     if (item.age) bits.push(resultsFacetLabel('ages', item.age, s));
     if (item.skin) bits.push(resultsFacetLabel('skins', item.skin, s));
-    if (item.concern) bits.push(item.concern);
+    if (item.concern) bits.push(pg ? resultsSlugLabel(item.concern) : item.concern);
     if (item.weeks) {
       var wk = pfStr(s, 'wk');
       if (/\S/.test(wk)) bits.push(wk.replace('@@N@@', String(item.weeks)));
@@ -2616,6 +2630,13 @@
     }
     card.appendChild(media);
     pfSp(card);
+    // v39.1 (results page only — o.pm is its product map): which product
+    // this before/after belongs to, right under the photos.
+    var prod = o && o.pm ? resultsProductRow(item, s, o.pm) : null;
+    if (prod) {
+      card.appendChild(prod);
+      pfSp(card);
+    }
     var clin = resultsClinical(item, s);
     if (clin) {
       card.appendChild(clin);
@@ -2634,7 +2655,7 @@
       card.appendChild(badges);
       pfSp(card);
     }
-    var meta = resultsMetaLine(item, s);
+    var meta = resultsMetaLine(item, s, !!(o && o.pg));
     if (meta) {
       var m = pfEl('p', 'cx-results__meta');
       m.textContent = meta;
@@ -2727,6 +2748,12 @@
       }
       pfSp(card);
     }
+    // v39.1: the enlarged view names the product too (results page only).
+    var prod = o && o.pm ? resultsProductRow(item, s, o.pm) : null;
+    if (prod) {
+      card.appendChild(prod);
+      pfSp(card);
+    }
     var badges = resultsBadges(item, s);
     // v35: the study-name tag joins the lightbox badges row too.
     var studyTag = resultsStudyTag(item, o);
@@ -2773,7 +2800,7 @@
       foot.appendChild(main);
       pfSp(foot);
     }
-    var meta = resultsMetaLine(item, s);
+    var meta = resultsMetaLine(item, s, !!(o && o.pg));
     if (meta) {
       var m = pfEl('p', 'cx-lightbox__meta');
       m.textContent = meta;
@@ -3353,10 +3380,273 @@
     hist.open();
   }
 
-  function resultsFacetGroups(data) {
+  // ----------------------------- v39.1 results page: products + chrome
+  //
+  // Page mode only (island ctx "page"). The proxy answers `ctx=page` with
+  // three extras: each item's `products` (numeric ids), a `products`
+  // facet and a `products` map (id -> title / handle / image / on the
+  // Online Store). Everything below fails soft: no map, no product UI.
+
+  function resultsValidProductIds(list) {
+    // Numeric product ids a result is tagged for; [] for a brand-level
+    // result and for every response outside page mode.
+    var out = [];
+    if (!Array.isArray(list)) return out;
+    for (var i = 0; i < list.length && out.length < 6; i++) {
+      if (typeof list[i] === 'string' && /^\d{1,20}$/.test(list[i])) out.push(list[i]);
+    }
+    return out;
+  }
+
+  function resultsProductMap(data) {
+    // Client re-validation of the proxy's product map (the API is trusted
+    // for order, never for content safety): numeric id, a title, a handle
+    // with no path/query characters; the image passes pfHttps or drops.
+    // null when nothing usable arrived, so callers gate on one value.
+    var src = data && data.products && typeof data.products === 'object' ? data.products : null;
+    if (!src) return null;
+    var out = {};
+    var n = 0;
+    for (var id in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, id) || !/^\d{1,20}$/.test(id)) continue;
+      var p = src[id] && typeof src[id] === 'object' ? src[id] : {};
+      var title = typeof p.t === 'string' && /\S/.test(p.t) ? p.t : '';
+      var handle = typeof p.h === 'string' && /^[^\s\/?#]+$/.test(p.h) ? p.h : '';
+      if (!title || !handle) continue;
+      out[id] = { t: title, h: handle, i: pfHttps(p.i), u: p.u === 1 };
+      n += 1;
+    }
+    return n > 0 ? out : null;
+  }
+
+  function resultsSlugLabel(value) {
+    // Concern tags are merchant slugs ("frown-lines"); the results page
+    // prints them as words ("Frown lines"). Still data: no translation.
+    var text = typeof value === 'string' ? value.replace(/[-_]+/g, ' ').replace(/^\s+|\s+$/g, '') : '';
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+  }
+
+  function resultsProductHref(handle) {
+    // Storefront-relative product URL under the page's locale root
+    // ("/" or "/fr/"). Always starts with ONE slash, so it can never be
+    // a scheme or a protocol-relative URL; the handle is URI-encoded.
+    var root = pfRouteRoot();
+    if (typeof root !== 'string' || root.charAt(0) !== '/' || root.charAt(1) === '/') root = '/';
+    if (root.charAt(root.length - 1) !== '/') root += '/';
+    return root + 'products/' + encodeURIComponent(handle);
+  }
+
+  function resultsProductRow(item, s, pm) {
+    // "Product used" under the photos: one line per tagged product the
+    // map knows (max 3). A product on the Online Store links to its
+    // page; any other is plain text. null for a brand-level result or
+    // when none of its products resolved.
+    if (!pm || !item || !item.pd || !item.pd.length) return null;
+    var row = pfEl('div', 'cx-results__prod');
+    var n = 0;
+    for (var i = 0; i < item.pd.length && n < 3; i++) {
+      var p = pm[item.pd[i]];
+      if (!p) continue;
+      if (n === 0) {
+        var k = pfStrRaw(s, 'pu');
+        if (/\S/.test(k)) {
+          var kEl = pfEl('span', 'cx-results__prod-k');
+          kEl.textContent = k;
+          row.appendChild(kEl);
+          pfSp(row);
+        }
+      }
+      var a = p.u
+        ? pfEl('a', 'cx-results__prod-a no-dec', ['href', resultsProductHref(p.h)])
+        : pfEl('span', 'cx-results__prod-a');
+      var thumb = resultsCdnThumb(p.i, 96);
+      if (thumb) {
+        var img = pfEl('img', 'cx-results__prod-img', ['alt', '', 'loading', 'lazy', 'width', '32', 'height', '32']);
+        img.src = thumb;
+        a.appendChild(img);
+      }
+      var t = pfEl('span', 'cx-results__prod-t');
+      t.textContent = p.t;
+      a.appendChild(t);
+      if (p.u) a.appendChild(resultsIcon('chev', 14));
+      row.appendChild(a);
+      pfSp(row);
+      n += 1;
+    }
+    return n > 0 ? row : null;
+  }
+
+  function resultsThumbSet(url, half) {
+    // Sized Shopify-CDN renditions for a results-page card photo. The
+    // library holds full-resolution uploads; the grid shows them a few
+    // hundred pixels wide. Top candidate 720 (540 for a half-width pair
+    // frame): about 2x density on every layout, never the original.
+    // null for a foreign host or an already-sized URL (resultsCdnThumb
+    // passes those through untouched) — the caller keeps the plain src.
+    var widths = half ? [240, 360, 540] : [360, 540, 720];
+    var parts = [];
+    for (var i = 0; i < widths.length; i++) {
+      var u = resultsCdnThumb(url, widths[i]);
+      if (!u || u === url) return null;
+      parts.push(u + ' ' + widths[i] + 'w');
+    }
+    return {
+      src: resultsCdnThumb(url, widths[widths.length - 1]),
+      srcset: parts.join(', '),
+      sizes: half
+        ? '(min-width: 1200px) 150px, (min-width: 900px) 17vw, (min-width: 600px) 25vw, 50vw'
+        : '(min-width: 1200px) 300px, (min-width: 900px) 33vw, (min-width: 600px) 50vw, 100vw'
+    };
+  }
+
+  function resultsPageThumbs(card, lead) {
+    // Page-mode pass over a freshly built card's photos: sized
+    // renditions (srcset/sizes), async decode, and for the first cards
+    // an eager load (lead 1) with high priority on the very first ones
+    // (lead 2) — they are the page's main content, not below-the-fold
+    // extras. Runs before the card is attached, so nothing loads twice.
+    var imgs = card.querySelectorAll('.cx-results__thumb');
+    for (var i = 0; i < imgs.length; i++) {
+      var img = imgs[i];
+      var cls = img.getAttribute('class') || '';
+      var set = resultsThumbSet(img.src, cls.indexOf('cx-results__thumb--combo') === -1);
+      if (set) {
+        img.setAttribute('sizes', set.sizes);
+        img.setAttribute('srcset', set.srcset);
+        img.src = set.src;
+      }
+      img.setAttribute('decoding', 'async');
+      if (lead) img.setAttribute('loading', 'eager');
+      if (lead === 2) img.setAttribute('fetchpriority', 'high');
+    }
+  }
+
+  function resultsCountText(s, n) {
+    // "Results: 58" beside the filters. '' when the proxy copy is absent
+    // (old server) — the counter element then stays hidden.
+    var tpl = pfStrRaw(s, 'rn');
+    if (!/\S/.test(tpl) || tpl.indexOf('@@N@@') === -1) return '';
+    if (typeof n !== 'number' || !isFinite(n) || n < 0) return '';
+    return tpl.replace('@@N@@', String(n));
+  }
+
+  function resultsPageSkeleton() {
+    // Placeholder painted the moment this script runs: the gallery data
+    // is one app-proxy round trip away, and an empty page that jumps a
+    // moment later reads as broken. Decorative only (aria-hidden);
+    // swapped for the real section, or removed when there is nothing to
+    // show. Its class deliberately does not contain a "cx-results" token
+    // the idempotency guard could mistake for a mounted gallery.
+    var sk = pfEl('div', 'cx-rsk', ['aria-hidden', 'true']);
+    sk.appendChild(pfEl('div', 'cx-rsk__line cx-rsk__line--h'));
+    sk.appendChild(pfEl('div', 'cx-rsk__line cx-rsk__line--s'));
+    sk.appendChild(pfEl('div', 'cx-rsk__bar'));
+    var grid = pfEl('div', 'cx-rsk__grid');
+    for (var i = 0; i < 8; i++) {
+      var c = pfEl('div', 'cx-rsk__card');
+      c.appendChild(pfEl('div', 'cx-rsk__img'));
+      c.appendChild(pfEl('div', 'cx-rsk__line'));
+      c.appendChild(pfEl('div', 'cx-rsk__line cx-rsk__line--s'));
+      grid.appendChild(c);
+    }
+    sk.appendChild(grid);
+    return sk;
+  }
+
+  function resultsPageChrome(node, on) {
+    // The theme's page template pads its (often empty) content area, so
+    // on a results page the title sat stranded far above the gallery.
+    // While the gallery sits in the band at the end of #main, two
+    // classes on #main let the stylesheet close that gap: cx-rp, plus
+    // cx-rp--bare when the page has no content of its own. Both come
+    // off again if the gallery cannot render. Spacing only — the page's
+    // own content is never read into anything, moved or changed.
+    try {
+      var main = document.getElementById('main');
+      if (!main) return;
+      var band = node && node.parentNode ? node.parentNode.parentNode : null;
+      if (on && (!band || band.parentNode !== main)) return;
+      var cls = (' ' + (main.getAttribute('class') || '') + ' ')
+        .replace(' cx-rp--bare ', ' ')
+        .replace(' cx-rp ', ' ');
+      if (on) {
+        cls += 'cx-rp ';
+        var content = main.querySelector('.page__content');
+        if (content && !/\S/.test(content.textContent || '') &&
+          !content.querySelector('img') && !content.querySelector('video') && !content.querySelector('iframe')) {
+          cls += 'cx-rp--bare ';
+        }
+      }
+      cls = cls.replace(/\s+/g, ' ').replace(/^ | $/g, '');
+      if (cls) main.setAttribute('class', cls);
+      else main.removeAttribute('class');
+    } catch (e) { /* spacing is cosmetic */ }
+  }
+
+  function resultsPageUnmount(sk) {
+    // Nothing to show after all (fetch failed, zero results): take the
+    // placeholder, the page's now-empty band and the spacing classes
+    // away again, so the page is exactly as the theme rendered it.
+    try {
+      resultsPageChrome(sk, false);
+      var slot = sk ? sk.parentNode : null;
+      if (!slot) return;
+      slot.removeChild(sk);
+      var band = slot.parentNode;
+      if (band && band.parentNode && /(^| )cx-proof-band--page( |$)/.test(band.getAttribute('class') || '') &&
+        !band.querySelector('.cx-proof')) {
+        band.parentNode.removeChild(band);
+      }
+    } catch (e) { /* fail closed */ }
+  }
+
+  function resultsFirstData(conf, cb) {
+    // The page's FIRST response. On the live results page the embed
+    // starts that request inline (window.cxRF, a fetch promise) before
+    // this script has even downloaded — the proxy round trip is the
+    // slowest part of the page, so it gets the head start. Used once,
+    // for a live island and a normal visitor only: a previewing merchant
+    // keeps the cache-busting query of proofFetch. Anything wrong with
+    // the early response (rejected, not ok, not a results payload, 8s
+    // without an answer) falls back to the classic fetch; cb fires once.
+    function classic() {
+      proofFetch('results', resultsParams(conf, { concern: '', age: '', skin: '', duration: '', prod: '', page: 1 }), cb);
+    }
+    var early = null;
+    try {
+      if (conf && conf.ctx === 'page') {
+        if (conf.live === true && !pfPreviewVerified()) early = window.cxRF;
+        window.cxRF = null;
+      }
+    } catch (e) { early = null; }
+    if (!early || typeof early.then !== 'function') { classic(); return; }
+    var done = false;
+    var timer = window.setTimeout(function () {
+      if (done) return;
+      done = true;
+      classic();
+    }, 8000);
+    function settle(data) {
+      if (done) return;
+      done = true;
+      window.clearTimeout(timer);
+      if (data && typeof data === 'object' && Array.isArray(data.items)) cb(data);
+      else classic();
+    }
+    try {
+      early.then(function (res) { return res && res.ok ? res.json() : null; })
+        .then(settle)
+        .catch(function () { settle(null); });
+    } catch (e) { settle(null); }
+  }
+
+  function resultsFacetGroups(data, pm) {
     // The 4 facet groups in display order — only those with at least one
     // valid option ship UI. Facets come from the UNfiltered product-
     // scoped set, so option counts stay stable while filtering.
+    // v39.1: with a product map (results page) a Product group leads —
+    // one option per product the map can name, and only when there are
+    // at least two (a one-product filter filters nothing).
     var f = data && data.facets && typeof data.facets === 'object' ? data.facets : {};
     var defs = [
       { id: 'concerns', param: 'concern', label: 'fc' },
@@ -3376,6 +3666,17 @@
       }
       if (opts.length > 0) out.push({ id: defs[i].id, param: defs[i].param, label: defs[i].label, opts: opts });
     }
+    if (pm) {
+      var plist = Array.isArray(f.products) ? f.products : [];
+      var popts = [];
+      for (var k = 0; k < plist.length; k++) {
+        var po = plist[k] && typeof plist[k] === 'object' ? plist[k] : {};
+        if (typeof po.value === 'string' && Object.prototype.hasOwnProperty.call(pm, po.value)) {
+          popts.push({ value: po.value, count: pfPosInt(po.count) ? po.count : 0 });
+        }
+      }
+      if (popts.length > 1) out.unshift({ id: 'products', param: 'prod', label: 'fp', opts: popts });
+    }
     return out;
   }
 
@@ -3387,12 +3688,20 @@
     // v33 display flags — read once from the init response; every later
     // card and lightbox (filters, Show more) reuses this same object.
     var o = resultsUiFlags(data);
+    // v39.1 results page: o also carries the page flag and the product
+    // map, so every card, lightbox and viewer slide built from it can
+    // name the product (o.pm) and print concern slugs as words (o.pg).
+    var pm = conf.ctx === 'page' ? resultsProductMap(data) : null;
+    if (conf.ctx === 'page') {
+      o.pg = true;
+      o.pm = pm;
+    }
     var banner = resultsBannerData(s, data ? data.total : 0, data ? data.verifiedTotal : 0, o);
     if (!banner) return null; // 0 total → the whole module fails closed
     var items = resultsValidItems(data);
     if (items.length === 0) return null; // a banner with no cards is broken proof
-    var groups = resultsFacetGroups(data);
-    var st = { concern: '', age: '', skin: '', duration: '', page: 1 };
+    var groups = resultsFacetGroups(data, pm && /\S/.test(pfStrRaw(s, 'fp')) ? pm : null);
+    var st = { concern: '', age: '', skin: '', duration: '', prod: '', page: 1 };
     // v36: the retained item store — the viewer's strip, paging and
     // prev/next read THIS array; ids dedupe cache-skewed page overlaps.
     st.items = [];
@@ -3486,11 +3795,16 @@
     var emptyP = pfEl('p', 'cx-results__empty', ['hidden', '']);
     emptyP.textContent = pfStr(s, 'empty');
     var moreBtn = null;
+    var countEl = null; // v39.1: the results page's "Results: N" counter
 
     function appendCards(list, start) {
       var base = typeof start === 'number' ? start : 0;
       for (var i = 0; i < list.length; i++) {
-        rail.appendChild(resultsBuildCard(list[i], s, o, vwCtx ? { at: base + i, open: openViewer } : null));
+        var cardEl = resultsBuildCard(list[i], s, o, vwCtx ? { at: base + i, open: openViewer } : null);
+        // v39.1: page-mode photos get sized renditions; the first row
+        // loads eagerly (it is the page's main content).
+        if (pageMode) resultsPageThumbs(cardEl, base + i < 2 ? 2 : base + i < 4 ? 1 : 0);
+        rail.appendChild(cardEl);
       }
     }
 
@@ -3511,6 +3825,14 @@
       // live — count, caption and position re-sync here after every
       // fetch (appendChild re-seats it as the LAST rail child; filter
       // renders cleared it with the cards).
+      if (countEl) {
+        // v39.1: the counter follows the filtered total after every
+        // render — the visible answer to "did my filter do anything?".
+        var countText = resultsCountText(s, filteredTotal);
+        countEl.textContent = countText;
+        if (countText) countEl.removeAttribute('hidden');
+        else countEl.setAttribute('hidden', '');
+      }
       if (seeTile) {
         var left = filteredTotal - shown;
         if (left > 0 && !rail.hasAttribute('hidden')) {
@@ -3530,6 +3852,8 @@
     // ---- filters (chips row + drawer/panel), only when facets exist ----
     var chips = [];
     var optBtns = []; // { btn, param, value }
+    var groupEls = []; // v39.1: one element per group, in chip order
+    var drawerAt = 0; // v39.1: the group the results page's panel shows
     var drawer = null;
     var scrim = null;
     var drawerOpen = false;
@@ -3545,12 +3869,23 @@
 
     function syncDrawerA11y() {
       for (var i = 0; i < chips.length; i++) {
-        chips[i].btn.setAttribute('aria-expanded', drawerOpen ? 'true' : 'false');
+        chips[i].btn.setAttribute('aria-expanded', drawerOpen && (!pageMode || i === drawerAt) ? 'true' : 'false');
       }
     }
 
-    function openDrawer() {
-      if (!drawer || drawerOpen) return;
+    function openDrawer(at) {
+      if (!drawer) return;
+      if (pageMode) {
+        // v39.1: on the results page each filter opens ITS OWN options
+        // (a dropdown), not the whole panel — the other groups hide.
+        drawerAt = typeof at === 'number' ? at : 0;
+        for (var gk = 0; gk < groupEls.length; gk++) {
+          if (gk === drawerAt) groupEls[gk].removeAttribute('hidden');
+          else groupEls[gk].setAttribute('hidden', '');
+        }
+        if (drawerOpen) syncDrawerA11y(); // switched group while open
+      }
+      if (drawerOpen) return;
       drawerOpen = true;
       drawer.removeAttribute('hidden');
       scrim.removeAttribute('hidden');
@@ -3573,14 +3908,28 @@
     }
 
     function anyActive() {
-      return !!(st.concern || st.age || st.skin || st.duration);
+      return !!(st.concern || st.age || st.skin || st.duration || st.prod);
+    }
+
+    function groupTitle(g) {
+      // The Product label is proxy copy (raw read); the four classic
+      // labels are island strings (decoded read).
+      return g.id === 'products' ? pfStrRaw(s, g.label) : pfStr(s, g.label);
+    }
+
+    function optLabel(g, value) {
+      // v39.1: a product option reads its title from the page's product
+      // map; on the results page concern slugs print as words.
+      if (g.id === 'products') return pm && pm[value] ? pm[value].t : '';
+      if (pageMode && g.id === 'concerns') return resultsSlugLabel(value);
+      return resultsFacetLabel(g.id, value, s);
     }
 
     function chipLabel(g) {
-      var base = pfStr(s, g.label);
+      var base = groupTitle(g);
       var v = st[g.param];
       if (v) {
-        var vl = resultsFacetLabel(g.id, v, s);
+        var vl = optLabel(g, v);
         return base ? base + ': ' + vl : vl;
       }
       return base || '';
@@ -3591,7 +3940,7 @@
     function syncChips() {
       for (var i = 0; i < chips.length; i++) {
         var g = chips[i].group;
-        chips[i].btn.textContent = chipLabel(g);
+        (chips[i].txt || chips[i].btn).textContent = chipLabel(g);
         chips[i].btn.className = st[g.param]
           ? 'cx-results__chip cx-results__chip--on'
           : 'cx-results__chip';
@@ -3651,6 +4000,11 @@
     }
 
     function pickOption(g, value) {
+      if (value === '' && st[g.param] === '') {
+        // v39.1: "All" on a filter that is not set — nothing to refetch.
+        closeDrawer();
+        return;
+      }
       st[g.param] = st[g.param] === value ? '' : value; // tap again clears
       st.page = 1;
       syncChips();
@@ -3663,16 +4017,19 @@
       st.age = '';
       st.skin = '';
       st.duration = '';
+      st.prod = '';
       st.page = 1;
       syncChips();
       closeDrawer();
       refetch(false);
     }
 
-    function bindChip(btn) {
+    function bindChip(btn, at) {
       btn.addEventListener('click', function () {
-        if (drawerOpen) closeDrawer();
-        else openDrawer();
+        // v39.1: on the results page a tap on ANOTHER filter switches the
+        // open panel to it; only the open filter's own chip closes it.
+        if (drawerOpen && (!pageMode || at === drawerAt)) closeDrawer();
+        else openDrawer(at);
       });
     }
 
@@ -3685,8 +4042,18 @@
       var gi;
       for (gi = 0; gi < groups.length; gi++) {
         var chip = pfEl('button', 'cx-results__chip', ['type', 'button', 'aria-expanded', 'false', 'aria-controls', 'cx-results-drawer']);
-        bindChip(chip);
-        chips.push({ btn: chip, group: groups[gi] });
+        var chipTxt = null;
+        if (pageMode) {
+          // v39.1: on the results page a filter reads as a dropdown —
+          // its label (or "Label: value") and a caret that flips open.
+          chipTxt = pfEl('span', 'cx-results__chip-t');
+          chip.appendChild(chipTxt);
+          var caret = resultsIcon('chev', 14);
+          caret.setAttribute('class', 'cx-results__chip-ic');
+          chip.appendChild(caret);
+        }
+        bindChip(chip, gi);
+        chips.push({ btn: chip, group: groups[gi], txt: chipTxt });
         filters.appendChild(chip);
         pfSp(filters);
       }
@@ -3694,7 +4061,28 @@
       clearChip.textContent = pfStr(s, 'clear');
       clearChip.addEventListener('click', clearFilters);
       filters.appendChild(clearChip);
-      root.appendChild(filters);
+      if (pageMode) {
+        // v39.1: the results page frames its filters as one bar — a
+        // "Filter by" lead-in, the dropdowns, and the live result count.
+        var fbar = pfEl('div', 'cx-results__fbar');
+        var fbLabel = pfStrRaw(s, 'fb');
+        if (/\S/.test(fbLabel)) {
+          var fbKey = pfEl('span', 'cx-results__fbar-k');
+          fbKey.appendChild(resultsIcon('funnel', 16));
+          var fbText = pfEl('span', 'cx-results__fbar-t');
+          fbText.textContent = fbLabel;
+          fbKey.appendChild(fbText);
+          fbar.appendChild(fbKey);
+          pfSp(fbar);
+        }
+        fbar.appendChild(filters);
+        pfSp(fbar);
+        countEl = pfEl('p', 'cx-results__n', ['aria-live', 'polite', 'hidden', '']);
+        fbar.appendChild(countEl);
+        root.appendChild(fbar);
+      } else {
+        root.appendChild(filters);
+      }
       pfSp(root);
 
       scrim = pfEl('div', 'cx-results__scrim', ['data-cx-drawer-close', '', 'hidden', '']);
@@ -3710,13 +4098,35 @@
         var g = groups[gi];
         var groupEl = pfEl('div', 'cx-results__group');
         var title = pfEl('h3', 'cx-results__group-title');
-        title.textContent = pfStr(s, g.label);
+        title.textContent = groupTitle(g);
         groupEl.appendChild(title);
+        groupEls.push(groupEl);
         var opts = pfEl('div', 'cx-results__opts');
+        var allLabel = pageMode ? pfStrRaw(s, 'al') : '';
+        if (/\S/.test(allLabel)) {
+          // v39.1: an explicit "All" leads every group on the results
+          // page — the obvious way back out of a filter.
+          var allBtn = pfEl('button', 'cx-results__opt cx-results__opt--all', ['type', 'button', 'aria-pressed', 'false']);
+          allBtn.textContent = allLabel;
+          bindOpt(g, '', allBtn);
+          optBtns.push({ btn: allBtn, param: g.param, value: '' });
+          opts.appendChild(allBtn);
+          pfSp(opts);
+        }
         for (var oi = 0; oi < g.opts.length; oi++) {
           var opt = g.opts[oi];
-          var optBtn = pfEl('button', 'cx-results__opt', ['type', 'button', 'aria-pressed', 'false']);
-          optBtn.appendChild(document.createTextNode(resultsFacetLabel(g.id, opt.value, s)));
+          var optBtn = pfEl('button', g.id === 'products' ? 'cx-results__opt cx-results__opt--prod' : 'cx-results__opt', ['type', 'button', 'aria-pressed', 'false']);
+          if (g.id === 'products') {
+            // v39.1: product options carry the product's picture.
+            var optThumb = resultsCdnThumb(pm[opt.value].i, 96);
+            if (optThumb) {
+              var optImg = pfEl('img', 'cx-results__opt-img', ['alt', '', 'loading', 'lazy', 'width', '36', 'height', '36']);
+              optImg.src = optThumb;
+              optBtn.appendChild(optImg);
+              pfSp(optBtn);
+            }
+          }
+          optBtn.appendChild(document.createTextNode(optLabel(g, opt.value)));
           if (opt.count > 0) {
             pfSp(optBtn);
             var n = pfEl('span', 'cx-results__opt-n');
@@ -3820,13 +4230,39 @@
     if (!isl) return;
     pfWhenAllowed(isl.conf, function () {
       if (document.querySelector('.cx-results')) return; // idempotent
-      proofFetch('results', resultsParams(isl.conf, { concern: '', age: '', skin: '', duration: '', page: 1 }), function (data) {
+      // v39.1 results page: paint the placeholder and close the theme's
+      // title gap NOW — the data lands one proxy round trip later.
+      var sk = null;
+      if (isl.conf.ctx === 'page') {
         try {
-          if (document.querySelector('.cx-results')) return;
+          sk = resultsPageSkeleton();
+          if (pfMount('results', isl.el, sk, isl.conf)) resultsPageChrome(sk, true);
+          else sk = null;
+        } catch (e) { sk = null; }
+      }
+      resultsFirstData(isl.conf, function (data) {
+        try {
+          if (document.querySelector('.cx-results')) {
+            if (sk && sk.parentNode) sk.parentNode.removeChild(sk);
+            return;
+          }
           var node = resultsBuildSection(isl.conf, data);
-          if (!node) return;
-          if (pfMount('results', isl.el, node, isl.conf)) pfTrack('verified_before_after', 'impression', isl.conf.ctx === 'page' ? 'page' : '');
-        } catch (e) { /* fail closed */ }
+          if (!node) {
+            if (sk) resultsPageUnmount(sk);
+            return;
+          }
+          var mounted = false;
+          if (sk && sk.parentNode) {
+            sk.parentNode.replaceChild(node, sk);
+            mounted = true;
+          } else {
+            mounted = pfMount('results', isl.el, node, isl.conf);
+          }
+          if (mounted) pfTrack('verified_before_after', 'impression', isl.conf.ctx === 'page' ? 'page' : '');
+        } catch (e) {
+          // fail closed; a placeholder still on the page goes with it
+          if (sk && sk.parentNode) resultsPageUnmount(sk);
+        }
       });
     });
   }

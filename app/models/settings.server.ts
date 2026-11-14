@@ -776,6 +776,10 @@ export interface BoosterSettings {
      * live/market/plan gating itself follows the subscription app's own
      * shop metafields (cellexia.launch_status / widget_markets /
      * plan_groups), read directly by cart-booster.liquid.
+     * v40: the same switch also gates the NATIVE (Joy Subscriptions)
+     * family — active while that in-house app is not live, driven by the
+     * cart's own Joy plan line / Joy's hidden selling_plan field on the
+     * PDP (docs/SPEC-v40-joy-subscriptions.md). No new setting.
      */
     subscriptionAware: boolean;
   };

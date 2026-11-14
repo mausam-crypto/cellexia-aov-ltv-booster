@@ -18,6 +18,7 @@ import {
 } from "../services/proof-translation.server";
 import { getSettings } from "../models/settings.server";
 import { resultsUiCopy } from "../services/results-ui-copy.server";
+import { getResultProducts } from "../services/results-products.server";
 import type { PublicResultsFilters } from "../services/proof.server";
 
 /**
@@ -47,6 +48,15 @@ import type { PublicResultsFilters } from "../services/proof.server";
  * (status, featured, sortWeight, productGids, legacyGid) never leave the
  * server. All strings are served raw — the storefront renders exclusively
  * via textContent.
+ *
+ * v39.1 — the dedicated results page sends `ctx=page`. Only then does a
+ * results response also carry: each item's `products` (numeric product
+ * ids — the page shows which product a result belongs to), a `products`
+ * facet, and a top-level `products` map (id -> title / handle / image /
+ * on-Online-Store flag, results-products.server.ts). `prod=<numeric id>`
+ * is that page's product FILTER (tagged results only), separate from the
+ * product page's `product` prioritisation. Without `ctx=page` the payload
+ * is exactly the pre-v39.1 one.
  */
 
 const PROOF_CACHE_CONTROL = "public, max-age=60, s-maxage=300";
@@ -94,7 +104,7 @@ function jsonResponse(body: unknown, cacheable: boolean, status = 200) {
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.public.appProxy(request);
+  const { session, admin } = await authenticate.public.appProxy(request);
   if (!session) {
     return jsonResponse({ error: "unauthorized" }, false, 401);
   }
@@ -239,6 +249,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         if ((DURATION_BUCKETS as readonly string[]).includes(duration)) {
           filters.duration = duration;
         }
+        // v39.1: the dedicated results page (ctx=page) asks for product
+        // data and may filter by ONE product (prod=<numeric id>).
+        const pageCtx = url.searchParams.get("ctx") === "page";
+        const prod = normalizeProductParam(url.searchParams.get("prod"));
+        if (pageCtx && prod) filters.product = prod;
         // v35: the display settings are read on EVERY results request now
         // — the gallery ORDER must agree across Show-more pages, so it can
         // no longer hide behind the page-1 guard the way the ui flags do.
@@ -259,8 +274,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           page,
           per,
           display?.galleryOrder ?? "curated",
+          { withProducts: pageCtx },
         );
         const locale = normalizeLocaleParam(url.searchParams.get("locale"));
+        if (pageCtx) {
+          // Product names ride EVERY page-context response (Show more and
+          // filtered pages render cards too). An enhancement like the
+          // overlays below: a failed lookup serves no `products` member
+          // and the page shows the gallery without product names.
+          try {
+            const products = await getResultProducts(
+              admin,
+              shop,
+              (payload.facets.products ?? []).map((facet) => facet.value),
+              locale,
+            );
+            if (Object.keys(products).length > 0) {
+              (payload as Record<string, unknown>).products = products;
+            }
+          } catch {
+            // the gallery itself still serves
+          }
+        }
         if (locale && payload.items.length > 0) {
           try {
             // v25: measurement labels/info notes + the attribution role

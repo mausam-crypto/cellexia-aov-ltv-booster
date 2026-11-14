@@ -62,6 +62,27 @@
  *   m19-hook-reinstall-dropped   scheduleRefresh no longer re-installs the hook
  *   m20-derived-restored         derived pair answer re-stored with a fresh timestamp
  *   m21-skipped-as-empty         a never-asked anchor cached as "nothing"
+ *   m22..m32                     v17 subscription-aware offers (owned family)
+ *   v40 native (Joy) family:
+ *   m33-native-while-live        native stays on while the in-house app is LIVE
+ *   m34-native-b2b               B2B enters the native context
+ *   m35-native-killswitch        native ignores the kill switch
+ *   m36-native-zero-percent      a plan priced AT one-time counts as offerable
+ *   m37-native-deny-dropped      in-house plans become offerable
+ *   m38-native-branch-dropped    a native anchor falls into the owned ladder
+ *   m39-upgrade-keeps-line-plan  the upgrade add ignores the tier's own plan
+ *   m40-restore-on-tier-plan     a failed upgrade restores onto the TIER plan
+ *   m41-tile-label-dropped       plan-changing tile shows no frequency
+ *   m42-nameless-tile-offered    tile offered for a plan that has no name
+ *   m43-nameless-row-offered     row offered on an undisclosable schedule
+ *   m44-keyword-names-dark-plan  keyword may resolve a dark in-house plan
+ *   m45-fallback-unguarded       switch fallback takes any allocation
+ *   m46-row-label-dropped        auto row hides a differing frequency
+ *   m47-manual-label-dropped     manual row hides a differing frequency
+ *   m48-row-label-always-empty   resolver never reports a differing schedule
+ *   m49-name-preference-dropped  same-named plan no longer preferred
+ *   m50-xp-reasked               the proxy list is re-asked on every render
+ *   m51-xp-ttl-ignored           a stale cached list is served forever
  */
 "use strict";
 const path = require("path");
@@ -78,7 +99,7 @@ const SRC_PATH = process.env.CX_SIM_SRC || REAL_SRC;
 const SRC = fs.readFileSync(SRC_PATH, "utf8");
 
 const EXTRACTED = extractAll(SRC, {
-  vars: ["PROTECTION_HANDLE", "autoCrossSell", "CROSS_SELL_CACHE_TTL", "productPrefetch", "MARKET", "crossSellPlanFetch"],
+  vars: ["PROTECTION_HANDLE", "autoCrossSell", "CROSS_SELL_CACHE_TTL", "productPrefetch", "MARKET", "crossSellPlanFetch", "nativeDeny", "nativeDenyAsked"],
   functions: [
     "routeRoot",
     "featureOn",
@@ -167,6 +188,20 @@ const EXTRACTED = extractAll(SRC, {
     "ownedCadenceAlloc",
     "ensureCrossSellPlanData",
     "performUnsubscribe",
+    // v40 native (Joy) family + the upgrade mutation and tile it feeds
+    "inhouseLive",
+    "nativeDenyList",
+    "subsDenied",
+    "nativeSubs",
+    "nativeAlloc",
+    "nativePlanName",
+    "nativeSameName",
+    "nativeLinePlan",
+    "nativeVariantAlloc",
+    "ensureNativeDeny",
+    "performUpgrade",
+    "productLabel",
+    "buildVolumeGroup",
   ],
 });
 
@@ -580,11 +615,21 @@ async function main() {
     ok(vm.runInContext("subXsPlanLine()", noSx.sandbox) === null,
       "v17: no cfg.sx (app dark / market off): context null, fail closed");
 
-    const joy = makeSim({ cfg: { sx: SX } });
+    // v40: restated. A Joy plan line never activates the OWNED family —
+    // while the in-house app is LIVE it activates nothing at all (the
+    // native family, exercised in the v40 block below, is off then). The
+    // line carries real product data so the verdict is the gate's, not a
+    // missing-data accident.
+    const joy = makeSim({ cfg: { sx: Object.assign({}, SX, { live: true }) } });
+    joy.sandbox.state.products = { 5: { variants: [
+      { id: 55, position: 1, price: 5700, available: true,
+        planAllocations: [{ planId: "718347501943", price: 5415 }] },
+    ], sellingPlanGroups: [{ id: "gJ", name: "Every 2 months", plans: [
+      { id: "718347501943", name: "Every 2 Months", valueType: "percentage", value: 5 }] }] } };
     joy.sandbox.state.cart = cartWith([Object.assign({}, SUB_LINE,
       { selling_plan_allocation: { selling_plan: { id: "718347501943" } } })]);
     ok(vm.runInContext("subXsPlanLine()", joy.sandbox) === null,
-      "v17: a Joy plan line NEVER activates (planIds membership = ownership)");
+      "v17: in-house app LIVE: a Joy plan line NEVER activates (planIds membership = ownership)");
 
     const b2b = makeSim({ cfg: { sx: SX, b2b: true } });
     b2b.sandbox.state.cart = cartWith([SUB_LINE]);
@@ -956,6 +1001,520 @@ async function main() {
     const chg2 = JSON.parse(simF2.calls.fetches.find((f) => f.url === "/cart/change.js").options.body);
     ok(!("properties" in chg2),
       "v17 unsubscribe: no _cellexia_design on the line: request carries no properties member");
+  }
+
+  // ============================================================================
+  // v40 — native selling plans (Joy Subscriptions, SPEC-v40)
+  //
+  // Fixtures = the LIVE shape (Spanish market, 2026-11-13): per product, Joy
+  // "Every 2 Months" on the 1-unit variant only and Joy "Every 3 Months" on
+  // the 2/3-unit variants only — with plan ids that differ on EVERY product
+  // — plus the dark in-house app's three 0 % plans on every variant at the
+  // one-time price. The island is the live one: sx present, live:false.
+  // ============================================================================
+  const INH = SX.p;
+  const inhAllocs = (price) => INH.map((id) => ({ planId: id, price }));
+  const INH_GROUP = { id: "gM", name: "Main", plans: [
+    { id: INH[0], name: "Every 3 weeks", valueType: null, value: 0 },
+    { id: INH[1], name: "Every 2 months", valueType: null, value: 0 },
+    { id: INH[2], name: "Every 3 months", valueType: null, value: 0 },
+  ] };
+  const joyProduct = (plan2m, plan3m, vids) => ({
+    variants: [
+      { id: vids[0], position: 1, price: 5700, available: true,
+        planAllocations: [{ planId: plan2m, price: 5415 }].concat(inhAllocs(5700)) },
+      { id: vids[1], position: 2, price: 9690, available: true,
+        planAllocations: [{ planId: plan3m, price: 9206 }].concat(inhAllocs(9690)) },
+      { id: vids[2], position: 3, price: 13680, available: true,
+        planAllocations: [{ planId: plan3m, price: 12996 }].concat(inhAllocs(13680)) },
+    ],
+    sellingPlanGroups: [
+      { id: "g2", name: "Every 2 months", plans: [{ id: plan2m, name: "Every 2 Months", valueType: "percentage", value: 5 }] },
+      { id: "g3", name: "Every 3 months", plans: [{ id: plan3m, name: "Every 3 Months", valueType: "percentage", value: 5 }] },
+      INH_GROUP,
+    ],
+  });
+  const JOY_A_2M = "718347501943", JOY_A_3M = "718347534711"; // cellular-renewal-cream (product 7)
+  const JOY_B_2M = "718347141495", JOY_B_3M = "718347174263"; // neck-tightening-cream (product 8)
+  const JOY_A = joyProduct(JOY_A_2M, JOY_A_3M, [21, 22, 23]);
+  const JOY_B = joyProduct(JOY_B_2M, JOY_B_3M, [31, 32, 33]);
+  const jclone = (o) => JSON.parse(JSON.stringify(o));
+  const SX_DARK = { p: INH, live: false, d: { default: { unit: "MONTH", count: 2 } } };
+  const SX_LIVE = { p: INH, live: true, d: { default: { unit: "MONTH", count: 2 } } };
+  const JOY_LINE = {
+    product_id: 7, variant_id: 21, quantity: 1, key: "kJ", final_line_price: 5415, handle: "p7",
+    selling_plan_allocation: { selling_plan: { id: Number(JOY_A_2M), name: "Every 2 Months" } },
+  };
+  const JOY_LINE_3M = {
+    product_id: 7, variant_id: 22, quantity: 1, key: "kJ3", final_line_price: 9206, handle: "p7",
+    selling_plan_allocation: { selling_plan: { id: Number(JOY_A_3M), name: "Every 3 Months" } },
+  };
+  const INH_LINE = (value) => ({
+    product_id: 7, variant_id: 21, quantity: 1, key: "kI", final_line_price: value, handle: "p7",
+    selling_plan_allocation: { selling_plan: { id: INH[1], name: "Every 2 months" } },
+  });
+  const joySim = (cfg, extra, products) => {
+    const s = makeSim(Object.assign({ cfg }, extra || {}));
+    s.sandbox.state.products = products || { 7: JOY_A, 8: JOY_B };
+    return s;
+  };
+  const anchorOf = (s) => vm.runInContext("subXsPlanLine()", s.sandbox);
+
+  // v40 activation matrix: which line anchors, and in which family
+  {
+    const dark = joySim({ sx: SX_DARK });
+    dark.sandbox.state.cart = cartWith([JOY_LINE, LINE(6, 66, 1, 900)]);
+    const a = anchorOf(dark);
+    ok(!!a && a.native === true && String(a.planId) === JOY_A_2M && a.name === "Every 2 Months",
+      "v40: in-house dark + a Joy line: NATIVE anchor carrying the line's plan id and name");
+
+    // the pre-v40 island shape (no live member at all) is "not live" too
+    const setup = joySim({ sx: SX });
+    setup.sandbox.state.cart = cartWith([JOY_LINE]);
+    const su = anchorOf(setup);
+    ok(!!su && su.native === true, "v40: island without a live member (setup): a Joy line anchors natively");
+
+    const live = joySim({ sx: SX_LIVE });
+    live.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(anchorOf(live) === null, "v40: in-house app LIVE: a Joy line anchors NOTHING (native off, never owned)");
+
+    const b2b = joySim({ sx: SX_DARK, b2b: true });
+    b2b.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(anchorOf(b2b) === null, "v40: B2B never enters the native context");
+
+    const off = joySim({ sx: SX_DARK }, { settings: { subscriptionAware: false } });
+    off.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(anchorOf(off) === null, "v40: kill switch off: no native context");
+
+    const blind = joySim({});
+    blind.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(anchorOf(blind) === null, "v40: island absent, in-house plan ids unknown: inert (fail closed)");
+    vm.runInContext("nativeDeny = " + JSON.stringify(INH), blind.sandbox);
+    const bl = anchorOf(blind);
+    ok(!!bl && bl.native === true, "v40: island absent + proxy xp known: the Joy line anchors natively");
+
+    // A line on a dark IN-HOUSE plan keeps the owned family (the v17.1
+    // preview rule) — no native flag, exactly the pre-v40 anchor shape.
+    const inh = joySim({ sx: SX_DARK });
+    inh.sandbox.state.cart = cartWith([INH_LINE(5700)]);
+    const ia = anchorOf(inh);
+    ok(!!ia && String(ia.planId) === INH[1] && ia.native === undefined && Object.keys(ia).join(",") === "planId",
+      "v40: in-house plan line: owned anchor, shape unchanged ({planId} only)");
+
+    // Mixed cart: the highest-value line anchors, and ITS family decides.
+    const mixedOwned = joySim({ sx: SX_DARK });
+    mixedOwned.sandbox.state.cart = cartWith([INH_LINE(9000), JOY_LINE]);
+    const mo = anchorOf(mixedOwned);
+    ok(!!mo && String(mo.planId) === INH[1] && mo.native === undefined,
+      "v40 mixed cart: higher-value in-house line anchors -> owned family");
+    const mixedNative = joySim({ sx: SX_DARK });
+    mixedNative.sandbox.state.cart = cartWith([INH_LINE(100), JOY_LINE]);
+    const mn = anchorOf(mixedNative);
+    ok(!!mn && mn.native === true && String(mn.planId) === JOY_A_2M,
+      "v40 mixed cart: higher-value Joy line anchors -> native family");
+
+    // The line's own plan must be OFFERABLE: a 0 % plan or a prepaid lump
+    // is no per-shopper proof.
+    const flatP = jclone(JOY_A);
+    flatP.variants[0].planAllocations[0].price = 5700;
+    const flat = joySim({ sx: SX_DARK }, null, { 7: flatP, 8: JOY_B });
+    flat.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(anchorOf(flat) === null, "v40: a Joy line priced AT the one-time price (0 %) never anchors");
+    const lumpP = jclone(JOY_A);
+    lumpP.variants[0].planAllocations[0].price = 16245;
+    const lump = joySim({ sx: SX_DARK }, null, { 7: lumpP, 8: JOY_B });
+    lump.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(anchorOf(lump) === null, "v40: a prepaid Joy line (priced above one-time) never anchors");
+
+    const nodata = joySim({ sx: SX_DARK }, null, { 8: JOY_B });
+    nodata.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(anchorOf(nodata) === null, "v40: no product data for the line yet: no anchor (never guessed)");
+  }
+
+  // v40 plan resolution: crossSellPlanFor in the native family
+  {
+    const sim = joySim({ sx: SX_DARK });
+    sim.sandbox.state.cart = cartWith([JOY_LINE]);
+    const hit = vm.runInContext("crossSellPlanFor(8, 31)", sim.sandbox);
+    ok(!!hit && String(hit.planId) === JOY_B_2M && hit.priceCents === 5415,
+      "v40: the row resolves to ITS OWN product's Joy plan (plan ids are per product), at its allocation price");
+    ok(!!hit && hit.freq === "" && hit.name === "Every 2 Months",
+      "v40: same schedule as the cart's subscription (same plan name): no frequency label");
+
+    // The cart's subscription is the 2-unit pack ("Every 3 Months"); the
+    // companion's 1-unit variant only has "Every 2 Months": offered, and the
+    // differing frequency is named.
+    const sim3 = joySim({ sx: SX_DARK });
+    sim3.sandbox.state.cart = cartWith([JOY_LINE_3M]);
+    const hit3 = vm.runInContext("crossSellPlanFor(8, 31)", sim3.sandbox);
+    ok(!!hit3 && String(hit3.planId) === JOY_B_2M && hit3.freq === "Every 2 Months",
+      "v40: another schedule than the cart's: the row carries the plan NAME to show");
+    const hit32 = vm.runInContext("crossSellPlanFor(8, 32)", sim3.sandbox);
+    ok(!!hit32 && String(hit32.planId) === JOY_B_3M && hit32.priceCents === 9206 && hit32.freq === "",
+      "v40: a row variant whose plan is named like the anchor's: no label");
+
+    // Two offerable plans on the row variant: the one NAMED like the anchor
+    // wins over allocation order.
+    const twoP = jclone(JOY_B);
+    twoP.variants[0].planAllocations = [{ planId: JOY_B_3M, price: 5300 }, { planId: JOY_B_2M, price: 5415 }];
+    const two = joySim({ sx: SX_DARK }, null, { 7: JOY_A, 8: twoP });
+    two.sandbox.state.cart = cartWith([JOY_LINE]);
+    const hitTwo = vm.runInContext("crossSellPlanFor(8, 31)", two.sandbox);
+    ok(!!hitTwo && String(hitTwo.planId) === JOY_B_2M && hitTwo.freq === "",
+      "v40: same-named plan preferred over an earlier, cheaper differently-named one");
+
+    // The dark in-house plans are never resolved — not when discounted, not
+    // when ordered first, not when they are all the variant has.
+    const firstP = jclone(JOY_B);
+    firstP.variants[0].planAllocations = inhAllocs(5000).concat([{ planId: JOY_B_2M, price: 5415 }]);
+    const first = joySim({ sx: SX_DARK }, null, { 7: JOY_A, 8: firstP });
+    first.sandbox.state.cart = cartWith([JOY_LINE]);
+    const hitFirst = vm.runInContext("crossSellPlanFor(8, 31)", first.sandbox);
+    ok(!!hitFirst && String(hitFirst.planId) === JOY_B_2M,
+      "v40: discounted in-house allocations ordered FIRST: still the Joy plan (deny-list)");
+    const onlyP = jclone(JOY_B);
+    onlyP.variants[0].planAllocations = inhAllocs(5000);
+    const only = joySim({ sx: SX_DARK }, null, { 7: JOY_A, 8: onlyP });
+    only.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(vm.runInContext("crossSellPlanFor(8, 31)", only.sandbox) === null,
+      "v40: a row variant with only in-house plans stays ONE-TIME for a Joy cart");
+    const zeroP = jclone(JOY_B);
+    zeroP.variants[0].planAllocations = [{ planId: JOY_B_2M, price: 5700 }];
+    const zero = joySim({ sx: SX_DARK }, null, { 7: JOY_A, 8: zeroP });
+    zero.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(vm.runInContext("crossSellPlanFor(8, 31)", zero.sandbox) === null,
+      "v40: a 0 % plan on the row variant is no offer: row stays one-time");
+
+    // A differing plan WITHOUT a name could not be disclosed: not offered.
+    const namelessP = jclone(JOY_B);
+    namelessP.sellingPlanGroups.splice(0, 1);
+    const nameless = joySim({ sx: SX_DARK }, null, { 7: JOY_A, 8: namelessP });
+    nameless.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(vm.runInContext("crossSellPlanFor(8, 31)", nameless.sandbox) === null,
+      "v40: the row's plan has no name and is not the anchor's plan: one-time (never an undisclosed schedule)");
+
+    // The anchor's EXACT plan on the row variant (same product family):
+    // the exact allocation wins and needs no label.
+    const exactP = jclone(JOY_B);
+    exactP.variants[0].planAllocations = [{ planId: JOY_B_2M, price: 5415 }, { planId: JOY_A_2M, price: 5300 }];
+    const exact = joySim({ sx: SX_DARK }, null, { 7: JOY_A, 8: exactP });
+    exact.sandbox.state.cart = cartWith([JOY_LINE]);
+    const hitExact = vm.runInContext("crossSellPlanFor(8, 31)", exact.sandbox);
+    ok(!!hitExact && String(hitExact.planId) === JOY_A_2M && hitExact.priceCents === 5300 && hitExact.freq === "",
+      "v40: the anchor's exact plan on the row variant wins (same plan, no label)");
+
+    // Families never cross: an OWNED anchor keeps the v17 ladder and can
+    // never be handed a Joy plan.
+    const ownedOnJoy = jclone(JOY_B);
+    ownedOnJoy.variants[0].planAllocations = [{ planId: JOY_B_2M, price: 5415 }];
+    const own = joySim({ sx: SX_DARK }, null, { 7: JOY_A, 8: ownedOnJoy });
+    own.sandbox.state.cart = cartWith([INH_LINE(5700)]);
+    ok(vm.runInContext("crossSellPlanFor(8, 31)", own.sandbox) === null,
+      "v40: owned (in-house) anchor + Joy-only row allocations: null — never crosses into the native family");
+    const ownHit = joySim({ sx: SX_DARK });
+    ownHit.sandbox.state.cart = cartWith([INH_LINE(5700)]);
+    const oh = vm.runInContext("crossSellPlanFor(8, 31)", ownHit.sandbox);
+    ok(!!oh && String(oh.planId) === INH[1] && oh.freq === undefined,
+      "v40: owned anchor: the unchanged v17 ladder answers with the in-house plan ({planId, priceCents} only)");
+  }
+
+  // v40 row building: price swap + the frequency label only when it differs
+  {
+    const rowInfo = (s, builder, rowVar) => vm.runInContext(`
+      (function () {
+        var n = ${builder}(${rowVar});
+        var price = n.querySelector('.cx-crosssell__price');
+        var cmp = n.querySelector('.cx-crosssell__compare');
+        var freq = n.querySelector('.cx-crosssell__freq');
+        return {
+          cents: n.getAttribute('data-price-cents'),
+          plan: n.getAttribute('data-plan-id'),
+          price: price ? price.textContent : null,
+          cmp: cmp ? cmp.textContent : null,
+          freq: freq ? freq.textContent : null
+        };
+      })()`, s.sandbox);
+    const AUTO_ROW = { handle: "neck", productId: 8, title: "Neck", image: null, variantId: 31, priceCents: 5700, compareAtCents: 0 };
+    const MANUAL_ROW = { v: 31, p: 8, c: 5700, pf: "57,00 €", t: "Neck", n: "Neck", h: "neck" };
+
+    const sim = joySim({ sx: SX_DARK });
+    sim.sandbox.state.cart = cartWith([JOY_LINE]);
+    sim.sandbox.__row = AUTO_ROW;
+    sim.sandbox.__mrow = MANUAL_ROW;
+    const m5415 = vm.runInContext("money(5415)", sim.sandbox);
+    const m5700 = vm.runInContext("money(5700)", sim.sandbox);
+    const a = rowInfo(sim, "buildAutoCrossSellRow", "__row");
+    ok(a.cents === "5415" && a.plan === JOY_B_2M && a.price === m5415 && a.cmp === m5700,
+      "v40 auto row: the row's OWN Joy plan id + subscription price, one-time struck");
+    ok(a.freq === null, "v40 auto row: same schedule as the cart: NO frequency element (nothing visually new)");
+    const m = rowInfo(sim, "crosssellBuildRow", "__mrow");
+    ok(m.cents === "5415" && m.plan === JOY_B_2M && m.price === m5415 && m.cmp === "57,00 €" && m.freq === null,
+      "v40 manual row: own Joy plan, subscription price, no frequency element");
+
+    const sim3 = joySim({ sx: SX_DARK });
+    sim3.sandbox.state.cart = cartWith([JOY_LINE_3M]);
+    sim3.sandbox.__row = AUTO_ROW;
+    sim3.sandbox.__mrow = MANUAL_ROW;
+    const a3 = rowInfo(sim3, "buildAutoCrossSellRow", "__row");
+    ok(a3.plan === JOY_B_2M && a3.freq === "Every 2 Months",
+      "v40 auto row: another schedule than the cart's: the plan name is SHOWN");
+    const m3 = rowInfo(sim3, "crosssellBuildRow", "__mrow");
+    ok(m3.plan === JOY_B_2M && m3.freq === "Every 2 Months",
+      "v40 manual row: another schedule than the cart's: the plan name is SHOWN");
+
+    // in-house LIVE: the very same cart renders the classic one-time row
+    const live = joySim({ sx: SX_LIVE });
+    live.sandbox.state.cart = cartWith([JOY_LINE]);
+    live.sandbox.__row = AUTO_ROW;
+    const l = rowInfo(live, "buildAutoCrossSellRow", "__row");
+    ok(l.cents === "5700" && l.plan === null && l.freq === null,
+      "v40: in-house LIVE + Joy line: one-time row, no plan, no label");
+  }
+
+  // v40 adds: the row's plan rides the add; the click guard follows the native anchor
+  {
+    const sim = joySim({ sx: SX_DARK }, {
+      responders: {
+        "/cart/add.js": { ok: true },
+        "/cart.js": cartWith([JOY_LINE, LINE(8, 31, 1, 5415)]),
+        [PROXY_URL]: { products: {} },
+      },
+    });
+    sim.sandbox.state.cart = cartWith([JOY_LINE]);
+    vm.runInContext("performCrossSellAdd(31, 5415, null, '" + JOY_B_2M + "')", sim.sandbox);
+    await flush();
+    const add = sim.calls.fetches.find((f) => f.url === "/cart/add.js");
+    const body = add ? JSON.parse(add.options.body) : {};
+    ok(body.id === 31 && body.selling_plan === Number(JOY_B_2M) && body.properties && body.properties._cellexia_upsell === "cart",
+      "v40 native add: the companion's own Joy plan + the attribution property");
+
+    const gone = joySim({ sx: SX_DARK }, { responders: { "/cart/add.js": { ok: true } } });
+    gone.sandbox.state.cart = cartWith([LINE(7, 21, 1, 5700)]); // the Joy line became one-time
+    vm.runInContext("performCrossSellAdd(31, 5415, null, '" + JOY_B_2M + "')", gone.sandbox);
+    await flush();
+    ok(gone.calls.fetches.filter((f) => f.url === "/cart/add.js").length === 0 && (gone.calls.refresh || 0) === 1,
+      "v40 click guard: the native anchor left the cart: the subscription add aborts and refreshes");
+
+    // enrichment follows the native anchor exactly like the owned one
+    const enrich = makeSim({
+      cfg: { sx: SX_DARK },
+      responders: {
+        "/products/neck.js": { id: 8, handle: "neck", variants: [
+          { id: 31, price: 5700, available: true,
+            selling_plan_allocations: [{ selling_plan_id: JOY_B_2M, price: 5415 }] },
+        ], selling_plan_groups: [{ id: "g2", name: "Every 2 months", selling_plans: [
+          { id: JOY_B_2M, name: "Every 2 Months", price_adjustments: [{ value_type: "percentage", value: 5 }] }] }] },
+      },
+    });
+    enrich.sandbox.state.products = { 7: JOY_A };
+    enrich.sandbox.state.cart = cartWith([JOY_LINE]);
+    enrich.sandbox.__rows = [{ handle: "neck", productId: 8, variantId: 31, priceCents: 5700 }];
+    vm.runInContext("ensureCrossSellPlanData(__rows)", enrich.sandbox);
+    await flush();
+    const eh = vm.runInContext("crossSellPlanFor(8, 31)", enrich.sandbox);
+    ok(enrich.calls.fetches.filter((f) => f.url === "/products/neck.js").length === 1 &&
+      !!eh && String(eh.planId) === JOY_B_2M && eh.freq === "",
+      "v40 enrichment: a native anchor fetches the companion's plan data once, then resolves its Joy plan by name");
+  }
+
+  // v40 pack upgrade: tile label, add payload, failure restore
+  {
+    const UP_SETTINGS = { volumeOffers: [{ quantity: 2, discountPct: 15 }, { quantity: 3, discountPct: 20 }], highlightQuantity: 3 };
+    const upSim = (addResponder) => {
+      const s = makeSim({
+        cfg: { sx: SX_DARK },
+        effective: { volume: true },
+        settings: UP_SETTINGS,
+        responders: {
+          "/cart/change.js": { ok: true },
+          "/cart/add.js": addResponder,
+          "/cart.js": cartWith([Object.assign({}, JOY_LINE_3M, { key: "kNew" })]),
+          [PROXY_URL]: { products: {} },
+        },
+      });
+      s.sandbox.state.products = { 7: JOY_A };
+      s.sandbox.state.cart = cartWith([JOY_LINE]);
+      s.sandbox.__line = JOY_LINE;
+      s.sandbox.__cands = vm.runInContext("upgradeCandidates(__line)", s.sandbox);
+      return s;
+    };
+    const bodies = (s, url) => s.calls.fetches.filter((f) => f.url === url).map((f) => JSON.parse(f.options.body));
+
+    const sim = upSim({ ok: true });
+    ok(sim.sandbox.__cands.length === 2 && String(sim.sandbox.__cands[0].planId) === JOY_A_3M,
+      "v40 upgrade: a Joy 1-unit line gets both pack tiles on the pack's own Joy plan");
+    const labels = vm.runInContext(`
+      (function () {
+        var box = buildVolumeGroup(__line, __cands, false);
+        var tiles = box.querySelectorAll('.cx-volume__tile');
+        var out = [];
+        for (var i = 0; i < tiles.length; i++) {
+          var f = tiles[i].querySelector('.cx-volume__freq');
+          out.push(f ? f.textContent : null);
+        }
+        return out;
+      })()`, sim.sandbox);
+    ok(labels.length === 2 && labels[0] === "Every 3 Months" && labels[1] === "Every 3 Months",
+      "v40 tile: the new delivery frequency (the plan's own name) is shown on every plan-changing tile");
+    vm.runInContext("performUpgrade(__line, __cands[0], null)", sim.sandbox);
+    await flush();
+    const chg = bodies(sim, "/cart/change.js");
+    const adds = bodies(sim, "/cart/add.js");
+    ok(chg.length === 1 && chg[0].id === "kJ" && chg[0].quantity === 0,
+      "v40 upgrade: the original line is removed first (unchanged flow)");
+    ok(adds.length === 1 && adds[0].id === 22 && adds[0].selling_plan === Number(JOY_A_3M) &&
+      adds[0].properties._cellexia_upgrade === "1",
+      "v40 upgrade add: the TIER variant on the TIER's own Joy plan, marker property kept");
+    const upBeacon = sim.calls.tracks.find((t) => t.feature === "cart_upsell" && t.type === "upgrade");
+    ok(!!upBeacon && upBeacon.extra.revenue === Math.round((9206 - 5415)) / 100,
+      "v40 upgrade beacon: revenue delta from the charged subscription prices");
+
+    // The upgrade add fails (e.g. 422): the ORIGINAL variant goes back on
+    // its ORIGINAL plan — never on the tier's plan.
+    let n = 0;
+    const fail = upSim(() => { n++; return n === 1 ? new Error("422") : { ok: true }; });
+    vm.runInContext("performUpgrade(__line, __cands[0], null)", fail.sandbox);
+    await flush();
+    const fadds = bodies(fail, "/cart/add.js");
+    ok(fadds.length === 2 && fadds[0].id === 22 && fadds[0].selling_plan === Number(JOY_A_3M),
+      "v40 upgrade failure: the first add tried the tier variant on the tier plan");
+    ok(fadds.length === 2 && fadds[1].id === 21 && fadds[1].selling_plan === Number(JOY_A_2M) && fadds[1].quantity === 1,
+      "v40 upgrade failure: restore = the ORIGINAL variant on the ORIGINAL plan");
+    ok(fail.calls.notices.some((x) => x.type === "error"), "v40 upgrade failure: the error notice is shown");
+
+    // A same-plan upgrade (in-house line: every tier allocates its exact
+    // plan) is byte-identical to before: no label, the line's own plan.
+    const same = makeSim({
+      cfg: { sx: SX_DARK }, effective: { volume: true }, settings: UP_SETTINGS,
+      responders: { "/cart/change.js": { ok: true }, "/cart/add.js": { ok: true },
+        "/cart.js": cartWith([INH_LINE(9690)]), [PROXY_URL]: { products: {} } },
+    });
+    same.sandbox.state.products = { 7: JOY_A };
+    same.sandbox.state.cart = cartWith([INH_LINE(5700)]);
+    same.sandbox.__line = INH_LINE(5700);
+    same.sandbox.__cands = vm.runInContext("upgradeCandidates(__line)", same.sandbox);
+    const sameLabels = vm.runInContext(
+      "buildVolumeGroup(__line, __cands, false).querySelectorAll('.cx-volume__freq').length", same.sandbox);
+    ok(same.sandbox.__cands.length === 2 && sameLabels === 0,
+      "v40 tile: a same-plan upgrade shows NO frequency label");
+    vm.runInContext("performUpgrade(__line, __cands[0], null)", same.sandbox);
+    await flush();
+    const sadds = bodies(same, "/cart/add.js");
+    ok(sadds.length === 1 && sadds[0].id === 22 && String(sadds[0].selling_plan) === INH[1],
+      "v40 upgrade: a same-plan upgrade still carries the LINE's own plan (pre-v40 payload)");
+  }
+
+  // v40 tile + switch-card guards (the same extracted functions the drawer runs)
+  {
+    // A tier plan WITHOUT a name could not be disclosed: no tile at all.
+    const namelessP = jclone(JOY_A);
+    namelessP.sellingPlanGroups.splice(1, 1); // drop the "Every 3 months" group
+    const nameless = makeSim({
+      cfg: { sx: SX_DARK }, effective: { volume: true },
+      settings: { volumeOffers: [{ quantity: 2, discountPct: 15 }, { quantity: 3, discountPct: 20 }] },
+    });
+    nameless.sandbox.state.products = { 7: namelessP };
+    nameless.sandbox.__line = JOY_LINE;
+    ok(vm.runInContext("upgradeCandidates(__line)", nameless.sandbox).length === 0,
+      "v40 tile: the pack's plan has no name: NO tile (never an undisclosed schedule change)");
+
+    // Switch card (findPlanForItem): the in-house allocations are discounted
+    // and come first; neither the keyword-less fallback nor a loose keyword
+    // may ever resolve one while that app is dark.
+    const firstP = jclone(JOY_A);
+    firstP.variants[0].planAllocations = inhAllocs(5000).concat([{ planId: JOY_A_2M, price: 5415 }]);
+    const plainLine = { product_id: 7, variant_id: 21, quantity: 1, key: "kP", final_line_price: 5700, handle: "p7" };
+    const find = (settings, sx) => {
+      const sm = makeSim({ cfg: { sx }, settings });
+      sm.sandbox.state.products = { 7: firstP };
+      sm.sandbox.__item = plainLine;
+      return vm.runInContext("findPlanForItem(__item)", sm.sandbox);
+    };
+    const fb = find({ sellingPlanKeyword: "Continuous Treatment" }, SX_DARK);
+    ok(!!fb && String(fb.id) === JOY_A_2M && fb.allocPrice === 5415,
+      "v40 switch card: keyword matches nothing, in-house dark: fallback = the Joy plan, skipping the in-house ones ordered first");
+    const kw = find({ sellingPlanKeyword: "every" }, SX_DARK);
+    ok(!!kw && String(kw.id) === JOY_A_2M,
+      "v40 switch card: a keyword that names a DARK in-house plan first skips it and returns the Joy plan");
+    const liveFb = find({ sellingPlanKeyword: "Continuous Treatment" }, SX_LIVE);
+    ok(!!liveFb && INH.indexOf(String(liveFb.id)) !== -1,
+      "v40 switch card: in-house LIVE: the fallback is the owned in-house plan, as v23");
+  }
+
+  // v40 island-absent markets: the in-house plan ids come from the proxy, once
+  {
+    const sim = makeSim({ responders: { [PROXY_URL]: { products: {}, xp: INH } } });
+    sim.sandbox.state.products = { 7: JOY_A, 8: JOY_B };
+    sim.sandbox.state.cart = cartWith([JOY_LINE]);
+    ok(anchorOf(sim) === null, "v40 xp: before the list is known the Joy line anchors nothing");
+    vm.runInContext("ensureNativeDeny()", sim.sandbox);
+    await flush();
+    const proxyHits = (s) => s.calls.fetches.filter((f) => f.url === PROXY_URL).length;
+    ok(proxyHits(sim) === 1 && sim.calls.renderAll === 1,
+      "v40 xp: ONE proxy fetch, then one re-render");
+    const cached = entry(sim.storeMap, "cx_subs_xp:1");
+    ok(!!cached && Array.isArray(cached.xp) && cached.xp.join(",") === INH.join(",") && cached.t === sim.clock.t,
+      "v40 xp: the list is kept in sessionStorage with its timestamp");
+    const after = anchorOf(sim);
+    ok(!!after && after.native === true, "v40 xp: with the list known the Joy line anchors natively");
+    vm.runInContext("ensureNativeDeny()", sim.sandbox);
+    await flush();
+    ok(proxyHits(sim) === 1, "v40 xp: never fetched twice on a page");
+
+    // next page, same session: served from the cache, synchronously
+    const next = makeSim({ storeMap: sim.storeMap, responders: {} });
+    next.sandbox.state.products = { 7: JOY_A };
+    next.sandbox.state.cart = cartWith([JOY_LINE]);
+    vm.runInContext("ensureNativeDeny()", next.sandbox);
+    ok(next.calls.fetches.length === 0 && !!anchorOf(next),
+      "v40 xp: a fresh page inside the 10-minute TTL reads the cache, zero fetches");
+    // past the TTL: asked again (the in-house app may have been removed)
+    const stale = makeSim({ storeMap: sim.storeMap, responders: { [PROXY_URL]: { products: {}, xp: [] } } });
+    stale.clock.t += 600001;
+    stale.sandbox.state.products = { 7: JOY_A };
+    stale.sandbox.state.cart = cartWith([JOY_LINE]);
+    vm.runInContext("ensureNativeDeny()", stale.sandbox);
+    await flush();
+    ok(proxyHits(stale) === 1 && !!anchorOf(stale),
+      "v40 xp: past the TTL the list is re-fetched; an EMPTY list (app gone) still enables native");
+
+    // an older server (no "xp" member): inert, and not re-asked per render
+    const old = makeSim({ responders: { [PROXY_URL]: { products: {} } } });
+    old.sandbox.state.products = { 7: JOY_A };
+    old.sandbox.state.cart = cartWith([JOY_LINE]);
+    vm.runInContext("ensureNativeDeny()", old.sandbox);
+    await flush();
+    vm.runInContext("ensureNativeDeny()", old.sandbox);
+    await flush();
+    ok(proxyHits(old) === 1 && anchorOf(old) === null && old.calls.renderAll === 0,
+      "v40 xp: response without xp (older server): native stays inert, asked once");
+
+    // never asked when it cannot matter
+    const withIsland = joySim({ sx: SX_DARK }, { responders: { [PROXY_URL]: { products: {}, xp: [] } } });
+    withIsland.sandbox.state.cart = cartWith([JOY_LINE]);
+    vm.runInContext("ensureNativeDeny()", withIsland.sandbox);
+    await flush();
+    ok(withIsland.calls.fetches.length === 0, "v40 xp: island present: the proxy is never asked");
+    const noPlan = makeSim({ responders: { [PROXY_URL]: { products: {}, xp: INH } } });
+    noPlan.sandbox.state.cart = cartWith([LINE(7, 21, 1, 5700)]);
+    vm.runInContext("ensureNativeDeny()", noPlan.sandbox);
+    await flush();
+    ok(noPlan.calls.fetches.length === 0, "v40 xp: one-time cart and the switch card off: no fetch");
+    const switchOn = makeSim({ effective: { subscription: true }, responders: { [PROXY_URL]: { products: {}, xp: INH } } });
+    switchOn.sandbox.state.cart = cartWith([LINE(7, 21, 1, 5700)]);
+    vm.runInContext("ensureNativeDeny()", switchOn.sandbox);
+    await flush();
+    ok(proxyHits(switchOn) === 1, "v40 xp: the switch card on: the list is fetched for one-time carts too");
+    const b2bX = makeSim({ cfg: { b2b: true }, responders: { [PROXY_URL]: { products: {}, xp: INH } } });
+    b2bX.sandbox.state.cart = cartWith([JOY_LINE]);
+    vm.runInContext("ensureNativeDeny()", b2bX.sandbox);
+    await flush();
+    ok(b2bX.calls.fetches.length === 0, "v40 xp: B2B: no fetch");
+    const offX = makeSim({ settings: { subscriptionAware: false }, responders: { [PROXY_URL]: { products: {}, xp: INH } } });
+    offX.sandbox.state.cart = cartWith([JOY_LINE]);
+    vm.runInContext("ensureNativeDeny()", offX.sandbox);
+    await flush();
+    ok(offX.calls.fetches.length === 0, "v40 xp: kill switch off: no fetch");
   }
 
   // --- cache/debounce/commit semantics (v16: anchor-keyed, session-persisted) --------
@@ -1711,8 +2270,8 @@ async function main() {
       // v17 subscription-aware offers
       {
         name: "m22-ownership-dropped",
-        find: "if (!ownedPlan(item.selling_plan_allocation.selling_plan.id)) continue;",
-        replace: "if (false) continue;",
+        find: "if (!(owned && ownedPlan(item.selling_plan_allocation.selling_plan.id))) {",
+        replace: "if (!(owned && true)) {",
       },
       {
         name: "m23-add-drops-plan",
@@ -1763,6 +2322,102 @@ async function main() {
         name: "m32-click-guard-dropped",
         find: "if (planId && !subXsPlanLine()) { refresh(); return; }",
         replace: ";",
+      },
+      // v40 native (Joy) family
+      {
+        name: "m33-native-while-live",
+        find: "return subscriptionAware() && !isB2B() && !inhouseLive() && nativeDenyList() !== null;",
+        replace: "return subscriptionAware() && !isB2B() && nativeDenyList() !== null;",
+      },
+      {
+        name: "m34-native-b2b",
+        find: "return subscriptionAware() && !isB2B() && !inhouseLive() && nativeDenyList() !== null;",
+        replace: "return subscriptionAware() && !inhouseLive() && nativeDenyList() !== null;",
+      },
+      {
+        name: "m35-native-killswitch",
+        find: "return subscriptionAware() && !isB2B() && !inhouseLive() && nativeDenyList() !== null;",
+        replace: "return !isB2B() && !inhouseLive() && nativeDenyList() !== null;",
+      },
+      {
+        name: "m36-native-zero-percent",
+        find: "return p > 0 && p < one;",
+        replace: "return p > 0 && p <= one;",
+      },
+      {
+        name: "m37-native-deny-dropped",
+        find: "if (!variant || !a || a.planId == null || subsDenied(a.planId)) return false;",
+        replace: "if (!variant || !a || a.planId == null) return false;",
+      },
+      {
+        name: "m38-native-branch-dropped",
+        find: "if (anchor.native) {",
+        replace: "if (false) {",
+      },
+      {
+        name: "m39-upgrade-keeps-line-plan",
+        find: "if (candidate.planId != null) addPlanId = /^\\d+$/.test(String(candidate.planId)) ? Number(candidate.planId) : candidate.planId;",
+        replace: ";",
+      },
+      {
+        name: "m40-restore-on-tier-plan",
+        find: "if (sellingPlanId) restore.selling_plan = sellingPlanId;",
+        replace: "if (addPlanId) restore.selling_plan = addPlanId;",
+      },
+      {
+        name: "m41-tile-label-dropped",
+        find: "if (candidate.planName) tile.appendChild(el('span', 'cx-volume__freq', candidate.planName));",
+        replace: ";",
+      },
+      {
+        name: "m42-nameless-tile-offered",
+        find: "if (tierPlan && !tierPlan.name) tierPlan = null;",
+        replace: ";",
+      },
+      {
+        name: "m43-nameless-row-offered",
+        find: "if (!sameSchedule && !nat.name) return null;",
+        replace: ";",
+      },
+      {
+        name: "m44-keyword-names-dark-plan",
+        find: "if (subsDenied(alloc.planId) && !subsLive()) continue;",
+        replace: ";",
+      },
+      {
+        name: "m45-fallback-unguarded",
+        find: "if (!fallback && nativeSubs() && nativeAlloc(variant, alloc)) fallback = candidate;",
+        replace: "if (!fallback && nativeSubs()) fallback = candidate;",
+      },
+      {
+        name: "m46-row-label-dropped",
+        find: "if (sub && sub.freq) info.appendChild(el('span', 'cx-crosssell__freq', sub.freq)); // v40: see crosssellBuildRow",
+        replace: "; // v40: see crosssellBuildRow",
+      },
+      {
+        name: "m47-manual-label-dropped",
+        find: "if (sub && sub.freq) {\n      var freq = cxEl('span', 'cx-crosssell__freq');",
+        replace: "if (false) {\n      var freq = cxEl('span', 'cx-crosssell__freq');",
+      },
+      {
+        name: "m48-row-label-always-empty",
+        find: "freq: sameSchedule ? '' : nat.name",
+        replace: "freq: ''",
+      },
+      {
+        name: "m49-name-preference-dropped",
+        find: "if (preferName && hit.name && nativeSameName(hit.name, preferName)) return hit;",
+        replace: ";",
+      },
+      {
+        name: "m50-xp-reasked",
+        find: "if (cfg.sx || nativeDeny !== null || nativeDenyAsked) return;",
+        replace: "if (cfg.sx || nativeDeny !== null) return;",
+      },
+      {
+        name: "m51-xp-ttl-ignored",
+        find: "Date.now() - parsed.t <= 600000 && Array.isArray(parsed.xp)",
+        replace: "Array.isArray(parsed.xp)",
       },
     ];
     const bad = runMutants({ selfPath: __filename, srcPath: REAL_SRC, mutants: MUTANTS });

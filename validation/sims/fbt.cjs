@@ -25,6 +25,24 @@
  * Documented stubs: decodeEntities = identity; azFetchJSON is a scripted
  * recorder (no network); track is a recorder; window.fetch is a recorder
  * for the add-bundle POST. Everything else is the real shipped code.
+ *
+ * v40 (SPEC-v40, Joy Subscriptions): the NATIVE family — Joy's hidden
+ * selling_plan input in .pdp__grey is the verdict when the in-house buy
+ * box is silent; rows resolve to their OWN same-named Joy plan (plan ids
+ * are per product), in-house plans (proxy "xp") are never resolved, and
+ * the add never sends a plan a row is not displaying.
+ *
+ * MUTATION TESTS (all must be CAUGHT — non-zero exit on a mutant copy):
+ *   f1-inhouse-falls-through   a buy box answering "one-time" is overruled by Joy's field
+ *   f2-deny-unknown-ignored    native prices rows before the in-house list is known
+ *   f3-zero-percent            a plan priced AT one-time counts as offerable
+ *   f4-mismatch-abort-dropped  the add sends a plan the row is not displaying
+ *   f5-select-accepted         a SELECT named selling_plan is read as Joy's field
+ *   f6-deny-dropped            a companion resolves a dark in-house plan
+ *   f7-name-rule-dropped       a companion takes a plan on another schedule
+ *   f8-row-plan-is-page-plan   rows are stamped with the page plan's id
+ *   f9-add-uses-page-plan      the add sends the page plan for every row
+ *   f10-b2b-native             B2B enters the native context
  */
 "use strict";
 const path = require("path");
@@ -33,16 +51,17 @@ const vm = require("vm");
 const { extractAll } = require("./lib/extract.cjs");
 const { makeDocument, El } = require("./lib/mini-dom.cjs");
 
-const SRC = fs.readFileSync(
-  path.join(__dirname, "..", "..", "extensions", "cellexia-booster", "assets", "cellexia-pdp.js"),
-  "utf8",
-);
+const REAL_SRC = path.join(__dirname, "..", "..", "extensions", "cellexia-booster", "assets", "cellexia-pdp.js");
+// v40: mutation-tested (the native enrollment logic) — the mutant re-runs
+// read their copy through CX_SIM_SRC, the lib/mutants.cjs convention.
+const SRC_PATH = process.env.CX_SIM_SRC || REAL_SRC;
+const SRC = fs.readFileSync(SRC_PATH, "utf8");
 
 const EXTRACTED = extractAll(SRC, {
   // v14 rewards: the FBT/similar pick loops call azRwSkip (gift/sachet/excluded
   // filter) and azFbtUpdate/azFbtFinish/azMountSimilar call the set-savings
   // caption helpers; the extraction carries them so the REAL pipeline runs.
-  vars: ["AZ_PROTECTION", "azFbtBusy", "azFbtPicksPromise", "RW_DEFAULTS", "azSubPlans", "azSubManualDone"],
+  vars: ["AZ_PROTECTION", "azFbtBusy", "azFbtPicksPromise", "RW_DEFAULTS", "azSubPlans", "azSubManualDone", "azSubNames", "azSubDeny"],
   functions: [
     "cxRwTier",
     "azRwT",
@@ -107,6 +126,14 @@ const EXTRACTED = extractAll(SRC, {
     "azSubPriceRow",
     "azSubManualFetch",
     "azSubSync",
+    // v40 native (Joy) family
+    "azSubDenyLoad",
+    "azSubDenied",
+    "azSubInhouse",
+    "azSubNative",
+    "azNativePlanId",
+    "azSubRowPlan",
+    "azNativeOn",
   ],
 });
 
@@ -196,7 +223,12 @@ function makeSim(opts) {
       if (url.indexOf("apps/cellexia/cart-data") !== -1) {
         calls.proxy.push(decodeURIComponent(url.split("handles=")[1]));
         const r = (responders.proxy || (() => ({})))(url);
-        return Promise.resolve(r).then((v) => ({ productsByHandle: v }));
+        // v40: the proxy's top-level "xp" (in-house plan ids) rides the same
+        // response — present only when the scenario scripts it (an older
+        // server omits the member entirely).
+        return Promise.resolve(r).then((v) => (
+          "xp" in responders ? { productsByHandle: v, xp: responders.xp } : { productsByHandle: v }
+        ));
       }
       if (url.indexOf("cart.js") !== -1) return Promise.resolve({ token: "t" });
       return Promise.reject(new Error("no responder for " + url));
@@ -767,11 +799,423 @@ async function main() {
       "v17.1 similar flip back: classic price restored");
   }
 
+  // ============================================================================
+  // v40 — native selling plans (Joy Subscriptions, SPEC-v40)
+  //
+  // Fixtures = the LIVE shape (Spanish market, 2026-11-13): Joy keeps the
+  // shopper's choice in ONE hidden <input name="selling_plan"> inside
+  // .pdp__grey; every product has its OWN Joy plan ids ("Every 2 Months" on
+  // the 1-unit variant, "Every 3 Months" on the 2/3-unit ones); the dark
+  // in-house app's 0 % plans sit on every variant; window.CellexiaSubs is
+  // loaded but answers null.
+  // ============================================================================
+  const INH = ["718653555063", "718653587831", "718653620599"];
+  const inhAllocs = (price) => INH.map((id) => ({ planId: id, price }));
+  const INH_GROUP = { id: "gM", name: "Main", plans: [
+    { id: INH[0], name: "Every 3 weeks" }, { id: INH[1], name: "Every 2 months" }, { id: INH[2], name: "Every 3 months" },
+  ] };
+  const g2 = (id) => ({ id: "g2", name: "Every 2 months", plans: [{ id, name: "Every 2 Months" }] });
+  const g3 = (id) => ({ id: "g3", name: "Every 3 months", plans: [{ id, name: "Every 3 Months" }] });
+  const MAIN_2M = "718347501943", MAIN_3M = "718347534711", X_2M = "718347141495", Y_2M = "718347796855";
+  const JOY_PROXY = () => ({
+    x: { variants: [{ id: 210, price: 5700, available: true,
+      planAllocations: [{ planId: X_2M, price: 5415 }].concat(inhAllocs(5700)) }],
+      sellingPlanGroups: [g2(X_2M), INH_GROUP] },
+    y: { variants: [{ id: 220, price: 3700,
+      planAllocations: [{ planId: Y_2M, price: 3515 }].concat(inhAllocs(3700)) }],
+      sellingPlanGroups: [g2(Y_2M), INH_GROUP] },
+    main: { variants: [
+      { id: 11, price: 5700, available: true, planAllocations: [{ planId: MAIN_2M, price: 5415 }].concat(inhAllocs(5700)) },
+      { id: 12, price: 9690, available: true, planAllocations: [{ planId: MAIN_3M, price: 9206 }].concat(inhAllocs(9690)) },
+    ], sellingPlanGroups: [g2(MAIN_2M), g3(MAIN_3M), INH_GROUP] },
+  });
+  const JOY_CONFIG = (extra) => Object.assign({
+    product: { id: 1, handle: "main", selectedVariant: "11",
+      variants: { 11: { available: true, price: 5700 }, 12: { available: true, price: 9690 } } },
+    fbt: { mode: "auto", title: "Main product", priceFmt: "€57.00", img: "" },
+  }, extra || {});
+  // Joy's hidden field (created on first use; value "" = one-time selected).
+  const joyField = (sim, value) => {
+    let grey = sim.doc.querySelector(".pdp__grey");
+    if (!grey) {
+      grey = new El("div");
+      grey.className = "pdp__grey";
+      sim.doc.body.appendChild(grey);
+    }
+    let input = grey.querySelector("input");
+    if (!input) {
+      input = new El("input");
+      input.setAttribute("type", "hidden");
+      input.setAttribute("name", "selling_plan");
+      grey.appendChild(input);
+    }
+    input.value = value;
+    return input;
+  };
+  const joySim = (extra) => {
+    const sim = makeSim(Object.assign({
+      responders: { recs: SUB_RECS, proxy: JOY_PROXY, xp: INH },
+      config: JOY_CONFIG(),
+    }, extra || {}));
+    // the in-house embed is still loaded on the live store, and dark
+    sim.sandbox.window.CellexiaSubs = subStub(null);
+    return sim;
+  };
+  const rowsOf = (sim) => sim.doc.querySelector(".cx-az-fbt").querySelectorAll("[data-cx-az-fbt-row]");
+  const centsPlan = (row) => row.getAttribute("data-price-cents") + "/" + (row.getAttribute("data-plan-id") || "-");
+  const lastPost = (sim) => JSON.parse(sim.calls.posts[sim.calls.posts.length - 1].options.body);
+
+  {
+    // Joy subscription selected: every row prices from ITS OWN Joy plan and
+    // the add carries that per-row plan id.
+    const sim = joySim();
+    joyField(sim, MAIN_2M);
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    ok(vm.runInContext("azSubPlanId()", sim.sandbox) === MAIN_2M && vm.runInContext("azSubNative()", sim.sandbox) === true,
+      "v40: buy box silent: Joy's hidden selling_plan field is the verdict");
+    const rows = rowsOf(sim);
+    const node = sim.doc.querySelector(".cx-az-fbt");
+    const eur = (c) => vm.runInContext(`azMoney(${c})`, sim.sandbox);
+    ok(centsPlan(rows[0]) === "5415/" + MAIN_2M,
+      "v40: this-item row priced from the page product's own Joy allocation");
+    ok(centsPlan(rows[1]) === "5415/" + X_2M && centsPlan(rows[2]) === "3515/" + Y_2M,
+      "v40: companion rows carry THEIR OWN product's same-named Joy plan (ids are per product)");
+    ok(node.querySelector("[data-cx-az-fbt-total]").textContent === eur(5415 + 5415 + 3515),
+      "v40: total = sum of the charged subscription prices");
+    sim.sandbox.__node = node;
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    const body = lastPost(sim);
+    ok(body.items.length === 3 && body.items.every((i) => i.properties._cellexia_upsell === "fbt") &&
+      body.items[0].selling_plan === Number(MAIN_2M) && body.items[1].selling_plan === Number(X_2M) &&
+      body.items[2].selling_plan === Number(Y_2M),
+      "v40: the add sends each item with its OWN plan (numeric) + the marker");
+
+    // Joy flips to one-time (field emptied, tick -> azSubSync): classic again.
+    joyField(sim, "");
+    vm.runInContext("azSubSync()", sim.sandbox);
+    ok(centsPlan(rows[0]) === "5700/-" && centsPlan(rows[1]) === "5700/-" && centsPlan(rows[2]) === "3700/-",
+      "v40 flip to one-time: classic cents restored, plan attributes dropped");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    ok(lastPost(sim).items.every((i) => !("selling_plan" in i)),
+      "v40 flip to one-time: the add carries NO selling_plan keys");
+  }
+
+  {
+    // The in-house buy box, when it answers, alone decides — even "one-time"
+    // is never overruled by a numeric Joy field.
+    const sim = joySim();
+    sim.sandbox.window.CellexiaSubs = subStub({ mode: "one_time", sellingPlanId: null, variantId: "11" });
+    joyField(sim, MAIN_2M);
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    // (asserted after the mount: the reader fails closed until the az config is read)
+    ok(vm.runInContext("azSubPlanId()", sim.sandbox) === null && vm.runInContext("azSubNative()", sim.sandbox) === false,
+      "v40: a buy box answering one-time wins over Joy's field (never falls through)");
+    ok(centsPlan(rowsOf(sim)[0]) === "5700/-" && centsPlan(rowsOf(sim)[1]) === "5700/-", "v40: ...and the rows stay classic");
+  }
+
+  {
+    // An older server (no "xp" in the proxy response): the in-house plan ids
+    // are unknown, so native prices NOTHING — and the add stays plan-free.
+    const sim = joySim({ responders: { recs: SUB_RECS, proxy: JOY_PROXY } });
+    joyField(sim, MAIN_2M);
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    const rows = rowsOf(sim);
+    ok(centsPlan(rows[0]) === "5700/-" && centsPlan(rows[1]) === "5700/-" && centsPlan(rows[2]) === "3700/-",
+      "v40 old server (no xp): every row stays one-time (fail closed)");
+    sim.sandbox.__node = sim.doc.querySelector(".cx-az-fbt");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    ok(sim.calls.posts.length === 1 && lastPost(sim).items.every((i) => !("selling_plan" in i)),
+      "v40 old server (no xp): the add is the classic plan-free one");
+  }
+
+  {
+    // The page is on the 2-unit pack ("Every 3 Months"); the companions only
+    // have "Every 2 Months" plans: another schedule, so they stay one-time —
+    // nothing visually new on the PDP, never an undisclosed frequency.
+    const sim = joySim({ config: JOY_CONFIG({ product: { id: 1, handle: "main", selectedVariant: "12",
+      variants: { 11: { available: true, price: 5700 }, 12: { available: true, price: 9690 } } } }) });
+    joyField(sim, MAIN_3M);
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    const rows = rowsOf(sim);
+    sim.sandbox.__node = sim.doc.querySelector(".cx-az-fbt");
+    vm.runInContext("azFbtSyncThis(__node)", sim.sandbox);
+    ok(centsPlan(rows[0]) === "9206/" + MAIN_3M,
+      "v40 3-month pack: this-item row on the page's own 3-month plan");
+    ok(centsPlan(rows[1]) === "5700/-" && centsPlan(rows[2]) === "3700/-",
+      "v40 3-month pack: companions without a same-named plan stay ONE-TIME");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    const body = lastPost(sim);
+    ok(body.items[0].selling_plan === Number(MAIN_3M) && !("selling_plan" in body.items[1]) && !("selling_plan" in body.items[2]),
+      "v40 3-month pack: the add subscribes this item only; companions are plan-free");
+  }
+
+  {
+    // Dark in-house plans are never resolved: here x's in-house plans are
+    // DISCOUNTED, ordered first, and one is even named like the page plan
+    // ("Every 2 months"); y only has in-house plans.
+    const denyProxy = () => {
+      const p = JOY_PROXY();
+      p.x.variants[0].planAllocations = inhAllocs(5000).concat([{ planId: X_2M, price: 5415 }]);
+      p.y.variants[0].planAllocations = inhAllocs(3000);
+      return p;
+    };
+    const sim = joySim({ responders: { recs: SUB_RECS, proxy: denyProxy, xp: INH } });
+    joyField(sim, MAIN_2M);
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    const rows = rowsOf(sim);
+    ok(centsPlan(rows[1]) === "5415/" + X_2M,
+      "v40 deny-list: a discounted, same-named in-house plan ordered first is skipped for the Joy plan");
+    ok(centsPlan(rows[2]) === "3700/-",
+      "v40 deny-list: a companion with only in-house plans stays one-time");
+
+    // 0 % and prepaid companion plans are no offers either.
+    const flatProxy = () => {
+      const p = JOY_PROXY();
+      p.x.variants[0].planAllocations = [{ planId: X_2M, price: 5700 }];
+      p.y.variants[0].planAllocations = [{ planId: Y_2M, price: 11100 }];
+      return p;
+    };
+    const flat = joySim({ responders: { recs: SUB_RECS, proxy: flatProxy, xp: INH } });
+    joyField(flat, MAIN_2M);
+    vm.runInContext("azMountFbt()", flat.sandbox);
+    await flush();
+    const fr = rowsOf(flat);
+    ok(centsPlan(fr[1]) === "5700/-" && centsPlan(fr[2]) === "3700/-",
+      "v40: a companion plan priced AT one-time (0 %) or above it (prepaid) is never offered");
+  }
+
+  {
+    // Same gates as the buy-box reader: B2B and the kill switch.
+    const b2b = joySim();
+    b2b.sandbox.window.isB2BCustomer = true;
+    joyField(b2b, MAIN_2M);
+    vm.runInContext("azMountFbt()", b2b.sandbox);
+    await flush();
+    ok(vm.runInContext("azSubPlanId()", b2b.sandbox) === null && vm.runInContext("azSubNative()", b2b.sandbox) === false &&
+      centsPlan(rowsOf(b2b)[1]) === "5700/-",
+      "v40 B2B: never enters the native context");
+    const off = joySim({ config: JOY_CONFIG({ subOff: 1 }) });
+    joyField(off, MAIN_2M);
+    vm.runInContext("azMountFbt()", off.sandbox);
+    await flush();
+    ok(vm.runInContext("azSubPlanId()", off.sandbox) === null && centsPlan(rowsOf(off)[1]) === "5700/-",
+      "v40 kill switch: subOff:1 keeps everything classic under Joy too");
+  }
+
+  {
+    // Joy renders late and may select a subscription WITHOUT a tick: the
+    // rows still show one-time prices. The add must not send a plan the
+    // rows are not displaying — it re-prices and waits for the next click.
+    const sim = joySim();
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    const rows = rowsOf(sim);
+    ok(centsPlan(rows[1]) === "5700/-", "v40 late Joy: rows mounted before Joy's field exist as classic rows");
+    joyField(sim, MAIN_2M); // no tick, no azSubSync
+    sim.sandbox.__node = sim.doc.querySelector(".cx-az-fbt");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    ok(sim.calls.posts.length === 0,
+      "v40 late Joy: the click is NOT sent (rows show one-time, the field says subscription)");
+    ok(centsPlan(rows[0]) === "5415/" + MAIN_2M && centsPlan(rows[1]) === "5415/" + X_2M,
+      "v40 late Joy: ...and the rows were re-priced to what the next click will add");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    ok(sim.calls.posts.length === 1 && lastPost(sim).items[1].selling_plan === Number(X_2M),
+      "v40 late Joy: the next click adds exactly what is displayed");
+
+    // ...and the reverse: rows show subscription prices, the field was
+    // emptied without a tick -> no silent one-time add either.
+    joyField(sim, "");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    ok(sim.calls.posts.length === 1 && centsPlan(rows[1]) === "5700/-",
+      "v40 stale subscription rows: the click is not sent, rows restore to one-time");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    ok(sim.calls.posts.length === 2 && lastPost(sim).items.every((i) => !("selling_plan" in i)),
+      "v40 stale subscription rows: the next click is the plan-free add");
+  }
+
+  {
+    // azNativePlanId reads ONLY Joy's field: an INPUT named selling_plan
+    // inside .pdp__grey holding an all-digits value.
+    const read = (sim) => vm.runInContext("azNativePlanId()", sim.sandbox);
+    const none = makeSim();
+    ok(read(none) === null, "v40 field: no .pdp__grey: null");
+    const outside = makeSim();
+    const stray = new El("input");
+    stray.setAttribute("name", "selling_plan");
+    stray.value = "123";
+    outside.doc.body.appendChild(stray);
+    const emptyGrey = new El("div");
+    emptyGrey.className = "pdp__grey";
+    outside.doc.body.appendChild(emptyGrey);
+    ok(read(outside) === null, "v40 field: a selling_plan input OUTSIDE the buy area is ignored");
+    const sel = makeSim();
+    const grey = new El("div");
+    grey.className = "pdp__grey";
+    const select = new El("select");
+    select.setAttribute("name", "selling_plan");
+    select.value = "456";
+    grey.appendChild(select);
+    sel.doc.body.appendChild(grey);
+    ok(read(sel) === null, "v40 field: a SELECT named selling_plan (the theme's own picker) is not Joy's field");
+    const good = makeSim();
+    const gi = joyField(good, "718347501943");
+    ok(read(good) === "718347501943", "v40 field: all-digits value is returned as a string");
+    gi.value = "false";
+    ok(read(good) === null, "v40 field: a non-numeric value (\"false\") is one-time");
+    gi.value = "";
+    ok(read(good) === null, "v40 field: empty value is one-time");
+    gi.value = "789";
+    gi.setAttribute("disabled", "");
+    ok(read(good) === null, "v40 field: a disabled input is skipped");
+  }
+
+  {
+    // Similar cards: a card follows the selection through ITS OWN
+    // same-named Joy plan; no such plan = its one-time price.
+    const sim = makeSim({
+      config: JOY_CONFIG(),
+      responders: {
+        xp: INH,
+        recs: (intent) => intent === "related"
+          ? [{ id: 6, handle: "c", title: "C", url: "/products/c" }, { id: 7, handle: "d", title: "D" }]
+          : [],
+        proxy: () => ({
+          c: { variants: [{ id: 610, price: 5700, planAllocations: [{ planId: "9102", price: 5415 }].concat(inhAllocs(5700)) }],
+            sellingPlanGroups: [g2("9102"), INH_GROUP] },
+          d: { variants: [{ id: 710, price: 2200, planAllocations: [{ planId: "9203", price: 2090 }].concat(inhAllocs(2000)) }],
+            sellingPlanGroups: [g3("9203"), INH_GROUP] },
+          main: JOY_PROXY().main,
+        }),
+      },
+    });
+    sim.sandbox.window.CellexiaSubs = subStub(null);
+    joyField(sim, MAIN_2M);
+    // the page product's plan names reach the PDP through the same proxy data
+    sim.sandbox.__main = JOY_PROXY().main;
+    vm.runInContext("azSubRegister(__main)", sim.sandbox);
+    vm.runInContext("azMountSimilar()", sim.sandbox);
+    await flush();
+    const cards = sim.doc.querySelectorAll(".cx-az-similar__card");
+    const eur = (c) => vm.runInContext(`azMoney(${c})`, sim.sandbox);
+    ok(cards[0].querySelector(".cx-az-similar__price").textContent === eur(5415),
+      "v40 similar: card priced from its own same-named Joy plan");
+    ok(cards[1].querySelector(".cx-az-similar__price").textContent === eur(2200),
+      "v40 similar: only another schedule (or in-house plans) on the card: one-time price");
+    joyField(sim, "");
+    vm.runInContext("azSubSync()", sim.sandbox);
+    ok(cards[0].querySelector(".cx-az-similar__price").textContent === eur(5700),
+      "v40 similar flip to one-time: classic price restored");
+  }
+
+  {
+    // Joy's announcements are TICKS: both window events and a capture-phase
+    // change on the field call the handler; nothing else does.
+    const sim = makeSim();
+    const winL = {};
+    const docL = [];
+    sim.sandbox.window.addEventListener = (type, fn) => { winL[type] = fn; };
+    sim.doc.addEventListener = (type, fn, capture) => { docL.push({ type, fn, capture }); };
+    let ticks = 0;
+    sim.sandbox.__tick = () => { ticks++; };
+    vm.runInContext("azNativeOn(__tick)", sim.sandbox);
+    ok(typeof winL["avada:plan:selected"] === "function" && typeof winL["subscription-change"] === "function",
+      "v40 ticks: listens for Joy's avada:plan:selected and subscription-change on window");
+    winL["avada:plan:selected"]({ detail: { sellingPlanId: "whatever" } });
+    winL["subscription-change"]({});
+    ok(ticks === 2, "v40 ticks: each Joy event is one tick (the payload is never read)");
+    ok(docL.length === 1 && docL[0].type === "change" && docL[0].capture === true,
+      "v40 ticks: one capture-phase change listener on the document");
+    const field = new El("input");
+    field.setAttribute("name", "selling_plan");
+    const other = new El("input");
+    other.setAttribute("name", "quantity");
+    docL[0].fn({ target: field });
+    docL[0].fn({ target: other });
+    docL[0].fn({});
+    ok(ticks === 3, "v40 ticks: only a change on the selling_plan field ticks");
+  }
+
   if (failures > 0) {
     console.error(`\n${failures}/${checks} CHECKS FAILED`);
     process.exit(1);
   }
   console.log(`ALL ${checks} CHECKS PASSED (az_fbt + az_similar_items vs the real cellexia-pdp.js)`);
+
+  // ---------------------------------------------------------- mutation tests
+  if (!process.env.CX_SKIP_MUTANTS && SRC_PATH === REAL_SRC) {
+    const { runMutants } = require("./lib/mutants.cjs");
+    const MUTANTS = [
+      {
+        name: "f1-inhouse-falls-through",
+        find: "if (!st) return azNativePlanId();",
+        replace: "if (!st || st.mode !== 'subscription') return azNativePlanId();",
+      },
+      {
+        name: "f2-deny-unknown-ignored",
+        find: "if (!Array.isArray(azSubDeny) || azSubDenied(pagePlanId)) return null;",
+        replace: "if (azSubDenied(pagePlanId)) return null;",
+      },
+      {
+        name: "f3-zero-percent",
+        find: "if (!(p > 0 && p < rec.oneTime)) continue;",
+        replace: "if (!(p > 0 && p <= rec.oneTime)) continue;",
+      },
+      {
+        name: "f4-mismatch-abort-dropped",
+        find: "if (azSubNative() && String(azRow ? azRow.id : '') !== String(rows[i].getAttribute('data-plan-id') || '')) {",
+        replace: "if (false) {",
+      },
+      {
+        name: "f5-select-accepted",
+        find: "var inputs = area ? area.querySelectorAll('input') : [];",
+        replace: "var inputs = area ? area.querySelectorAll('select, input') : [];",
+      },
+      {
+        name: "f6-deny-dropped",
+        find: "if (!a || a.planId == null || azSubDenied(a.planId)) continue;",
+        replace: "if (!a || a.planId == null) continue;",
+      },
+      {
+        name: "f7-name-rule-dropped",
+        find: "if (String(azSubNames[String(a.planId)] || '').toLowerCase() === want) return { id: String(a.planId), price: p };",
+        replace: "return { id: String(a.planId), price: p };",
+      },
+      {
+        name: "f8-row-plan-is-page-plan",
+        find: "row.setAttribute('data-plan-id', rowPlan.id);",
+        replace: "row.setAttribute('data-plan-id', String(planId));",
+      },
+      {
+        name: "f9-add-uses-page-plan",
+        find: "if (azRow) item.selling_plan = /^\\d+$/.test(azRow.id) ? Number(azRow.id) : azRow.id;",
+        replace: "if (azRow) item.selling_plan = Number(azAddPlan);",
+      },
+      {
+        name: "f10-b2b-native",
+        find: "if (window.isB2BCustomer === true || AZ_CFG.b2b === true) return false;",
+        replace: ";",
+      },
+    ];
+    const bad = runMutants({ selfPath: __filename, srcPath: REAL_SRC, mutants: MUTANTS });
+    if (bad > 0) {
+      console.error(`${bad}/${MUTANTS.length} MUTANTS ESCAPED`);
+      process.exit(1);
+    }
+    console.log(`ALL ${MUTANTS.length} MUTANTS CAUGHT (fbt)`);
+  }
 }
 
 main().catch((e) => {

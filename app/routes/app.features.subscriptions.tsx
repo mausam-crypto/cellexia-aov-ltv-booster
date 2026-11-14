@@ -415,7 +415,7 @@ export default function SubscriptionsFeaturesPage() {
                           sellingPlanKeyword,
                         }))
                       }
-                      helpText="Case-insensitive match against selling plan group and plan names (e.g. “Continuous Treatment”). Leave empty to use the first plan."
+                      helpText="Case-insensitive match against selling plan group and plan names (e.g. “Every 2 Months”). Leave empty to use the first discounted plan."
                       autoComplete="off"
                     />
                   </Box>
@@ -449,7 +449,18 @@ export default function SubscriptionsFeaturesPage() {
                   The in-cart subscription switch and this nudge find the plan
                   by matching your keyword against each product’s selling plan
                   group and plan names (case-insensitive). If nothing matches,
-                  the first available plan is used.
+                  the in-cart switch uses the product’s first discounted Joy
+                  plan. Joy’s plan and group names are its delivery
+                  frequencies (“Every 2 Months”), not the widget label
+                  “Continuous Treatment”.
+                </Text>
+                <Text as="p">
+                  Joy gives every product its own plans, and a different plan
+                  per pack size. Cart cross-sells, pack upgrades and
+                  Frequently bought together therefore pick each product’s own
+                  Joy plan, and name the delivery frequency whenever it
+                  differs from the one the shopper chose. Plans of the
+                  switched-off Cellexia Subscriptions app are never offered.
                 </Text>
                 <Text as="p">
                   The discount shown to shoppers is always read live from the

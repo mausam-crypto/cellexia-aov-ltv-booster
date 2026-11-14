@@ -21,13 +21,10 @@ if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_p_on = true
 endif
 endif
-assign cx_p_ok = true
-if cx_f.press == false
-assign cx_p_ok = false
-assign cx_p_on = false
-endif
 assign cx_p_draft = false
-if cfg.preview.armed == true and cx_p_ok
+if cx_f.press == false
+assign cx_p_on = false
+elsif cfg.preview.armed == true
 if cfg.preview.draftFlags.press == true or cfg.press.enabled == true
 assign cx_p_draft = true
 endif
@@ -40,13 +37,10 @@ if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_e_on = true
 endif
 endif
-assign cx_e_ok = true
-if cx_f.derm_endorsements == false
-assign cx_e_ok = false
-assign cx_e_on = false
-endif
 assign cx_e_draft = false
-if cfg.preview.armed == true and cx_e_ok
+if cx_f.derm_endorsements == false
+assign cx_e_on = false
+elsif cfg.preview.armed == true
 if cfg.preview.draftFlags.derm_endorsements == true or cfg.dermEndorsements.enabled == true
 assign cx_e_draft = true
 endif
@@ -59,13 +53,10 @@ if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_r_on = true
 endif
 endif
-assign cx_r_ok = true
-if cx_f.verified_before_after == false
-assign cx_r_ok = false
-assign cx_r_on = false
-endif
 assign cx_r_draft = false
-if cfg.preview.armed == true and cx_r_ok
+if cx_f.verified_before_after == false
+assign cx_r_on = false
+elsif cfg.preview.armed == true
 if cfg.preview.draftFlags.verified_before_after == true or cfg.beforeAfter.enabled == true
 assign cx_r_draft = true
 endif
@@ -88,6 +79,9 @@ assign cx_any = false
 endunless
 -%}
 {%- if cx_any -%}
+{%- if cx_ctx == 'page' and cx_r_on -%}
+<script>cxRF=fetch(Shopify.routes.root+'apps/cellexia/proof?type=results&page=1&per=24&ctx=page&locale='+Shopify.locale)</script>
+{%- endif -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
 {%- if cx_p_on or cx_p_draft -%}
 <script type="application/json" id="cx-press-config" data-cx-market="{{ cx_market | escape }}">

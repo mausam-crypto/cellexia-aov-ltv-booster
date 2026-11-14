@@ -1710,6 +1710,11 @@ export interface PublicResult {
    *  null, whatever the column holds (belt over the save-time clearing).
    *  A proper noun — never translated, rendered via textContent only. */
   study: string | null;
+  /** v39.1 — numeric ids of the products this result is tagged for.
+   *  Served ONLY to the dedicated results page (`withProducts`); every
+   *  other surface omits the member (the pre-v39.1 payload, byte for
+   *  byte). [] = a brand-level result. */
+  products?: string[];
 }
 
 export interface FacetCount {
@@ -1722,6 +1727,9 @@ export interface PublicResultsFacets {
   ages: FacetCount[];
   skins: FacetCount[];
   durations: FacetCount[];
+  /** v39.1 — results per tagged product (value = numeric product id),
+   *  most results first. Only with `withProducts`. */
+  products?: FacetCount[];
 }
 
 export interface PublicResultsFilters {
@@ -1729,6 +1737,24 @@ export interface PublicResultsFilters {
   age?: string;
   skin?: string;
   duration?: string;
+  /** v39.1 — the results page's product FILTER (a product gid): only
+   *  results TAGGED for that product match; brand-level results do not.
+   *  Deliberately separate from getPublicResults' `productGid` argument,
+   *  which is the product page's prioritisation (tagged first, then
+   *  brand-level). */
+  product?: string;
+}
+
+/** v39.1 options for the dedicated results page. */
+export interface PublicResultsOptions {
+  /** Serve each item's product ids and the products facet. */
+  withProducts?: boolean;
+}
+
+/** gid://shopify/Product/123 -> "123" ("" when malformed). */
+export function productNumericId(gid: string): string {
+  const match = /^gid:\/\/shopify\/Product\/(\d+)$/.exec(gid);
+  return match ? match[1] : "";
 }
 
 export const PROXY_PER_DEFAULT = 24;
@@ -1926,7 +1952,29 @@ function matchesResultFilters(
   if (filters.duration) {
     if (durationBucketOf(row.durationWeeks) !== filters.duration) return false;
   }
+  if (
+    filters.product &&
+    !parseProductGids(row.productGids).includes(filters.product)
+  ) {
+    return false;
+  }
   return true;
+}
+
+/** v39.1: results per tagged product over the unfiltered set — most
+ *  results first, then by id so equal counts never reorder between
+ *  requests. A result tagged for two products counts for both. */
+function productFacetCounts(rows: CustomerResult[]): FacetCount[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    for (const gid of parseProductGids(row.productGids)) {
+      const id = productNumericId(gid);
+      if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([value, count]) => ({ value, count }));
 }
 
 function facetCounts(
@@ -1961,6 +2009,9 @@ export async function getPublicResults(
    *  serve sequence must agree across Show-more pages); junk coerces to
    *  "curated". Defaults keep every pre-v35 caller byte-identical. */
   order: string = "curated",
+  /** v39.1 — the dedicated results page asks for product data; absent =
+   *  the exact pre-v39.1 payload. */
+  options: PublicResultsOptions = {},
 ): Promise<{
   total: number;
   verifiedTotal: number;
@@ -1968,6 +2019,7 @@ export async function getPublicResults(
   facets: PublicResultsFacets;
 }> {
   assertProofModels();
+  const withProducts = options.withProducts === true;
   const rows = await prisma.customerResult.findMany({
     where: { shop, status: "approved" },
     orderBy: PUBLIC_ORDER_BY,
@@ -1999,6 +2051,7 @@ export async function getPublicResults(
       DURATION_BUCKETS,
     ),
   };
+  if (withProducts) facets.products = productFacetCounts(scoped);
   const verifiedTotal = scoped.filter((row) => row.verified).length;
   const filtered = scoped.filter((row) => matchesResultFilters(row, filters));
   // v35: the merchant's gallery order, applied to the filtered sequence
@@ -2015,7 +2068,7 @@ export async function getPublicResults(
     verifiedTotal,
     items: served.slice(start, start + per).map((row) => {
       const lab = row.source === "lab";
-      return {
+      const item: PublicResult = {
         id: row.id,
         source: row.source,
         verified: row.verified,
@@ -2037,6 +2090,12 @@ export async function getPublicResults(
         attributionRole: row.attributionRole,
         study: lab ? row.study : null,
       };
+      if (withProducts) {
+        item.products = parseProductGids(row.productGids)
+          .map(productNumericId)
+          .filter((id) => id !== "");
+      }
+      return item;
     }),
     facets,
   };

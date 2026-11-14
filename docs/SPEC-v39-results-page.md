@@ -145,3 +145,97 @@ Harness v39 block (page clause, no handle in Liquid, JS call sites, CSS
 breakpoints, tab path, read-only scope, no page mutations), `proof-gallery`
 page-mode cases + mutants, `proof-placement` page band, and
 `settings-derivation` (defaults, junk coercion, page change resets live).
+
+## v39.1 — speed, title gap, product filter, product labels
+
+Merchant feedback on the live page (2026-11-13): the before/afters appear
+late, there is a strange gap around the page title, shoppers need to filter
+by product, the filters do not read as filters, and a result does not say
+which product it belongs to. Everything below is page mode only (island
+`ctx: "page"`); product pages and the home band are byte-identical.
+
+### What was measured on the live page
+
+- The gallery data was requested only once the storefront script ran
+  (about 670 ms in) and the app proxy answers in 250 to 450 ms. Shopify
+  does not edge-cache app-proxy responses (`cf-cache-status: DYNAMIC`), so
+  every shopper pays that round trip.
+- The 24 first photos were full-resolution uploads (1344 px wide, about
+  200 KB each as served, 3.1 MB for the first screenful), all lazy.
+- The theme's default page template pads an empty content area: 60 px under
+  the title, 80 px under the section, then the shared 50 px section margin.
+  The title sat 190 px above the gallery (112 px on phones).
+
+### Speed
+
+- **Early request.** On the LIVE page the embed prints one inline script
+  before its stylesheet: `cxRF = fetch(<root>apps/cellexia/proof?type=
+  results&page=1&per=24&ctx=page&locale=<locale>)`. `resultsFirstData` uses
+  that promise once (live island, normal visitor) and falls back to the
+  classic `proofFetch` on any problem or after 8 s. Drafts and previewing
+  merchants never use it (the preview keeps its cache-busting `pv` query).
+- **Placeholder.** `resultsInit` mounts `resultsPageSkeleton()` (class
+  `cx-rsk`, `aria-hidden`) the moment the script runs and swaps it for the
+  section; `resultsPageUnmount` removes it, the empty band and the spacing
+  classes when there is nothing to show.
+- **Photos.** `resultsPageThumbs` gives every card photo a Shopify-CDN
+  `srcset` (360/540/720, or 240/360/540 for a half-width pair frame) with
+  `sizes` matching the grid, `decoding="async"`, eager loading for the
+  first four cards and `fetchpriority="high"` for the first two. Foreign
+  hosts and already-sized URLs are left alone.
+
+### Title gap
+
+`resultsPageChrome` sets `cx-rp` on `#main` while the gallery sits in
+`#main`'s own band, plus `cx-rp--bare` when `.page__content` holds no text,
+image, video or iframe. CSS, scoped to those classes: the section's bottom
+padding goes to 0; on a bare page the title's bottom padding goes to 0 and
+the empty content box is hidden; the band alone spaces the gallery (24 px
+bare, 32 px otherwise). The page's own content is never read into anything,
+moved or changed, and the classes come off again if the gallery cannot
+render.
+
+### Product data (proxy, `ctx=page` only)
+
+- `getPublicResults(…, { withProducts: true })` adds each item's `products`
+  (numeric ids) and `facets.products` (results per tagged product, most
+  first). `filters.product` (query `prod=<numeric id>`) serves only results
+  TAGGED for that product; brand-level results do not match. It is separate
+  from the product page's `product` prioritisation argument.
+- `results-products.server.ts` resolves ids to `{ t, h, i?, u? }` (title in
+  the shopper's language when Shopify holds a title translation, handle,
+  featured image, `u: 1` when on the Online Store). Two read-only queries,
+  cached in memory ten minutes per shop and language, a failure remembered
+  one minute. The map rides every page-context response as `products`.
+- Fail-soft: no map means no product rows and no Product filter. An old
+  server (no `ctx` support) leaves the page exactly as v39 rendered it.
+
+### Storefront
+
+- **Product row.** `resultsProductRow` renders "Product used" plus one line
+  per tagged product (picture, name) under the photos, on cards and in the
+  enlarged view. A product on the Online Store is a link
+  (`<locale root>products/<encoded handle>`); any other is plain text.
+  Brand-level results carry no row.
+- **Filter bar.** One framed bar: a "Filter by" lead-in, the filters as
+  dropdown buttons (label or "Label: value", caret), Clear filters, and a
+  live "Results: N" counter (`aria-live="polite"`). Product leads when the
+  library spans two or more nameable products. Each filter opens ITS OWN
+  options (the shared panel shows one group; a sheet on phones), every
+  group leads with "All", and product options carry the product picture.
+- **Readable concerns.** Concern slugs print as words on the page
+  ("Frown lines").
+- New proxy copy codes, 18 tables each: `fp` Product, `fb` Filter by,
+  `al` All, `rn` Results: @@N@@, `pu` Product used. `rn` is "label: number"
+  in every language so it needs no plural agreement.
+
+### Liquid budget
+
+No budget move. The inline early fetch (+184 B) was paid for first in the
+same file: each of the three opt-out + draft gates folds into one
+`if / elsif` and drops its `cx_*_ok` flag (-180 B). 99,433 B to 99,437 B.
+
+### Validation
+
+Harness v39.1 block; `proof-gallery` PG8 to PG14 with mutants m69 to m81;
+`proof-server` PF1 to PF9 and RP1 to RP12 with mutants m17 to m19.

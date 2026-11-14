@@ -112,7 +112,11 @@ under ~3 minutes.
     Mutation-tested (5 mutants, header comment).
   - **fbt.cjs** — real az_fbt + az_similar_items: manual precedence (zero
     fetches), related fallback with cross-fetch dedupe, FBT↔similar dedupe,
-    v6.5 placement resolution, checkbox math, 'fbt' attribution.
+    v6.5 placement resolution, checkbox math, 'fbt' attribution. v40: Joy's
+    hidden selling_plan field as the verdict when the buy box is silent,
+    per-row same-named plans, the proxy "xp" deny-list, the add that never
+    contradicts the display, the tick bridge. Mutation-tested since v40
+    (10 mutants, header comment).
   - **badge-cards.cjs** — real card-flag decorator: cardGateOn gates, v6.6
     theme-tag replacement + untouched-without-flag rule, bought lines,
     sessionStorage cache/TTL, 2-fetch budget, debounced re-scan observer.
@@ -121,7 +125,11 @@ under ~3 minutes.
     preview draft convention. Mutation-tested (5 mutants, header comment).
   - **subscribed-upgrade.cjs** — the v5.1 Joy rule: a volume tier is offered
     to a subscribed line only when the target variant allocates the line's
-    plan (422 guard), plus savings-math fallbacks and plan lookup.
+    plan (422 guard), plus savings-math fallbacks and plan lookup. v40: the
+    native (Joy) family on the live fixture shape — a Joy line's tile moves
+    to the tier variant's own offerable plan and carries its id and name
+    (no name = no tile), in-house plans are never resolved, and in-house
+    LIVE / B2B / kill switch / unknown in-house ids keep the old verdicts.
   - **survey-methodology.cjs** — real surveyBuildPanel (v6.11): merchant
     methodology token substitution ({{ total }}/{{ yes }}/{{ percent }} →
     live numbers, fail-safe 0), built-in translated fallback path, verifier

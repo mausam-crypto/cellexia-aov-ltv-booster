@@ -930,6 +930,12 @@
     // allocates the line's CURRENT plan — an upgrade must never silently
     // drop a subscription.
     var linePlanId = itemHasPlan(item) ? item.selling_plan_allocation.selling_plan.id : null;
+    // v40: Joy puts each pack size on its OWN plan (live store: 1 unit =
+    // "Every 2 Months", 2/3 units = "Every 3 Months"), so the exact-plan
+    // rule below never finds a tier for a Joy line. A NATIVE line may move
+    // to the tier variant's own offerable plan instead — merchant decision:
+    // offer it, and show the new delivery frequency on the tile.
+    var nativeLine = linePlanId != null ? nativeLinePlan(item) : null;
     var out = [];
     volumeOffers().forEach(function (offer) {
       var qty = Number(offer.quantity);
@@ -937,6 +943,7 @@
       var tierVariant = variantByPosition(product, qty);
       if (!tierVariant || tierVariant.available === false) return;
       var tierAlloc = null;
+      var tierPlan = null; // v40: set only when the tier moves the line to ANOTHER plan
       if (linePlanId != null) {
         // v17: a subscribed line's tile must BE a subscription tile — the
         // tier's own allocation for the line's exact plan supplies both the
@@ -947,6 +954,12 @@
         // launch state of the subscription app.
         if (!subscriptionAware()) return;
         tierAlloc = variantPlanAlloc(tierVariant, linePlanId);
+        if (!tierAlloc && nativeLine) {
+          tierPlan = nativeVariantAlloc(product, tierVariant, nativeLine.name);
+          // No name = the schedule change could not be shown = no tile.
+          if (tierPlan && !tierPlan.name) tierPlan = null;
+          if (tierPlan) tierAlloc = { planId: tierPlan.planId, price: tierPlan.price };
+        }
         if (!tierAlloc || !(Number(tierAlloc.price) > 0)) return;
         // Prepaid detector: a prepaid allocation's price is the multi-
         // delivery charge (per_delivery_price is not captured), so it
@@ -962,7 +975,12 @@
         quantity: qty,
         percent: tierAlloc ? subSavingsPercent(product, offer, addPriceCents) : savingsPercent(product, offer, tierVariant),
         perUnitCents: Math.round(addPriceCents / qty),
-        addPriceCents: addPriceCents
+        addPriceCents: addPriceCents,
+        // v40: the plan the upgrade add must carry when it differs from the
+        // line's (null = keep the line's own plan, the pre-v40 path), and
+        // the frequency label the tile shows when the schedule changes.
+        planId: tierPlan ? tierPlan.planId : null,
+        planName: tierPlan && !nativeSameName(tierPlan.name, nativeLine.name) ? tierPlan.name : ''
       });
     });
     return out;
@@ -1032,6 +1050,15 @@
       // literal — subsLive(), not subsAware(): the switch card has no
       // per-shopper proof, so the setup-open data gate must not enroll.
       if (!fallback && subsLive() && ownedPlan(alloc.planId)) fallback = candidate;
+      // v40 native (Joy): with the in-house app dark, the first OFFERABLE
+      // allocation of the line's own variant is the fallback — the pre-v17
+      // behavior, now guarded (never an in-house plan, never a 0 % or
+      // prepaid one). The card itself stays behind its own flag + market
+      // scope: enable it only where Joy's widget is shown.
+      if (!fallback && nativeSubs() && nativeAlloc(variant, alloc)) fallback = candidate;
+      // v40: the keyword may not name a DARK in-house plan either (a loose
+      // keyword such as "every" matches both apps' plan names).
+      if (subsDenied(alloc.planId) && !subsLive()) continue;
       if (!keyword || !m) continue;
       var groupName = m.groupName.toLowerCase();
       var planName = String(m.plan.name || '').toLowerCase();
@@ -1113,20 +1140,178 @@
     return false;
   }
 
+  // ------------- v40 native selling plans (Joy Subscriptions, SPEC-v40)
+  //
+  // The merchant sells subscriptions through Joy (Avada) and keeps the
+  // Cellexia Subscriptions app installed but DARK. Joy plans are plain
+  // Shopify selling plans with no storefront signal of their own, so the
+  // v17 "owned" family above (cfg.sx allow-list + launch flag) can never
+  // vouch for them. This is a PARALLEL family — the owned functions are
+  // untouched, and nothing here runs while the in-house app is LIVE:
+  //
+  //   - native is on when the kill switch is on, the shopper is not B2B,
+  //     the in-house app is not live (cfg.sx.live !== true) and the
+  //     in-house plan ids are KNOWN: cfg.sx.p when the island is present,
+  //     else the app proxy's "xp" member (ensureNativeDeny). Unknown list
+  //     = inert, fail closed.
+  //   - a native OFFERABLE allocation is one the variant itself carries,
+  //     that is not an in-house plan, and that is priced strictly BELOW the
+  //     one-time price (a 0 % plan is no offer; a higher figure is a
+  //     prepaid multi-delivery lump).
+  //   - the family is decided PER LINE, never per page: a line on an
+  //     in-house plan stays owned, a line on an offerable plan is native,
+  //     and a resolution never crosses from one family into the other.
+  //   - Joy plan ids are PER PRODUCT and differ by pack size (live store:
+  //     "Every 2 Months" on the 1-unit variant, "Every 3 Months" on the
+  //     2/3-unit variants), so "the same plan id elsewhere" never holds.
+  //     A row resolves to its own variant's offerable plan — the one named
+  //     like the anchor's first — and whenever that changes the delivery
+  //     frequency the plan NAME is shown; a plan with no name is never
+  //     offered (no undisclosed schedule, ever).
+
+  var nativeDeny = null; // proxy "xp": in-house plan ids when the island is absent
+  var nativeDenyAsked = false; // ONE proxy attempt per page, whatever its outcome
+
+  function inhouseLive() {
+    return !!(cfg.sx && cfg.sx.live === true);
+  }
+
+  function nativeDenyList() {
+    if (cfg.sx && Array.isArray(cfg.sx.p)) return cfg.sx.p;
+    return Array.isArray(nativeDeny) ? nativeDeny : null; // anything but a loaded list = unknown
+  }
+
+  function subsDenied(planId) {
+    var list = nativeDenyList();
+    if (planId == null || !list) return false;
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i]) === String(planId)) return true;
+    }
+    return false;
+  }
+
+  function nativeSubs() {
+    return subscriptionAware() && !isB2B() && !inhouseLive() && nativeDenyList() !== null;
+  }
+
+  function nativeAlloc(variant, a) {
+    if (!variant || !a || a.planId == null || subsDenied(a.planId)) return false;
+    var p = Number(a.price);
+    var one = Number(variant.price) || 0;
+    return p > 0 && p < one;
+  }
+
+  function nativePlanName(product, planId) {
+    var m = planMetaById(product)[String(planId)];
+    return m && m.plan ? String(m.plan.name || '') : '';
+  }
+
+  function nativeSameName(a, b) {
+    return String(a || '').toLowerCase() === String(b || '').toLowerCase();
+  }
+
+  function nativeLinePlan(item) {
+    // The per-shopper proof of a native subscription: the line's OWN plan
+    // is an offerable allocation on its OWN variant. Null for one-time
+    // lines, in-house plan lines, prepaid/0 % plans, missing product data
+    // and whenever native is off.
+    if (!nativeSubs() || !itemHasPlan(item)) return null;
+    var planId = item.selling_plan_allocation.selling_plan.id;
+    var product = productFor(item);
+    var variant = product ? currentVariant(product, item.variant_id) : null;
+    var alloc = variant ? variantPlanAlloc(variant, planId) : null;
+    if (!alloc || !nativeAlloc(variant, alloc)) return null;
+    var name = nativePlanName(product, planId);
+    if (!name) name = String(item.selling_plan_allocation.selling_plan.name || '');
+    return { planId: planId, name: name };
+  }
+
+  function nativeVariantAlloc(entry, variant, preferName) {
+    // The variant's own offerable allocation: the one whose plan is named
+    // like preferName wins (same schedule), else the first. Names are
+    // compared as rendered for this page's language, never parsed.
+    var allocations = variant && Array.isArray(variant.planAllocations) ? variant.planAllocations : [];
+    var meta = planMetaById(entry);
+    var first = null;
+    for (var i = 0; i < allocations.length; i++) {
+      var a = allocations[i];
+      if (!nativeAlloc(variant, a)) continue;
+      var m = meta[String(a.planId)];
+      var hit = { planId: a.planId, price: Number(a.price), name: m && m.plan ? String(m.plan.name || '') : '' };
+      if (preferName && hit.name && nativeSameName(hit.name, preferName)) return hit;
+      if (!first) first = hit;
+    }
+    return first;
+  }
+
+  function ensureNativeDeny() {
+    // Island absent (the in-house app was uninstalled, or its own market
+    // list gates this market off): the in-house plan ids ride the app
+    // proxy instead, fetched ONCE and kept for 10 minutes. Only when a
+    // native surface could actually need them — a plan line in the cart or
+    // the switch card on. Until the list lands native stays inert; an old
+    // server without "xp" keeps it inert for good.
+    try {
+      if (cfg.sx || nativeDeny !== null || nativeDenyAsked) return;
+      if (!subscriptionAware() || isB2B()) return;
+      var need = featureOn('subscription');
+      var items = state.cart && Array.isArray(state.cart.items) ? state.cart.items : [];
+      for (var i = 0; !need && i < items.length; i++) {
+        if (itemHasPlan(items[i])) need = true;
+      }
+      if (!need) return;
+      var store = null;
+      try { store = window.sessionStorage || null; } catch (e0) { store = null; }
+      try {
+        var parsed = store ? JSON.parse(store.getItem('cx_subs_xp:1') || 'null') : null;
+        if (parsed && typeof parsed.t === 'number' && Date.now() - parsed.t <= 600000 && Array.isArray(parsed.xp)) {
+          nativeDeny = parsed.xp;
+          return;
+        }
+      } catch (e1) { /* unreadable cache: fetch */ }
+      nativeDenyAsked = true;
+      fetchJSON(routeRoot() + 'apps/cellexia/cart-data', { headers: { Accept: 'application/json' } })
+        .then(function (data) {
+          // No "xp" member = an older server: native stays inert, and the
+          // asked flag keeps later renders from re-asking on this page.
+          if (!data || !Array.isArray(data.xp)) return;
+          nativeDeny = data.xp;
+          try { if (store) store.setItem('cx_subs_xp:1', JSON.stringify({ t: Date.now(), xp: data.xp })); } catch (e2) { /* best effort */ }
+          renderAll();
+        })
+        .catch(function () { /* stays inert; no retry on this page */ });
+    } catch (e) { /* never break the theme */ }
+  }
+
   function subXsPlanLine() {
     // The cross-sell trigger AND schedule anchor: the highest-value cart line
     // whose plan the subscription app owns. Null = no owned subscription in
     // the cart = cross-sell renders exactly as before v17 (one-time buyers
     // are never pushed toward subscriptions).
-    if (!subsAware() || !state.cart || !Array.isArray(state.cart.items)) return null;
+    // v40: a line on an offerable NATIVE plan anchors too (nativeLinePlan is
+    // null while the in-house app is live, so a Joy line still never
+    // activates the owned family) and marks the anchor native — the
+    // resolver below then stays inside that family.
+    if (!state.cart || !Array.isArray(state.cart.items)) return null;
+    var owned = subsAware();
     var best = null;
+    var bestNative = null;
     for (var i = 0; i < state.cart.items.length; i++) {
       var item = state.cart.items[i];
       if (!itemHasPlan(item)) continue;
-      if (!ownedPlan(item.selling_plan_allocation.selling_plan.id)) continue;
-      if (!best || lineValue(item) > lineValue(best)) best = item;
+      var nat = null;
+      if (!(owned && ownedPlan(item.selling_plan_allocation.selling_plan.id))) {
+        nat = nativeLinePlan(item);
+        if (!nat) continue;
+      }
+      if (!best || lineValue(item) > lineValue(best)) {
+        best = item;
+        bestNative = nat;
+      }
     }
-    return best ? { planId: best.selling_plan_allocation.selling_plan.id } : null;
+    if (!best) return null;
+    if (bestNative) return { planId: bestNative.planId, native: true, name: bestNative.name };
+    return { planId: best.selling_plan_allocation.selling_plan.id };
   }
 
   function variantDefaultCadence(variantId) {
@@ -1170,6 +1355,21 @@
     var entry = state.products[String(productId)];
     var variant = entry ? currentVariant(entry, variantId) : null;
     if (!variant) return null;
+    if (anchor.native) {
+      // v40 native family (Joy): the anchor's exact plan when this variant
+      // carries it as an offerable allocation, else this variant's OWN
+      // offerable plan, the one named like the anchor's first. freq is the
+      // plan name the row must SHOW — set only when the schedule differs
+      // from the anchor's; a differing plan without a name is not offered.
+      var exact = variantPlanAlloc(variant, anchor.planId);
+      var nat = exact && nativeAlloc(variant, exact)
+        ? { planId: exact.planId, price: Number(exact.price), name: anchor.name }
+        : nativeVariantAlloc(entry, variant, anchor.name);
+      if (!nat) return null;
+      var sameSchedule = String(nat.planId) === String(anchor.planId) || (!!nat.name && nativeSameName(nat.name, anchor.name));
+      if (!sameSchedule && !nat.name) return null;
+      return { planId: nat.planId, priceCents: nat.price, name: nat.name, freq: sameSchedule ? '' : nat.name };
+    }
     // Prepaid detector (see upgradeCandidates): an allocation priced ABOVE
     // the one-time price is a multi-delivery prepaid charge — never offer it
     // implicitly; fall through to a plain plan or to one-time.
@@ -1308,8 +1508,14 @@
     renderAll();
     var oldLineCents = Number(item.final_line_price != null ? item.final_line_price : item.line_price) || 0;
     var sellingPlanId = itemHasPlan(item) ? item.selling_plan_allocation.selling_plan.id : undefined;
+    // v40: a native (Joy) upgrade lands on the tier variant's OWN plan —
+    // the candidate carries it, already verified as that variant's
+    // allocation. The restore below keeps sellingPlanId: a failed upgrade
+    // puts the ORIGINAL variant back on its ORIGINAL plan.
+    var addPlanId = sellingPlanId;
+    if (candidate.planId != null) addPlanId = /^\d+$/.test(String(candidate.planId)) ? Number(candidate.planId) : candidate.planId;
     var addPayload = { id: candidate.variant.id, quantity: 1 };
-    if (sellingPlanId) addPayload.selling_plan = sellingPlanId;
+    if (addPlanId) addPayload.selling_plan = addPlanId;
     // v17: every booster-authored add carries a _cellexia_* marker property.
     // The subscription app's buy-box embed injects its selected selling_plan
     // into UNMARKED page-product /cart/add bodies (its own theme contract),
@@ -1750,6 +1956,10 @@
       if (isHighlight) tile.appendChild(el('span', 'cx-volume__chip', t('volume.best_value')));
       tile.appendChild(el('span', 'cx-volume__qty', t('volume.upgrade_to', { count: candidate.quantity })));
       tile.appendChild(el('span', 'cx-volume__unit', t('volume.per_unit', { price: money(candidate.perUnitCents) })));
+      // v40: the upgrade moves the subscription to another plan — show its
+      // name (the delivery frequency, in the shopper's language; the same
+      // text the theme prints on the cart line afterwards).
+      if (candidate.planName) tile.appendChild(el('span', 'cx-volume__freq', candidate.planName));
       if (candidate.percent > 0) {
         tile.appendChild(el('span', 'cx-volume__save', t('volume.save_pct', { percent: candidate.percent })));
       }
@@ -2022,6 +2232,13 @@
       }
     }
     info.appendChild(prices);
+    // v40: a native (Joy) row whose plan runs on another schedule than the
+    // cart's subscription names it — never an undisclosed frequency.
+    if (sub && sub.freq) {
+      var freq = cxEl('span', 'cx-crosssell__freq');
+      freq.textContent = sub.freq;
+      info.appendChild(freq);
+    }
     cxSp(info);
     li.appendChild(info);
     cxSp(li);
@@ -2548,6 +2765,7 @@
       }
     }
     info.appendChild(prices);
+    if (sub && sub.freq) info.appendChild(el('span', 'cx-crosssell__freq', sub.freq)); // v40: see crosssellBuildRow
     li.appendChild(info);
     var btn = el('button', 'cx-crosssell__add', t('crosssell.add'));
     btn.type = 'button';
@@ -7173,6 +7391,7 @@
 
   function renderAll() {
     try {
+      ensureNativeDeny(); // v40: island-absent markets learn the in-house plan ids once
       var drawerRoot = ensureDrawerRoot();
       if (drawerRoot) {
         var drawerFeatures = renderInto(drawerRoot, 'drawer');

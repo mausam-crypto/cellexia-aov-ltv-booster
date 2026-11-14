@@ -54,6 +54,10 @@ import { authenticate } from "../shopify.server";
  * products (option handles + samplePool) through this endpoint lazily
  * instead of an all_products loop inside the cart island (the v15 island
  * isolation); the cart map is unchanged.
+ *
+ * v40: top-level `"xp": [<plan id>, ...]` — the in-house Cellexia
+ * Subscriptions plan ids (see INHOUSE_PLANS_LIQUID). Additive: every
+ * existing consumer reads `products` / `productsByHandle` only.
  */
 
 const sanitizeHandle = (handle: string) =>
@@ -113,6 +117,15 @@ const CART_PRODUCTS_LIQUID = `"products": {
     {%- endfor -%}
   }`;
 
+/** v40 (SPEC-v40): the in-house Cellexia Subscriptions plan ids — the same
+ *  `cellexia.plan_groups` shop metafield cart-booster.liquid mirrors into
+ *  the cart island's `sx.p`. The storefront's NATIVE (Joy) subscription
+ *  paths use it as a deny-list while that app is dark: the PDP has no
+ *  island member for it, and neither has a cart whose island is gated off.
+ *  Always an array; `[]` when the metafield is absent. A response without
+ *  "xp" (older server) keeps the native paths inert — fail closed. */
+const INHOUSE_PLANS_LIQUID = `{%- assign cx_xp = shop.metafields.cellexia.plan_groups.value.planIds -%}{%- if cx_xp.size > 0 -%}{{ cx_xp | json }}{%- else -%}[]{%- endif -%}`;
+
 const handlesLiquid = (handles: string[]) => {
   const entries = handles
     .map((handle) => {
@@ -138,6 +151,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const body = `{% layout none %}{
   "b2b": {% if customer.b2b? %}true{% else %}false{% endif %},
   "currency": {{ cart.currency.iso_code | json }},
+  "xp": ${INHOUSE_PLANS_LIQUID},
   ${CART_PRODUCTS_LIQUID}${handles.length ? handlesLiquid(handles) : ""}
 }`;
 

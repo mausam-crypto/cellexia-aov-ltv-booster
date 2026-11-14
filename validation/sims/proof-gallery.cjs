@@ -231,6 +231,12 @@ const EXTRACTED = extractAll(SRC, {
     "resultsViewerHistory", "resultsViewerSwipeBind", "resultsViewerOpen",
     // v39 dedicated results page
     "pfSkipOnPage",
+    // v39.1 results page: products, sized photos, counter, placeholder
+    "pfRouteRoot", "resultsValidProductIds", "resultsProductMap",
+    "resultsSlugLabel", "resultsProductHref", "resultsProductRow",
+    "resultsThumbSet", "resultsPageThumbs", "resultsCountText",
+    "resultsPageSkeleton", "resultsPageChrome", "resultsPageUnmount",
+    "resultsFirstData",
   ],
   // extend the vars list separately below (extractAll takes each key once)
 });
@@ -3133,11 +3139,11 @@ function pgCards(section) {
 // --- PG3: the page pages at 24 — params + the exact Show-more query ------------------
 {
   const st = { concern: "", age: "", skin: "", duration: "", page: 2 };
-  ok(S.pfQuery(S.resultsParams({ ctx: "page", pid: 0 }, st)) === "&page=2&per=24",
-    "PG3: page ctx -> per=24 (the viewer's page size)");
+  ok(S.pfQuery(S.resultsParams({ ctx: "page", pid: 0 }, st)) === "&page=2&per=24&ctx=page",
+    "PG3: page ctx -> per=24 (the viewer's page size) + the v39.1 ctx=page marker");
   ok(S.pfQuery(S.resultsParams({ ctx: "brand", pid: 0 }, st)) === "&page=2&per=12",
     "PG3: brand ctx keeps per=12 (R16/VW5 untouched)");
-  ok(S.pfQuery(S.resultsParams({ ctx: "page", pid: 99 }, st)) === "&page=2&per=24",
+  ok(S.pfQuery(S.resultsParams({ ctx: "page", pid: 99 }, st)) === "&page=2&per=24&ctx=page",
     "PG3: the page never scopes to a product (all results)");
   const section = S.resultsBuildSection(pgConf(), pgFixture());
   const more = section.querySelector(".cx-results__more");
@@ -3145,7 +3151,7 @@ function pgCards(section) {
   S.PF_FETCH_QUEUE.length = 0;
   S.PF_FETCH_QUEUE.push({ total: 40, verifiedTotal: 40, items: pgItems(25, 16) });
   click(more);
-  ok(S.PF_FETCH_CALLS.length === 1 && S.PF_FETCH_CALLS[0].qs === "?type=results&page=2&per=24",
+  ok(S.PF_FETCH_CALLS.length === 1 && S.PF_FETCH_CALLS[0].qs === "?type=results&page=2&per=24&ctx=page",
     "PG3: Show more asks for page 2 at per=24 (got " + (S.PF_FETCH_CALLS[0] && S.PF_FETCH_CALLS[0].qs) + ")");
   ok(pgCards(section) === 40, "PG3: the 16 new cards append (40 on the page)");
   ok(more.hasAttribute("hidden"), "PG3: Show more retires at the total");
@@ -3158,7 +3164,7 @@ function pgCards(section) {
   S.PF_FETCH_QUEUE.push({ total: 9, verifiedTotal: 9, items: pgItems(101, 9) });
   click(filtered.querySelector(".cx-results__opt"));
   ok(S.PF_FETCH_CALLS.length === 1 &&
-    S.PF_FETCH_CALLS[0].qs === "?type=results&concern=wrinkles&page=1&per=24",
+    S.PF_FETCH_CALLS[0].qs === "?type=results&concern=wrinkles&page=1&per=24&ctx=page",
     "PG3: a filter pick refetches page 1 at per=24");
   ok(pgCards(filtered) === 9 && filtered.querySelector(".cx-results__more").hasAttribute("hidden"),
     "PG3: the filtered grid replaces the cards and retires Show more");
@@ -3179,7 +3185,7 @@ function pgCards(section) {
     "PG4: a card tap opens the swipe viewer at that card");
   S.PF_FETCH_QUEUE.push({ total: 40, verifiedTotal: 40, items: pgItems(25, 16) });
   click(vwRoot.querySelector(".cx-results-vw__btn--next"));
-  ok(S.PF_FETCH_CALLS.length === 1 && S.PF_FETCH_CALLS[0].qs === "?type=results&page=2&per=24",
+  ok(S.PF_FETCH_CALLS.length === 1 && S.PF_FETCH_CALLS[0].qs === "?type=results&page=2&per=24&ctx=page",
     "PG4: the viewer pages the SAME sequence (page 2, per=24)");
   ok(pgCards(section) === 24 && !more.hasAttribute("hidden"),
     "PG4: the grid has not moved yet — the store is 16 ahead of it");
@@ -3206,7 +3212,7 @@ function pgCards(section) {
   S.PF_FETCH_QUEUE.length = 0;
   S.PF_FETCH_QUEUE.push({ total: 40, verifiedTotal: 40, items: pgItems(1, 24) });
   click(more);
-  ok(S.PF_FETCH_CALLS[0] && S.PF_FETCH_CALLS[0].qs === "?type=results&page=1&per=24",
+  ok(S.PF_FETCH_CALLS[0] && S.PF_FETCH_CALLS[0].qs === "?type=results&page=1&per=24&ctx=page",
     "PG5: the request follows the STORE size, never a blind page bump");
   ok(pgCards(section) === 24, "PG5: 22 genuinely-new cards append (2 deduped)");
   // a failed page keeps what is on screen
@@ -3244,6 +3250,482 @@ function pgCards(section) {
     S.pfSkipOnPage("endorsements", {}) === false &&
     S.pfSkipOnPage("press", null) === false,
     "PG7: every other context is untouched (fail open to the pre-v39 behavior)");
+}
+
+// ============================ v39.1 RESULTS PAGE: PRODUCTS, FILTER BAR, SPEED (PG8+)
+//
+// docs/SPEC-v39-results-page.md "v39.1". Page mode asks the proxy for
+// product data (ctx=page) and renders it: a "Product used" row on every
+// result, a Product filter that leads the bar, filters that open one at a
+// time like dropdowns, a live result counter, sized photos with an eager
+// first row, and a loading placeholder. Every case has a brand twin
+// proving the other surfaces are untouched.
+const PG_PRODUCTS = {
+  "111": { t: "Deep Wrinkle Filler Gel", h: "deep-wrinkle-filler-gel", i: "https://cdn.shopify.com/s/files/1/p111.jpg?v=1", u: 1 },
+  "222": { t: "Neck Tightening Cream", h: "neck-tightening-cream", u: 1 },
+  "333": { t: "Eye Lifting Serum", h: "eye-lifting-serum" }, // not on the Online Store
+};
+const PG_COPY = {
+  sa: "See all @@N@@ results", pr: "Previous result", nx: "Next result",
+  fp: "Product", fb: "Filter by", al: "All", rn: "Results: @@N@@", pu: "Product used",
+};
+function pgProdItems() {
+  const tags = [["111"], ["222"], ["333"], [], ["999"], ["111", "222"]];
+  return pgItems(1, 6).map((item, i) => Object.assign(item, { products: tags[i], concern: "frown-lines" }));
+}
+function pgProdFixture(extra) {
+  return Object.assign({
+    total: 40,
+    verifiedTotal: 40,
+    items: pgProdItems(),
+    facets: {
+      products: [
+        { value: "111", count: 20 }, { value: "222", count: 12 },
+        { value: "333", count: 5 }, { value: "999", count: 3 },
+      ],
+      concerns: [{ value: "frown-lines", count: 9 }],
+      skins: [{ value: "dry", count: 4 }],
+    },
+    products: PG_PRODUCTS,
+    copy: Object.assign({}, PG_COPY),
+  }, extra || {});
+}
+function pgBrandConf() {
+  return { ctx: "brand", pid: 0, str: Object.assign({}, STR) };
+}
+function pgRailCards(section) {
+  return section.querySelectorAll(".cx-results__rail .cx-results__card");
+}
+
+// --- PG8: product ids + the product map are re-validated client-side -------------------
+{
+  const map = S.resultsProductMap({ products: {
+    "111": { t: "Gel", h: "gel", i: "https://cdn.shopify.com/a.jpg", u: 1 },
+    "222": { t: "Cream", h: "cream", i: "http://insecure/a.jpg", u: true },
+    "333": { t: "  ", h: "blank-title" },
+    "444": { t: "Slash", h: "a/b" },
+    "555": { t: "Query", h: "a?b=1" },
+    "abc": { t: "Bad id", h: "bad-id" },
+    "666": null,
+  } });
+  ok(Object.keys(map).sort().join(",") === "111,222",
+    "PG8: only numeric ids with a title and a path-safe handle survive (got " + Object.keys(map) + ")");
+  ok(map["111"].i === "https://cdn.shopify.com/a.jpg" && map["111"].u === true,
+    "PG8: https image + on-store flag kept");
+  ok(map["222"].i === "" && map["222"].u === false,
+    "PG8: an http image drops (pfHttps) and u is a strict === 1 read");
+  ok(S.resultsProductMap({}) === null && S.resultsProductMap(null) === null &&
+    S.resultsProductMap({ products: {} }) === null && S.resultsProductMap({ products: "x" }) === null,
+    "PG8: no usable product data -> null (one value to gate on)");
+  const valid = S.resultsValidItems({ items: [
+    Object.assign(pgItems(1, 1)[0], { products: ["111", 222, "x1", "", "333"] }),
+    pgItems(2, 1)[0],
+  ] });
+  ok(JSON.stringify(valid[0].pd) === '["111","333"]', "PG8: item product ids keep numeric strings only");
+  ok(Array.isArray(valid[1].pd) && valid[1].pd.length === 0, "PG8: no products member -> [] (every non-page payload)");
+  ok(S.resultsValidProductIds(["1", "2", "3", "4", "5", "6", "7", "8"]).length === 6,
+    "PG8: at most six product ids per result");
+}
+
+// --- PG9: "Product used" on every result — page only -----------------------------------
+{
+  const section = S.resultsBuildSection(pgConf(), pgProdFixture());
+  const cards = pgRailCards(section);
+  const row0 = cards[0].querySelector(".cx-results__prod");
+  ok(!!row0 && row0.querySelector(".cx-results__prod-k").textContent === "Product used",
+    "PG9: the row opens with the Product used eyebrow");
+  const a0 = row0.querySelector(".cx-results__prod-a");
+  ok(a0.tagName === "A" && a0.getAttribute("href") === "/products/deep-wrinkle-filler-gel",
+    "PG9: a product on the Online Store links to its page");
+  ok(a0.querySelector(".cx-results__prod-t").textContent === "Deep Wrinkle Filler Gel",
+    "PG9: the row names the product");
+  ok(a0.querySelector(".cx-results__prod-img").src === "https://cdn.shopify.com/s/files/1/p111.jpg?v=1&width=96",
+    "PG9: the product picture is a 96px CDN rendition");
+  ok(!cards[1].querySelector(".cx-results__prod-img") &&
+    cards[1].querySelector(".cx-results__prod-t").textContent === "Neck Tightening Cream",
+    "PG9: no picture -> the name alone");
+  const a2 = cards[2].querySelector(".cx-results__prod-a");
+  ok(a2.tagName === "SPAN" && !a2.hasAttribute("href"),
+    "PG9: a product that is not on the Online Store is plain text, never a dead link");
+  ok(!cards[3].querySelector(".cx-results__prod"), "PG9: a brand-level result carries no product row");
+  ok(!cards[4].querySelector(".cx-results__prod"), "PG9: an id the map cannot name renders nothing");
+  ok(cards[5].querySelectorAll(".cx-results__prod-a").length === 2 &&
+    cards[5].querySelectorAll(".cx-results__prod-k").length === 1,
+    "PG9: two tagged products -> two lines under ONE eyebrow");
+  const kids0 = cards[0].children;
+  ok(Array.prototype.indexOf.call(kids0, row0) ===
+    Array.prototype.indexOf.call(kids0, cards[0].querySelector(".cx-results__media")) + 1,
+    "PG9: the row sits directly under the photos");
+  const brand = S.resultsBuildSection(pgBrandConf(), pgProdFixture());
+  ok(brand.querySelectorAll(".cx-results__prod").length === 0,
+    "PG9: the brand twin shows no product rows even when the payload carries them");
+  // the enlarged view names the product too
+  S.PF_LB_OPENED.length = 0;
+  click(cards[0].querySelector(".cx-results__media"));
+  ok(S.PF_LB_OPENED.length === 1 && !!S.PF_LB_OPENED[0].querySelector(".cx-results__prod-t") &&
+    S.PF_LB_OPENED[0].querySelector(".cx-results__prod-t").textContent === "Deep Wrinkle Filler Gel",
+    "PG9: the viewer slide carries the same product row");
+  // no eyebrow copy (old server) -> the name still renders
+  const noCopy = S.resultsBuildSection(pgConf(), pgProdFixture({ copy: { sa: "x @@N@@", pr: "p", nx: "n" } }));
+  ok(!!pgRailCards(noCopy)[0].querySelector(".cx-results__prod-t") &&
+    !pgRailCards(noCopy)[0].querySelector(".cx-results__prod-k"),
+    "PG9: a missing eyebrow string degrades to the name alone");
+  // text stays text
+  const hack = "<img src=x onerror=alert(1)>";
+  const xss = S.resultsBuildSection(pgConf(), pgProdFixture({
+    products: { "111": { t: hack, h: "gel", u: 1 } },
+  }));
+  const xt = pgRailCards(xss)[0].querySelector(".cx-results__prod-t");
+  ok(xt.textContent === hack && xt.innerHTML === "" && xt.children.length === 0,
+    "PG9: a product title is inert text (textContent only)");
+  // links stay storefront-relative under the locale root
+  ok(S.resultsProductHref("neck cream") === "/products/neck%20cream", "PG9: the handle is URI-encoded");
+  S.window.Shopify = { routes: { root: "/fr/" } };
+  ok(S.resultsProductHref("gel") === "/fr/products/gel", "PG9: links follow the locale root");
+  S.window.Shopify = { routes: { root: "/fr" } };
+  ok(S.resultsProductHref("gel") === "/fr/products/gel", "PG9: a root without a trailing slash still joins cleanly");
+  S.window.Shopify = { routes: { root: "//evil.example/" } };
+  ok(S.resultsProductHref("gel") === "/products/gel", "PG9: a protocol-relative root is refused");
+  S.window.Shopify = { routes: { root: "https://evil.example/" } };
+  ok(S.resultsProductHref("gel") === "/products/gel", "PG9: an absolute root is refused");
+  delete S.window.Shopify;
+}
+
+// --- PG10: the Product filter leads the bar and filters the grid -----------------------
+{
+  const section = S.resultsBuildSection(pgConf(), pgProdFixture());
+  const chips = section.querySelectorAll(".cx-results__chip");
+  ok(chips[0].textContent === "Product" && chips[1].textContent === "Concern" && chips[2].textContent === "Skin type",
+    "PG10: Product leads the filters (got " + chips[0].textContent + ")");
+  ok(!!section.querySelector(".cx-results__fbar") &&
+    section.querySelector(".cx-results__fbar-k").textContent === "Filter by",
+    "PG10: the filters sit in one bar with its Filter by lead-in");
+  const group = section.querySelectorAll(".cx-results__group")[0];
+  ok(group.querySelector(".cx-results__group-title").textContent === "Product", "PG10: the first group is Product");
+  const opts = group.querySelectorAll(".cx-results__opt");
+  ok(opts.length === 4 && opts[0].textContent === "All" &&
+    /^\s*Deep Wrinkle Filler Gel\s+20$/.test(opts[1].textContent) &&
+    /^\s*Neck Tightening Cream\s+12$/.test(opts[2].textContent) &&
+    /^\s*Eye Lifting Serum\s+5$/.test(opts[3].textContent),
+    "PG10: All + one option per NAMEABLE product with its count (id 999 dropped)");
+  ok(!!opts[1].querySelector(".cx-results__opt-img") && !opts[2].querySelector(".cx-results__opt-img"),
+    "PG10: product options carry the product picture when there is one");
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.length = 0;
+  S.PF_FETCH_QUEUE.push(pgProdFixture({ total: 20, items: pgProdItems().slice(0, 1) }));
+  click(opts[1]);
+  ok(S.PF_FETCH_CALLS.length === 1 &&
+    S.PF_FETCH_CALLS[0].qs === "?type=results&page=1&per=24&ctx=page&prod=111",
+    "PG10: picking a product refetches page 1 with prod=<id> (got " + (S.PF_FETCH_CALLS[0] && S.PF_FETCH_CALLS[0].qs) + ")");
+  ok(chips[0].textContent === "Product: Deep Wrinkle Filler Gel" &&
+    chips[0].className === "cx-results__chip cx-results__chip--on",
+    "PG10: the active filter shows its value on the chip");
+  ok(opts[1].getAttribute("aria-pressed") === "true" && opts[0].getAttribute("aria-pressed") === "false",
+    "PG10: the picked option is pressed, All is not");
+  const clear = section.querySelector(".cx-results__chip--clear");
+  ok(!clear.hasAttribute("hidden"), "PG10: Clear filters appears with an active product filter");
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.push(pgProdFixture());
+  click(clear);
+  ok(S.PF_FETCH_CALLS[0].qs === "?type=results&page=1&per=24&ctx=page" &&
+    chips[0].textContent === "Product" && clear.hasAttribute("hidden"),
+    "PG10: Clear filters drops the product filter too");
+  const one = S.resultsBuildSection(pgConf(), pgProdFixture({
+    facets: { products: [{ value: "111", count: 40 }], concerns: [{ value: "frown-lines", count: 9 }] },
+  }));
+  ok(one.querySelectorAll(".cx-results__chip")[0].textContent === "Concern",
+    "PG10: a single product is not a filter");
+  const noLabel = S.resultsBuildSection(pgConf(), pgProdFixture({ copy: { sa: "x @@N@@", pr: "p", nx: "n" } }));
+  ok(noLabel.querySelectorAll(".cx-results__chip")[0].textContent === "Concern",
+    "PG10: no Product label copy (old server) -> no Product filter");
+  const noMap = S.resultsBuildSection(pgConf(), pgProdFixture({ products: undefined }));
+  ok(noMap.querySelectorAll(".cx-results__chip")[0].textContent === "Concern" &&
+    noMap.querySelectorAll(".cx-results__prod").length === 0,
+    "PG10: no product map -> no Product filter and no product rows (fail soft)");
+  const brand = S.resultsBuildSection(pgBrandConf(), pgProdFixture());
+  ok(brand.querySelectorAll(".cx-results__chip")[0].textContent === "Concern" &&
+    !brand.querySelector(".cx-results__fbar") && !brand.querySelector(".cx-results__n") &&
+    !brand.querySelector(".cx-results__chip-ic"),
+    "PG10: the brand twin keeps the classic chip row (no Product, no bar, no counter, no carets)");
+  const st = { concern: "", age: "", skin: "", duration: "", prod: "111", page: 1 };
+  ok(S.pfQuery(S.resultsParams({ ctx: "brand", pid: 0 }, st)) === "&page=1&per=12" &&
+    S.pfQuery(S.resultsParams({ ctx: "product", pid: 7 }, st)) === "&page=1&per=12&product=7",
+    "PG10: ctx=page and prod never leave the results page");
+}
+
+// --- PG11: on the page each filter opens its OWN options (a dropdown) ------------------
+{
+  const section = S.resultsBuildSection(pgConf(), pgProdFixture());
+  const chips = section.querySelectorAll(".cx-results__chip");
+  const groups = section.querySelectorAll(".cx-results__group");
+  const drawer = section.querySelector(".cx-results__drawer");
+  const expanded = () => [0, 1, 2].map((i) => chips[i].getAttribute("aria-expanded")).join(",");
+  const hidden = () => [0, 1, 2].map((i) => (groups[i].hasAttribute("hidden") ? "h" : "s")).join("");
+  click(chips[1]);
+  ok(!drawer.hasAttribute("hidden") && hidden() === "hsh" && expanded() === "false,true,false",
+    "PG11: Concern opens ONLY the Concern options and only its chip reads expanded (" + hidden() + " " + expanded() + ")");
+  click(chips[2]);
+  ok(!drawer.hasAttribute("hidden") && hidden() === "hhs" && expanded() === "false,false,true",
+    "PG11: tapping another filter switches the open panel to it");
+  click(chips[2]);
+  ok(drawer.hasAttribute("hidden") && expanded() === "false,false,false",
+    "PG11: the open filter's own chip closes it");
+  ok(!!chips[0].querySelector(".cx-results__chip-ic") && !!chips[0].querySelector(".cx-results__chip-t"),
+    "PG11: a page filter is a dropdown button (label + caret)");
+  const alls = section.querySelectorAll(".cx-results__opt--all");
+  ok(alls.length === 3 && alls[1].getAttribute("aria-pressed") === "true",
+    "PG11: every group leads with All, pressed while the filter is unset");
+  S.PF_FETCH_CALLS.length = 0;
+  click(chips[1]);
+  click(alls[1]);
+  ok(S.PF_FETCH_CALLS.length === 0 && drawer.hasAttribute("hidden"),
+    "PG11: All on an unset filter closes the panel without a fetch");
+  // set a concern, then All clears it with one fetch
+  S.PF_FETCH_QUEUE.length = 0;
+  S.PF_FETCH_QUEUE.push(pgProdFixture({ total: 9 }));
+  click(chips[1]);
+  click(groups[1].querySelectorAll(".cx-results__opt")[1]);
+  ok(chips[1].textContent === "Concern: Frown lines",
+    "PG11: the concern slug prints as words on the chip (got " + chips[1].textContent + ")");
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.push(pgProdFixture());
+  click(chips[1]);
+  click(alls[1]);
+  ok(S.PF_FETCH_CALLS.length === 1 && S.PF_FETCH_CALLS[0].qs === "?type=results&page=1&per=24&ctx=page" &&
+    chips[1].textContent === "Concern",
+    "PG11: All clears a set filter with one refetch");
+  // brand twin: the classic one-panel drawer
+  const brand = S.resultsBuildSection(pgBrandConf(), pgProdFixture());
+  const bChips = brand.querySelectorAll(".cx-results__chip");
+  const bGroups = brand.querySelectorAll(".cx-results__group");
+  click(bChips[0]);
+  ok(bChips[0].getAttribute("aria-expanded") === "true" && bChips[1].getAttribute("aria-expanded") === "true" &&
+    !bGroups[0].hasAttribute("hidden") && !bGroups[1].hasAttribute("hidden"),
+    "PG11: the brand twin still opens ONE panel with every group");
+  click(bChips[1]);
+  ok(brand.querySelector(".cx-results__drawer").hasAttribute("hidden"),
+    "PG11: in the brand twin any chip closes the open panel");
+  ok(brand.querySelectorAll(".cx-results__opt--all").length === 0 &&
+    bGroups[0].querySelectorAll(".cx-results__opt")[0].textContent.indexOf("frown-lines") === 0,
+    "PG11: the brand twin has no All option and keeps the raw concern slug");
+}
+
+// --- PG12: page photos are sized renditions; the first row loads eagerly ---------------
+{
+  const cdn = "https://cdn.shopify.com/s/files/1/0/files/";
+  const full = S.resultsThumbSet(cdn + "a.png?v=1", false);
+  ok(!!full && full.src === cdn + "a.png?v=1&width=720" &&
+    full.srcset === cdn + "a.png?v=1&width=360 360w, " + cdn + "a.png?v=1&width=540 540w, " + cdn + "a.png?v=1&width=720 720w",
+    "PG12: a full-width photo offers 360/540/720 and never the original");
+  const half = S.resultsThumbSet(cdn + "a.png", true);
+  ok(!!half && half.src === cdn + "a.png?width=540" && /width=240 240w/.test(half.srcset) && !/720w/.test(half.srcset),
+    "PG12: a half-width pair frame tops out at 540");
+  ok(/^\(min-width: 1200px\) 300px/.test(full.sizes) && /^\(min-width: 1200px\) 150px/.test(half.sizes),
+    "PG12: sizes follow the page grid");
+  ok(S.resultsThumbSet("https://other.example/a.png", false) === null &&
+    S.resultsThumbSet(cdn + "a.png?width=900", false) === null &&
+    S.resultsThumbSet("http://cdn.shopify.com/a.png", false) === null && S.resultsThumbSet("", true) === null,
+    "PG12: foreign hosts, already-sized and insecure URLs are left alone (null)");
+  const items = pgItems(1, 6).map((item, i) => {
+    if (i === 1) {
+      return { id: "c1", source: "lab", verified: false, beforeUrl: null, afterUrl: null, combinedUrl: cdn + "combo.png?v=2" };
+    }
+    if (i === 2) return item; // https://cdn/… — not Shopify's CDN
+    return Object.assign(item, { beforeUrl: cdn + "b" + i + ".png?v=1", afterUrl: cdn + "a" + i + ".png?v=1" });
+  });
+  const section = S.resultsBuildSection(pgConf(), pgFixture({ items }));
+  const cards = pgRailCards(section);
+  const t0 = cards[0].querySelectorAll(".cx-results__thumb");
+  ok(t0.length === 2 && t0[0].src === cdn + "b0.png?v=1&width=540" &&
+    /width=240 240w/.test(t0[0].getAttribute("srcset")) && /^\(min-width: 1200px\) 150px/.test(t0[0].getAttribute("sizes")),
+    "PG12: a pair card's frames get the half-width set");
+  ok(t0[0].getAttribute("loading") === "eager" && t0[0].getAttribute("fetchpriority") === "high" &&
+    t0[1].getAttribute("fetchpriority") === "high",
+    "PG12: the very first cards load eagerly with high priority");
+  const combo = cards[1].querySelector(".cx-results__thumb--combo");
+  ok(!!combo && combo.src === cdn + "combo.png?v=2&width=720" && /width=720 720w$/.test(combo.getAttribute("srcset")),
+    "PG12: a combined photo gets the full-width set");
+  const foreign = cards[2].querySelector(".cx-results__thumb");
+  ok(foreign.src === "https://cdn/pb3.jpg" && !foreign.hasAttribute("srcset") &&
+    foreign.getAttribute("loading") === "eager" && !foreign.hasAttribute("fetchpriority"),
+    "PG12: a foreign-host photo keeps its URL; cards 3-4 are eager without the priority hint");
+  ok(cards[4].querySelector(".cx-results__thumb").getAttribute("loading") === "lazy" &&
+    cards[4].querySelector(".cx-results__thumb").getAttribute("decoding") === "async",
+    "PG12: everything below the first row stays lazy");
+  const brand = S.resultsBuildSection(pgBrandConf(), pgFixture({ items }));
+  const bt = pgRailCards(brand)[0].querySelector(".cx-results__thumb");
+  ok(bt.src === cdn + "b0.png?v=1" && !bt.hasAttribute("srcset") && bt.getAttribute("loading") === "lazy" &&
+    !bt.hasAttribute("fetchpriority") && !bt.hasAttribute("decoding"),
+    "PG12: the brand twin's photos are untouched");
+}
+
+// --- PG13: live result counter + concern slugs as words --------------------------------
+{
+  ok(S.resultsCountText({ rn: "Results: @@N@@" }, 58) === "Results: 58" &&
+    S.resultsCountText({ rn: "Results: @@N@@" }, 0) === "Results: 0",
+    "PG13: the counter fills its template (zero included)");
+  ok(S.resultsCountText({}, 5) === "" && S.resultsCountText({ rn: "Results" }, 5) === "" &&
+    S.resultsCountText({ rn: "Results: @@N@@" }, NaN) === "" && S.resultsCountText({ rn: "Results: @@N@@" }, -1) === "",
+    "PG13: no template or no number -> no counter text");
+  const section = S.resultsBuildSection(pgConf(), pgProdFixture());
+  const n = section.querySelector(".cx-results__n");
+  ok(!!n && n.textContent === "Results: 40" && !n.hasAttribute("hidden") && n.getAttribute("aria-live") === "polite",
+    "PG13: the bar shows the unfiltered total first");
+  S.PF_FETCH_CALLS.length = 0;
+  S.PF_FETCH_QUEUE.length = 0;
+  S.PF_FETCH_QUEUE.push(pgProdFixture({ total: 9, items: pgProdItems().slice(0, 2) }));
+  click(section.querySelectorAll(".cx-results__group")[1].querySelectorAll(".cx-results__opt")[1]);
+  ok(n.textContent === "Results: 9", "PG13: the counter follows the filtered total (got " + n.textContent + ")");
+  S.PF_FETCH_QUEUE.push({ total: 0, verifiedTotal: 0, items: [] });
+  click(section.querySelectorAll(".cx-results__group")[2].querySelectorAll(".cx-results__opt")[1]);
+  ok(n.textContent === "Results: 0" && !section.querySelector(".cx-results__empty").hasAttribute("hidden"),
+    "PG13: an empty filter result reads zero next to the empty message");
+  const old = S.resultsBuildSection(pgConf(), pgProdFixture({ copy: { sa: "x @@N@@", pr: "p", nx: "n" } }));
+  ok(old.querySelector(".cx-results__n").hasAttribute("hidden") && !old.querySelector(".cx-results__fbar-k"),
+    "PG13: without the proxy copy the counter and lead-in stay out (old server)");
+  ok(S.resultsSlugLabel("frown-lines") === "Frown lines" && S.resultsSlugLabel("nose_to-mouth--lines") === "Nose to mouth lines" &&
+    S.resultsSlugLabel("") === "" && S.resultsSlugLabel(null) === "",
+    "PG13: slugs print as words, first letter capitalised");
+  const fresh = S.resultsBuildSection(pgConf(), pgProdFixture());
+  ok(/Frown lines/.test(pgRailCards(fresh)[0].querySelector(".cx-results__meta").textContent) &&
+    !/frown-lines/.test(pgRailCards(fresh)[0].querySelector(".cx-results__meta").textContent),
+    "PG13: the page card's meta line prints the concern as words");
+  const brand = S.resultsBuildSection(pgBrandConf(), pgProdFixture());
+  ok(/frown-lines/.test(pgRailCards(brand)[0].querySelector(".cx-results__meta").textContent),
+    "PG13: the brand twin keeps the raw slug");
+}
+
+// --- PG14: loading placeholder, title-gap classes, and the early first response --------
+{
+  const sk = S.resultsPageSkeleton();
+  ok(sk.getAttribute("class") === "cx-rsk" && sk.getAttribute("aria-hidden") === "true" &&
+    sk.querySelectorAll(".cx-rsk__card").length === 8,
+    "PG14: the placeholder is decorative and paints eight card shapes");
+  ok(!/(^|\s)cx-results(\s|$)/.test(sk.getAttribute("class")) && !sk.querySelector(".cx-results") && !sk.querySelector(".cx-proof"),
+    "PG14: the placeholder can never be mistaken for a mounted gallery");
+
+  function pageDom(contentText, withImg) {
+    const main = doc.createElement("main");
+    main.setAttribute("id", "main");
+    main.setAttribute("class", "template-page");
+    const content = doc.createElement("div");
+    content.setAttribute("class", "page__content");
+    content.textContent = contentText;
+    if (withImg) content.appendChild(doc.createElement("img"));
+    main.appendChild(content);
+    const band = doc.createElement("div");
+    band.setAttribute("class", "cx-proof-band cx-proof-band--page container");
+    const slot = doc.createElement("div");
+    slot.setAttribute("data-cx-slot", "results");
+    band.appendChild(slot);
+    main.appendChild(band);
+    doc.body.appendChild(main);
+    const node = S.resultsPageSkeleton();
+    slot.appendChild(node);
+    return { main, band, slot, node };
+  }
+  let d = pageDom(" \n ", false);
+  S.resultsPageChrome(d.node, true);
+  ok(d.main.getAttribute("class") === "template-page cx-rp cx-rp--bare",
+    "PG14: an empty page gets both spacing classes, the theme's own class kept (got " + d.main.getAttribute("class") + ")");
+  S.resultsPageChrome(d.node, true);
+  ok(d.main.getAttribute("class") === "template-page cx-rp cx-rp--bare", "PG14: applying twice never duplicates a class");
+  S.resultsPageUnmount(d.node);
+  ok(d.main.getAttribute("class") === "template-page" && d.node.parentNode === null && d.band.parentNode === null,
+    "PG14: nothing to show -> placeholder, empty band and spacing classes all go (page as the theme rendered it)");
+  doc.body.removeChild(d.main);
+  d = pageDom("Intro text the merchant wrote.", false);
+  S.resultsPageChrome(d.node, true);
+  ok(d.main.getAttribute("class") === "template-page cx-rp", "PG14: a page with its own text is not bare");
+  doc.body.removeChild(d.main);
+  d = pageDom("", true);
+  S.resultsPageChrome(d.node, true);
+  ok(d.main.getAttribute("class") === "template-page cx-rp", "PG14: a page with only an image is not bare");
+  // another gallery section in the band keeps the band on unmount
+  const other = doc.createElement("section");
+  other.setAttribute("class", "cx-proof");
+  d.band.appendChild(other);
+  S.resultsPageUnmount(d.node);
+  ok(d.band.parentNode === d.main && d.main.getAttribute("class") === "template-page",
+    "PG14: a band that still holds a widget stays");
+  doc.body.removeChild(d.main);
+  // mounted outside the band (a theme mount point): spacing is left alone
+  d = pageDom("", false);
+  const mount = doc.createElement("div");
+  doc.body.appendChild(mount);
+  const loose = S.resultsPageSkeleton();
+  mount.appendChild(loose);
+  S.resultsPageChrome(loose, true);
+  ok(d.main.getAttribute("class") === "template-page", "PG14: a gallery outside #main's band never restyles the page");
+  doc.body.removeChild(mount);
+  doc.body.removeChild(d.main);
+
+  // the early first response (window.cxRF) — synchronous thenables keep it deterministic
+  function thenable(value, failed) {
+    return {
+      then(fn) {
+        if (failed) return thenable(value, true);
+        let out;
+        try { out = fn(value); } catch (e) { return thenable(e, true); }
+        return out && typeof out.then === "function" ? out : thenable(out, false);
+      },
+      catch(fn) { if (failed) fn(value); return this; },
+    };
+  }
+  const response = (ok2, body) => ({ ok: ok2, json() { return thenable(body, false); } });
+  const TIMEOUTS = [];
+  S.window.setTimeout = (fn, ms) => { TIMEOUTS.push({ fn, ms }); return TIMEOUTS.length; };
+  S.window.clearTimeout = () => { /* recorded timers never fire */ };
+  const early = { total: 3, verifiedTotal: 3, items: pgItems(1, 3) };
+  function firstData(conf, cxRF, queued) {
+    S.PF_FETCH_CALLS.length = 0;
+    S.PF_FETCH_QUEUE.length = 0;
+    if (queued) S.PF_FETCH_QUEUE.push(queued);
+    S.window.cxRF = cxRF;
+    const got = [];
+    S.resultsFirstData(conf, (data) => got.push(data));
+    return got;
+  }
+  let got = firstData({ ctx: "page", pid: 0, live: true }, thenable(response(true, early), false));
+  ok(got.length === 1 && got[0] === early && S.PF_FETCH_CALLS.length === 0,
+    "PG14: the live page uses the embed's early response — no second request");
+  ok(S.window.cxRF === null && TIMEOUTS.length === 1 && TIMEOUTS[0].ms === 8000,
+    "PG14: the early promise is consumed once, under an 8s fallback timer");
+  got = firstData({ ctx: "page", pid: 0, live: true }, thenable(response(false, {}), false), early);
+  ok(got.length === 1 && got[0] === early && S.PF_FETCH_CALLS.length === 1 &&
+    S.PF_FETCH_CALLS[0].qs === "?type=results&page=1&per=24&ctx=page",
+    "PG14: a failed early response falls back to the classic fetch");
+  got = firstData({ ctx: "page", pid: 0, live: true }, thenable(response(true, { error: "unavailable" }), false), early);
+  ok(got.length === 1 && got[0] === early && S.PF_FETCH_CALLS.length === 1,
+    "PG14: an early body that is not a results payload falls back too");
+  got = firstData({ ctx: "page", pid: 0, live: true }, thenable(new Error("offline"), true), early);
+  ok(got.length === 1 && got[0] === early && S.PF_FETCH_CALLS.length === 1, "PG14: a rejected early promise falls back");
+  got = firstData({ ctx: "page", pid: 0, live: true }, undefined, early);
+  ok(got.length === 1 && S.PF_FETCH_CALLS.length === 1, "PG14: no early promise -> the classic fetch");
+  got = firstData({ ctx: "page", pid: 0, live: false }, thenable(response(true, { total: 1, verifiedTotal: 1, items: [] }), false), early);
+  ok(got.length === 1 && got[0] === early && S.PF_FETCH_CALLS.length === 1 && S.window.cxRF === null,
+    "PG14: a draft page never uses the early response (preview keeps its cache-busting fetch)");
+  S.window.CellexiaBooster = { __preview: true };
+  got = firstData({ ctx: "page", pid: 0, live: true }, thenable(response(true, { total: 1, verifiedTotal: 1, items: [] }), false), early);
+  ok(got.length === 1 && got[0] === early && S.PF_FETCH_CALLS.length === 1 && /&pv=\d+$/.test(S.PF_FETCH_CALLS[0].qs),
+    "PG14: a previewing merchant on the live page keeps the pv fetch");
+  delete S.window.CellexiaBooster;
+  const sentinel = thenable(response(true, { total: 1, verifiedTotal: 1, items: [] }), false);
+  got = firstData({ ctx: "brand", pid: 0, live: true }, sentinel, early);
+  ok(got.length === 1 && got[0] === early && S.PF_FETCH_CALLS[0].qs === "?type=results&page=1&per=12" &&
+    S.window.cxRF === sentinel,
+    "PG14: every other context ignores (and leaves) the global and sends the pre-v39.1 query");
+  // the timer path: an early promise that never settles
+  TIMEOUTS.length = 0;
+  got = firstData({ ctx: "page", pid: 0, live: true }, { then() { return this; }, catch() { return this; } }, early);
+  ok(got.length === 0 && S.PF_FETCH_CALLS.length === 0 && TIMEOUTS.length === 1, "PG14: a pending early promise waits");
+  TIMEOUTS[0].fn();
+  ok(got.length === 1 && got[0] === early && S.PF_FETCH_CALLS.length === 1, "PG14: after 8s the classic fetch takes over");
+  TIMEOUTS[0].fn();
+  ok(got.length === 1 && S.PF_FETCH_CALLS.length === 1, "PG14: the callback fires exactly once");
+  delete S.window.cxRF;
+  delete S.window.setTimeout;
+  delete S.window.clearTimeout;
 }
 
 // ======================================= REAL lightbox machinery (LB, v8.21)
@@ -3538,7 +4020,7 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         // v25: the copy whitelist dropped — any proxy field could then
         // overwrite island strings like the banner (R22's HACK catches).
         name: "m34-copy-whitelist-dropped",
-        find: "    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx', 'bn'];",
+        find: "    var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx', 'bn', 'fp', 'fb', 'al', 'rn', 'pu'];",
         replace: "    var keys = []; for (var ck in data.copy) keys.push(ck);",
       },
       {
@@ -3783,6 +4265,96 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m68-page-note-on-live",
         find: "    if (pageMode && conf.live !== true) {",
         replace: "    if (pageMode) {",
+      },
+      {
+        // v39.1: the page gate on product data dropped — product rows
+        // would appear on product pages and the home band (PG9 twin).
+        name: "m69-product-rows-everywhere",
+        find: "    if (conf.ctx === 'page') {\n      o.pg = true;\n      o.pm = pm;\n    }",
+        replace: "    o.pg = true;\n    o.pm = resultsProductMap(data);",
+      },
+      {
+        // v39.1: the locale-root guard dropped — a protocol-relative root
+        // would turn every product link off-site (PG9).
+        name: "m70-product-href-root-unchecked",
+        find: "    if (typeof root !== 'string' || root.charAt(0) !== '/' || root.charAt(1) === '/') root = '/';",
+        replace: "    if (typeof root !== 'string') root = '/';",
+      },
+      {
+        // v39.1: the product title through a markup sink (PG9 XSS).
+        name: "m71-product-title-innerhtml",
+        find: "      t.textContent = p.t;",
+        replace: "      t.innerHTML = p.t;",
+      },
+      {
+        // v39.1: the product filter never reaches the proxy — picking a
+        // product would refetch the unfiltered grid (PG10).
+        name: "m72-prod-filter-not-sent",
+        find: "      p.prod = st.prod;",
+        replace: "      p.prod = '';",
+      },
+      {
+        // v39.1: ctx=page leaks into every context — product pages and
+        // home would pay for product data they never show (PG3/PG10).
+        name: "m73-page-ctx-param-leaks",
+        find: "    if (conf && conf.ctx === 'page') {\n      p.ctx = 'page';",
+        replace: "    if (conf) {\n      p.ctx = 'page';",
+      },
+      {
+        // v39.1: the product map's validation dropped — blank titles and
+        // path-carrying handles would render (PG8).
+        name: "m74-product-map-unvalidated",
+        find: "      if (!title || !handle) continue;\n      out[id] = { t: title, h: handle, i: pfHttps(p.i), u: p.u === 1 };",
+        replace: "      out[id] = { t: title, h: handle, i: pfHttps(p.i), u: p.u === 1 };",
+      },
+      {
+        // v39.1: the dropdown shows every group again — the panel would
+        // open as one wall of options (PG11).
+        name: "m75-dropdown-shows-all-groups",
+        find: "          else groupEls[gk].setAttribute('hidden', '');",
+        replace: "          else groupEls[gk].removeAttribute('hidden');",
+      },
+      {
+        // v39.1: the pass-through check dropped — foreign-host photos
+        // would get a srcset of identical URLs (PG12).
+        name: "m76-thumbset-foreign-host",
+        find: "      if (!u || u === url) return null;",
+        replace: "      if (!u) return null;",
+      },
+      {
+        // v39.1: page photos lose their sized renditions — the grid
+        // would pull full-resolution originals again (PG12).
+        name: "m77-page-thumbs-unsized",
+        find: "        if (pageMode) resultsPageThumbs(cardEl, base + i < 2 ? 2 : base + i < 4 ? 1 : 0);",
+        replace: "",
+      },
+      {
+        // v39.1: the early response used for a draft island — a
+        // previewing merchant would see cached data (PG14).
+        name: "m78-early-data-on-draft",
+        find: "        if (conf.live === true && !pfPreviewVerified()) early = window.cxRF;",
+        replace: "        early = window.cxRF;",
+      },
+      {
+        // v39.1: the counter reads the loaded cards, not the filtered
+        // total — "Results: 6" over 40 results (PG13).
+        name: "m79-counter-counts-loaded",
+        find: "        var countText = resultsCountText(s, filteredTotal);",
+        replace: "        var countText = resultsCountText(s, st.items.length);",
+      },
+      {
+        // v39.1: the placeholder carries the gallery's class — the
+        // idempotency guard would then skip the real gallery (PG14).
+        name: "m80-skeleton-reads-as-gallery",
+        find: "    var sk = pfEl('div', 'cx-rsk', ['aria-hidden', 'true']);",
+        replace: "    var sk = pfEl('div', 'cx-results cx-rsk', ['aria-hidden', 'true']);",
+      },
+      {
+        // v39.1: the failed-render cleanup leaves the spacing classes on
+        // #main — the page's own layout would stay altered (PG14).
+        name: "m81-unmount-keeps-chrome",
+        find: "      resultsPageChrome(sk, false);\n      var slot = sk ? sk.parentNode : null;",
+        replace: "      var slot = sk ? sk.parentNode : null;",
       },
     ],
   });

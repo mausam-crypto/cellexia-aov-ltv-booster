@@ -108,6 +108,15 @@ const CSS = `${EXT}/assets/cellexia-booster.css`;
   // stale 3-line brace-literal comment (-55B) and the three duplicated
   // `request.page_type == 'product'` opt-out wrappers folded into one
   // `cx_f` assign (-179B net). 99,454B -> 99,433B.
+  // v39.1 (2026-11-13): NO budget move — the live results page's inline
+  // early fetch (+184B) was paid for FIRST in the same file: each of the
+  // three opt-out + draft gates dropped its cx_*_ok flag by folding into
+  // one if/elsif (-60B each, -180B; equivalent: the flag was only ever
+  // read by the very next statement). 99,433B -> 99,437B.
+  // v40 (2026-11-13, Joy Subscriptions): NO Liquid change at all — the
+  // native family reuses the island's existing sx.p as its deny-list and
+  // gets the list for product pages from the app proxy ("xp", route-side
+  // Liquid in app/routes/proxy.cart-data.tsx, outside this meter). 99,437B.
   const BUDGET = 99_500; // our own margin below the cap
   const FLOOR = 500; // a shipped block/snippet below this has been gutted
   const CEILING = 30_000; // a single file above this needs a Liquid diet
@@ -4231,9 +4240,14 @@ const EVIDENCE = {
       cartJs17.includes("if (!tierAlloc || !(Number(tierAlloc.price) > 0)) return;"),
     "v17: tile invariant — kill switch honored and no usable allocation price = no tile",
   );
+  // v40 restated: the owned check kept its exact ownership test (subsAware +
+  // ownedPlan, per line); a line that fails it may only anchor through the
+  // NATIVE family (nativeLinePlan — null while the in-house app is live), so
+  // a Joy line still never activates the OWNED family.
   ok(
-    cartJs17.includes("if (!ownedPlan(item.selling_plan_allocation.selling_plan.id)) continue;"),
-    "v17: cross-sell context requires an OWNED plan line (Joy lines never activate it)",
+    cartJs17.includes("if (!(owned && ownedPlan(item.selling_plan_allocation.selling_plan.id))) {") &&
+      cartJs17.includes("nat = nativeLinePlan(item);\n        if (!nat) continue;"),
+    "v17/v40: the owned cross-sell context still requires an OWNED plan line; any other line anchors only via nativeLinePlan",
   );
 
   const settings17 = read("app/models/settings.server.ts");
@@ -4277,10 +4291,14 @@ const EVIDENCE = {
     pdpJs171.includes("return p > 0 && p <= rec.oneTime ? p : null;"),
     "v17.1: PDP prepaid detector — an allocation priced above one-time is never offered",
   );
+  // v40 restated: the plan is still resolved at CLICK time from the live
+  // verdict (azSubPlanId), now PER ROW through azSubRowPlan — under the buy
+  // box that is the page plan's exact allocation (azSubPrice, unchanged).
   ok(
-    pdpJs171.includes("if (azAddPlan && azSubPrice(id, azAddPlan) != null) {") &&
-      pdpJs171.includes("item.selling_plan = /^\\d+$/.test(azAddPlan) ? Number(azAddPlan) : azAddPlan;"),
-    "v17.1: the FBT add resolves the plan at CLICK time against the live buy-box state",
+    pdpJs171.includes("var azAddPlan = azSubPlanId();\n      var azRow = azAddPlan ? azSubRowPlan(id, azAddPlan) : null;") &&
+      pdpJs171.includes("if (azRow) item.selling_plan = /^\\d+$/.test(azRow.id) ? Number(azRow.id) : azRow.id;") &&
+      pdpJs171.includes("if (!azSubNative()) return exact != null ? { id: String(pagePlanId), price: exact } : null;"),
+    "v17.1/v40: the FBT add resolves the plan at CLICK time against the live verdict (buy box: the page plan's exact allocation)",
   );
   ok(
     pdpJs171.includes("if (window.isB2BCustomer === true || AZ_CFG.b2b === true) return null;"),
@@ -4361,10 +4379,184 @@ const EVIDENCE = {
     cartJs17.includes("if (!fallback && subsLive() && ownedPlan(alloc.planId)) fallback = candidate;"),
     "v23: the switch card's keyword-less fallback needs LIVE, not just the open data gate",
   );
+  // v40 restated: the owned family's proof is unchanged (subsAware — never
+  // subsLive — plus the owned plan line); only its position moved from an
+  // early return into the per-line test so a native line can anchor too.
   ok(
-    cartJs17.includes("if (!subsAware() || !state.cart || !Array.isArray(state.cart.items)) return null;"),
+    cartJs17.includes("var owned = subsAware();") &&
+      cartJs17.includes("if (!(owned && ownedPlan(item.selling_plan_allocation.selling_plan.id))) {") &&
+      !/function subXsPlanLine\(\) \{[\s\S]*?subsLive\(\)[\s\S]*?\n  \}\n/.test(
+        cartJs17.slice(cartJs17.indexOf("function subXsPlanLine() {"), cartJs17.indexOf("function variantDefaultCadence(")),
+      ),
     "v23: cart cross-sell keeps subsAware — its per-shopper proof is the owned plan line",
   );
+
+  // ============ v40 NATIVE SELLING PLANS — JOY SUBSCRIPTIONS (2026-11-13)
+  // The merchant sells subscriptions through Joy (Avada) and keeps the
+  // in-house app dark. A PARALLEL native family serves Joy's plain Shopify
+  // selling plans; the owned family above is untouched (every v17/v23 pin
+  // stays green byte-for-byte). Structural safety rails:
+  //   - native is OFF while the in-house app is live, for B2B, with the
+  //     kill switch off, and while the in-house plan ids are unknown;
+  //   - an offerable plan is strictly cheaper than one-time and never an
+  //     in-house plan (deny-list: cfg.sx.p, else the proxy's "xp");
+  //   - a schedule change is always disclosed (the plan NAME) or not offered;
+  //   - the home/collection card decorator stays in-house-only (merchant
+  //     decision: cards keep one-time prices under Joy).
+  {
+    const fnText = (name, nextName) =>
+      cartJs17.slice(cartJs17.indexOf(`  function ${name}(`), cartJs17.indexOf(`  function ${nextName}(`));
+    ok(
+      cartJs17.includes("function inhouseLive() {") &&
+        cartJs17.includes("return !!(cfg.sx && cfg.sx.live === true);") &&
+        cartJs17.includes("return subscriptionAware() && !isB2B() && !inhouseLive() && nativeDenyList() !== null;"),
+      "v40: nativeSubs = kill switch + not B2B + in-house NOT live + in-house plan ids known",
+    );
+    ok(
+      cartJs17.includes("if (cfg.sx && Array.isArray(cfg.sx.p)) return cfg.sx.p;\n    return Array.isArray(nativeDeny) ? nativeDeny : null;"),
+      "v40: the deny-list is the island's sx.p, else the proxy-loaded list (null = unknown = inert)",
+    );
+    ok(
+      cartJs17.includes("if (!variant || !a || a.planId == null || subsDenied(a.planId)) return false;") &&
+        cartJs17.includes("return p > 0 && p < one;"),
+      "v40: offerable = not an in-house plan AND strictly below the one-time price (0 % and prepaid refused)",
+    );
+    ok(
+      cartJs17.includes("if (!nativeSubs() || !itemHasPlan(item)) return null;") &&
+        cartJs17.includes("if (!alloc || !nativeAlloc(variant, alloc)) return null;"),
+      "v40: a native line = its OWN plan offerable on its OWN variant (the per-shopper proof)",
+    );
+    ok(
+      cartJs17.includes("if (anchor.native) {") &&
+        cartJs17.includes("if (!sameSchedule && !nat.name) return null;") &&
+        cartJs17.includes("freq: sameSchedule ? '' : nat.name"),
+      "v40: cross-sell resolves inside the native family and reports a differing schedule by plan name (nameless = not offered)",
+    );
+    ok(
+      cartJs17.includes("if (!tierAlloc && nativeLine) {") &&
+        cartJs17.includes("if (tierPlan && !tierPlan.name) tierPlan = null;") &&
+        cartJs17.includes("planName: tierPlan && !nativeSameName(tierPlan.name, nativeLine.name) ? tierPlan.name : ''"),
+      "v40: a Joy line's pack tile moves to the tier variant's own offerable plan — only when that plan has a name to show",
+    );
+    ok(
+      cartJs17.includes("var addPlanId = sellingPlanId;") &&
+        cartJs17.includes("if (candidate.planId != null) addPlanId = ") &&
+        cartJs17.includes("if (addPlanId) addPayload.selling_plan = addPlanId;") &&
+        cartJs17.includes("if (sellingPlanId) restore.selling_plan = sellingPlanId;"),
+      "v40: the upgrade add carries the candidate's plan; a failed upgrade restores the ORIGINAL plan",
+    );
+    ok(
+      cartJs17.includes("if (candidate.planName) tile.appendChild(el('span', 'cx-volume__freq', candidate.planName));") &&
+        cartJs17.includes("if (sub && sub.freq) info.appendChild(el('span', 'cx-crosssell__freq', sub.freq));") &&
+        cartJs17.includes("var freq = cxEl('span', 'cx-crosssell__freq');"),
+      "v40: the new delivery frequency is rendered on the tile and on both cross-sell row builders (textContent only)",
+    );
+    ok(
+      cartJs17.includes("if (!fallback && nativeSubs() && nativeAlloc(variant, alloc)) fallback = candidate;") &&
+        cartJs17.includes("if (subsDenied(alloc.planId) && !subsLive()) continue;"),
+      "v40: switch card — native fallback is an offerable allocation, and neither path names a dark in-house plan",
+    );
+    ok(
+      cartJs17.includes("if (cfg.sx || nativeDeny !== null || nativeDenyAsked) return;") &&
+        cartJs17.includes("'cx_subs_xp:1'") &&
+        cartJs17.includes("ensureNativeDeny(); // v40"),
+      "v40: island-absent markets fetch the in-house plan ids from the proxy ONCE per page (cached 10 min)",
+    );
+    // Merchant decision #2: the v17.2 card decorator keeps following the
+    // in-house launch flag ONLY — no native logic may leak into it.
+    const cardFns = fnText("cardSubCents", "cardSubSwapPrice") + fnText("ownedCadenceAlloc", "setNotice") +
+      fnText("cardFlagCacheKey", "cardFlagCacheGet");
+    ok(
+      cardFns.length > 600 && !/native|inhouseLive|subsDenied/.test(cardFns) &&
+        cartJs17.includes("var sub = subsLive() ? cardSubCents(entry) : null;") &&
+        cartJs17.includes("var wantSub = subsLive(); // v17.2/v23"),
+      "v40: the product-card price decorator stays owned-only (subsLive) — cards keep one-time prices under Joy",
+    );
+
+    const pdpJs40 = read(`${EXT}/assets/cellexia-pdp.js`);
+    ok(
+      pdpJs40.includes("if (!st) return azNativePlanId();") &&
+        pdpJs40.includes("if (st.mode !== 'subscription' || !st.sellingPlanId) return null;"),
+      "v40: Joy's field answers ONLY when the in-house buy box is silent; a buy box that answers always decides",
+    );
+    ok(
+      pdpJs40.includes("var area = document.querySelector('.pdp__grey');") &&
+        pdpJs40.includes("if (!input || input.getAttribute('name') !== 'selling_plan' || input.disabled) continue;") &&
+        pdpJs40.includes("return /^\\d+$/.test(value) ? value : null;"),
+      "v40: the native verdict is Joy's INPUT named selling_plan inside .pdp__grey, all-digits or nothing",
+    );
+    ok(
+      pdpJs40.includes("'avada:plan:selected'") && pdpJs40.includes("'subscription-change'") &&
+        pdpJs40.includes("el.getAttribute('name') === 'selling_plan'") &&
+        (pdpJs40.match(/azNativeOn\(function \(\) \{/g) || []).length === 2,
+      "v40: Joy's window events + the field's change are ticks at BOTH cx:buybox:change sites (re-price, stepper clamp)",
+    );
+    ok(
+      pdpJs40.includes("if (!Array.isArray(azSubDeny) || azSubDenied(pagePlanId)) return null;") &&
+        pdpJs40.includes("if (!(p > 0 && p < rec.oneTime)) continue;") &&
+        pdpJs40.includes("if (!a || a.planId == null || azSubDenied(a.planId)) continue;"),
+      "v40: PDP native rows — in-house ids must be known, in-house plans never resolve, strictly below one-time",
+    );
+    ok(
+      pdpJs40.includes("if (azSubNative() && String(azRow ? azRow.id : '') !== String(rows[i].getAttribute('data-plan-id') || '')) {"),
+      "v40: the native FBT add never sends a plan a row is not displaying (re-price + abort)",
+    );
+    ok(
+      pdpJs40.includes("azSubDenyLoad(data); // v40") &&
+        pdpJs40.includes("if (data && Array.isArray(data.xp)) azSubDeny = data.xp;"),
+      "v40: the in-house plan ids ride the same proxy response as the allocations they guard",
+    );
+    ok(
+      pdpJs40.includes("if (azSubNative()) {\n            ev.preventDefault();\n            ev.stopPropagation();"),
+      "v40: a native click-time stepper clamp cancels that click (no add on the previous variant's plan)",
+    );
+
+    const proxy40 = read("app/routes/proxy.cart-data.tsx");
+    ok(
+      proxy40.includes("assign cx_xp = shop.metafields.cellexia.plan_groups.value.planIds") &&
+        proxy40.includes('"xp": ${INHOUSE_PLANS_LIQUID},') &&
+        proxy40.includes("{%- else -%}[]{%- endif -%}"),
+      'v40: the app proxy emits top-level "xp" (the in-house plan ids, [] when absent) — route-side Liquid, zero theme-extension bytes',
+    );
+    const paid40 = read("app/routes/webhooks.orders.paid.tsx");
+    ok(
+      paid40.includes("selling_plan_id") && paid40.includes("CxOrderSellingPlans") &&
+        paid40.includes("sellingPlan {") && paid40.includes("!!node?.sellingPlan"),
+      "v40: orders/paid derives hasSubscription from selling_plan_id or one Admin GraphQL lineItems.sellingPlan lookup",
+    );
+    const css40 = read(`${EXT}/assets/cellexia-booster.css`);
+    ok(
+      css40.includes(".cx-volume__freq {") && css40.includes(".cx-crosssell__freq {"),
+      "v40: both frequency labels are styled",
+    );
+
+    const xsim40 = read("validation/sims/crosssell-pipeline.cjs");
+    ok(
+      ["m33-native-while-live", "m36-native-zero-percent", "m37-native-deny-dropped", "m39-upgrade-keeps-line-plan",
+        "m40-restore-on-tier-plan", "m41-tile-label-dropped", "m44-keyword-names-dark-plan", "m51-xp-ttl-ignored"]
+        .every((n) => xsim40.includes(`name: "${n}"`)),
+      "v40: crosssell-pipeline sim carries the m33-m51 native mutation block",
+    );
+    const fsim40 = read("validation/sims/fbt.cjs");
+    ok(
+      ["f1-inhouse-falls-through", "f2-deny-unknown-ignored", "f4-mismatch-abort-dropped", "f6-deny-dropped",
+        "f7-name-rule-dropped", "f9-add-uses-page-plan"].every((n) => fsim40.includes(`name: "${n}"`)) &&
+        fsim40.includes("ALL ${MUTANTS.length} MUTANTS CAUGHT (fbt)"),
+      "v40: fbt sim is mutation-tested for the native enrollment logic (f1-f10)",
+    );
+    const qsim40 = read("validation/sims/quantity-sync.cjs");
+    ok(
+      qsim40.includes('name: "m20-native-click-through"') && qsim40.includes('name: "m21-native-tick-dropped"') &&
+        qsim40.includes("S10c: native mode cancels the clamping click"),
+      "v40: quantity-sync sim pins the Joy tick clamp and the cancelled clamping click",
+    );
+    const usim40 = read("validation/sims/subscribed-upgrade.cjs");
+    ok(
+      usim40.includes("v40: tier plan without a name: NO tile (never an undisclosed schedule change)") &&
+        usim40.includes("v40: in-house app LIVE: a Joy line gets NO tile (the native family is off)"),
+      "v40: subscribed-upgrade sim pins the Joy tier-tile rules",
+    );
+  }
 }
 
 
@@ -4983,8 +5175,8 @@ const EVIDENCE = {
   // ---- storefront: whitelist, raw reads, gates, close ---------------------
   const proofJs25 = read(PROOF_JS);
   ok(
-    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx', 'bn'];"),
-    "v25/v33/v36: resultsApplyCopy whitelist is exactly the thirteen chrome codes",
+    proofJs25.includes("var keys = ['rp', 'ma', 'vsb', 'mi', 'mp', 'mu', 'aw', 'dr', 'iv', 'zm', 'sa', 'pr', 'nx', 'bn', 'fp', 'fb', 'al', 'rn', 'pu'];"),
+    "v25/v33/v36/v39.1: resultsApplyCopy whitelist is exactly the fourteen chrome codes + the five results-page codes",
   );
   for (const raw of ["pfStrRaw(s, 'rp')", "pfStrRaw(s, 'ma')", "pfStrRaw(s, 'vsb')", "pfStrRaw(s, 'mi')"]) {
     ok(proofJs25.includes(raw), `v25: proxy-only code read RAW (v8.22 convention): ${raw}`);
@@ -6544,7 +6736,7 @@ const EVIDENCE = {
   );
   const uiCopy381 = read("app/services/results-ui-copy.server.ts");
   ok(
-    uiCopy381.includes('  "nx",\n  "bn",\n] as const;') &&
+    uiCopy381.includes('  "nx",\n  "bn",\n  "fp",\n  "fb",\n  "al",\n  "rn",\n  "pu",\n] as const;') &&
       (uiCopy381.match(/\n {2,4}bn: "/g) || []).length === 18,
     "v38.1: bn joins the code list and every table (17 tables + the nb/no twin)",
   );
@@ -6840,6 +7032,174 @@ const EVIDENCE = {
       read("UPDATE.md").includes("read_online_store_pages") &&
       read("docs/theme-integration.md").includes("## Online-store pages (`page` templates) — the v39 results page"),
     "v39: the contract, the new scope and the page anchor are documented",
+  );
+}
+
+// ============= v39.1 RESULTS PAGE: SPEED, TITLE GAP, PRODUCT FILTER + LABELS
+// docs/SPEC-v39-results-page.md "v39.1" — merchant feedback on the live
+// page: the gallery appeared late, the title floated far above it, there
+// was no filter by product, the filters did not read as filters, and a
+// result did not say which product it belonged to. Behavior lives in
+// sims/proof-gallery.cjs PG8-PG14 (+ m69-m81) and sims/proof-server.ts
+// PF/RP (+ m17-m19); these pins hold the cross-file wiring.
+{
+  const liquid391 = read(`${EXT}/blocks/proof-booster.liquid`);
+  const early391 =
+    "{%- if cx_ctx == 'page' and cx_r_on -%}\n" +
+    "<script>cxRF=fetch(Shopify.routes.root+'apps/cellexia/proof?type=results&page=1&per=24&ctx=page&locale='+Shopify.locale)</script>\n" +
+    "{%- endif -%}\n";
+  ok(
+    liquid391.includes("{%- if cx_any -%}\n" + early391 + "{{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}") &&
+      (liquid391.match(/cxRF/g) || []).length === 1,
+    "v39.1: the LIVE results page starts its first data request inline — once, live-gated, and BEFORE the stylesheet (a pending stylesheet would hold an inline script back)",
+  );
+  for (const [k, flag, cfgKey] of [
+    ["p", "press", "press"],
+    ["e", "derm_endorsements", "dermEndorsements"],
+    ["r", "verified_before_after", "beforeAfter"],
+  ]) {
+    ok(
+      liquid391.includes(
+        `assign cx_${k}_draft = false\nif cx_f.${flag} == false\nassign cx_${k}_on = false\nelsif cfg.preview.armed == true\n` +
+          `if cfg.preview.draftFlags.${flag} == true or cfg.${cfgKey}.enabled == true\nassign cx_${k}_draft = true\nendif\nendif\n`,
+      ),
+      `v39.1 slimming: the ${flag} opt-out + draft gate is one if/elsif (opted out -> off and never a draft)`,
+    );
+  }
+  ok(!/cx_[per]_ok/.test(liquid391), "v39.1 slimming: the three cx_*_ok flags are gone");
+
+  const proofJs391 = read(PROOF_JS);
+  ok(
+    proofJs391.includes("    if (conf && conf.ctx === 'page') {\n      p.ctx = 'page';\n      p.prod = st.prod;\n    }"),
+    "v39.1: ctx=page and the product filter ride page-mode queries only",
+  );
+  ok(
+    proofJs391.includes("        if (conf.live === true && !pfPreviewVerified()) early = window.cxRF;\n        window.cxRF = null;") &&
+      proofJs391.includes("proofFetch('results', resultsParams(conf, { concern: '', age: '', skin: '', duration: '', prod: '', page: 1 }), cb);"),
+    "v39.1: the early response is used once, for a live island and a normal visitor; everything else takes the classic fetch",
+  );
+  ok(
+    proofJs391.includes("          sk = resultsPageSkeleton();\n          if (pfMount('results', isl.el, sk, isl.conf)) resultsPageChrome(sk, true);") &&
+      proofJs391.includes("            sk.parentNode.replaceChild(node, sk);") &&
+      proofJs391.includes("            if (sk) resultsPageUnmount(sk);") &&
+      proofJs391.includes("    var sk = pfEl('div', 'cx-rsk', ['aria-hidden', 'true']);"),
+    "v39.1: page mode paints a placeholder at once, swaps it for the gallery, and removes it when there is nothing to show",
+  );
+  ok(
+    proofJs391.includes("      if (on && (!band || band.parentNode !== main)) return;") &&
+      proofJs391.includes("        cls += 'cx-rp ';") &&
+      proofJs391.includes("          cls += 'cx-rp--bare ';"),
+    "v39.1: the title-gap classes go on #main only while the gallery sits in #main's own band",
+  );
+  ok(
+    proofJs391.includes("    var prod = o && o.pm ? resultsProductRow(item, s, o.pm) : null;") &&
+      (proofJs391.match(/var prod = o && o\.pm \? resultsProductRow\(item, s, o\.pm\) : null;/g) || []).length === 2 &&
+      proofJs391.includes("    if (conf.ctx === 'page') {\n      o.pg = true;\n      o.pm = pm;\n    }"),
+    "v39.1: the product row renders on cards and in the enlarged view, behind the page-only product map",
+  );
+  ok(
+    proofJs391.includes("      t.textContent = p.t;") &&
+      proofJs391.includes("          kEl.textContent = k;") &&
+      proofJs391.includes("    if (typeof root !== 'string' || root.charAt(0) !== '/' || root.charAt(1) === '/') root = '/';") &&
+      proofJs391.includes("    return root + 'products/' + encodeURIComponent(handle);"),
+    "v39.1: product names are textContent; product links are storefront-relative with an encoded handle",
+  );
+  ok(
+    proofJs391.includes("    var widths = half ? [240, 360, 540] : [360, 540, 720];") &&
+      proofJs391.includes("      if (!u || u === url) return null;") &&
+      proofJs391.includes("        if (pageMode) resultsPageThumbs(cardEl, base + i < 2 ? 2 : base + i < 4 ? 1 : 0);"),
+    "v39.1: page photos are sized CDN renditions (never the original), first row eager",
+  );
+  ok(
+    proofJs391.includes("      if (popts.length > 1) out.unshift({ id: 'products', param: 'prod', label: 'fp', opts: popts });") &&
+      proofJs391.includes("        if (drawerOpen && (!pageMode || at === drawerAt)) closeDrawer();") &&
+      proofJs391.includes("        var countText = resultsCountText(s, filteredTotal);"),
+    "v39.1: Product leads the filters (two or more products), filters open one at a time, the counter follows the filtered total",
+  );
+
+  const css391 = read(CSS);
+  const at391 = (needle) => css391.indexOf(needle);
+  ok(
+    css391.includes("#main.cx-rp > .shopify-section > .page {\n  padding-block-end: 0;\n}") &&
+      css391.includes("#main.cx-rp--bare .page__title {\n  padding-block-end: 0;\n}") &&
+      css391.includes("#main.cx-rp--bare .page__content {\n  display: none;\n}") &&
+      css391.includes(".cx-proof-band--page .cx-results--page {\n  margin-block: 0;\n}"),
+    "v39.1 CSS: the theme's empty-page padding is closed only under the script's #main classes; the band alone spaces the gallery",
+  );
+  for (const rule of [
+    ".cx-results__fbar {",
+    ".cx-results__fbar-k {",
+    ".cx-results__n {",
+    ".cx-results__chip-ic {",
+    ".cx-results__opt-img {",
+    ".cx-results__prod {",
+    ".cx-results__prod-a {",
+    ".cx-results__prod-img {",
+    ".cx-rsk__grid {",
+    ".cx-rsk__card {",
+  ]) {
+    ok(css391.includes(`\n${rule}`), `v39.1 CSS: styled: ${rule}`);
+  }
+  {
+    const sk = css391.slice(at391(".cx-rsk__grid {"));
+    ok(
+      /@media \(min-width: 600px\) \{\s+\.cx-rsk__grid \{\s+grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/.test(sk) &&
+        /@media \(min-width: 900px\) \{\s+\.cx-rsk__grid \{\s+grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/.test(sk) &&
+        /@media \(min-width: 1200px\) \{\s+\.cx-rsk__grid \{\s+grid-template-columns: repeat\(4, minmax\(0, 1fr\)\);/.test(sk),
+      "v39.1 CSS: the placeholder grid uses the page grid's exact breakpoints (nothing jumps sideways on swap)",
+    );
+    ok(
+      /@media \(prefers-reduced-motion: no-preference\) \{\s+\.cx-rsk__line,\s+\.cx-rsk__bar,\s+\.cx-rsk__img \{\s+animation: cx-rsk-pulse/.test(css391),
+      "v39.1 CSS: the placeholder pulse is opt-in for motion (reduced-motion users get a still placeholder)",
+    );
+  }
+  ok(
+    at391("/* ================================= v39.1 results page: speed and clarity") >
+      at391(".cx-results__pvnote {") && at391(".cx-results__pvnote {") > 0,
+    "v39.1 CSS: the block sits after the v39 page rules (later wins at equal specificity)",
+  );
+
+  const proxy391 = read("app/routes/proxy.proof.tsx");
+  ok(
+    proxy391.includes('const pageCtx = url.searchParams.get("ctx") === "page";') &&
+      proxy391.includes("if (pageCtx && prod) filters.product = prod;") &&
+      proxy391.includes("{ withProducts: pageCtx },") &&
+      proxy391.includes("const { session, admin } = await authenticate.public.appProxy(request);") &&
+      proxy391.includes("const products = await getResultProducts("),
+    "v39.1: the proxy serves product data and the product filter ONLY to ctx=page",
+  );
+  const model391 = read("app/services/proof.server.ts");
+  ok(
+    model391.includes("  if (withProducts) facets.products = productFacetCounts(scoped);") &&
+      model391.includes("      if (withProducts) {\n        item.products = parseProductGids(row.productGids)") &&
+      model391.includes("    !parseProductGids(row.productGids).includes(filters.product)"),
+    "v39.1: product ids, the products facet and the tagged-only filter are opt-in in getPublicResults",
+  );
+  const names391 = read("app/services/results-products.server.ts");
+  ok(
+    (names391.match(/`#graphql/g) || []).length === 2 &&
+      (names391.match(/`#graphql\s+query /g) || []).length === 2 &&
+      !/`#graphql\s+mutation\b/.test(names391) &&
+      names391.includes("const TTL_OK_MS = 10 * 60 * 1000;") &&
+      names391.includes("translations(locale: $locale) {"),
+    "v39.1: the product-name service is two read-only queries behind a ten-minute cache",
+  );
+  const uiCopy391 = read("app/services/results-ui-copy.server.ts");
+  for (const code of ["fp", "fb", "al", "pu"]) {
+    ok(
+      (uiCopy391.match(new RegExp(`\\n {2,4}${code}: "[^"\\n]+",`, "g")) || []).length === 18,
+      `v39.1: copy code ${code} is in every table (17 tables + the nb/no twin)`,
+    );
+  }
+  ok(
+    (uiCopy391.match(/\n {2,4}rn: "[^"\n]*@@N@@[^"\n]*",/g) || []).length === 18,
+    "v39.1: the result counter carries its @@N@@ sentinel in every table",
+  );
+  ok(
+    read("docs/SPEC-v39-results-page.md").includes("## v39.1") &&
+      read("UPDATE.md").includes("### v39.1") &&
+      read("docs/theme-integration.md").includes("cx-rp--bare"),
+    "v39.1: the follow-up is documented (spec, update notes, theme selectors)",
   );
 }
 

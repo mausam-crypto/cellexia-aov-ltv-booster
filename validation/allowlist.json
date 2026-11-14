@@ -325,6 +325,26 @@
    "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
    "reason": "v39 dedicated results page (docs/SPEC-v39-results-page.md), all behind island ctx 'page': NEW pfSkipOnPage (press/endorsements bail), pfBandAt swaps the band class to cx-proof-band--page container, resultsParams pages at 24 (pinned per=12 line kept for every other ctx), resultsBuildSection emits the single cx-results--page root modifier instead of density/grid, drops the +N tile, and makes Show more catch the grid up to the viewer-shared store (st.items) before fetching page floor(len/24)+1; a draft island prepends a textContent preview note. pfTrack gains an optional meta (page impression = 'page'). Non-page paths byte-identical. Pinned by sims/proof-gallery.cjs PG series + mutants and sims/proof-placement.cjs P-page.",
    "wave": "v39"
+  },
+  {
+   "file": "extensions/cellexia-booster/blocks/proof-booster.liquid",
+   "reason": "v39.1 results page follow-up (docs/SPEC-v39-results-page.md, v39.1): on the LIVE chosen page (cx_ctx 'page' and cx_r_on) the embed prints ONE inline script before its stylesheet that starts the page's first results request (window.cxRF = fetch(root + apps/cellexia/proof?type=results&page=1&per=24&ctx=page&locale=…)); drafts and every other template emit nothing new. Paid for first, no budget move: each of the three per-product opt-out + armed-draft gates folds into one if/elsif and drops its cx_*_ok flag (equivalent: opted out -> _on false and _draft stays false; otherwise the draft rule is unchanged). Pinned by the harness v39.1 block.",
+   "wave": "v39.1"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+   "reason": "v39.1 results page follow-up (docs/SPEC-v39-results-page.md, v39.1), all behind island ctx 'page': resultsPageParams adds ctx=page + prod; resultsValidItems keeps numeric product ids (pd); NEW resultsValidProductIds, resultsProductMap, resultsSlugLabel, resultsProductHref, resultsProductRow (Product used row on cards and in the lightbox/viewer, textContent only, storefront-relative encoded links), resultsThumbSet + resultsPageThumbs (sized CDN srcset, eager first row), resultsCountText, resultsPageSkeleton, resultsPageChrome + resultsPageUnmount (cx-rp / cx-rp--bare on #main), resultsFirstData (consumes the embed's early window.cxRF once for a live island and a normal visitor, classic proofFetch otherwise). resultsFacetGroups(data, pm) prepends a Product group; resultsBuildSection frames the filters in a bar with a live counter, opens one group at a time, adds an All option per group and prints concern slugs as words; resultsApplyCopy whitelist grows by fp/fb/al/rn/pu. Non-page paths byte-identical. Pinned by sims/proof-gallery.cjs PG8-PG14 + mutants m69-m81 and the harness v39.1 block.",
+   "wave": "v39.1"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-cart.js",
+   "reason": "v40 Joy Subscriptions (SPEC-v40): a PARALLEL native selling-plan family beside the untouched v17 owned family (inhouseLive / nativeDenyList / subsDenied / nativeSubs / nativeAlloc / nativeLinePlan / nativeVariantAlloc / ensureNativeDeny). subXsPlanLine anchors on an offerable native line too and marks it; crossSellPlanFor resolves inside the native family (the row variant's own same-named plan, freq = the plan name when the schedule differs); upgradeCandidates moves a native line to the tier variant's own offerable plan (planId + planName, no name = no tile); performUpgrade sends the candidate's plan and still restores the ORIGINAL plan; buildVolumeGroup + both cross-sell row builders render the frequency label; findPlanForItem gains the guarded native fallback and never names a dark in-house plan by keyword. Active only while the in-house app is not live and its plan ids are known (cfg.sx.p, else the proxy xp list). Zero Liquid change. Pinned by harness v40 block, sims/crosssell-pipeline (m33-m51), sims/subscribed-upgrade.",
+   "wave": "v40"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
+   "reason": "v40 Joy Subscriptions (SPEC-v40): azSubPlanId falls back to Joy's hidden input[name=selling_plan] in .pdp__grey (azNativePlanId) ONLY when the in-house buy box is silent; azSubRowPlan resolves each FBT / similar row to its own same-named offerable plan (in-house ids from the proxy xp list are never resolved; unknown list = classic); azFbtAdd sends the per-row plan and refuses to add anything a row is not displaying; azNativeOn bridges Joy's avada:plan:selected / subscription-change ticks at both cx:buybox:change sites; azNativeSettle re-prices when Joy's late-rendered field appears; the stepper's click-time clamp cancels that click in native mode. Buy-box (in-house) path numerically identical. Pinned by harness v40 block, sims/fbt (f1-f10), sims/quantity-sync (m20/m21).",
+   "wave": "v40"
   }
  ]
 }

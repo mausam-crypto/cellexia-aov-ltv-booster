@@ -4507,6 +4507,7 @@
     // payloads are only trusted for handle/title/image/url).
     return azFetchJSON(routeRoot() + 'apps/cellexia/cart-data?handles=' + encodeURIComponent(handles.join(',')))
       .then(function (data) {
+        azSubDenyLoad(data); // v40: the in-house plan ids ride the same response as the allocations they guard
         return data && data.productsByHandle && typeof data.productsByHandle === 'object' ? data.productsByHandle : {};
       })
       .catch(function () { return {}; });
@@ -4536,6 +4537,8 @@
   // appending its handle to the same call.
 
   var azSubPlans = {}; // variantId -> {plans:[{planId,price}], oneTime}
+  var azSubNames = {}; // v40: planId -> plan name (as rendered for this page's language)
+  var azSubDeny = null; // v40: proxy "xp" — the in-house plan ids; null = not loaded
 
   function azSubRegister(entry) {
     if (!entry || !Array.isArray(entry.variants)) return;
@@ -4547,6 +4550,81 @@
         oneTime: Number(v.price) || 0
       };
     }
+    var groups = Array.isArray(entry.sellingPlanGroups) ? entry.sellingPlanGroups : [];
+    for (var g = 0; g < groups.length; g++) {
+      var plans = groups[g] && Array.isArray(groups[g].plans) ? groups[g].plans : [];
+      for (var p = 0; p < plans.length; p++) {
+        if (plans[p] && plans[p].id != null) azSubNames[String(plans[p].id)] = String(plans[p].name || '');
+      }
+    }
+  }
+
+  // ------------- v40 native selling plans (Joy Subscriptions, SPEC-v40)
+  //
+  // The merchant sells subscriptions through Joy (Avada); the Cellexia
+  // Subscriptions buy box stays installed but dark (getState() null). On
+  // the live store Joy renders its OWN widget and keeps the shopper's
+  // choice in ONE hidden <input name="selling_plan"> inside .pdp__grey —
+  // the very field the theme's add-to-cart sends: a numeric plan id while
+  // a subscription is selected, empty for one-time, re-written on every
+  // variant change. (The theme's own sm-rc plan select stays "false" under
+  // Joy and is NOT a signal.) That input is the native verdict; Joy's
+  // window events are only ticks to re-read it.
+  //
+  // Joy plan ids are PER PRODUCT and per pack size, so a companion never
+  // carries the page plan's id. In native mode a row resolves to its own
+  // variant's offerable plan (not an in-house plan, priced strictly below
+  // one-time) that is NAMED like the page plan — same schedule — and stays
+  // one-time otherwise: nothing visually new, never an undisclosed
+  // frequency. The in-house plan ids arrive as the proxy's "xp" member;
+  // until they are known native prices nothing (fail closed).
+
+  function azSubDenyLoad(data) {
+    try {
+      if (data && Array.isArray(data.xp)) azSubDeny = data.xp;
+    } catch (e) { /* noop */ }
+  }
+
+  function azSubDenied(planId) {
+    if (!azSubDeny) return false;
+    for (var i = 0; i < azSubDeny.length; i++) {
+      if (String(azSubDeny[i]) === String(planId)) return true;
+    }
+    return false;
+  }
+
+  function azSubInhouse() {
+    // The in-house buy box answers (ANY mode): it alone decides.
+    try {
+      var subs = window.CellexiaSubs;
+      return !!(subs && typeof subs.getState === 'function' && subs.getState());
+    } catch (e) { return false; }
+  }
+
+  function azSubNative() {
+    // Native (Joy) context: same kill switch and B2B gates as the buy-box
+    // reader, and only while the in-house buy box is silent.
+    try {
+      if (AZ_CFG.subOff === 1) return false;
+      if (window.isB2BCustomer === true || AZ_CFG.b2b === true) return false;
+      return !azSubInhouse();
+    } catch (e) { return false; }
+  }
+
+  function azNativePlanId() {
+    // Joy's hidden field. INPUT elements only (a theme select may share the
+    // name), inside the page product's buy area; all-digits or nothing.
+    try {
+      var area = document.querySelector('.pdp__grey');
+      var inputs = area ? area.querySelectorAll('input') : [];
+      for (var i = 0; i < inputs.length; i++) {
+        var input = inputs[i];
+        if (!input || input.getAttribute('name') !== 'selling_plan' || input.disabled) continue;
+        var value = String(input.value == null ? '' : input.value);
+        return /^\d+$/.test(value) ? value : null;
+      }
+    } catch (e) { /* noop */ }
+    return null;
   }
 
   function azSubPlanId() {
@@ -4554,13 +4632,16 @@
     // kill switch, B2B (standing rule: B2B never sees subscription
     // offers), widget absent/hidden/gated (getState() answers null),
     // one-time selected, no plan id.
+    // v40: when the in-house buy box is silent, Joy's hidden plan field
+    // answers instead (azNativePlanId). A buy box that answers — even
+    // "one-time" — is never overruled by it.
     try {
       if (AZ_CFG.subOff === 1) return null;
       if (window.isB2BCustomer === true || AZ_CFG.b2b === true) return null;
       var subs = window.CellexiaSubs;
-      if (!subs || typeof subs.getState !== 'function') return null;
-      var st = subs.getState();
-      if (!st || st.mode !== 'subscription' || !st.sellingPlanId) return null;
+      var st = subs && typeof subs.getState === 'function' ? subs.getState() : null;
+      if (!st) return azNativePlanId();
+      if (st.mode !== 'subscription' || !st.sellingPlanId) return null;
       return String(st.sellingPlanId);
     } catch (e) { return null; }
   }
@@ -4584,6 +4665,33 @@
     return null;
   }
 
+  function azSubRowPlan(variantId, pagePlanId) {
+    // The plan a row (this item, an FBT companion, a similar card) prices
+    // and adds with while pagePlanId is selected: { id, price } or null =
+    // the row stays one-time, price AND add.
+    //   buy box (in-house): the page plan's exact allocation on the row's
+    //     variant, exactly as before v40 (azSubPrice).
+    //   native (Joy): that same exact allocation when it is offerable, else
+    //     the row variant's own offerable plan NAMED like the page plan.
+    if (!pagePlanId) return null;
+    var exact = azSubPrice(variantId, pagePlanId);
+    if (!azSubNative()) return exact != null ? { id: String(pagePlanId), price: exact } : null;
+    if (!Array.isArray(azSubDeny) || azSubDenied(pagePlanId)) return null; // list not loaded = fail closed
+    var rec = azSubPlans[String(variantId)];
+    if (!rec) return null;
+    if (exact != null) return exact < rec.oneTime ? { id: String(pagePlanId), price: exact } : null;
+    var want = String(azSubNames[String(pagePlanId)] || '').toLowerCase();
+    if (!want) return null;
+    for (var i = 0; i < rec.plans.length; i++) {
+      var a = rec.plans[i];
+      if (!a || a.planId == null || azSubDenied(a.planId)) continue;
+      var p = Number(a.price);
+      if (!(p > 0 && p < rec.oneTime)) continue;
+      if (String(azSubNames[String(a.planId)] || '').toLowerCase() === want) return { id: String(a.planId), price: p };
+    }
+    return null;
+  }
+
   function azSubPriceRow(row, planId) {
     // data-price-cents drives the total AND the add payload, so pricing a
     // row prices everything downstream. data-base-cents / data-base-fmt
@@ -4597,11 +4705,13 @@
         row.setAttribute('data-base-cents', base == null ? '0' : base);
         if (priceEl) row.setAttribute('data-base-fmt', priceEl.textContent);
       }
-      var subP = planId ? azSubPrice(row.getAttribute('data-variant-id'), planId) : null;
-      if (subP != null) {
-        row.setAttribute('data-price-cents', String(subP));
-        row.setAttribute('data-plan-id', String(planId));
-        if (priceEl) priceEl.textContent = azMoney(subP);
+      // v40: the row's OWN resolved plan (azSubRowPlan) — under Joy it is
+      // not the page plan's id, and data-plan-id is what the add sends.
+      var rowPlan = planId ? azSubRowPlan(row.getAttribute('data-variant-id'), planId) : null;
+      if (rowPlan) {
+        row.setAttribute('data-price-cents', String(rowPlan.price));
+        row.setAttribute('data-plan-id', rowPlan.id);
+        if (priceEl) priceEl.textContent = azMoney(rowPlan.price);
       } else {
         row.setAttribute('data-price-cents', String(Number(base) || 0));
         row.removeAttribute('data-plan-id');
@@ -4663,9 +4773,9 @@
         var cvid = card.getAttribute('data-variant-id');
         if (!cvid) continue;
         var one = Number(card.getAttribute('data-price-cents')) || 0;
-        var subP = planId ? azSubPrice(cvid, planId) : null;
+        var cardPlan = planId ? azSubRowPlan(cvid, planId) : null; // v40: per-card resolution (Joy plan ids are per product)
         var priceEl = card.querySelector('.cx-az-similar__price');
-        if (priceEl) priceEl.textContent = azMoney(subP != null ? subP : one);
+        if (priceEl) priceEl.textContent = azMoney(cardPlan ? cardPlan.price : one);
       }
     } catch (e) { /* never break the theme */ }
   }
@@ -4758,10 +4868,20 @@
       // render and click can neither add an unwanted subscription nor
       // silently drop a wanted one. The marker property doubles as the
       // buy-box embed's pass-through signal, so nothing is ever injected.
+      // v40: the plan is resolved PER ROW (azSubRowPlan) — the page plan
+      // itself under the buy box, the row variant's own same-named plan
+      // under Joy. In native mode the add additionally refuses to send
+      // anything the row is not DISPLAYING: Joy renders late and may
+      // default-select a subscription without a tick, so a row still
+      // showing its one-time price must never be added as a subscription
+      // (nor the reverse) — re-price and let the next click decide.
       var azAddPlan = azSubPlanId();
-      if (azAddPlan && azSubPrice(id, azAddPlan) != null) {
-        item.selling_plan = /^\d+$/.test(azAddPlan) ? Number(azAddPlan) : azAddPlan;
+      var azRow = azAddPlan ? azSubRowPlan(id, azAddPlan) : null;
+      if (azSubNative() && String(azRow ? azRow.id : '') !== String(rows[i].getAttribute('data-plan-id') || '')) {
+        azSubSync();
+        return;
       }
+      if (azRow) item.selling_plan = /^\d+$/.test(azRow.id) ? Number(azRow.id) : azRow.id;
       items.push(item);
     }
     if (!items.length || !window.fetch) return;
@@ -5263,6 +5383,57 @@
       document.addEventListener('cx:buybox:change', function () {
         window.setTimeout(azSubSync, 0);
       });
+      // v40: Joy's widget announces the same thing on window; its hidden
+      // plan field is re-read after the tick (azSubPlanId).
+      azNativeOn(function () {
+        window.setTimeout(azSubSync, 0);
+      });
+      azNativeSettle();
+    } catch (e) { /* noop */ }
+  }
+
+  function azNativeOn(fn) {
+    // v40: ticks only — Joy fires 'avada:plan:selected' two or three times
+    // per change with differing payloads, so the payload is never read; the
+    // hidden selling_plan input is the truth. The capture-phase change
+    // filter covers a field written without either event.
+    try {
+      if (window.addEventListener) {
+        window.addEventListener('avada:plan:selected', fn);
+        window.addEventListener('subscription-change', fn);
+      }
+      document.addEventListener('change', function (event) {
+        var el = event ? event.target : null;
+        if (el && el.getAttribute && el.getAttribute('name') === 'selling_plan') fn();
+      }, true);
+    } catch (e) { /* noop */ }
+  }
+
+  var azNativeSettled = false;
+
+  function azNativeSettle() {
+    // v40: Joy mounts after this script and default-selects a subscription,
+    // possibly without a tick. Re-price once its field appears (observer on
+    // the buy area, 15 s at most) and on window load, so the rows show what
+    // the shopper's add would actually carry.
+    if (azNativeSettled) return;
+    azNativeSettled = true;
+    try {
+      var last = azSubPlanId();
+      var check = function () {
+        var now = azSubPlanId();
+        if (now !== last) {
+          last = now;
+          azSubSync();
+        }
+      };
+      if (window.addEventListener) window.addEventListener('load', function () { window.setTimeout(check, 0); });
+      var area = document.querySelector('.pdp__grey');
+      if (area && typeof MutationObserver === 'function') {
+        var mo = new MutationObserver(check);
+        mo.observe(area, { childList: true, subtree: true, attributes: true, attributeFilter: ['value'] });
+        window.setTimeout(function () { mo.disconnect(); }, 15000);
+      }
     } catch (e) { /* noop */ }
   }
 
@@ -7806,7 +7977,18 @@
       var btn = t && t.closest ? t.closest('[sm-rc-add-to-cart]') : null;
       if (!btn || btn.disabled) return;
       if (qsyncSubActive()) {
-        if (st.n > st.top.q) qsyncApply(st.top.q, false);
+        if (st.n > st.top.q) {
+          qsyncApply(st.top.q, false);
+          // v40 native (Joy): the clamp just switched the variant, and
+          // Joy's hidden plan field still holds the PREVIOUS variant's plan
+          // until its own handler runs — letting this same click add would
+          // post a plan the new variant does not carry (422). Cancel it;
+          // the stepper already shows the clamped count for the next click.
+          if (azSubNative()) {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+        }
         return;
       }
       // v32 volume mode: the native add IS the whole order (quantity n of
@@ -7924,6 +8106,14 @@
         document.addEventListener('cx:buybox:change', function () {
           var st = qsyncState;
           if (st && st.n > st.top.q && qsyncSubActive()) qsyncApply(st.top.q, false);
+        });
+        // v40: the same clamp when Joy's widget switches to a subscription
+        // (deferred one task so its hidden plan field is already written).
+        azNativeOn(function () {
+          window.setTimeout(function () {
+            var st = qsyncState;
+            if (st && st.n > st.top.q && qsyncSubActive()) qsyncApply(st.top.q, false);
+          }, 0);
         });
       }
       // Align the submit quantity with the mirrored start state.

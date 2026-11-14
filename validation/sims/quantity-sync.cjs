@@ -33,6 +33,9 @@
  * fires addEventListener listeners — exactly the surface the sync drives;
  * azSubPlanId is a sandbox global the clamp cases flip; MutationObserver
  * is a recording fake (the browser API is absent in the vm realm).
+ * v40: azSubNative (false unless a native case flips it) and azNativeOn (a
+ * recorder of the Joy tick handler) are sandbox globals too, and
+ * window.setTimeout records its callbacks — S10b/S10c fire them by hand.
  */
 "use strict";
 const path = require("path");
@@ -135,6 +138,10 @@ function makeContext() {
   const beacons = [];
   const fetches = [];
   const observers = [];
+  // v40: the Joy tick bridge (azNativeOn) is a recording stub here — the
+  // real one is exercised by sims/fbt; timers are recorded, never real.
+  const nativeTicks = [];
+  const timers = [];
   function FakeMutationObserver(cb) {
     this.cb = cb;
     this.targets = [];
@@ -147,6 +154,10 @@ function makeContext() {
     document: doc,
     window: {
       Shopify: { currency: { active: "EUR" } },
+      setTimeout: function (fn) {
+        timers.push(fn);
+        return timers.length;
+      },
       fetch: function (url, opts) {
         fetches.push({ url, opts: opts || null });
         return Promise.resolve({
@@ -168,6 +179,14 @@ function makeContext() {
     azSubPlanId: function () {
       return null;
     },
+    // v40: false = the in-house buy box (or nothing) answers; the native
+    // cases flip it together with azSubPlanId.
+    azSubNative: function () {
+      return false;
+    },
+    azNativeOn: function (fn) {
+      nativeTicks.push(fn);
+    },
     MutationObserver: FakeMutationObserver,
     cfg: {},
     console,
@@ -180,7 +199,7 @@ function makeContext() {
   };
   vm.createContext(sandbox);
   vm.runInContext(EXTRACTED, sandbox);
-  return { sandbox, doc, beacons, fetches, observers };
+  return { sandbox, doc, beacons, fetches, observers, nativeTicks, timers };
 }
 
 function call(ctx, name, ...args) {
@@ -589,6 +608,75 @@ function press(el, times) {
   ok(ctx.fetches.length === 0, "S10: in sub mode the capture never composes an add");
 }
 
+// --------------------------- S10b/S10c: v40 native (Joy) subscription clamp
+
+{
+  // S10b — Joy's widget switches to a subscription: its window events reach
+  // the sync through azNativeOn (a tick), and the clamp runs one task later
+  // so Joy's hidden plan field is already written.
+  const { ctx, page, root } = mountSync();
+  const s = stepper(root);
+  ok(ctx.nativeTicks.length === 1, "S10b: the sync registers exactly one Joy tick handler");
+  press(s.plus, 4); // one-time: 1 -> 5
+  ok(s.count.textContent === "5", "S10b: composed count reached on one-time");
+  ctx.sandbox.azSubPlanId = function () { return "718347501943"; };
+  ctx.sandbox.azSubNative = function () { return true; };
+  const before = ctx.timers.length;
+  if (ctx.nativeTicks[0]) ctx.nativeTicks[0]();
+  ok(ctx.timers.length === before + 1 && s.count.textContent === "5",
+    "S10b: the tick only schedules the clamp (Joy's field settles first)");
+  if (ctx.timers[before]) ctx.timers[before]();
+  ok(s.count.textContent === "3" && page.input.value === "1",
+    "S10b: after the tick a composed count snaps back to the top tier under a Joy subscription");
+  // with the subscription selected the stepper is capped like in-house mode
+  press(s.plus, 3);
+  ok(s.count.textContent === "3", "S10b: a Joy subscription caps the stepper at the top tier");
+  // a tick while already inside the catalog changes nothing
+  const before2 = ctx.timers.length;
+  if (ctx.nativeTicks[0]) ctx.nativeTicks[0]();
+  if (ctx.timers[before2]) ctx.timers[before2]();
+  ok(s.count.textContent === "3", "S10b: a tick inside the catalog is a no-op");
+  // back to one-time (tick, Joy field empty): composed counts return
+  ctx.sandbox.azSubPlanId = function () { return null; };
+  press(s.plus, 2);
+  ok(s.count.textContent === "5", "S10b: back on one-time the composed counts return");
+}
+
+{
+  // S10c — the tick was missed (Joy selected a subscription silently): the
+  // click-time clamp switches the variant, and in NATIVE mode that same
+  // click must be cancelled — Joy's field still holds the previous
+  // variant's plan, and letting the theme add run would post a plan the
+  // new variant does not carry.
+  const { ctx, page, root } = mountSync();
+  const s = stepper(root);
+  press(s.plus, 4); // 5 on one-time
+  ctx.sandbox.azSubPlanId = function () { return "718347501943"; };
+  ctx.sandbox.azSubNative = function () { return true; };
+  let prevented = 0;
+  let stopped = 0;
+  const ev = { target: page.atc, preventDefault() { prevented++; }, stopPropagation() { stopped++; } };
+  ctx.doc._listeners.click[0](ev);
+  ok(s.count.textContent === "3", "S10c: the click-time clamp snaps the count to the top tier");
+  ok(prevented === 1 && stopped === 1, "S10c: native mode cancels the clamping click (no add on a stale plan)");
+  ok(ctx.fetches.length === 0, "S10c: nothing is posted by the sync either");
+  // the NEXT click, inside the catalog, is the theme's own untouched add
+  const ev2 = { target: page.atc, preventDefault() { prevented++; }, stopPropagation() { stopped++; } };
+  ctx.doc._listeners.click[0](ev2);
+  ok(prevented === 1 && stopped === 1 && ctx.fetches.length === 0,
+    "S10c: the next click steps aside (the theme's native add runs with Joy's plan)");
+
+  // In-house mode keeps the pre-v40 behavior: clamp, never cancel.
+  const b = mountSync();
+  const sb = stepper(b.root);
+  press(sb.plus, 4);
+  b.ctx.sandbox.azSubPlanId = function () { return "718653555063"; };
+  let cancelled = 0;
+  b.ctx.doc._listeners.click[0]({ target: b.page.atc, preventDefault() { cancelled++; }, stopPropagation() { cancelled++; } });
+  ok(sb.count.textContent === "3" && cancelled === 0,
+    "S10c: in-house buy-box mode clamps WITHOUT cancelling the click (unchanged)");
+}
+
 // ------------------------------------------------- S12b: chip honesty
 
 {
@@ -919,6 +1007,20 @@ function runMutantsPhase() {
         name: "m7-sub-clamp-dropped",
         find: "    var cap = qsyncSubActive() || st.vw ? st.top.q : QSYNC_CAP;",
         replace: "    var cap = st.vw ? st.top.q : QSYNC_CAP;",
+      },
+      {
+        // v40: a missed Joy tick + a clamping click must not let the theme
+        // add run on the previous variant's plan.
+        name: "m20-native-click-through",
+        find: "          if (azSubNative()) {\n            ev.preventDefault();",
+        replace: "          if (false) {\n            ev.preventDefault();",
+      },
+      {
+        // v40: without the Joy tick a composed count would survive a switch
+        // to a subscription until the click.
+        name: "m21-native-tick-dropped",
+        find: "        azNativeOn(function () {\n          window.setTimeout(function () {\n            var st = qsyncState;",
+        replace: "        (function () {})(function () {\n          window.setTimeout(function () {\n            var st = qsyncState;",
       },
       {
         // v32.2: an unverified volume must cap, never compose (the field
