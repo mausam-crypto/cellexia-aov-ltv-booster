@@ -7203,4 +7203,39 @@ const EVIDENCE = {
   );
 }
 
+// ======== v39.2 THE SEPARATE REVIEWS APP MUST NOT BADGE THE GALLERY (2026-11-14)
+// The merchant runs a second Cellexia app (cellexia-reviews) whose script
+// badges the "card" around any product link with a star rating. Since v39.1
+// the results page's "Product used" rows put product links inside our cards,
+// which match its CARD_SELS ([class*="card"]); its TITLE_SEL
+// ([class*="title"]) then anchored the badge on .cx-results__clin-title, so
+// a product rating rendered inside "Clinically measured at N weeks". That
+// app skips every link inside `.cx` — its own namespace marker, carried by
+// the badges it injects — so our gallery root claims it. Behavior lives in
+// proof-gallery PG15 (+ m82).
+{
+  const proofJs392 = read(PROOF_JS);
+  ok(
+    proofJs392.includes("    var root = pfEl('section', 'cx cx-proof cx-results' + (pageMode ? ' cx-results--page'"),
+    "v39.2: the gallery root opens with the bare cx opt-out marker, as a prefix on the existing classes",
+  );
+  ok(
+    proofJs392.includes("// The merchant's separate Cellexia REVIEWS app scans the page for") &&
+      proofJs392.includes("// The token carries NO styles in either app's stylesheet."),
+    "v39.2: the marker is explained where it is emitted (a bare class token invites deletion)",
+  );
+  {
+    // The marker only stays harmless while NOTHING styles a bare `.cx`:
+    // such a rule would now hit every proof widget's root.
+    const css392 = read(CSS);
+    const bare = css392.match(/(?:^|[,>+~\s])\.cx(?![\w-])/gm) || [];
+    ok(bare.length === 0, `v39.2: our stylesheet never targets a bare .cx (${bare.length} rule(s) would restyle the widget roots)`);
+  }
+  ok(
+    read("docs/theme-integration.md").includes("## The separate Cellexia reviews app") &&
+      read("UPDATE.md").includes("### v39.2"),
+    "v39.2: the cross-app contract is documented",
+  );
+}
+
 finish();

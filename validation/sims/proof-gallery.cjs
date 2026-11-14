@@ -1435,7 +1435,7 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   fx.total = 3;
   fx.ui = { cs: 1, sl: 1, sc: 1 };
   const section = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) }, fx);
-  ok(section.className === "cx-proof cx-results",
+  ok(section.className === "cx cx-proof cx-results",
     "R30: display flags never touch the root class (density pins hold)");
   ok(section.querySelectorAll(".cx-results__media--slider").length === 2,
     "R30: init cards render sliders");
@@ -1604,15 +1604,15 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   const fx = resultsFixture();
   fx.ui = { gr: 1 };
   const grid = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) }, fx);
-  ok(grid.className === "cx-proof cx-results cx-results--grid",
+  ok(grid.className === "cx cx-proof cx-results cx-results--grid",
     "R37: ui.gr adds the grid root modifier");
   const plain = S.resultsBuildSection({ ctx: "brand", pid: 0, str: Object.assign({}, STR_CLIN) }, resultsFixture());
-  ok(plain.className === "cx-proof cx-results",
+  ok(plain.className === "cx cx-proof cx-results",
     "R37: default root = the one-row rail (no modifier, the vertical-space fix)");
   const fx3 = resultsFixture();
   fx3.ui = { gr: 1 };
   const ultra = S.resultsBuildSection({ ctx: "brand", pid: 0, cm: 2, str: Object.assign({}, STR_CLIN) }, fx3);
-  ok(ultra.className === "cx-proof cx-results cx-results--ultra cx-results--grid",
+  ok(ultra.className === "cx cx-proof cx-results cx-results--ultra cx-results--grid",
     "R37: density + grid modifiers co-exist (ultra's rail wins the cascade)");
 }
 
@@ -1879,7 +1879,7 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
 // --- U7: results ultra — root modifier only, everything else byte-identical ----------
 {
   const section = S.resultsBuildSection({ cm: 2, ctx: "product", pid: 42, str: STR }, resultsFixture());
-  ok(!!section && section.className === "cx-proof cx-results cx-results--ultra",
+  ok(!!section && section.className === "cx cx-proof cx-results cx-results--ultra",
     "U7: cm:2 -> cx-results--ultra root modifier");
   ok(section.querySelectorAll(".cx-results__chip").length === 5,
     "U7: four group chips + clear chip unchanged (zero new strings)");
@@ -1889,7 +1889,7 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
     "See results from 25 real Cellexia users.",
     "U7: scale banner text unchanged (ultra is CSS-only shrink)");
   const twin = S.resultsBuildSection({ ctx: "product", pid: 42, str: STR }, resultsFixture());
-  ok(twin.className === "cx-proof cx-results", "U7: no cm -> no modifier (twin)");
+  ok(twin.className === "cx cx-proof cx-results", "U7: no cm -> no modifier (twin)");
 }
 
 // ================================== compact (C, v8.3 NEW middle tier — "cm": 1)
@@ -1937,7 +1937,7 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
     !!e.querySelector(".cx-endo__progress") && !!e.querySelector(".cx-proof__eyebrow"),
     "C2: endo cm '2' (string) falls back to the full wall");
   const r = S.resultsBuildSection({ cm: "1", ctx: "brand", pid: 0, str: STR }, resultsFixture());
-  ok(r.className === "cx-proof cx-results", "C2: results cm '1' (string) falls back to the full gallery");
+  ok(r.className === "cx cx-proof cx-results", "C2: results cm '1' (string) falls back to the full gallery");
 }
 
 // --- C3: endorsement compact — H2 head line with inline progress over the rail -------
@@ -1989,7 +1989,7 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
 // --- C5: results compact — root modifier only, full banner/chips/cards ---------------
 {
   const section = S.resultsBuildSection({ cm: 1, ctx: "product", pid: 42, str: STR }, resultsFixture());
-  ok(!!section && section.className === "cx-proof cx-results cx-results--compact",
+  ok(!!section && section.className === "cx cx-proof cx-results cx-results--compact",
     "C5: cm:1 -> cx-results--compact root modifier");
   ok(section.querySelector(".cx-results__banner").textContent ===
     "See results from 25 real Cellexia users.",
@@ -2003,7 +2003,7 @@ ok(S.resultsFacetLabel("concerns", "wrinkles", STR) === "wrinkles", "R18: concer
   click(section.querySelectorAll(".cx-results__chip")[0]);
   ok(!drawer.hasAttribute("hidden"), "C5: chip still opens the drawer in compact");
   const twin = S.resultsBuildSection({ ctx: "product", pid: 42, str: STR }, resultsFixture());
-  ok(twin.className === "cx-proof cx-results", "C5: no cm -> no modifier (full-mode twin)");
+  ok(twin.className === "cx cx-proof cx-results", "C5: no cm -> no modifier (full-mode twin)");
 }
 
 // ============================================ preview contract (V, v8/v8.2)
@@ -3106,14 +3106,14 @@ function pgCards(section) {
 // --- PG1: one root modifier; density + desktop-layout flags do not apply -------------
 {
   const section = S.resultsBuildSection(pgConf({ cm: 2 }), pgFixture({ ui: { gr: 1 } }));
-  ok(!!section && section.className === "cx-proof cx-results cx-results--page",
+  ok(!!section && section.className === "cx cx-proof cx-results cx-results--page",
     "PG1: page root = ONLY the page modifier (cm=2 and ui.gr are ignored)");
   const compact = S.resultsBuildSection(pgConf({ cm: 1 }), pgFixture());
-  ok(compact.className === "cx-proof cx-results cx-results--page",
+  ok(compact.className === "cx cx-proof cx-results cx-results--page",
     "PG1: the compact tier is ignored too");
   const brand = S.resultsBuildSection({ ctx: "brand", pid: 0, cm: 2, str: Object.assign({}, STR) },
     pgFixture({ ui: { gr: 1 } }));
-  ok(brand.className === "cx-proof cx-results cx-results--ultra cx-results--grid",
+  ok(brand.className === "cx cx-proof cx-results cx-results--ultra cx-results--grid",
     "PG1: the brand twin keeps density + grid modifiers (page mode is ctx-gated)");
   ok(section.getAttribute("data-cx-feature") === "verified_before_after",
     "PG1: the page reuses the feature key (no key of its own)");
@@ -3726,6 +3726,52 @@ function pgRailCards(section) {
   delete S.window.cxRF;
   delete S.window.setTimeout;
   delete S.window.clearTimeout;
+}
+
+// --- PG15: the reviews app's opt-out marker on the gallery root -----------------------
+//
+// The merchant runs a SECOND Cellexia app (cellexia-reviews) whose storefront
+// script scans the page for product links and badges the surrounding "card"
+// with a star rating. Its collect() skips any link inside its own namespace
+// marker — a.closest('header, nav, footer, [class*="breadcrumb"], .cx,
+// .cx-preview-bar, .cx-dialog, .cx-lightbox') — and its card/title lookups
+// are substring matches (CARD_SELS has [class*="card"], TITLE_SEL has
+// [class*="title"]). Our page cards match BOTH, so without the marker the
+// rating anchored on .cx-results__clin-title: a product's stars rendered
+// inside "Clinically measured at N weeks" (merchant report, 2026-11-14).
+{
+  function markedAncestor(el, root) {
+    // their closest('.cx'), as a plain token walk
+    for (let node = el; node; node = node.parentNode) {
+      const cls = node.getAttribute ? node.getAttribute("class") : null;
+      if (cls && cls.split(/\s+/).indexOf("cx") !== -1) return node;
+      if (node === root) break;
+    }
+    return null;
+  }
+  const section = S.resultsBuildSection(pgConf(), pgProdFixture());
+  ok(section.className.split(/\s+/)[0] === "cx",
+    "PG15: the gallery root opens with the bare cx marker (got " + section.className + ")");
+  const links = section.querySelectorAll(".cx-results__prod-a");
+  ok(links.length > 0 && Array.prototype.every.call(links, (a) => markedAncestor(a, section) === section),
+    "PG15: every product link on the page sits inside the marked root — the reviews app skips them all");
+  const clinTitle = section.querySelector(".cx-results__clin-title");
+  ok(!clinTitle || markedAncestor(clinTitle, section) === section,
+    "PG15: the clinical header their scanner used to anchor on is inside the marked root too");
+  // the enlarged view: their skip list already covers .cx-lightbox
+  S.PF_LB_OPENED.length = 0;
+  click(section.querySelectorAll(".cx-results__media")[0]);
+  const viewer = S.PF_LB_OPENED[0];
+  ok(!!viewer && viewer.className.split(/\s+/).indexOf("cx-lightbox") !== -1 &&
+    !!viewer.querySelector(".cx-results__prod-a"),
+    "PG15: the viewer's product row is inside .cx-lightbox (their other skip marker)");
+  // every surface, not just the page — one root builder, one marker
+  const brand = S.resultsBuildSection(pgBrandConf(), pgProdFixture());
+  ok(brand.className.split(/\s+/)[0] === "cx",
+    "PG15: product pages and the home band carry the marker too");
+  ok(/^cx cx-proof cx-results/.test(section.className) &&
+    section.getAttribute("data-cx-feature") === "verified_before_after",
+    "PG15: the marker is a PREFIX — every existing class and the feature key are unchanged");
 }
 
 // ======================================= REAL lightbox machinery (LB, v8.21)
@@ -4355,6 +4401,13 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m81-unmount-keeps-chrome",
         find: "      resultsPageChrome(sk, false);\n      var slot = sk ? sk.parentNode : null;",
         replace: "      var slot = sk ? sk.parentNode : null;",
+      },
+      {
+        // v39.2: the reviews app's opt-out marker dropped — its star badge
+        // lands back inside the clinical panel header (PG15).
+        name: "m82-reviews-optout-marker-dropped",
+        find: "    var root = pfEl('section', 'cx cx-proof cx-results'",
+        replace: "    var root = pfEl('section', 'cx-proof cx-results'",
       },
     ],
   });

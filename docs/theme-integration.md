@@ -157,8 +157,47 @@ Verified LIVE 2026-11-13 (Spanish market, the only market where Joy is switched 
 - **Title gap (v39.1):** while the gallery sits in `#main`'s band the script sets `cx-rp` on `#main`, plus `cx-rp--bare` when `.page__content` has no text, image, video or iframe. CSS under those classes zeroes the section's bottom padding and, on a bare page, the title's bottom padding (the empty content box is hidden). If the theme's page markup changes, these selectors simply stop matching and the theme's own spacing returns; adjust them in the `v39.1` block at the end of `cellexia-booster.css`.
 - Only press/endorsements are suppressed on the page (`pfSkipOnPage`); the island itself is emitted for drafts too (`"live": false`) so the preview works without arming.
 
+## The separate Cellexia reviews app (cross-app contract)
+
+The merchant runs a SECOND app of their own, **cellexia-reviews** (its own
+theme app extension, `assets/cellexia-reviews.js` + `.css`, config island
+`#cx-embed-config`). Verified against the deployed build on 2026-11-14.
+
+- **What it does to other widgets:** its `collect()` pass takes every
+  `a[href*="/products/"]` on the page, walks up at most 6 levels for a
+  "card" (`CARD_SELS` = `.product`, `[class*="product-item"]`,
+  `[class*="product-card"]`, `[class*="card"]`, `[class*="grid__item"]`,
+  `li`, `article`), marks it `data-cx-badged="<handle>"` and injects a star
+  badge (`span.cx.cx-badge-inline--card`) after the card's first
+  `TITLE_SEL` match (`[class*="product__title"]`, `[class*="product-title"]`,
+  `[class*="card__heading"]`, `[class*="title"]:not([class*="subtitle"])`,
+  `h2`, `h3`, `h4`).
+- **The opt-out is the bare `cx` class.** It skips any link inside
+  `header, nav, footer, [class*="breadcrumb"], .cx, .cx-preview-bar,
+  .cx-dialog, .cx-lightbox`, and never anchors on an element with
+  `.closest('.cx')`. The badges it injects carry that same `cx` token.
+- **What we do:** the proof gallery's root is
+  `section.cx.cx-proof.cx-results…` (v39.2) and the lightbox/viewer is
+  `.cx-lightbox`, so both subtrees are invisible to it. Without the marker,
+  the v39.1 "Product used" links made every gallery card a candidate and
+  the rating landed inside the clinical panel header (merchant report).
+- **Any NEW widget of ours that renders a product link must carry `cx` on
+  its root** — unless the star badge is wanted there. Cart/cross-sell cards
+  deliberately do NOT carry it (their badges are useful, and the reviews app
+  suppresses cart-context badges itself via its `cart_badges` setting).
+- **`.cx` must stay unstyled** in `cellexia-booster.css` (harness-pinned):
+  a bare `.cx` rule would now hit every proof widget root. Neither app's
+  stylesheet targets it today.
+
 ## Reviews / other apps
-- Active review platform: **Stamped.io** (`.stamped-product-reviews-badge`, `#stamped-main-widget`; metafields `product.metafields.stamped.reviews_count/reviews_average`). No Trustpilot today — our Trustpilot widget is config-driven (rating/count/URL entered in dashboard).
+- Active review platform: the in-house **cellexia-reviews** app (section
+  above). **Stamped.io** is still loaded on the storefront
+  (`cdn1.stamped.io/files/widget.min.js`, `.stamped-product-reviews-badge`,
+  `#stamped-main-widget`; metafields
+  `product.metafields.stamped.reviews_count/reviews_average`) — the reviews
+  app even ships a `#cx-stamped-hide` escape hatch. No Trustpilot today —
+  our Trustpilot widget is config-driven (rating/count/URL entered in dashboard).
+- (historical) Active review platform: **Stamped.io** (`.stamped-product-reviews-badge`, `#stamped-main-widget`; metafields `product.metafields.stamped.reviews_count/reviews_average`). No Trustpilot today — our Trustpilot widget is config-driven (rating/count/URL entered in dashboard).
 - Also installed: Fast Bundle, Klaviyo, Triple Whale, Littledata, Growave (loyalty page), Shopify Forms.
 
 ## Checkout

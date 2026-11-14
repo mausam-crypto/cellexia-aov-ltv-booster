@@ -3751,7 +3751,17 @@
     // v35: desktop default is the one-row rail (the vertical-space fix);
     // ui.gr restores the old 4-column desktop grid. Pure CSS leverage on
     // the root — ultra/compact densities out-cascade it and always rail.
-    var root = pfEl('section', 'cx-proof cx-results' + (pageMode ? ' cx-results--page' : (ultra ? ' cx-results--ultra' : compact ? ' cx-results--compact' : '') + (o.gr ? ' cx-results--grid' : '')), ['data-cx-feature', 'verified_before_after']);
+    // v39.2: the bare `cx` token marks this subtree as Cellexia app UI.
+    // The merchant's separate Cellexia REVIEWS app scans the page for
+    // product links and badges their "card" with a star rating, but skips
+    // every link inside `.cx` (its own namespace marker, carried by the
+    // badges it injects). Without the marker the results page's "Product
+    // used" links make each gallery card look like a product card
+    // ([class*="card"]) and the badge anchors on the first [class*="title"]
+    // inside it — the clinical panel's "Clinically measured at N weeks"
+    // header — so a product's star rating reads as a clinical measurement.
+    // The token carries NO styles in either app's stylesheet.
+    var root = pfEl('section', 'cx cx-proof cx-results' + (pageMode ? ' cx-results--page' : (ultra ? ' cx-results--ultra' : compact ? ' cx-results--compact' : '') + (o.gr ? ' cx-results--grid' : '')), ['data-cx-feature', 'verified_before_after']);
     pfSp(root);
 
     if (pageMode && conf.live !== true) {

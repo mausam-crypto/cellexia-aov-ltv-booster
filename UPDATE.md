@@ -461,6 +461,33 @@ Liquid: NO budget move, 99,437 / 99,500 (the new inline request cost 184 B
 and was paid for by folding three opt-out gates, -180 B). Suite: 36 suites /
 13,163 checks green, plus `tsc` and `npm run build`.
 
+### v39.2 (2026-11-14, your catch — ships in the v40.1 zip) — review stars no longer land inside the gallery cards
+
+On the live results page every card showed a product star rating wedged
+into the clinical panel's header, next to "Clinically measured at 8 weeks",
+so a product's 4.8 stars read as if it were a study measurement.
+
+**Why:** the separate in-house **cellexia-reviews** app badges the card
+around any product link it finds on the page. Since v39.1 each gallery card
+carries a "Product used" link, and our card classes contain `card` and
+`title`, so its scanner adopted them and anchored the badge on the clinical
+header.
+
+**Fix (one class):** the gallery root now carries that app's own opt-out
+marker — the bare `cx` class it already skips (and stamps on its own
+badges). Nothing else changes: same markup, same styles, no new request.
+The enlarged view was already covered by its `.cx-lightbox` rule.
+
+Unaffected on purpose: star badges on product cards, collection grids and
+our cart cross-sell cards. Only the before/after gallery opts out. If you
+would rather SHOW the rating in the gallery, say so — the natural place is
+next to the product name in the "Product used" row, and it is a small
+follow-up.
+
+Cross-app contract (what each side relies on) is written up in
+`docs/theme-integration.md`, "The separate Cellexia reviews app". No Liquid
+change, no new scope, no database change.
+
 ## 3c. v38 — before/after gallery: standard side-by-side cards, compare slider in the enlarged view — what this release changes
 
 Merchant request: choose between the compare slider everywhere (the v33

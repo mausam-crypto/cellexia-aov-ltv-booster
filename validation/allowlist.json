@@ -345,6 +345,11 @@
    "file": "extensions/cellexia-booster/assets/cellexia-pdp.js",
    "reason": "v40 Joy Subscriptions (SPEC-v40): azSubPlanId falls back to Joy's hidden input[name=selling_plan] in .pdp__grey (azNativePlanId) ONLY when the in-house buy box is silent; azSubRowPlan resolves each FBT / similar row to its own same-named offerable plan (in-house ids from the proxy xp list are never resolved; unknown list = classic); azFbtAdd sends the per-row plan and refuses to add anything a row is not displaying; azNativeOn bridges Joy's avada:plan:selected / subscription-change ticks at both cx:buybox:change sites; azNativeSettle re-prices when Joy's late-rendered field appears; the stepper's click-time clamp cancels that click in native mode. Buy-box (in-house) path numerically identical. Pinned by harness v40 block, sims/fbt (f1-f10), sims/quantity-sync (m20/m21).",
    "wave": "v40"
+  },
+  {
+   "file": "extensions/cellexia-booster/assets/cellexia-proof.js",
+   "reason": "v39.2 (merchant catch 2026-11-14): the results gallery root gains the bare `cx` class as a PREFIX on its existing classes ('cx cx-proof cx-results…'). It is the opt-out marker of the merchant's separate cellexia-reviews app, whose collect() skips every a[href*=\"/products/\"] inside `.cx` and which otherwise adopted v39.1's \"Product used\" cards ([class*=\"card\"]) and anchored a star badge on .cx-results__clin-title, inside the clinical panel header. No styles attach to a bare `.cx` in either app (harness-pinned); the lightbox/viewer was already covered by that app's .cx-lightbox rule. Pinned by sims/proof-gallery.cjs PG15 + mutant m82 and the harness v39.2 block.",
+   "wave": "v39.2"
   }
  ]
 }

@@ -239,3 +239,24 @@ same file: each of the three opt-out + draft gates folds into one
 
 Harness v39.1 block; `proof-gallery` PG8 to PG14 with mutants m69 to m81;
 `proof-server` PF1 to PF9 and RP1 to RP12 with mutants m17 to m19.
+
+## v39.2 — the separate reviews app must not badge the gallery
+
+Merchant report (2026-11-14): every card on the live page showed a product
+star rating inside the clinical panel header.
+
+The in-house `cellexia-reviews` app badges the card around any
+`a[href*="/products/"]`; v39.1's "Product used" row put such links inside
+cards whose class contains `card`, and its title lookup
+(`[class*="title"]`) anchored on `.cx-results__clin-title`.
+
+Fix: the gallery root is now `section.cx.cx-proof.cx-results…`. The bare
+`cx` token is that app's own opt-out marker (it skips every link inside
+`.cx` and stamps the same token on the badges it injects), and it carries
+no styles in either app's stylesheet. The lightbox/viewer already matched
+its `.cx-lightbox` skip rule. Cart and cross-sell cards keep their badges.
+
+Pinned by `proof-gallery` PG15 (+ m82) and the harness v39.2 block, which
+also fails if anything ever styles a bare `.cx`. Cross-app contract:
+`docs/theme-integration.md`, "The separate Cellexia reviews app".
+
