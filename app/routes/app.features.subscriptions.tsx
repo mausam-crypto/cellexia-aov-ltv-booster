@@ -460,9 +460,18 @@ export default function SubscriptionsFeaturesPage() {
                   quantity cards and Frequently bought together therefore use
                   each product’s (and each pack’s) own Joy plan. The offers
                   show the subscription price only; the cart line shows the
-                  delivery frequency once the product is in the cart. Plans
-                  of the switched-off Cellexia Subscriptions app are never
-                  offered.
+                  delivery frequency once the product is in the cart.
+                </Text>
+                <Text as="p">
+                  <strong>Cellexia Subscriptions (the new app).</strong> It is
+                  switched on country by country in its own admin, and its
+                  subscription costs the same as a one-time purchase. In those
+                  countries this app uses only that app’s plans (each pack
+                  size has its own), never Joy’s: offers add as a subscription
+                  by default and follow the shopper’s “Buy once” choice, and
+                  this nudge, the in-cart switch and the “Remove
+                  subscription” button are not shown. Everywhere else its
+                  plans are ignored and Joy works as described above.
                 </Text>
                 <Text as="p">
                   The discount shown to shoppers is always read live from the

@@ -16,17 +16,6 @@ assign cx_prev_armed = false
 if cx_prev.armed == true
 assign cx_prev_armed = true
 endif
-assign cx_draft_volume = false
-assign cx_draft_shipbar = false
-assign cx_draft_subscription = false
-assign cx_draft_trustrow = false
-assign cx_draft_crosssell = false
-assign cx_draft_dispatch = false
-assign cx_draft_delivery = false
-assign cx_draft_azfree = false
-assign cx_draft_azcta = false
-assign cx_draft_azbadge = false
-assign cx_draft_azbought = false
 -%}
 {%- if cx_prev_armed -%}
 {%- liquid
@@ -319,6 +308,7 @@ endunless
 endif
 endif
 endunless
+assign cx_cso = shop.metafields.cellexia.subscription_offer.value
 -%}
 {{ 'cellexia-booster.css' | asset_url | stylesheet_tag }}
 <script type="application/json" id="cx-cart-config">
@@ -424,6 +414,9 @@ assign tp_count = cfg.trustpilot.reviewCount | default: 1000
 {%- if cx_sx %}
 "sx":{"p":{{ cx_sxp | json }},"d":{{ shop.metafields.cellexia.variant_defaults.value | json }},"live":{% if cx_sl == 'live' %}true{% else %}false{% endif %}},
 {%- endif %}
+{%- if cx_cso.everywhere or cx_cso.countries contains cx_country %}
+"cs":1,
+{%- endif %}
 {%- if cx_exc_d or cx_exc_e %}
 "exc": {"d": {{ cx_exc_d | json }}, "e": {{ cx_exc_e | json }}},
 {%- endif %}
@@ -494,7 +487,7 @@ assign tp_count = cfg.trustpilot.reviewCount | default: 1000
 ],
 "sellingPlanGroups": [
 {%- for group in item.product.selling_plan_groups -%}
-{"id": {{ group.id | json }}, "name": {{ group.name | json }}, "plans": [
+{"id": {{ group.id | json }}, "name": {{ group.name | json }}, "app": {{ group.app_id | json }}, "plans": [
 {%- for plan in group.selling_plans -%}
 {"id": {{ plan.id | json }}, "name": {{ plan.name | json }}, "valueType": {{ plan.price_adjustments[0].value_type | json }}, "value": {{ plan.price_adjustments[0].value | default: 0 }}}{%- unless forloop.last -%},{%- endunless -%}
 {%- endfor -%}

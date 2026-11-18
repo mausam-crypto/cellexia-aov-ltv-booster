@@ -15,7 +15,7 @@ re-apply local patches; deploy this tree as-is** (after the config merge in §1)
 | **Prisma datasource patch (sqlite → postgres)** | **Fully automatic now.** The build/install scripts run `node scripts/prisma-env.mjs generate`, which selects `prisma/schema.postgres.prisma` whenever `DATABASE_URL` is a Postgres URL (Render sets it at build time) and the SQLite dev schema otherwise. Drop this patch too — §2/§3 explain the new flow, and the server now REFUSES TO BOOT if a mismatched client ever slips through |
 | Missing dotenv loading | `dotenv` is a dependency; `app/shopify.server.ts` imports `dotenv/config` first (never overrides host-set vars) |
 | Missing `RENDER_EXTERNAL_URL` fallback | `appUrl` resolves `SHOPIFY_APP_URL → RENDER_EXTERNAL_URL → ""` (also in the app-proxy health check) |
-| Missing `react-reconciler` | **Obsolete since v36.1** — the four checkout extensions no longer use React at all (your Polaris web-components migration is merged in-tree, see §3e); `react`, `react-reconciler` and `@shopify/ui-extensions-react` are gone from their `package.json` on purpose. Do not re-add them |
+| Missing `react-reconciler` | **Obsolete since v36.1** — the four checkout extensions no longer use React at all (your Polaris web-components migration is merged in-tree, see §3f); `react`, `react-reconciler` and `@shopify/ui-extensions-react` are gone from their `package.json` on purpose. Do not re-add them |
 | 27-char schema name limit | All block schema names now ≤ 25 chars (`Cellexia subscription`) |
 | `external` → `target` Button iframe issue | ALL occurrences swept (14 across 5 admin routes — more than the 6 you found; new pages had regressed it) |
 | 100 KB Liquid limit | The live/draft template pairs are deduplicated in-tree (single template with a conditional `data-cx-draft` marker) — `pdp-booster.liquid` is well under the limit again and won't regress |
@@ -33,7 +33,7 @@ REAL toml, make exactly three changes:
 - **`scopes`** — replace the line with (additions since your build:
   `read_shipping`, `read_price_lists`, `write_price_lists`, `write_translations`,
   NEW in v14: `write_discounts`, `read_inventory`, `read_locations`,
-  and NEW in v39: `read_online_store_pages`, read-only, see §3b):
+  and NEW in v39: `read_online_store_pages`, read-only, see §3c):
 
 ```
 scopes = "read_products,write_products,read_publications,write_publications,read_orders,read_locales,read_translations,read_markets,read_metaobject_definitions,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_files,write_files,read_themes,read_shipping,read_price_lists,write_price_lists,write_translations,write_discounts,read_inventory,read_locations,read_online_store_pages"
@@ -246,7 +246,140 @@ Then in the store admin, **open the app once** — you'll be prompted to approve
 new scopes. Approve them (protection per-currency pricing, free-shipping
 auto-detection, and booster auto-translation need them).
 
-## 3a. v40 — Joy Subscriptions: the subscription-aware features now work off Joy's plans — what this release changes
+## 3a. v41 — the new Cellexia Subscriptions app: every add / upgrade module follows it where it is switched on — what this release changes
+
+A new in-house subscriptions app (repository `subscription-cellexia`, selling
+plan group `app_id` **`cellexia-subscriptions`**) is replacing Joy country by
+country. It is switched on in its own admin (Luxembourg first), and its
+subscription costs **the same as a one-time purchase** (a discount may come
+later, by raising the one-time price). Its plans are attached to the same 11
+products as Joy's 5 % plans, which stay for Spain.
+
+Everything subscription-aware in this app only recognised a plan when it was
+**cheaper** than a one-time purchase, and took "the first cheaper plan". With
+the new app that plan is Joy's. Full contract and the facts read from the
+store: `docs/SPEC-v41-cellexia-subscriptions.md`.
+
+### What was wrong (theme copy with the new app's block, Luxembourg, build 85)
+
+| Module | Before v41 | After v41 |
+|---|---|---|
+| Quantity cards | the sizes that are **not** selected printed Joy's prices (2 Jars "€46.03 each", 3 Jars "€43.32 each"; with 2 Jars selected, 1 Jar "€54.15"). A card's price rose 5 % when it was clicked. **This blocked the Luxembourg go-live.** | every card prints what that size costs on its own plan of the new app: €57.00 / €48.45 each / €45.60 each, whatever is selected |
+| Frequently bought together, You might also like | one-time rows and a one-time add while the page said "subscription" | each row adds with its own plan of the new app; one-time after "Buy once" |
+| Cart: bigger-pack tile on a subscribed line | no tile | the bigger pack **on that pack's own plan** (8 or 12 weeks) |
+| Cart: cross-sell "Add" | one-time | with the row's own plan, by default; one-time for a "Buy once" cart |
+| Cart: "switch to subscription" card (where enabled) | would put **Joy's** plan on the line | never shown where the new app is on |
+| Cart: "Remove subscription" button (where enabled) | removed the new app's plan from the line | never shown where the new app is on, nor on a line that carries its plan |
+| "Save X %" subscription nudges | would promise a discount that does not exist | not shown where the new app is on |
+
+### What changed
+
+- **Nothing to configure, no new setting.** The switch is the new app's own:
+  the shop metafield `cellexia.subscription_offer`
+  (`{"everywhere":false,"countries":["LU"],"buy_once":true}`).
+- **How the new app is recognised** (three signals, all read-only):
+  - a plan is the new app's when its selling plan group's `app_id` is
+    `cellexia-subscriptions`. The cart island, the Ajax product adapter and
+    the app-proxy `cart-data` response now carry it as `"app"` on every group;
+  - on a product page: the new app's own plan field,
+    `input[name="selling_plan"][data-cellexia-plan]` inside `.pdp__grey`. Its
+    value is the plan of the selected size; empty = the shopper's "Buy once".
+    Joy's field never has that attribute, and the new block removes itself
+    where Joy's widget shows;
+  - in the cart: a new island member `"cs":1`, emitted when the visitor's
+    **country** is on the app's list (the same Liquid test as the app's own
+    block). The script adds the B2B rule and the kill switch.
+- **A third plan family** beside the in-house one (v17) and Joy (v40). Where
+  the new app is on, it is the only one used:
+  - subscription by default, the shopper's "Buy once" respected (owner
+    decision): a subscribed line upgrades to the bigger pack on that pack's
+    own plan; a one-time line upgrades to a one-time bigger pack; a cross-sell
+    row adds with its own plan unless the cart holds lines that could be
+    subscribed and none is (the shopper bought once);
+  - no "switch to subscription" card, no "Remove subscription" button, no
+    "save X %" nudge (owner decision for the first two);
+  - offers stay price-only (owner decision): no plan name, no rhythm. A plan
+    priced like a one-time purchase strikes nothing ("€57 ~~€57~~" is gone);
+    the day it is cheaper, the row shows its price with the one-time price
+    struck, and the pack badge compares with the 1-unit **subscription**
+    price;
+  - products the app does not cover (sachets, extras, free gifts) stay
+    one-time.
+- **Everywhere else** the new app's plans are invisible to the other two
+  families (they can never be offered in France or picked instead of Joy's in
+  Spain, even once they are cheaper), and a line that carries one is left
+  alone.
+- **Quantity stepper:** unchanged. With a plan in the field it stays capped at
+  the biggest pack; after "Buy once" it is uncapped again.
+- **Admin copy** on the cart, subscriptions and translation pages describes
+  the new app.
+
+### ⚠️ For the store team
+
+- **A cross-sell "Add" in Luxembourg starts a subscription**, with nothing on
+  the row saying so (price-only offers) and no button to turn it into a
+  one-time purchase afterwards (no "Remove subscription"). The shopper sees it
+  on the cart line ("Delivered every 4 weeks") and at checkout, and can remove
+  the line. These are the owner's decisions of 18 November.
+- **Never switch Spain on in the new app while Joy's widget shows there.**
+- **Set savings:** keep "count subscriptions" on (it is), or set savings stop
+  applying in Luxembourg, where most lines are subscriptions. The 4+ volume
+  discount never applies to a subscription line, as before.
+- **Checkout offers** still add one-time purchases (next release). The theme's
+  routine quiz too (theme code, not this app).
+
+### Deploy notes
+
+- No scope change, no database change, no new locale keys, no theme-editor
+  step, no `shopify.app.toml` change. **Nothing to do in the theme**: the
+  theme copy with the new block and the published theme are not touched.
+- **Order: server first, then the extension** (the usual `npm run deploy`
+  after the server is up). Either half alone is safe: new extension + old
+  server = the quantity cards and the page's own product are already right
+  (the new block names its plans itself), cart modules too (island and Ajax
+  data carry `app`); companions fetched through the proxy stay one-time until
+  the server ships `"app"`. New server + old extension = no effect.
+- **Nothing changes at deploy in a country where the new app is not switched
+  on**: Spain (Joy) and France were run with build 85 and with this release on
+  local copies of the real pages, and gave the same output line for line.
+- Luxembourg is not published yet. After deploying, tell the owner: the
+  go-live session looks at the theme preview again before anything is
+  published.
+
+### Liquid budget
+
+- NO budget move. The island's country gate (`"cs":1`), the per-group `"app"`
+  member and the nudge block's gate (+328 B) were paid for first: the 11
+  `assign cx_draft_* = false` pre-inits of `cart-booster.liquid` are gone
+  (−359 B; nil is falsy in every use, the pdp-booster precedent of v29).
+  Liquid **99,407 / 99,500** (was 99,437); `cart-booster.liquid` 23,425 /
+  23,600 (was 23,595).
+- Suite: 36 suites / 13,674 checks green (was 13,510), plus `tsc` and
+  `npm run build`. 23 new mutation tests (quantity cards 6, FBT 4, cart 13).
+- The two edited Liquid files were rendered locally (liquidjs, 46 checks): the
+  island is valid JSON in every case, `"cs"` follows the country exactly, and
+  apart from `"cs"` and `"app"` the island is byte-equal to the v40.7 island.
+- The shipped `cellexia-pdp.js` and `cellexia-cart.js` were run in a browser
+  on local copies of the real product pages (Luxembourg with the new app's
+  block exactly as Shopify rendered it on the theme copy and its own script;
+  Spain and France from the published theme), with the theme's own scripts
+  running and Shopify's cart API answered by a stand-in fed with the store's
+  real product and plan data (it refuses a plan a variant does not carry). Each
+  run was made with build 85 and with this release:
+  - Luxembourg: build 85 reproduces every figure of the report; this release
+    gives the right cards for every selected size and after "Buy once", the
+    FBT add with each item's own plan, the cart upgrade onto the 8-week plan,
+    the cross-sell add with its plan, one-time for a Buy-once cart, and no
+    switch card or "Remove subscription" even with that feature forced on;
+  - Spain (Joy's field and announcements reproduced by hand) and France:
+    identical output, product page and cart, including Joy's switch card and
+    "Remove subscription";
+  - the new app's plans made 10 % cheaper in the stand-in: Luxembourg prints
+    those prices; Spain and France do not change.
+- **Not** checked on the store itself: the deployed behaviour end to end (see
+  `_handoff-v41/DEV-INSTRUCTIONS-v41.md`).
+
+## 3b. v40 — Joy Subscriptions: the subscription-aware features now work off Joy's plans — what this release changes
 
 Merchant decision: subscriptions are sold through **Joy Subscriptions (Avada)**;
 the in-house Cellexia Subscriptions app stays installed but switched off. A
@@ -348,7 +481,7 @@ have mis-ordered. Full contract and the live-store facts:
 
 Two changes after the first day of v40 on the Spanish market. Contract:
 `docs/SPEC-v40-joy-subscriptions.md` §7. (v40.1, shipped the same day, is the
-results-page fix described in §3b "v39.2"; this zip contains it.)
+results-page fix described in §3c "v39.2"; this zip contains it.)
 
 **1. Quantity cards follow the selected subscription.** With "Continuous
 Treatment" selected in Joy's "Choose Your Treatment" widget (its default), the
@@ -453,7 +586,7 @@ agree and the widget changes price once. Details: `docs/SPEC-v40-joy-subscriptio
   price; with it, every pick changed the price exactly once. Not checked as a
   deployed build.
 
-## 3b. v39 — dedicated before/after results page (turn any Shopify page into the gallery) — what this release changes
+## 3c. v39 — dedicated before/after results page (turn any Shopify page into the gallery) — what this release changes
 
 Merchant request: retire the old "results" page and make it easy for a
 non-technical person to turn a Shopify page into a dedicated before/after
@@ -780,7 +913,7 @@ App server only (`app.proof.results.tsx`, `proof.server.ts`); the
 storefront is untouched. Pinned by `proof-server` section FD and the
 harness v39.5 checks.
 
-## 3c. v38 — before/after gallery: standard side-by-side cards, compare slider in the enlarged view — what this release changes
+## 3d. v38 — before/after gallery: standard side-by-side cards, compare slider in the enlarged view — what this release changes
 
 Merchant request: choose between the compare slider everywhere (the v33
 look) and standard side-by-side cards with the drag slider only in the
@@ -855,7 +988,7 @@ above the gallery**:
 Zero Liquid bytes and zero locale keys. Same deploy as above: until both
 halves are live, the old verified number keeps showing.
 
-## 3d. v37 — Brazilian Portuguese (pt-BR) is now a shipped language — what this release changes
+## 3e. v37 — Brazilian Portuguese (pt-BR) is now a shipped language — what this release changes
 
 Every widget, checkout extension and curated table now speaks Brazilian
 Portuguese natively. Until now a storefront published as `pt-BR` fell back to
@@ -912,7 +1045,7 @@ the curated tables — Brazilian shoppers saw a mix. Full translation notes:
 - Suite grew to 36 suites / 12,561 checks (the per-locale pins now fan out
   over 19 files) — all green, plus `tsc` and `npm run build`.
 
-## 3e. v36.1 — your checkout Polaris migration is merged in-tree (plus three fixes you'll want live) — what this release changes
+## 3f. v36.1 — your checkout Polaris migration is merged in-tree (plus three fixes you'll want live) — what this release changes
 
 Your developer's migration package (2026-10-06): the four checkout UI
 extensions (`checkout-trust`, `checkout-delivery`, `checkout-protection`,
@@ -1007,7 +1140,7 @@ Untouched — this wave contains zero Liquid and zero locale bytes
 (checkout extension strings live in the extensions' own locale files,
 which are unchanged).
 
-## 3f. v36 — before/after gallery: full-screen swipe viewer replaces "Show more" — what this release changes
+## 3g. v36 — before/after gallery: full-screen swipe viewer replaces "Show more" — what this release changes
 
 Your ask (2026-10-06): the horizontal scrolling is good, but "Show more"
 below the rail appending more photos sideways is confusing; with 50-150
@@ -1093,7 +1226,7 @@ it the full width and pushing the clinical numbers below the fold:
   browsers without container-query support simply keep the v36 scrolling
   layout. The compare slider is unaffected by the new geometry.
 
-## 3g. v35 — study batches, study mix and gallery display options — what this release changes
+## 3h. v35 — study batches, study mix and gallery display options — what this release changes
 
 Your ask (2026-10-03): the desktop before/after gallery stacks several
 rows and eats vertical space — it should be one row; results from one
@@ -1158,7 +1291,7 @@ files untouched (el 15,069 / ar 15,124 against the 15,200 pin): the study
 tag renders your raw study name and the expander reuses the existing
 "Show more" string, so the wave costs zero locale bytes.
 
-## 3h. v34 — study presets for the before/after gallery — what this release changes
+## 3i. v34 — study presets for the before/after gallery — what this release changes
 
 Your ask (2026-09-25): you will add lots of before/afters from different
 studies, so a preset should pre-select that an entry is a study and
@@ -1198,7 +1331,7 @@ from them are ordinary clinical entries.
 Untouched: 99,454/99,500 total; el.json 15,069 / ar.json 15,124 against
 the 15,200 pin. Zero new storefront strings.
 
-## 3i. v33 — before/after gallery: combined clinical photo, study design, compare slider — what this release changes
+## 3j. v33 — before/after gallery: combined clinical photo, study design, compare slider — what this release changes
 
 Your ask (2026-09-23, with the reference screenshot): clinical before/afters
 can be ONE combined photo instead of a separate pair; an optional design that
@@ -1273,7 +1406,7 @@ Untouched: 99,454/99,500 total; el.json 15,069 / ar.json 15,124 against the
 15,200 pin. The four new storefront strings ride the results feed
 (`results-ui-copy.server.ts`, all 18 languages) — zero locale bytes.
 
-## 3j. v32 — exact volume pricing at 4+ (app-owned Shopify discount, ships OFF) — what this release changes
+## 3k. v32 — exact volume pricing at 4+ (app-owned Shopify discount, ships OFF) — what this release changes
 
 Your decisions (2026-09-21): match each market's REAL 3-pack per-unit rate,
 computed from your own prices; discount codes may stack; the app creates and
@@ -1389,7 +1522,7 @@ note under the button says the first sync takes up to a minute.
 trims: total 99,454 / 99,500. Zero locale-file keys (the discount label
 ships inside the function).
 
-## 3k. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
+## 3l. v31 — quantity stepper sync + add-to-cart button v2 (two new features, both ship OFF) — what this release changes
 
 Two independent buy-box features you asked for, each with its own switch,
 market scope, Preview Center draft flag and analytics line. Both live on the
@@ -1451,7 +1584,7 @@ tag, one comment moved to docs): total Liquid 99,452 / 99,500. Zero new
 locale-file keys (the three new aria strings ride the JS table; el/ar stay
 at their byte walls).
 
-## 3l. v30 — Trustpilot star color in checkout + PDP Trustpilot size + star rounding + cart row completion — what this release changes
+## 3m. v30 — Trustpilot star color in checkout + PDP Trustpilot size + star rounding + cart row completion — what this release changes
 
 Two small display options plus two requested rendering corrections (full
 contract: `docs/SPEC-v30-trustpilot-tuning.md`). Deploy BOTH halves per §3 —
@@ -1509,7 +1642,7 @@ byte-identical to before this release. Suite: 11,396 checks green
 block pin the byte-identical-by-default guarantees, the rounding rule and
 the cross-file wiring).
 
-## 3m. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
+## 3n. v28/v29 — "Rated #1" award strip + the proof pieces become their own features — what this release changes
 
 Two things landed together in this build:
 
@@ -1570,7 +1703,7 @@ on the storefront config; until then the legacy path keeps today's look.
 
 Full contracts: `docs/SPEC-v28-award-strip.md`, `docs/SPEC-v29-proof-split.md`.
 
-## 3n. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
+## 3o. v26 — quantity selector cards (new feature, ships OFF) — what this release changes
 
 A new 43rd feature, `Quantity selector cards` (`quantity_selector`), for the product
 page. While it is on, the theme's text-pill size picker ("1 Jar / 2 Jars - 15% Off /
@@ -1654,7 +1787,7 @@ lever is still the triple `deliveryStrings` emission (~1.5 KB × 3 files), but n
 the deploy-safety island expander does not expand `{% render %}` inside islands, so
 that dedupe needs expander support first (see validation/sims/deploy-safety.cjs).
 
-## 3o. v25 — before/after gallery: clinical trust redesign — what this release changes
+## 3p. v25 — before/after gallery: clinical trust redesign — what this release changes
 
 Merchant ask (2026-09-18, with two reference designs): redesign the
 before/after results widget and its click-to-enlarge overlay for maximum
@@ -1740,7 +1873,7 @@ win and should be cleared.
 - To see it before enabling: arm a preview (§ preview) with the
   before/after draft flag, or enable + market-scope it to a test market.
 
-## 3p. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
+## 3q. v24 — clinical study widget redesigned to the "published research" reference — what this release changes
 
 **The ask (2026-09-17):** restyle the PDP clinical study widget to match the
 reference design (letterspaced "PUBLISHED CLINICAL RESEARCH" eyebrow, big
@@ -1791,7 +1924,7 @@ BEFORE saving study content. Spec: `docs/SPEC-v24-study-redesign.md`.
 Pinned by `sims/survey-methodology.cjs` T2-T8 + mutants m13-m15 and the
 harness v24 pin updates.
 
-## 3q. v23 — subscription card prices now require the app to be LIVE — what this release changes
+## 3r. v23 — subscription card prices now require the app to be LIVE — what this release changes
 
 **The bug this fixes (reported by the merchant):** while the NEW subscription
 app is still in setup (or live in only some markets), theme product cards on
@@ -1829,7 +1962,7 @@ run). Spec: `docs/SPEC-v23-subs-live-gate.md`. Pinned by the harness (v23
 tripwires) and by `sims/badge-cards` (setup-mode and missing-member
 scenarios) + `sims/subscribed-upgrade` (setup fallback refusal).
 
-## 3r. v21 cart overlay features — what this release changes
+## 3s. v21 cart overlay features — what this release changes
 
 ### v21.2 (2026-09-14, after your field test) — five fixes in this build
 
@@ -1965,7 +2098,7 @@ collapsed into two loops that mirror the file's own `bought_count` loop
 precedent (identical keys and values; JSON member order is parser-neutral).
 The release leaves 244 B of per-file headroom where it found 87 B.
 
-## 3s. v20 image badges on mobile — what this release changes
+## 3t. v20 image badges on mobile — what this release changes
 
 **No database migration. No new API scopes. No webhook changes. No new
 translated strings.** Deploy the app server and the extensions exactly as §3
@@ -2007,7 +2140,7 @@ mechanically and proved byte-identical for every icon before it landed, so the
 five legacy blocks that render those icons are unchanged on the page. The
 release LEAVES 1,371 B of headroom where it found 207 B.
 
-## 3t. v18 free gifts V2 — what this release changes
+## 3u. v18 free gifts V2 — what this release changes
 
 **No database migration. No new API scopes. No webhook changes.** Deploy the
 app server and the extensions exactly as §3 describes; nothing extra is needed
@@ -2221,7 +2354,7 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - New FeatureKey `quantity_selector` (42 -> 43, appended at the end), settings
   section `quantitySelector` {enabled false}, own admin page
   `/app/features/quantity`, previewable, market-scoped, analytics-labeled.
-  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3n above.
+  Full contract: `docs/SPEC-v26-quantity-selector.md`; deploy notes §3o above.
 - Storefront: gated `qs` member in the #cx-pdp-config island (live flag, page
   locale, shop money format, per-variant id/title/cents/image) + the `qsel*`
   module and `CX_QSEL_STR` 18-locale table in `cellexia-pdp.js` + the
@@ -2236,14 +2369,14 @@ v26 — QUANTITY SELECTOR CARDS (2026-09-18):
 - v26.1 (2026-09-19): free-shipping micro-line on qualifying tiers —
   `quantitySelector.freeShipTag` (default ON, tick box on the feature page),
   island `fst` = the trust badges' per-market safe threshold as presentment
-  cents, storefront tags only tiers whose own price clears it (§3n).
+  cents, storefront tags only tiers whose own price clears it (§3o).
 
 v20 — IMAGE BADGES ON MOBILE (2026-09-11):
 
 - New FeatureKey `image_badges` (38 -> 39, appended at the end), settings
   section `imageBadges` {enabled false, scale 140}, configured on Trust &
   badges, previewable, market-scoped. Full contract:
-  `docs/SPEC-v20-image-badges.md`; deploy notes in §3s above.
+  `docs/SPEC-v20-image-badges.md`; deploy notes in §3t above.
 - Storefront surface is ONE CSS declaration: the width of the theme's own
   `.pdp .badges .badge` on phones, from a custom property the PDP asset
   writes after measuring the live product image. No node, no copy, no locale

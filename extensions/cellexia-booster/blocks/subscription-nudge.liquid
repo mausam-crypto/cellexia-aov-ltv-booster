@@ -8,7 +8,8 @@ if cx_s.mode != 'selected' or cx_s.markets contains cx_market
 assign cx_on = true
 endif
 endif
-if customer.b2b?
+assign cx_o = shop.metafields.cellexia.subscription_offer.value
+if customer.b2b? or cx_o.everywhere or cx_o.countries contains localization.country.iso_code
 assign cx_on = false
 endif
 -%}

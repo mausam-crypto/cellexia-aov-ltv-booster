@@ -136,6 +136,12 @@ orders/paid webhook ──► OrderStat table (AOV, attach rates)
   Joy's plans too: Joy gives every product, and every pack size, its own plan, so each offer
   uses that product's own plan (`docs/SPEC-v40-joy-subscriptions.md`). The switched-off in-house subscription app's plans
   are never offered.
+- **Cellexia Subscriptions (the new app, v41)**: switched on country by country in its own admin
+  (shop metafield `cellexia.subscription_offer`); its subscription costs what a one-time purchase
+  costs. Where it is on, every add / upgrade module uses that app's own plan for the size it adds
+  (selling plan group `app_id` = `cellexia-subscriptions`), by default and following the shopper's
+  "Buy once" choice; Joy's plans are never used there, and that app's plans are never used anywhere
+  else (`docs/SPEC-v41-cellexia-subscriptions.md`).
 
 ## Prerequisites
 

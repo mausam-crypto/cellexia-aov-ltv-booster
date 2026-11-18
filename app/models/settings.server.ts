@@ -780,6 +780,12 @@ export interface BoosterSettings {
      * family — active while that in-house app is not live, driven by the
      * cart's own Joy plan line / Joy's hidden selling_plan field on the
      * PDP (docs/SPEC-v40-joy-subscriptions.md). No new setting.
+     * v41: and the family of the NEW Cellexia Subscriptions app (plans of a
+     * selling plan group whose app_id is "cellexia-subscriptions"), which
+     * is the only one used in the countries that app is switched on for —
+     * its own shop metafield cellexia.subscription_offer, read by
+     * cart-booster.liquid (docs/SPEC-v41-cellexia-subscriptions.md). Still
+     * no new setting: the switch lives in that app.
      */
     subscriptionAware: boolean;
   };

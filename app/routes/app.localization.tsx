@@ -169,7 +169,7 @@ function isCovered(locale: string): boolean {
 const HOW_TO_STEPS: string[] = [
   "Open Translate & Adapt: Shopify admin → Sales channels → Online Store → Translate & Adapt (also reachable via Settings → Languages → Localize).",
   "App embed and app block text overrides you enter in the theme editor appear under Theme content — translate them there per language. The built-in widget strings are already translated and need no work.",
-  "Selling-plan names (the Joy delivery frequencies, e.g. “Every 2 Months”) are native Shopify resources — translate them in Translate & Adapt under Products → Subscription plans. The cart shows these names as-is on its lines.",
+  "Selling-plan names (the delivery frequencies, e.g. Joy’s “Every 2 Months” or Cellexia Subscriptions’ “Delivered every 4 weeks”) are native Shopify resources — translate them in Translate & Adapt under Products → Subscription plans. The cart shows these names as-is on its lines.",
   "Checkout extension strings ship translated automatically in every language listed below (plus nb for Norwegian checkout) — nothing to do.",
 ];
 

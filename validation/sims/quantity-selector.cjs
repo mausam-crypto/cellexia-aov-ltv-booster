@@ -38,6 +38,12 @@
  * joyVariantHint — the data-variant-id it stamps on the theme's pill
  * wrapper so Joy's generic variant listener stops falling back to the
  * first variant (the price flicker in Joy's widget).
+ *
+ * v41 (report 2026-11-18): section Q10 runs the same REAL chain on a page
+ * that carries the NEW subscriptions app's plan field (Luxembourg): every
+ * card prints its own size's plan of that app (today the one-time price),
+ * never Joy's 5 % plan that sits on the same variants; a Joy page with the
+ * new app's plans attached must still give the Q8 figures.
  */
 "use strict";
 const path = require("path");
@@ -64,6 +70,8 @@ const EXTRACTED = extractAll(SRC, {
     // v40.2 subscription pricing
     "qselApi", "qselSubWired", "qselSubAsked", "qselSubQueued",
     "AZ_CFG", "AZ_CFG_READ", "azSubPlans", "azSubNames", "azSubDeny",
+    // v41 Cellexia Subscriptions
+    "AZ_CS_APP", "azSubCs", "azCsSeeded",
     // v40.4 Joy variant hint
     "joyHintBound",
   ],
@@ -100,6 +108,11 @@ const EXTRACTED = extractAll(SRC, {
     "azSubRegister",
     "azSubDenyLoad",
     "azSubDenied",
+    // v41 Cellexia Subscriptions: the field test and the own-plan resolver
+    "azCsField",
+    "azCsSeed",
+    "azCsPlan",
+    "azCsRowPlan",
     "azSubInhouse",
     "azSubNative",
     "azNativePlanId",
@@ -1052,6 +1065,318 @@ function mountLive(opts) {
   }
 }
 
+// ------------- Q10: v41 cards on a page of the NEW subscriptions app
+//
+// Fixture = the store's product data since 2026-11-18 12:07 UTC: one-time
+// 57.00 / 96.90 / 136.80; Joy "Every 2 Months" on the 1-unit variant
+// (54.15) and "Every 3 Months" on the 2/3-unit variants (92.06 / 129.96),
+// listed FIRST; one group of the new app (app "cellexia-subscriptions")
+// with one plan per size at the size's own price ("Delivered every 4 / 8 /
+// 12 weeks"). The old in-house group is gone; its three ids are still the
+// proxy's "xp". In Luxembourg the page carries the new app's block: its
+// plan field inside .pdp__grey (data-cellexia-plan) and its sizes JSON; no
+// Joy block. The report: with 1 Jar selected the 2- and 3-Jar cards printed
+// 46.03 / 43.32 each (Joy's prices) instead of 48.45 / 45.60.
+
+{
+  const JOY_2M = "718347141495";
+  const JOY_3M = "718347174263";
+  const CS = ["719235481975", "719235514743", "719235547511"];
+  const INH = ["718653555063", "718653587831", "718653620599"];
+  const VARIANTS = [
+    { id: 42692253646984, t: "1 Jar", p: 5700, im: "//cdn.shopify.com/x.jpg" },
+    { id: 42692253679752, t: "2 Jars - 15% Off", p: 9690, im: "//cdn.shopify.com/x.jpg" },
+    { id: 42739675168904, t: "3 Jars - 20% Off", p: 13680, im: "//cdn.shopify.com/x.jpg" },
+  ];
+  const JOY_PRICES = [5415, 9206, 12996];
+  const JOY_IDS = [JOY_2M, JOY_3M, JOY_3M];
+  const EQUAL = [5700, 9690, 13680];
+  // o.cs = the new app's price per size; o.csFirst lists its allocation
+  // before Joy's; o.app:false = an older server (no "app" member).
+  const entry = (o) => {
+    o = Object.assign({ cs: EQUAL, csFirst: false, app: true }, o || {});
+    const csGroup = { id: "gC", name: "Subscription", plans: [
+      { id: CS[0], name: "Delivered every 4 weeks" },
+      { id: CS[1], name: "Delivered every 8 weeks" },
+      { id: CS[2], name: "Delivered every 12 weeks" },
+    ] };
+    if (o.app) csGroup.app = "cellexia-subscriptions";
+    return {
+      variants: VARIANTS.map((v, i) => {
+        const joy = { planId: JOY_IDS[i], price: JOY_PRICES[i] };
+        const own = { planId: CS[i], price: o.cs[i] };
+        return {
+          id: v.id, price: v.p, available: true, position: i + 1,
+          planAllocations: o.csFirst ? [own, joy] : [joy, own],
+        };
+      }),
+      sellingPlanGroups: [
+        { id: "g2", name: "Every 2 months", app: "gid://shopify/AppInstallation/839816774007", plans: [{ id: JOY_2M, name: "Every 2 Months" }] },
+        { id: "g3", name: "Every 3 months", app: "gid://shopify/AppInstallation/839816774007", plans: [{ id: JOY_3M, name: "Every 3 Months" }] },
+        csGroup,
+      ],
+    };
+  };
+
+  // o.block: "cs" = the new app's block (field + sizes JSON), "joy" = Joy's
+  // block and field, "none" = a country with neither.
+  function mountCs(o) {
+    o = Object.assign({ block: "cs", fst: 8000, az: {}, entry: entry(), xp: INH, sizes: true }, o || {});
+    const ctx = makeContext();
+    const page = makePicker(ctx, IDS);
+    const island = new El("script");
+    island.id = "cx-az-config";
+    island.textContent = JSON.stringify(Object.assign({
+      product: { id: 1, handle: "cellular-renewal-cream", selectedVariant: IDS[0] },
+    }, o.az));
+    ctx.doc.body.appendChild(island);
+    const grey = new El("div");
+    grey.className = "pdp__grey";
+    ctx.doc.body.appendChild(grey);
+    let field = null;
+    if (o.block === "cs") {
+      const block = new El("div");
+      block.className = "cellexia-subscription";
+      block.setAttribute("data-cellexia-subscription", "");
+      if (o.sizes) {
+        const sizes = new El("script");
+        sizes.setAttribute("type", "application/json");
+        sizes.setAttribute("data-cellexia-sizes", "");
+        const map = {};
+        VARIANTS.forEach((v, i) => { map[String(v.id)] = { plan: Number(CS[i]), delivery: "Delivered every " + (4 * (i + 1)) + " weeks" }; });
+        sizes.textContent = JSON.stringify(map);
+        block.appendChild(sizes);
+      }
+      ctx.doc.body.appendChild(block);
+      // the block's script moves its field into the purchase box
+      field = new El("input");
+      field.setAttribute("type", "hidden");
+      field.setAttribute("name", "selling_plan");
+      field.setAttribute("data-cellexia-plan", "");
+      field.value = CS[0];
+      grey.appendChild(field);
+    } else if (o.block === "joy") {
+      const block = new El("div");
+      block.className = "Avada-SubscriptionData-Block";
+      ctx.doc.body.appendChild(block);
+      field = new El("input");
+      field.setAttribute("type", "hidden");
+      field.setAttribute("name", "selling_plan");
+      field.value = "";
+      grey.appendChild(field);
+    }
+    ctx.proxy.response = (() => {
+      const out = { productsByHandle: { "cellular-renewal-cream": o.entry } };
+      if (o.xp !== undefined) out.xp = o.xp;
+      return out;
+    })();
+    const qs = { live: true, l: "en", mf: "€{{amount}}", v: VARIANTS };
+    if (o.fst) qs.fst = o.fst;
+    ctx.sandbox.cfg = { qs };
+    if (o.win) Object.assign(ctx.sandbox.window, o.win);
+    call(ctx, "qselMount");
+    const root = ctx.doc.querySelector(".cx-qsel");
+    const cards = root ? root.querySelectorAll(".cx-qsel__card") : [];
+    const fire = () => {
+      const n = ctx.timers.length;
+      ctx.timers.splice(0).forEach((fn) => fn());
+      return n;
+    };
+    // the field's own "change" event reaches the cards through azNativeOn
+    const tick = () => { ctx.nativeTicks.forEach((fn) => fn()); return fire(); };
+    const plan = (value) => { field.value = value; return tick(); };
+    const text = (card, cls) => { const e = card.querySelector(cls); return e ? e.textContent : null; };
+    const read = () => cards.map((c) => [
+      text(c, ".cx-qsel__now"), text(c, ".cx-qsel__was"), text(c, ".cx-qsel__save"),
+      c.querySelector(".cx-qsel__ship") ? "ship" : "-",
+    ].join(" | "));
+    return { ctx, page, root, cards, fire, tick, plan, read, field };
+  }
+  const ONE_TIME = [
+    "€57.00 |  |  | -",
+    "€48.45 each | €57.00 each | Save €17.10 | ship",
+    "€45.60 each | €57.00 each | Save €34.20 | ship",
+  ];
+  const JOY = [
+    "€54.15 | €57.00 | Save €2.85 | -",
+    "€46.03 each | €57.00 each | Save €21.94 | ship",
+    "€43.32 each | €57.00 each | Save €41.04 | ship",
+  ];
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const hasJoyPrice = (rows) => rows.some((r) => /54\.15|46\.03|43\.32/.test(r));
+
+  // --- the report, size by size: subscription chosen (the default)
+  {
+    const m = mountCs();
+    ok(m.cards.length === 3, "Q10: cards mount on the Luxembourg fixture");
+    m.fire();
+    ok(m.ctx.proxy.calls.length === 1 && /cart-data\?handles=cellular-renewal-cream$/.test(m.ctx.proxy.calls[0]),
+      "Q10: a plan in the new app's field: ONE app-proxy call for the page product's plan prices");
+    m.fire();
+    ok(same(m.read(), ONE_TIME),
+      "Q10: 1 Jar selected (4-week plan in the field): 57.00 / 48.45 each / 45.60 each — the report's true figures (" + m.read().join(" // ") + ")");
+    ok(!hasJoyPrice(m.read()), "Q10: no card prints a price of Joy's plan");
+
+    m.cards[1]._fire("click");
+    m.plan(CS[1]); // the block follows the size
+    ok(same(m.read(), ONE_TIME) && m.page.buttons[1]._clicks === 1,
+      "Q10: 2 Jars selected (8-week plan): the 1-Jar card stays 57.00, not 54.15 (" + m.read().join(" // ") + ")");
+
+    m.cards[2]._fire("click");
+    m.plan(CS[2]);
+    ok(same(m.read(), ONE_TIME),
+      "Q10: 3 Jars selected (12-week plan): every card unchanged — a card's price never moves when it is clicked");
+
+    // "Buy once": the block empties its field; "Subscribe instead" puts the plan back
+    m.plan("");
+    ok(same(m.read(), ONE_TIME), "Q10: Buy once (empty field): the one-time cards");
+    m.plan(CS[2]);
+    ok(same(m.read(), ONE_TIME), "Q10: Subscribe instead: still the size's own prices");
+    ok(m.ctx.proxy.calls.length === 1, "Q10: the plan prices are fetched once for the whole visit");
+  }
+
+  // --- the day the one-time price is raised: the new app's plan becomes cheaper
+  {
+    // cheaper than one-time, DEARER than Joy's plan: the card is the new app's, not the cheapest
+    const m = mountCs({ entry: entry({ cs: [5600, 9500, 13410] }) });
+    m.fire();
+    m.fire();
+    const want = [
+      "€56.00 | €57.00 | Save €1.00 | -",
+      "€47.50 each | €57.00 each | Save €19.00 | ship",
+      "€44.70 each | €57.00 each | Save €36.90 | ship",
+    ];
+    ok(same(m.read(), want),
+      "Q10: a cheaper plan of the new app: each card prints ITS size's price on that plan (" + m.read().join(" // ") + ")");
+    ok(!hasJoyPrice(m.read()), "Q10: ...although Joy's plan is cheaper still and listed first");
+    m.plan("");
+    ok(same(m.read(), ONE_TIME), "Q10: Buy once returns the one-time cards");
+
+    // listed first or last makes no difference
+    const first = mountCs({ entry: entry({ cs: [5600, 9500, 13410], csFirst: true }) });
+    first.fire();
+    first.fire();
+    ok(same(first.read(), want), "Q10: the order of the allocations does not matter");
+  }
+
+  // --- an older server (no "app" member): the block's own sizes JSON names the plans
+  {
+    const m = mountCs({ entry: entry({ cs: [5600, 9500, 13410], app: false }) });
+    m.fire();
+    m.fire();
+    ok(m.read()[0] === "€56.00 | €57.00 | Save €1.00 | -" && m.read()[1].indexOf("€47.50 each") === 0,
+      "Q10: older server: the page product's plans are known from the block itself (" + m.read().join(" // ") + ")");
+
+    // the other way round: no sizes JSON, the proxy's "app" member names the plans
+    const byApp = mountCs({ entry: entry({ cs: [5600, 9500, 13410] }), sizes: false });
+    byApp.fire();
+    byApp.fire();
+    ok(byApp.read()[0] === "€56.00 | €57.00 | Save €1.00 | -" && byApp.read()[2].indexOf("€44.70 each") === 0,
+      "Q10: without the sizes JSON the proxy's app member is enough (" + byApp.read().join(" // ") + ")");
+
+    // neither source: nothing is known to be the new app's — one-time, NEVER another app's plan
+    const blind = mountCs({ entry: entry({ cs: [5600, 9500, 13410], app: false }), sizes: false });
+    blind.fire();
+    blind.fire();
+    ok(same(blind.read(), ONE_TIME),
+      "Q10: plans of the new app unknown: every card keeps its one-time price, Joy's plan is not a fallback");
+
+    // the old in-house ids unknown (server without xp) does not matter on such a page
+    const noXp = mountCs({ xp: undefined, entry: entry({ cs: [5600, 9500, 13410] }) });
+    noXp.fire();
+    noXp.fire();
+    ok(noXp.read()[0] === "€56.00 | €57.00 | Save €1.00 | -", "Q10: no xp list is needed where the new app's field decides");
+  }
+
+  // --- fail closed, as on every other page
+  {
+    const cheap = { entry: entry({ cs: [5600, 9500, 13410] }) };
+    const off = mountCs(Object.assign({ az: { subOff: 1 } }, cheap));
+    off.fire();
+    off.fire();
+    ok(same(off.read(), ONE_TIME), "Q10: kill switch (subOff:1): one-time cards");
+    const b2b = mountCs(Object.assign({ win: { isB2BCustomer: true } }, cheap));
+    b2b.fire();
+    b2b.fire();
+    ok(same(b2b.read(), ONE_TIME), "Q10: B2B: one-time cards");
+    const failed = mountCs(cheap);
+    failed.ctx.proxy.response = new Error("502");
+    const failedB = mountCs(cheap);
+    failedB.ctx.proxy.response = new Error("502");
+    failedB.fire();
+    failedB.tick();
+    ok(same(failedB.read(), ONE_TIME), "Q10: no plan prices (proxy failure): one-time cards");
+    // a disabled field is no field
+    const dis = mountCs(cheap);
+    dis.field.disabled = true;
+    dis.tick();
+    dis.fire();
+    ok(same(dis.read(), ONE_TIME), "Q10: a disabled plan field selects nothing");
+  }
+
+  // --- Spain: Joy's block and field, with the new app's plans on the same variants
+  {
+    const m = mountCs({ block: "joy" });
+    m.fire();
+    ok(same(m.read(), ONE_TIME), "Q10 Joy: nothing selected: the one-time cards");
+    m.plan(JOY_2M);
+    ok(same(m.read(), JOY),
+      "Q10 Joy: Joy's plan selected: exactly the Q8 figures, the new app's plans change nothing (" + m.read().join(" // ") + ")");
+    m.cards[1]._fire("click");
+    m.plan(JOY_3M);
+    ok(same(m.read(), JOY), "Q10 Joy: 2 Jars picked: unchanged");
+    m.plan("");
+    ok(same(m.read(), ONE_TIME), "Q10 Joy: back on one-time");
+
+    // the new app's plans cheaper than Joy's AND listed first: still Joy's on a Joy page
+    const cheap = mountCs({ block: "joy", entry: entry({ cs: [5000, 9000, 12000], csFirst: true }) });
+    cheap.fire();
+    cheap.plan(JOY_2M);
+    ok(same(cheap.read(), JOY),
+      "Q10 Joy: a cheaper plan of the new app listed first is never a Joy card price (" + cheap.read().join(" // ") + ")");
+  }
+
+  // --- a country with neither block: nothing is asked, nothing changes
+  {
+    const m = mountCs({ block: "none" });
+    m.fire();
+    m.fire();
+    ok(same(m.read(), ONE_TIME) && m.ctx.proxy.calls.length === 0,
+      "Q10: no subscription block on the page: one-time cards and ZERO proxy calls");
+  }
+
+  // --- the two readers themselves
+  {
+    const m = mountCs();
+    ok(call(m.ctx, "azCsField") === m.field, "Q10 field: the new app's field is recognised inside the purchase box");
+    const joy = mountCs({ block: "joy" });
+    joy.field.value = JOY_2M;
+    ok(call(joy.ctx, "azCsField") === null, "Q10 field: Joy's field (no data-cellexia-plan) is not");
+    const none = mountCs({ block: "none" });
+    ok(call(none.ctx, "azCsField") === null, "Q10 field: no field, no answer");
+    // a field of the new app OUTSIDE the purchase box is not the page's choice
+    const out = mountCs({ block: "none" });
+    const stray = new El("input");
+    stray.setAttribute("name", "selling_plan");
+    stray.setAttribute("data-cellexia-plan", "");
+    stray.value = CS[0];
+    out.ctx.doc.body.appendChild(stray);
+    ok(call(out.ctx, "azCsField") === null, "Q10 field: only a field inside .pdp__grey counts");
+    // Joy's field first, the new app's second: the first enabled field decides (the one the theme sends)
+    const both = mountCs({ block: "joy" });
+    const second = new El("input");
+    second.setAttribute("name", "selling_plan");
+    second.setAttribute("data-cellexia-plan", "");
+    both.ctx.doc.querySelector(".pdp__grey").appendChild(second);
+    ok(call(both.ctx, "azCsField") === null, "Q10 field: the FIRST plan field of the purchase box decides");
+    m.fire();
+    m.fire();
+    const row = call(m.ctx, "azCsRowPlan", IDS[1]);
+    ok(!!row && row.id === CS[1] && row.price === 9690, "Q10 resolver: the 2-Jar variant resolves to ITS 8-week plan at its own price");
+    ok(call(m.ctx, "azCsRowPlan", "999") === null, "Q10 resolver: an unknown variant resolves to nothing");
+  }
+}
+
 // ------------------------------------ Q9: v40.4 Joy variant hint
 //
 // Joy's generic variant listener reads data-variant-id from the element its
@@ -1313,6 +1638,45 @@ if (!process.env.CX_SKIP_MUTANTS && failures === 0) {
         name: "m25-joy-hint-wrong-element",
         find: "      if (wrap.getAttribute('data-variant-id') !== id) wrap.setAttribute('data-variant-id', id);",
         replace: "      if (wrap.getAttribute('data-variant-id') !== id) btn.setAttribute('data-variant-id', id);",
+      },
+      {
+        // v41, the 2026-11-18 report: without the new app's branch the
+        // unselected sizes fall back to Joy's 5 % plan in Luxembourg.
+        name: "m26-cs-branch-dropped",
+        find: "    if (azCsField()) return azCsRowPlan(variantId);",
+        replace: "    ;",
+      },
+      {
+        // The branch belongs to the new app's field only: on a Joy page it
+        // would wipe Joy's prices off the cards.
+        name: "m27-cs-field-any-plan-field",
+        find: "        return field.getAttribute('data-cellexia-plan') != null ? field : null;",
+        replace: "        return field;",
+      },
+      {
+        // On such a page a card is priced from a plan of the new app or not
+        // at all — never from whichever plan is listed first.
+        name: "m28-cs-registry-ignored",
+        find: "      if (!alloc || alloc.planId == null || !azCsPlan(alloc.planId)) continue;",
+        replace: "      if (!alloc || alloc.planId == null) continue;",
+      },
+      {
+        // ...and on a Joy page a plan of the new app is never Joy's offer.
+        name: "m29-cs-plan-native-offer",
+        find: "      if (azCsPlan(a.planId)) continue; // v41: a plan of the new app is never a native (Joy) offer",
+        replace: "      ;",
+      },
+      {
+        // The block's own sizes JSON keeps the cards right on an older server.
+        name: "m30-cs-seed-dropped",
+        find: "          azSubCs[String(sizes[k].plan)] = true;",
+        replace: "          ;",
+      },
+      {
+        // The proxy's "app" member is what names the plans of every OTHER product.
+        name: "m31-cs-app-member-ignored",
+        find: "          if (csGroup) azSubCs[String(plans[p].id)] = true;",
+        replace: "          ;",
       },
     ],
   });

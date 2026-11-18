@@ -61,7 +61,9 @@ const EXTRACTED = extractAll(SRC, {
   // v14 rewards: the FBT/similar pick loops call azRwSkip (gift/sachet/excluded
   // filter) and azFbtUpdate/azFbtFinish/azMountSimilar call the set-savings
   // caption helpers; the extraction carries them so the REAL pipeline runs.
-  vars: ["AZ_PROTECTION", "azFbtBusy", "azFbtPicksPromise", "RW_DEFAULTS", "azSubPlans", "azSubManualDone", "azSubNames", "azSubDeny"],
+  vars: ["AZ_PROTECTION", "azFbtBusy", "azFbtPicksPromise", "RW_DEFAULTS", "azSubPlans", "azSubManualDone", "azSubNames", "azSubDeny",
+    // v41 Cellexia Subscriptions
+    "AZ_CS_APP", "azSubCs", "azCsSeeded", "azCsHeld"],
   functions: [
     "cxRwTier",
     "azRwT",
@@ -129,6 +131,11 @@ const EXTRACTED = extractAll(SRC, {
     // v40 native (Joy) family
     "azSubDenyLoad",
     "azSubDenied",
+    // v41 Cellexia Subscriptions (the new app's field + own-plan resolver)
+    "azCsField",
+    "azCsSeed",
+    "azCsPlan",
+    "azCsRowPlan",
     "azSubInhouse",
     "azSubNative",
     "azNativePlanId",
@@ -1151,6 +1158,274 @@ async function main() {
     ok(ticks === 3, "v40 ticks: only a change on the selling_plan field ticks");
   }
 
+  // ============================================================================
+  // v41 — the NEW subscriptions app (Cellexia Subscriptions, SPEC-v41)
+  //
+  // Fixtures = the store since 2026-11-18: every size of a main product
+  // carries Joy's 5 % plan (listed first) AND one plan of the new app at
+  // the size's own price (app "cellexia-subscriptions"; the same plan id
+  // on every product's 1-unit size). Where that app is offered (Luxembourg)
+  // its block keeps its plan field inside .pdp__grey, marked
+  // data-cellexia-plan; an empty value is the shopper's "Buy once". "y" is
+  // an extra with a Joy plan and NO plan of the new app.
+  // ============================================================================
+  const CS4 = "719235481975", CS8 = "719235514743";
+  const CS_GROUP = (withApp) => {
+    const g = { id: "gC", name: "Subscription", plans: [
+      { id: CS4, name: "Delivered every 4 weeks" }, { id: CS8, name: "Delivered every 8 weeks" },
+    ] };
+    if (withApp !== false) g.app = "cellexia-subscriptions";
+    return g;
+  };
+  // o.cs = the new app's price on [main 1-unit, main 2-unit, x]; o.app:false = an older server
+  const CS_PROXY = (o) => () => {
+    o = Object.assign({ cs: [5700, 9690, 5700], csFirst: false, app: true, main: true }, o || {});
+    const pair = (joy, own) => (o.csFirst ? [own, joy] : [joy, own]);
+    const out = {
+      x: { variants: [{ id: 210, price: 5700, available: true,
+        planAllocations: pair({ planId: X_2M, price: 5415 }, { planId: CS4, price: o.cs[2] }) }],
+        sellingPlanGroups: [g2(X_2M), CS_GROUP(o.app)] },
+      y: { variants: [{ id: 220, price: 3700, planAllocations: [{ planId: Y_2M, price: 3515 }] }],
+        sellingPlanGroups: [g2(Y_2M)] },
+    };
+    if (o.main) {
+      out.main = { variants: [
+        { id: 11, price: 5700, available: true, planAllocations: pair({ planId: MAIN_2M, price: 5415 }, { planId: CS4, price: o.cs[0] }) },
+        { id: 12, price: 9690, available: true, planAllocations: pair({ planId: MAIN_3M, price: 9206 }, { planId: CS8, price: o.cs[1] }) },
+      ], sellingPlanGroups: [g2(MAIN_2M), g3(MAIN_3M), CS_GROUP(o.app)] };
+    }
+    return out;
+  };
+  // The new app's block: the field inside the purchase box, optionally its sizes JSON.
+  const csField = (sim, value, sizes) => {
+    let grey = sim.doc.querySelector(".pdp__grey");
+    if (!grey) {
+      grey = new El("div");
+      grey.className = "pdp__grey";
+      sim.doc.body.appendChild(grey);
+    }
+    let input = grey.querySelector("input");
+    if (!input) {
+      input = new El("input");
+      input.setAttribute("type", "hidden");
+      input.setAttribute("name", "selling_plan");
+      input.setAttribute("data-cellexia-plan", "");
+      grey.appendChild(input);
+      if (sizes) {
+        const json = new El("script");
+        json.setAttribute("data-cellexia-sizes", "");
+        json.textContent = JSON.stringify({ 11: { plan: Number(CS4) }, 12: { plan: Number(CS8) } });
+        sim.doc.body.appendChild(json);
+      }
+    }
+    input.value = value;
+    return input;
+  };
+  const csSim = (proxyOpts, extra) => makeSim(Object.assign({
+    responders: { recs: SUB_RECS, proxy: CS_PROXY(proxyOpts), xp: INH },
+    config: JOY_CONFIG(),
+  }, extra || {}));
+
+  {
+    // Subscription chosen (the default): every row adds with ITS OWN plan
+    // of the new app, at that plan's price — today the one-time price.
+    const sim = csSim();
+    csField(sim, CS4);
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    ok(vm.runInContext("azSubPlanId()", sim.sandbox) === CS4 && vm.runInContext("azCsField()", sim.sandbox) !== null,
+      "v41: the new app's field is the page's verdict");
+    const rows = rowsOf(sim);
+    const node = sim.doc.querySelector(".cx-az-fbt");
+    const eur = (c) => vm.runInContext(`azMoney(${c})`, sim.sandbox);
+    ok(centsPlan(rows[0]) === "5700/" + CS4,
+      "v41: this-item row on the page product's own plan of the new app, at its price (not Joy's 54.15)");
+    ok(centsPlan(rows[1]) === "5700/" + CS4,
+      "v41: a companion main product carries ITS plan of the new app although that plan is not cheaper than one-time");
+    ok(centsPlan(rows[2]) === "3700/-",
+      "v41: a companion without a plan of the new app stays one-time — Joy's cheaper plan is never used");
+    ok(node.querySelector("[data-cx-az-fbt-total]").textContent === eur(5700 + 5700 + 3700),
+      "v41: total = what the cart will charge");
+    sim.sandbox.__node = node;
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    const body = lastPost(sim);
+    ok(sim.calls.posts.length === 1 && body.items.length === 3 && body.items.every((i) => i.properties._cellexia_upsell === "fbt"),
+      "v41: one add, three items, each with the marker");
+    ok(body.items[0].selling_plan === Number(CS4) && body.items[1].selling_plan === Number(CS4) && !("selling_plan" in body.items[2]),
+      "v41: the add sends the new app's plan per item, and none for the extra");
+
+    // "Buy once": the block empties its field — everything one-time
+    csField(sim, "");
+    vm.runInContext("azSubSync()", sim.sandbox);
+    ok(centsPlan(rows[0]) === "5700/-" && centsPlan(rows[1]) === "5700/-" && centsPlan(rows[2]) === "3700/-",
+      "v41 Buy once: every row is a one-time row");
+    ok(vm.runInContext("azSubPlanId()", sim.sandbox) === null && vm.runInContext("azCsField()", sim.sandbox) !== null,
+      "v41 Buy once: no plan is selected (the quantity stepper is uncapped again) while the field stays the new app's");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    ok(lastPost(sim).items.every((i) => !("selling_plan" in i)),
+      "v41 Buy once: the add carries NO selling_plan keys");
+
+    // "Subscribe instead": back on the plan
+    csField(sim, CS4);
+    vm.runInContext("azSubSync()", sim.sandbox);
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    ok(lastPost(sim).items[0].selling_plan === Number(CS4) && lastPost(sim).items[1].selling_plan === Number(CS4),
+      "v41 Subscribe instead: the plans are back in the add");
+  }
+
+  {
+    // The page is on the 2-unit pack (8-week plan): the companion keeps ITS
+    // OWN plan (4 weeks), never the page plan.
+    const sim = csSim(null, { config: JOY_CONFIG({ product: { id: 1, handle: "main", selectedVariant: "12",
+      variants: { 11: { available: true, price: 5700 }, 12: { available: true, price: 9690 } } } }) });
+    csField(sim, CS8);
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    const rows = rowsOf(sim);
+    sim.sandbox.__node = sim.doc.querySelector(".cx-az-fbt");
+    vm.runInContext("azFbtSyncThis(__node)", sim.sandbox);
+    ok(centsPlan(rows[0]) === "9690/" + CS8, "v41 2-unit pack: this-item row on the pack's own 8-week plan");
+    ok(centsPlan(rows[1]) === "5700/" + CS4, "v41 2-unit pack: the companion on its own 4-week plan");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    const body = lastPost(sim);
+    ok(body.items[0].id === 12 && body.items[0].selling_plan === Number(CS8) && body.items[1].selling_plan === Number(CS4),
+      "v41 2-unit pack: the add carries each item's own plan");
+  }
+
+  {
+    // The day the subscription is cheaper: the new app's price shows, Joy's never
+    const sim = csSim({ cs: [5600, 9500, 5600], csFirst: false });
+    csField(sim, CS4);
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    const rows = rowsOf(sim);
+    const eur = (c) => vm.runInContext(`azMoney(${c})`, sim.sandbox);
+    ok(centsPlan(rows[0]) === "5600/" + CS4 && centsPlan(rows[1]) === "5600/" + CS4,
+      "v41 cheaper plan: rows price from the new app's allocation (Joy's cheaper 54.15 is ignored)");
+    ok(rows[1].querySelector(".cx-az-fbt__price").textContent === eur(5600), "v41 cheaper plan: the row price text follows");
+  }
+
+  {
+    // An older server (no "app" member): the block's sizes JSON names the
+    // page product's plans, and the 1-unit plan id is the same on every product.
+    const sim = csSim({ app: false });
+    csField(sim, CS4, true);
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    const rows = rowsOf(sim);
+    ok(centsPlan(rows[0]) === "5700/" + CS4 && centsPlan(rows[1]) === "5700/" + CS4 && centsPlan(rows[2]) === "3700/-",
+      "v41 older server: plans known from the block's own sizes JSON");
+    // neither source: nothing is the new app's — one-time rows, never Joy's plan
+    const blind = csSim({ app: false });
+    csField(blind, CS4);
+    vm.runInContext("azMountFbt()", blind.sandbox);
+    await flush();
+    const br = rowsOf(blind);
+    ok(centsPlan(br[0]) === "5700/-" && centsPlan(br[1]) === "5700/-" && centsPlan(br[2]) === "3700/-",
+      "v41 plans unknown: rows stay one-time; another app's plan is no fallback");
+  }
+
+  {
+    // The page product's plan data has not landed (the proxy answered without
+    // it): ONE click is held and re-priced, the next one goes through.
+    const sim = csSim({ main: false });
+    csField(sim, CS4);
+    vm.runInContext("azMountFbt()", sim.sandbox);
+    await flush();
+    const node = sim.doc.querySelector(".cx-az-fbt");
+    sim.sandbox.__node = node;
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    ok(sim.calls.posts.length === 0, "v41 data not landed: the first click is held (nothing is sent)");
+    vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+    await flush();
+    ok(sim.calls.posts.length === 1 && lastPost(sim).items[1].selling_plan === Number(CS4) && !("selling_plan" in lastPost(sim).items[0]),
+      "v41 data not landed: the next click is sent with what is resolved — never a dead button");
+    // with the data there, no click is ever held
+    const full = csSim();
+    csField(full, CS4);
+    vm.runInContext("azMountFbt()", full.sandbox);
+    await flush();
+    full.sandbox.__node = full.doc.querySelector(".cx-az-fbt");
+    vm.runInContext("azFbtAdd(__node)", full.sandbox);
+    await flush();
+    ok(full.calls.posts.length === 1, "v41: with the plan data on the page the first click is sent");
+  }
+
+  {
+    // Same gates as everywhere: B2B and the kill switch
+    const b2b = csSim({ cs: [5600, 9500, 5600] });
+    b2b.sandbox.window.isB2BCustomer = true;
+    csField(b2b, CS4);
+    vm.runInContext("azMountFbt()", b2b.sandbox);
+    await flush();
+    ok(vm.runInContext("azSubPlanId()", b2b.sandbox) === null && centsPlan(rowsOf(b2b)[1]) === "5700/-", "v41 B2B: classic rows");
+    const off = csSim({ cs: [5600, 9500, 5600] }, { config: JOY_CONFIG({ subOff: 1 }) });
+    csField(off, CS4);
+    vm.runInContext("azMountFbt()", off.sandbox);
+    await flush();
+    ok(vm.runInContext("azSubPlanId()", off.sandbox) === null && centsPlan(rowsOf(off)[1]) === "5700/-", "v41 kill switch: classic rows");
+  }
+
+  {
+    // Spain: Joy's field, with the new app's plans on the same variants —
+    // exactly the v40 figures, even when those plans are cheaper and listed first.
+    for (const opts of [null, { cs: [5000, 9000, 5000], csFirst: true }]) {
+      const sim = csSim(opts);
+      sim.sandbox.window.CellexiaSubs = subStub(null);
+      joyField(sim, MAIN_2M);
+      vm.runInContext("azMountFbt()", sim.sandbox);
+      await flush();
+      const rows = rowsOf(sim);
+      const tag = opts ? " (new app's plans cheaper and listed first)" : "";
+      ok(vm.runInContext("azCsField()", sim.sandbox) === null, "v41 Joy page: Joy's field is not the new app's" + tag);
+      ok(centsPlan(rows[0]) === "5415/" + MAIN_2M && centsPlan(rows[1]) === "5415/" + X_2M && centsPlan(rows[2]) === "3515/" + Y_2M,
+        "v41 Joy page: every row on its own Joy plan, as before" + tag);
+      sim.sandbox.__node = sim.doc.querySelector(".cx-az-fbt");
+      vm.runInContext("azFbtAdd(__node)", sim.sandbox);
+      await flush();
+      const body = lastPost(sim);
+      ok(body.items[0].selling_plan === Number(MAIN_2M) && body.items[1].selling_plan === Number(X_2M) && body.items[2].selling_plan === Number(Y_2M),
+        "v41 Joy page: the add is the v40 add" + tag);
+    }
+  }
+
+  {
+    // Similar cards on a page of the new app: a card follows ITS plan of that app
+    const sim = makeSim({
+      config: JOY_CONFIG(),
+      responders: {
+        xp: INH,
+        recs: (intent) => intent === "related"
+          ? [{ id: 6, handle: "c", title: "C", url: "/products/c" }, { id: 7, handle: "d", title: "D" }]
+          : [],
+        proxy: () => ({
+          c: { variants: [{ id: 610, price: 5700, planAllocations: [{ planId: "9102", price: 5415 }, { planId: CS4, price: 5600 }] }],
+            sellingPlanGroups: [g2("9102"), CS_GROUP()] },
+          d: { variants: [{ id: 710, price: 2200, planAllocations: [{ planId: "9203", price: 2090 }] }],
+            sellingPlanGroups: [g2("9203")] },
+        }),
+      },
+    });
+    csField(sim, CS4);
+    vm.runInContext("azMountSimilar()", sim.sandbox);
+    await flush();
+    const cards = sim.doc.querySelectorAll(".cx-az-similar__card");
+    const eur = (c) => vm.runInContext(`azMoney(${c})`, sim.sandbox);
+    ok(cards[0].querySelector(".cx-az-similar__price").textContent === eur(5600),
+      "v41 similar: card priced from its own plan of the new app");
+    ok(cards[1].querySelector(".cx-az-similar__price").textContent === eur(2200),
+      "v41 similar: a card with only another app's plan keeps its one-time price");
+    csField(sim, "");
+    vm.runInContext("azSubSync()", sim.sandbox);
+    ok(cards[0].querySelector(".cx-az-similar__price").textContent === eur(5700),
+      "v41 similar, Buy once: one-time price");
+  }
+
   if (failures > 0) {
     console.error(`\n${failures}/${checks} CHECKS FAILED`);
     process.exit(1);
@@ -1210,6 +1485,30 @@ async function main() {
         name: "f10-b2b-native",
         find: "if (window.isB2BCustomer === true || AZ_CFG.b2b === true) return false;",
         replace: ";",
+      },
+      {
+        // v41: without the new app's branch its plans (not cheaper than
+        // one-time) are no offer and every row is added one-time.
+        name: "f11-cs-branch-dropped",
+        find: "if (azCsField()) return azCsRowPlan(variantId);",
+        replace: ";",
+      },
+      {
+        name: "f12-cs-hold-dropped",
+        find: "if (azAddPlan && !azRow && !azCsHeld && azCsField() && !azSubPlans[String(id)]) {",
+        replace: "if (false) {",
+      },
+      {
+        name: "f13-cs-hold-forever",
+        find: "        azCsHeld = true;\n",
+        replace: "",
+      },
+      // (the native loop's skip of the new app's plans only decides in "own"
+      // mode — the quantity cards: sims/quantity-selector m29)
+      {
+        name: "f14-cs-any-plan",
+        find: "if (!alloc || alloc.planId == null || !azCsPlan(alloc.planId)) continue;",
+        replace: "if (!alloc || alloc.planId == null) continue;",
       },
     ];
     const bad = runMutants({ selfPath: __filename, srcPath: REAL_SRC, mutants: MUTANTS });

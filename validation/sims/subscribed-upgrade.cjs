@@ -38,8 +38,16 @@ const SRC = fs.readFileSync(
 
 const EXTRACTED = extractAll(SRC, {
   // v40: the proxy-loaded deny-list state the native family reads
-  vars: ["nativeDeny", "nativeDenyAsked"],
+  vars: ["nativeDeny", "nativeDenyAsked", /* v41 */ "CS_APP", "csIds"],
   functions: [
+    // v41 Cellexia Subscriptions (the new app's family)
+    "csLearn",
+    "csPlan",
+    "csOffered",
+    "csOn",
+    "csAlloc",
+    "csLinePlan",
+    "csSavingsPercent",
     "featureOn",
     "productFor",
     "variantByPosition",
@@ -635,6 +643,188 @@ const joyClone = () => JSON.parse(JSON.stringify(JOY_PRODUCT));
   const p6 = find(sb6, LINE_JOY_PLAIN);
   ok(!!p6 && INHOUSE.indexOf(String(p6.id)) !== -1,
     "v40: in-house LIVE: the keyword still resolves the in-house plan (unchanged)");
+}
+
+// ============================================================================
+// v41 — the NEW subscriptions app (Cellexia Subscriptions, SPEC-v41)
+//
+// Fixture = the store since 2026-11-18: Joy's 5 % plans (listed first) AND
+// one plan of the new app per size, at the size's own price (group app
+// "cellexia-subscriptions": 4 / 8 / 12 weeks). The old in-house group is
+// gone from the products; cfg.sx still carries its three ids (leftover
+// metafields). cfg.cs === 1 = the new app offers subscriptions to this
+// visitor's country.
+// ============================================================================
+{
+  const CS4 = 719235481975, CS8 = 719235514743, CS12 = 719235547511;
+  const csProduct = (cs, csFirst) => {
+    cs = cs || [5700, 9690, 13680];
+    const pair = (joy, own) => (csFirst ? [own, joy] : [joy, own]);
+    return {
+      variants: [
+        { id: 21, position: 1, price: 5700, available: true,
+          planAllocations: pair({ planId: JOY_2M, price: 5415 }, { planId: CS4, price: cs[0] }) },
+        { id: 22, position: 2, price: 9690, compare_at_price: 11400, available: true,
+          planAllocations: pair({ planId: JOY_3M, price: 9206 }, { planId: CS8, price: cs[1] }) },
+        { id: 23, position: 3, price: 13680, compare_at_price: 17100, available: true,
+          planAllocations: pair({ planId: JOY_3M, price: 12996 }, { planId: CS12, price: cs[2] }) },
+      ],
+      sellingPlanGroups: [
+        { name: "Every 2 months", app: "gid://shopify/AppInstallation/839816774007", plans: [{ id: JOY_2M, name: "Every 2 Months", valueType: "percentage", value: 5 }] },
+        { name: "Every 3 months", app: "gid://shopify/AppInstallation/839816774007", plans: [{ id: JOY_3M, name: "Every 3 Months", valueType: "percentage", value: 5 }] },
+        { name: "Subscription", app: "cellexia-subscriptions", plans: [
+          { id: CS4, name: "Delivered every 4 weeks", valueType: null, value: 0 },
+          { id: CS8, name: "Delivered every 8 weeks", valueType: null, value: 0 },
+          { id: CS12, name: "Delivered every 12 weeks", valueType: null, value: 0 },
+        ] },
+      ],
+    };
+  };
+  const LINE_CS = { product_id: 950, variant_id: 21, quantity: 1,
+    selling_plan_allocation: { selling_plan: { id: CS4, name: "Delivered every 4 weeks" } } };
+  const LINE_CS_2 = { product_id: 950, variant_id: 22, quantity: 1,
+    selling_plan_allocation: { selling_plan: { id: CS8, name: "Delivered every 8 weeks" } } };
+  const ON = { sx: SX_DARK, cs: 1 };   // Luxembourg
+  const OFF = { sx: SX_DARK };         // France, Spain, ...
+  const sbOf = (cfg, product, extra) => makeSandbox(Object.assign({ settings: JOY_SETTINGS, products: { 950: product || csProduct() }, cfg }, extra || {}));
+  const find = (sb, item) => { sb.__item = item; return vm.runInContext("findPlanForItem(__item)", sb); };
+
+  // --- the bigger-pack tile of a line subscribed on the new app's plan
+  {
+    const sb = sbOf(ON);
+    ok(vm.runInContext("csOn()", sb) === true && vm.runInContext("nativeSubs()", sb) === false,
+      "v41: where the new app is on, it is the only family (native stands down)");
+    const out = candidates(sb, LINE_CS);
+    ok(out.length === 2, "v41: a line on the new app's plan gets BOTH pack tiles (got " + out.length + ")");
+    ok(out.length === 2 && String(out[0].planId) === String(CS8) && String(out[1].planId) === String(CS12),
+      "v41: each tile carries THAT PACK'S OWN plan of the new app (8 weeks, 12 weeks) — never the line's, never Joy's");
+    ok(out.length === 2 && out[0].addPriceCents === 9690 && out[0].perUnitCents === 4845 &&
+      out[1].addPriceCents === 13680 && out[1].perUnitCents === 4560,
+      "v41: tiles priced from the pack's own allocation — today the pack's price (96.90 / 136.80), not Joy's 92.06 / 129.96");
+    ok(out.length === 2 && out[0].percent === 15 && out[1].percent === 20,
+      "v41: save badge = the pack saving against the 1-unit subscription price (15 % / 20 %)");
+    ok(out.length === 2 && !("planName" in out[0]), "v41: price only — the tile carries no plan name");
+
+    // from the 2-unit pack: one tile, the 3-unit pack on its 12-week plan
+    const up = candidates(sb, LINE_CS_2);
+    ok(up.length === 1 && String(up[0].planId) === String(CS12) && up[0].addPriceCents === 13680,
+      "v41: a subscribed 2-unit line upgrades to the 3-unit pack on its own plan");
+
+    // "Buy once": a one-time line keeps one-time tiles
+    const plain = candidates(sb, LINE_JOY_PLAIN);
+    ok(plain.length === 2 && plain[0].planId === null && plain[0].addPriceCents === 9690 && plain[1].addPriceCents === 13680,
+      "v41: a one-time line (Buy once) upgrades to a one-time bigger pack, no plan");
+  }
+
+  // --- the day the subscription is cheaper than a one-time purchase
+  {
+    const sb = sbOf(ON, csProduct([5400, 9180, 12960]));
+    const out = candidates(sb, LINE_CS);
+    ok(out.length === 2 && out[0].addPriceCents === 9180 && out[1].addPriceCents === 12960 &&
+      String(out[0].planId) === String(CS8),
+      "v41 cheaper plans: tiles at the new app's prices (91.80 / 129.60)");
+    ok(out.length === 2 && out[0].percent === Math.round(((2 * 5400 - 9180) / (2 * 5400)) * 100),
+      "v41 cheaper plans: the badge compares with what this subscriber pays per unit (54.00), not the dearer one-time price");
+    // listed first or last: no difference
+    const first = candidates(sbOf(ON, csProduct([5400, 9180, 12960], true)), LINE_CS);
+    ok(first.length === 2 && String(first[0].planId) === String(CS8) && first[0].addPriceCents === 9180,
+      "v41: the order of the allocations does not matter");
+  }
+
+  // --- no plan of the new app on the bigger pack: no tile (never drop, never borrow)
+  {
+    const p = csProduct();
+    p.variants[1].planAllocations = [{ planId: JOY_3M, price: 9206 }];
+    const out = candidates(sbOf(ON, p), LINE_CS);
+    ok(out.length === 1 && out[0].quantity === 3,
+      "v41: a pack without a plan of the new app gets no tile for a subscribed line (Joy's plan is not borrowed)");
+  }
+
+  // --- gates
+  {
+    ok(candidates(sbOf(ON, null, { settings: Object.assign({}, JOY_SETTINGS, { subscriptionAware: false }) }), LINE_CS).length === 0,
+      "v41: kill switch off: no tile on a subscribed line (the v17 safe-inert state)");
+    const b2b = sbOf(ON, null, { win: { isB2BCustomer: true } });
+    ok(vm.runInContext("csOffered()", b2b) === false && candidates(b2b, LINE_CS).length === 0,
+      "v41: B2B: the new app is not offered, a line on its plan is left alone");
+    // a Joy line in a country where the new app is on: no tile
+    ok(candidates(sbOf(ON), LINE_JOY).length === 0,
+      "v41: a line on another app's plan where the new app is on: no tile");
+  }
+
+  // --- a country where the new app is NOT offered
+  {
+    const sb = sbOf(OFF);
+    ok(vm.runInContext("csOn()", sb) === false, "v41 off: no cs member in the island = not offered");
+    ok(candidates(sb, LINE_CS).length === 0,
+      "v41 off: a line that carries the new app's plan is left alone (no tile)");
+    // Joy exactly as v40, with the new app's plans on the same variants
+    const joy = candidates(sb, LINE_JOY);
+    ok(joy.length === 2 && String(joy[0].planId) === String(JOY_3M) && joy[0].addPriceCents === 9206 && joy[1].addPriceCents === 12996 &&
+      joy[0].percent === Math.round(((2 * 5700 - 9206) / (2 * 5700)) * 100),
+      "v41 off: a Joy line's tiles are the v40 tiles (9206 / 12996 on Every 3 Months)");
+    // ...even when the new app's plans are cheaper than Joy's and listed first
+    const cheap = sbOf(OFF, csProduct([5000, 9000, 12000], true));
+    const joy2 = candidates(cheap, LINE_JOY);
+    ok(joy2.length === 2 && String(joy2[0].planId) === String(JOY_3M) && joy2[0].addPriceCents === 9206,
+      "v41 off: a cheaper plan of the new app listed first is never a Joy line's tier plan");
+    const plain = candidates(sb, LINE_JOY_PLAIN);
+    ok(plain.length === 2 && plain[0].planId === null && plain[0].addPriceCents === 9690,
+      "v41 off: one-time tiles unchanged");
+  }
+
+  // --- the "switch to subscription" card
+  {
+    ok(find(sbOf(ON), LINE_JOY_PLAIN) === null,
+      "v41: no switch card where the new app is on (it would pick Joy's plan there)");
+    ok(find(sbOf(ON, csProduct([5000, 9000, 12000], true)), LINE_JOY_PLAIN) === null,
+      "v41: ...not with a cheaper plan of the new app either");
+    ok(find(sbOf(ON, null, { settings: Object.assign({}, JOY_SETTINGS, { sellingPlanKeyword: "every" }) }), LINE_JOY_PLAIN) === null,
+      "v41: ...and not through the keyword");
+    // elsewhere: Joy's plan as in v40, never a plan of the new app
+    const off = find(sbOf(OFF), LINE_JOY_PLAIN);
+    ok(!!off && String(off.id) === String(JOY_2M) && off.allocPrice === 5415,
+      "v41 off: the card's plan is Joy's, as in v40");
+    const offCheap = find(sbOf(OFF, csProduct([5000, 9000, 12000], true)), LINE_JOY_PLAIN);
+    ok(!!offCheap && String(offCheap.id) === String(JOY_2M),
+      "v41 off: a cheaper plan of the new app listed first is skipped for Joy's");
+    // a keyword that names the new app's plans ("delivered") resolves nothing
+    const kw = Object.assign({}, JOY_SETTINGS, { sellingPlanKeyword: "delivered" });
+    const p = csProduct();
+    p.variants[0].planAllocations = [{ planId: CS4, price: 5700 }];
+    ok(find(sbOf(OFF, p, { settings: kw }), LINE_JOY_PLAIN) === null,
+      "v41 off: a keyword naming the new app's plan never enrolls a line into it");
+    const kwGroup = Object.assign({}, JOY_SETTINGS, { sellingPlanKeyword: "subscription" });
+    ok(find(sbOf(OFF, p, { settings: kwGroup }), LINE_JOY_PLAIN) === null,
+      "v41 off: ...nor does one naming its group (\"Subscription\")");
+  }
+
+  // --- the readers themselves
+  {
+    const sb = sbOf(ON);
+    ok(vm.runInContext("csPlan(" + CS4 + ")", sb) === true && vm.runInContext("csPlan('" + CS12 + "')", sb) === true &&
+      vm.runInContext("csPlan(" + JOY_2M + ")", sb) === false && vm.runInContext("csPlan(null)", sb) === false,
+      "v41: a plan is the new app's when its group's app is cellexia-subscriptions (number or string id)");
+    sb.__v = csProduct().variants[1];
+    const a = vm.runInContext("csAlloc(__v)", sb);
+    ok(!!a && String(a.planId) === String(CS8) && a.price === 9690, "v41: csAlloc = the variant's own allocation on that app's plan");
+    sb.__none = { price: 5700, planAllocations: [{ planId: JOY_2M, price: 5415 }] };
+    ok(vm.runInContext("csAlloc(__none)", sb) === null, "v41: a variant with only another app's plan has none");
+    sb.__zero = { price: 5700, planAllocations: [{ planId: CS4, price: 0 }] };
+    sb.__lump = { price: 5700, planAllocations: [{ planId: CS4, price: 17100 }] };
+    ok(vm.runInContext("csAlloc(__zero)", sb) === null && vm.runInContext("csAlloc(__lump)", sb) === null,
+      "v41: an unusable price (zero, or above one-time) is no allocation");
+    // learned once, kept: entries replaced by ones without \"app\" (an older server) do not unlearn
+    vm.runInContext("csPlan(1)", sb);
+    const stripped = csProduct();
+    stripped.sellingPlanGroups.forEach((g) => { delete g.app; });
+    sb.state.products = { 950: stripped };
+    ok(vm.runInContext("csPlan(" + CS8 + ")", sb) === true,
+      "v41: plan ids once learned survive product data that lacks the app member");
+    const blind = sbOf(ON, stripped);
+    ok(candidates(blind, LINE_CS).length === 0 && vm.runInContext("csPlan(" + CS4 + ")", blind) === false,
+      "v41: plans of the new app unknown: a subscribed line gets no tile (never a one-time or borrowed one)");
+  }
 }
 
 if (failures > 0) {

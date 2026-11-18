@@ -759,7 +759,7 @@ export default function CartFeaturesPage() {
                 />
                 <Checkbox
                   label="Subscription prices in cart offers"
-                  helpText="When the shopper's cart already holds a subscription line (Joy Subscriptions), pack upgrades and cross-sells use the real subscription prices and keep the subscription. A pack upgrade moves to that pack's own plan. On product pages, the quantity cards, Frequently bought together and You might also like follow the option selected in the subscription widget the same way. Turning this off returns everything to one-time behavior instantly. It never offers subscriptions to one-time carts."
+                  helpText="When the shopper's cart already holds a subscription line (Joy Subscriptions), pack upgrades and cross-sells use the real subscription prices and keep the subscription. A pack upgrade moves to that pack's own plan. On product pages, the quantity cards, Frequently bought together and You might also like follow the option selected in the subscription widget the same way. Turning this off returns everything to one-time behavior instantly. It never offers subscriptions to one-time carts. In countries where the Cellexia Subscriptions app offers subscriptions (switched on in that app, not here), cross-sells and Frequently bought together add each product with its own plan of that app by default, and stay one-time when the shopper chose “Buy once”."
                   checked={state.subscriptionAware}
                   onChange={(subscriptionAware) =>
                     setState((previous) => ({ ...previous, subscriptionAware }))
@@ -881,7 +881,7 @@ export default function CartFeaturesPage() {
                 </Text>
                 <Checkbox
                   label="Offer a one-click switch to the Continuous Treatment Plan"
-                  helpText="Shown for one-time lines whose product has a discounted Joy selling plan. Scope it to the markets where the Joy widget is shown: Joy's plans exist on the products in every market, so this card would offer them wherever it is enabled. Hidden for B2B customers."
+                  helpText="Shown for one-time lines whose product has a discounted Joy selling plan. Scope it to the markets where the Joy widget is shown: Joy's plans exist on the products in every market, so this card would offer them wherever it is enabled. Hidden for B2B customers. Never shown in countries where the Cellexia Subscriptions app offers subscriptions; the “Remove subscription” button under a cart line is not shown there either."
                   checked={state.showSubscriptionUpsell}
                   onChange={(showSubscriptionUpsell) =>
                     setState((previous) => ({

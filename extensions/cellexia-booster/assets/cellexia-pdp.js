@@ -4553,8 +4553,12 @@
     var groups = Array.isArray(entry.sellingPlanGroups) ? entry.sellingPlanGroups : [];
     for (var g = 0; g < groups.length; g++) {
       var plans = groups[g] && Array.isArray(groups[g].plans) ? groups[g].plans : [];
+      var csGroup = !!groups[g] && groups[g].app === AZ_CS_APP; // v41: the new app's group
       for (var p = 0; p < plans.length; p++) {
-        if (plans[p] && plans[p].id != null) azSubNames[String(plans[p].id)] = String(plans[p].name || '');
+        if (plans[p] && plans[p].id != null) {
+          azSubNames[String(plans[p].id)] = String(plans[p].name || '');
+          if (csGroup) azSubCs[String(plans[p].id)] = true;
+        }
       }
     }
     qselRepriceSoon(); // v40.2: the quantity cards may have been waiting for these prices
@@ -4592,6 +4596,83 @@
       if (String(azSubDeny[i]) === String(planId)) return true;
     }
     return false;
+  }
+
+  // ------------- v41 Cellexia Subscriptions (the new app, SPEC-v41)
+  //
+  // The new subscriptions app is switched on COUNTRY BY COUNTRY and prices a
+  // subscription like a one-time purchase (a discount may come later). Where
+  // it is offered its theme block keeps ITS plan field — an
+  // <input name="selling_plan" data-cellexia-plan> — inside .pdp__grey: the
+  // plan of the selected size, or empty after the shopper's "Buy once". That
+  // attribute is the page's signal: Joy's field never carries it, and the
+  // block removes itself wherever Joy's widget shows.
+  //
+  // Each size carries exactly ONE plan of that app: the allocation whose
+  // selling plan group has app_id "cellexia-subscriptions" (the "app" member
+  // of the proxy's sellingPlanGroups; the block's own data-cellexia-sizes
+  // JSON seeds the page product's ids, so an older server is enough for
+  // them). On such a page a row resolves to ITS OWN variant's plan of that
+  // app and to nothing else — never "the first cheaper plan", which on the
+  // live store is Joy's 5 % plan (the 2026-11-18 report: in Luxembourg the
+  // quantity cards printed Joy's prices on the sizes that were not
+  // selected).
+
+  var AZ_CS_APP = 'cellexia-subscriptions';
+  var azSubCs = {}; // planId -> true: a plan of the new app (never unlearned)
+  var azCsSeeded = false;
+
+  function azCsField() {
+    // The buy area's first enabled plan field — the very one azNativePlanId
+    // reads — when it is the new app's; null on every other page.
+    try {
+      var box = document.querySelector('.pdp__grey');
+      var fields = box ? box.querySelectorAll('input') : [];
+      for (var i = 0; i < fields.length; i++) {
+        var field = fields[i];
+        if (!field || field.disabled || field.getAttribute('name') !== 'selling_plan') continue;
+        return field.getAttribute('data-cellexia-plan') != null ? field : null;
+      }
+    } catch (e) { /* noop */ }
+    return null;
+  }
+
+  function azCsSeed() {
+    // The block prints {"<variant id>": {"plan": <plan id>, ...}} for the
+    // page product; read it once it is on the page.
+    if (azCsSeeded) return;
+    try {
+      var el = document.querySelector('[data-cellexia-sizes]');
+      if (!el) return;
+      azCsSeeded = true;
+      var sizes = JSON.parse(el.textContent || '{}');
+      for (var k in sizes) {
+        if (Object.prototype.hasOwnProperty.call(sizes, k) && sizes[k] && sizes[k].plan != null) {
+          azSubCs[String(sizes[k].plan)] = true;
+        }
+      }
+    } catch (e) { /* unreadable: the proxy's "app" member still answers */ }
+  }
+
+  function azCsPlan(planId) {
+    if (planId == null) return false;
+    azCsSeed();
+    return azSubCs[String(planId)] === true;
+  }
+
+  function azCsRowPlan(variantId) {
+    // { id, price } = the variant's own allocation on a plan of the new
+    // app, cheaper than one-time or not (usable = above zero and not above
+    // the one-time price); null = the row stays one-time, price AND add.
+    var rec = azSubPlans[String(variantId)];
+    if (!rec) return null;
+    for (var i = 0; i < rec.plans.length; i++) {
+      var alloc = rec.plans[i];
+      if (!alloc || alloc.planId == null || !azCsPlan(alloc.planId)) continue;
+      var cents = Number(alloc.price);
+      return cents > 0 && cents <= rec.oneTime ? { id: String(alloc.planId), price: cents } : null;
+    }
+    return null;
   }
 
   function azSubInhouse() {
@@ -4680,7 +4761,11 @@
     // 2 Months", 2/3 units = "Every 3 Months"), so with no same-named plan
     // the variant's first offerable plan answers. Display only: the add is
     // the theme's own, carrying Joy's own field.
+    // v41 — the new subscriptions app's field is on the page: the row's OWN
+    // plan of that app answers, whatever its price, and no other app's plan
+    // ever does (azCsRowPlan). Placed before every native rule on purpose.
     if (!pagePlanId) return null;
+    if (azCsField()) return azCsRowPlan(variantId);
     var exact = azSubPrice(variantId, pagePlanId);
     if (!azSubNative()) return exact != null ? { id: String(pagePlanId), price: exact } : null;
     if (!Array.isArray(azSubDeny) || azSubDenied(pagePlanId)) return null; // list not loaded = fail closed
@@ -4693,6 +4778,7 @@
     for (var i = 0; i < rec.plans.length; i++) {
       var a = rec.plans[i];
       if (!a || a.planId == null || azSubDenied(a.planId)) continue;
+      if (azCsPlan(a.planId)) continue; // v41: a plan of the new app is never a native (Joy) offer
       var p = Number(a.price);
       if (!(p > 0 && p < rec.oneTime)) continue;
       if (want && String(azSubNames[String(a.planId)] || '').toLowerCase() === want) return { id: String(a.planId), price: p };
@@ -4790,6 +4876,7 @@
   }
 
   var azFbtBusy = false;
+  var azCsHeld = false; // v41: the one held FBT click (plan data not landed yet)
 
   function azFbtRows(node) {
     return node.querySelectorAll('[data-cx-az-fbt-row]');
@@ -4886,6 +4973,16 @@
       // (nor the reverse) — re-price and let the next click decide.
       var azAddPlan = azSubPlanId();
       var azRow = azAddPlan ? azSubRowPlan(id, azAddPlan) : null;
+      // v41 — the new subscriptions app's field holds a plan but this row's
+      // plan data has not landed yet (a click inside the proxy round trip):
+      // hold this ONE click and re-price, so a row is not added one-time
+      // while the page says subscription. Once per page — never a dead
+      // button when the proxy does not answer.
+      if (azAddPlan && !azRow && !azCsHeld && azCsField() && !azSubPlans[String(id)]) {
+        azCsHeld = true;
+        azSubSync();
+        return;
+      }
       if (azSubNative() && String(azRow ? azRow.id : '') !== String(rows[i].getAttribute('data-plan-id') || '')) {
         azSubSync();
         return;
@@ -8475,7 +8572,10 @@
         }
 
         // --- subscription nudge under the selling-plan widget ---
-        if (!isB2B(cfg) && productHasSellingPlans()) {
+        // v41: not where the new subscriptions app's block is on the page —
+        // the nudge promises a fixed "save X %" and that app's subscription
+        // costs what a one-time purchase costs.
+        if (!isB2B(cfg) && productHasSellingPlans() && !azCsField()) {
           var container = planWidgetContainer();
           var nudge = nudgeTplNode();
           if (container && nudge && insertAfter(nudge, container)) {

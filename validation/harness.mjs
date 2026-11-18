@@ -117,6 +117,12 @@ const CSS = `${EXT}/assets/cellexia-booster.css`;
   // native family reuses the island's existing sx.p as its deny-list and
   // gets the list for product pages from the app proxy ("xp", route-side
   // Liquid in app/routes/proxy.cart-data.tsx, outside this meter). 99,437B.
+  // v41 (2026-11-18, the new Cellexia Subscriptions app): NO budget move —
+  // the cart island's country gate ("cs":1, +157B), the per-group "app"
+  // member (+32B) and the nudge block's gate (+139B) were paid for FIRST in
+  // cart-booster.liquid: its 11 `assign cx_draft_* = false` pre-inits are
+  // gone (-359B; nil is falsy in every use, the pdp-booster precedent of
+  // v29). 99,437B -> 99,407B; cart-booster.liquid 23,595B -> 23,425B.
   const BUDGET = 99_500; // our own margin below the cap
   const FLOOR = 500; // a shipped block/snippet below this has been gutted
   const CEILING = 30_000; // a single file above this needs a Liquid diet
@@ -4631,6 +4637,185 @@ const EVIDENCE = {
       "v40: subscribed-upgrade sim pins the Joy tier-tile rules",
     );
   }
+}
+
+// ============ v41 CELLEXIA SUBSCRIPTIONS — THE NEW APP (2026-11-18)
+// A new in-house subscriptions app replaces Joy country by country (shop
+// metafield cellexia.subscription_offer; Luxembourg first) and prices a
+// subscription like a one-time purchase. Its plans sit on the same products
+// as Joy's 5 % plans, so "the first plan cheaper than one-time" picked
+// Joy's there (the 2026-11-18 report: Luxembourg quantity cards printed
+// Joy's prices). A THIRD family, beside owned (v17) and native (v40):
+//   - a plan is the new app's when its selling plan group's app_id is
+//     "cellexia-subscriptions" — carried as "app" by the cart island, the
+//     Ajax adapter and the app proxy;
+//   - product page: the signal is the app's own plan field inside
+//     .pdp__grey (data-cellexia-plan); its branch sits BEFORE every native
+//     rule and resolves a row to its own plan of that app only;
+//   - cart: the island's "cs":1 (the visitor's country is on the app's
+//     list); there the native family stands down, rows add with their own
+//     plan by default, a Buy-once cart stays one-time, and there is no
+//     switch card and no "Remove subscription" button;
+//   - every v17 / v23 / v40 pin above stays green byte for byte.
+{
+  const cartJs41 = read(`${EXT}/assets/cellexia-cart.js`);
+  const pdpJs41 = read(`${EXT}/assets/cellexia-pdp.js`);
+  const cartLq41 = read(`${EXT}/blocks/cart-booster.liquid`);
+  const nudgeLq41 = read(`${EXT}/blocks/subscription-nudge.liquid`);
+  const proxy41 = read("app/routes/proxy.cart-data.tsx");
+  const fnBody = (src, name, nextName) =>
+    src.slice(src.indexOf(`  function ${name}(`), src.indexOf(`  function ${nextName}(`));
+
+  // ---- Liquid: the country gate, the app id, and the diet that paid for them
+  ok(
+    cartLq41.includes("assign cx_cso = shop.metafields.cellexia.subscription_offer.value") &&
+      cartLq41.includes('{%- if cx_cso.everywhere or cx_cso.countries contains cx_country %}\n"cs":1,\n{%- endif %}') &&
+      cartLq41.includes("assign cx_country = localization.country.iso_code | upcase"),
+    'v41: the cart island carries "cs":1 exactly when the visitor\'s COUNTRY is on the new app\'s list (the app\'s own test)',
+  );
+  ok(
+    cartLq41.includes('{"id": {{ group.id | json }}, "name": {{ group.name | json }}, "app": {{ group.app_id | json }}, "plans": [') &&
+      proxy41.includes('{"id": {{ group.id | json }}, "name": {{ group.name | json }}, "app": {{ group.app_id | json }}, "plans": ['),
+    'v41: island and proxy emit each selling plan group\'s app_id as "app" (identical twin members)',
+  );
+  ok(
+    !/assign cx_draft_[a-z]+ = false/.test(cartLq41) && cartLq41.includes("assign cx_draft_volume = true"),
+    "v41: the 11 cart draft pre-inits are dieted away (nil is falsy in every use) — they paid for the new members",
+  );
+  ok(
+    nudgeLq41.includes("assign cx_o = shop.metafields.cellexia.subscription_offer.value\nif customer.b2b? or cx_o.everywhere or cx_o.countries contains localization.country.iso_code\nassign cx_on = false\nendif"),
+    'v41: the "save X %" nudge block is off where the new app offers subscriptions (its subscription is not discounted)',
+  );
+
+  // ---- product page
+  ok(
+    pdpJs41.includes("var AZ_CS_APP = 'cellexia-subscriptions';") &&
+      pdpJs41.includes("return field.getAttribute('data-cellexia-plan') != null ? field : null;") &&
+      pdpJs41.includes("var box = document.querySelector('.pdp__grey');"),
+    "v41: the page signal is the new app's own plan field inside .pdp__grey (data-cellexia-plan)",
+  );
+  {
+    const rowPlan = fnBody(pdpJs41, "azSubRowPlan", "azSubPriceRow");
+    const cs = rowPlan.indexOf("if (azCsField()) return azCsRowPlan(variantId);");
+    ok(
+      cs > 0 && cs > rowPlan.indexOf("if (!pagePlanId) return null;") &&
+        cs < rowPlan.indexOf("var exact = azSubPrice(variantId, pagePlanId);") &&
+        cs < rowPlan.indexOf("if (!azSubNative())"),
+      "v41: the new app's branch of azSubRowPlan sits before EVERY buy-box / native rule (the quantity-card fix)",
+    );
+    const own = fnBody(pdpJs41, "azCsRowPlan", "azSubInhouse");
+    ok(
+      own.includes("if (!alloc || alloc.planId == null || !azCsPlan(alloc.planId)) continue;") &&
+        own.includes("return cents > 0 && cents <= rec.oneTime ? { id: String(alloc.planId), price: cents } : null;") &&
+        !/azSubDenied|azSubNames|first\b/.test(own),
+      "v41: a row resolves to its OWN variant's plan of the new app — no cheaper rule, no name rule, no fallback to another plan",
+    );
+  }
+  ok(
+    pdpJs41.includes("if (azCsPlan(a.planId)) continue; // v41") &&
+      pdpJs41.includes("if (csGroup) azSubCs[String(plans[p].id)] = true;") &&
+      pdpJs41.includes("var el = document.querySelector('[data-cellexia-sizes]');"),
+    "v41: plans of the new app are never a native offer; they are learned from the proxy's app member and the block's sizes JSON",
+  );
+  ok(
+    pdpJs41.includes("if (azAddPlan && !azRow && !azCsHeld && azCsField() && !azSubPlans[String(id)]) {") &&
+      pdpJs41.includes("if (!isB2B(cfg) && productHasSellingPlans() && !azCsField()) {"),
+    "v41: FBT holds ONE click while a row's plan data has not landed; the embedded nudge is off on the new app's pages",
+  );
+
+  // ---- cart
+  ok(
+    cartJs41.includes("var CS_APP = 'cellexia-subscriptions';") &&
+      cartJs41.includes("return cfg.cs === 1 && !isB2B();") &&
+      cartJs41.includes("return csOffered() && subscriptionAware();") &&
+      cartJs41.includes("var plans = groups[g] && groups[g].app === CS_APP && Array.isArray(groups[g].plans) ? groups[g].plans : [];") &&
+      cartJs41.includes("app: grp.app_id == null ? null : String(grp.app_id), "),
+    "v41: cart gate = island cs + not B2B (+ kill switch for csOn); plans are the new app's by their group's app id",
+  );
+  ok(
+    /  function nativeSubs\(\) \{\n    if \(csOn\(\)\) return false;/.test(cartJs41) &&
+      cartJs41.includes("if (csPlan(a.planId)) return false; // v41") &&
+      /  function findPlanForItem\(item\) \{\n(    \/\/[^\n]*\n)*    if \(cfg\.cs === 1\) return null;/.test(cartJs41) &&
+      cartJs41.includes("if (csPlan(alloc.planId)) continue; // v41"),
+    "v41: where the new app is on the native family and the switch card stand down; elsewhere its plans are never theirs",
+  );
+  {
+    const xs = fnBody(cartJs41, "crossSellPlanFor", "ownedCadenceAlloc");
+    ok(
+      xs.indexOf("if (csOn()) return csXsPlanFor(productId, variantId);") > 0 &&
+        xs.indexOf("if (csOn()) return csXsPlanFor(productId, variantId);") < xs.indexOf("var anchor = subXsPlanLine();") &&
+        cartJs41.includes("if (csXsOneTime()) return null;") &&
+        cartJs41.includes("if (!product || (variant && csAlloc(variant))) could = true;") &&
+        cartJs41.includes("return csOn() ? !csXsOneTime() : !!subXsPlanLine();"),
+      "v41: cross-sell — the row's own plan by default (no anchor line), one-time for a Buy-once cart, unknown lines fail toward one-time",
+    );
+  }
+  ok(
+    cartJs41.includes("if (linePlanId != null && csLine !== csOn()) return [];") &&
+      cartJs41.includes("tierPlan = csAlloc(tierVariant);") &&
+      cartJs41.includes("percent: csLine ? csSavingsPercent(product, offer, addPriceCents)"),
+    "v41: a line on the new app's plan upgrades to the bigger pack's OWN plan where the app is on, and is left alone elsewhere",
+  );
+  ok(
+    cartJs41.includes("if (String(csWant ? csWant.planId : '') !== String(planId || '')) { refresh(); return; }") &&
+      cartJs41.includes("} else if (planId && !subXsPlanLine()) { refresh(); return; }") &&
+      cartJs41.includes("performCrossSellAdd(vid, priceCents, btn, planId, row.getAttribute('data-product-id'));"),
+    "v41: the cross-sell click is re-resolved in BOTH directions where the new app is on (the v17 guard is kept elsewhere)",
+  );
+  ok(
+    cartJs41.includes("if ((sub && Number(sub.priceCents) < (Number(row.c) || 0)) || rwPct > 0) {") &&
+      cartJs41.includes("if ((sub && Number(sub.priceCents) < (Number(row.priceCents) || 0)) || rwPct > 0) {"),
+    "v41: a plan priced like a one-time purchase strikes nothing on a cross-sell row (both builders)",
+  );
+  {
+    const decoStart = cartJs41.indexOf("  function decorateSubscriptionRows() {");
+    const body = cartJs41.slice(decoStart, cartJs41.indexOf("\n  function ", decoStart + 10));
+    ok(
+      decoStart > 0 && body.length > 1500 &&
+        body.indexOf("if (cfg.cs === 1) return;") > body.indexOf("if (!featureOn('subscription')) return;") &&
+        body.indexOf("if (cfg.cs === 1) return;") < body.indexOf("if (state.busy) {") &&
+        body.includes("if (csLinePlan(line)) continue; // v41"),
+      'v41: no "Remove subscription" button where the new app offers subscriptions, nor on a line that carries its plan anywhere',
+    );
+  }
+  // Owner decision 2026-11-18: offers stay price-only — the v40.2 / v40.3
+  // pins above already forbid a frequency element; the new family adds none.
+  ok(
+    !/Delivered every|cx-[a-z_-]*rhythm/.test(cartJs41 + pdpJs41),
+    "v41: no plan name or delivery rhythm is printed by either script (price-only offers)",
+  );
+
+  // ---- the sims that prove the behaviour
+  const qs41 = read("validation/sims/quantity-selector.cjs");
+  ok(
+    ["m26-cs-branch-dropped", "m27-cs-field-any-plan-field", "m28-cs-registry-ignored", "m29-cs-plan-native-offer",
+      "m30-cs-seed-dropped", "m31-cs-app-member-ignored"].every((n) => qs41.includes(`name: "${n}"`)) &&
+      qs41.includes("Q10: 1 Jar selected (4-week plan in the field): 57.00 / 48.45 each / 45.60 each") &&
+      qs41.includes("Q10 Joy: Joy's plan selected: exactly the Q8 figures, the new app's plans change nothing"),
+    "v41: quantity-selector sim pins the Luxembourg card prices (Q10) and the unchanged Joy page, mutants m26-m31",
+  );
+  const fbt41 = read("validation/sims/fbt.cjs");
+  ok(
+    ["f11-cs-branch-dropped", "f12-cs-hold-dropped", "f13-cs-hold-forever", "f14-cs-any-plan"].every((n) => fbt41.includes(`name: "${n}"`)) &&
+      fbt41.includes("v41 Joy page: every row on its own Joy plan, as before"),
+    "v41: fbt sim pins the per-row plan of the new app, Buy once, the held click and the unchanged Joy page (f11-f14)",
+  );
+  const xs41 = read("validation/sims/crosssell-pipeline.cjs");
+  ok(
+    ["m52-cs-native-stays-on", "m53-cs-plan-native-offer", "m54-cs-default-needs-anchor", "m55-cs-buy-once-ignored",
+      "m56-cs-missing-data-subscribes", "m57-cs-equal-price-struck-auto", "m58-cs-equal-price-struck-manual",
+      "m59-cs-click-guard-dropped", "m60-cs-tile-on-line-plan", "m61-cs-enrichment-needs-anchor",
+      "m62-cs-ajax-app-dropped", "m63-cs-any-allocation", "m64-cs-line-tile-where-off"]
+      .every((n) => xs41.includes(`name: "${n}"`)),
+    "v41: crosssell-pipeline sim carries the m52-m64 mutation block of the new family",
+  );
+  const up41 = read("validation/sims/subscribed-upgrade.cjs");
+  ok(
+    up41.includes("v41: each tile carries THAT PACK'S OWN plan of the new app (8 weeks, 12 weeks)") &&
+      up41.includes("v41: no switch card where the new app is on (it would pick Joy's plan there)") &&
+      up41.includes("v41 off: a Joy line's tiles are the v40 tiles (9206 / 12996 on Every 3 Months)"),
+    "v41: subscribed-upgrade sim pins the new family's tiles, the switch card and the unchanged Joy tiles",
+  );
 }
 
 

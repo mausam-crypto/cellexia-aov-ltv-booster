@@ -22,7 +22,10 @@ import { authenticate } from "../shopify.server";
  * cart-booster.liquid "products" map and assets/cellexia-cart.js
  * normalizeProductsPayload): top-level { "products": { "<productId>": {
  * variants: [{id, option1, price, compare_at_price, available, position}],
- * sellingPlanGroups: [{id, name, plans: [{id, name, valueType, value}]}] } } }
+ * sellingPlanGroups: [{id, name, app, plans: [{id, name, valueType, value}]}] } } }
+ * (`app` — v41 — is the selling plan group's app_id: the storefront
+ * recognises the plans of the new Cellexia Subscriptions app by the value
+ * "cellexia-subscriptions"; additive, older scripts ignore it.)
  *
  * Optional ?handles=a,b,c adds a "productsByHandle" map (all_products, max 20)
  * used by the az similar-items/FBT enrichment and the site-wide bestseller
@@ -93,7 +96,7 @@ const PRODUCT_BODY_LIQUID = (accessor: string, withBestseller = false) => `{
         ],
         "sellingPlanGroups": [
           {%- for group in ${accessor}.selling_plan_groups -%}
-            {"id": {{ group.id | json }}, "name": {{ group.name | json }}, "plans": [
+            {"id": {{ group.id | json }}, "name": {{ group.name | json }}, "app": {{ group.app_id | json }}, "plans": [
               {%- for plan in group.selling_plans -%}
                 {"id": {{ plan.id | json }}, "name": {{ plan.name | json }}, "valueType": {{ plan.price_adjustments[0].value_type | json }}, "value": {{ plan.price_adjustments[0].value | default: 0 }}}{%- unless forloop.last -%},{%- endunless -%}
               {%- endfor -%}

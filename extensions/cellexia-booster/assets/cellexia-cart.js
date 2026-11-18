@@ -673,7 +673,8 @@
         var adj = planAdjustmentsFromAjax(sp);
         plans.push({ id: sp.id, name: sp.name == null ? '' : String(sp.name), valueType: adj.valueType, value: adj.value });
       }
-      groups.push({ id: grp.id == null ? null : grp.id, name: grp.name == null ? '' : String(grp.name), plans: plans });
+      // v41: app = the group's app_id (the new subscriptions app's plans are recognised by it)
+      groups.push({ id: grp.id == null ? null : grp.id, name: grp.name == null ? '' : String(grp.name), app: grp.app_id == null ? null : String(grp.app_id), plans: plans });
     }
     var entry = { variants: variants, sellingPlanGroups: groups };
     if (Array.isArray(p.tags) && p.tags.indexOf('sample-sachet') !== -1) entry.s = 1;
@@ -777,6 +778,7 @@
           .then(function (data) {
             var normalized = normalizeProductsPayload(data);
             if (normalized) {
+              csLearn(); // v41: keep what the entries about to be replaced say (an older server sends no "app")
               Object.keys(normalized).forEach(function (key) {
                 state.products[key] = normalized[key];
               });
@@ -930,6 +932,13 @@
     // allocates the line's CURRENT plan — an upgrade must never silently
     // drop a subscription.
     var linePlanId = itemHasPlan(item) ? item.selling_plan_allocation.selling_plan.id : null;
+    // v41 — the new subscriptions app (csOn = offered here, kill switch on):
+    //   a line on ITS plan moves to the bigger pack's own plan of that app
+    //   (below); where the app is not on, such a line is left alone;
+    //   a line on ANOTHER app's plan gets no tile where the new app is on;
+    //   a one-time line ("Buy once") keeps its one-time tile, as ever.
+    var csLine = linePlanId != null && csPlan(linePlanId);
+    if (linePlanId != null && csLine !== csOn()) return [];
     // v40: Joy puts each pack size on its OWN plan (live store: 1 unit =
     // "Every 2 Months", 2/3 units = "Every 3 Months"), so the exact-plan
     // rule below never finds a tier for a Joy line. A NATIVE line may move
@@ -960,6 +969,13 @@
           tierPlan = nativeVariantAlloc(product, tierVariant, nativeLine.name);
           if (tierPlan) tierAlloc = { planId: tierPlan.planId, price: tierPlan.price };
         }
+        if (csLine) {
+          // v41: each size has ITS OWN plan of the new app (its own rhythm),
+          // so the tile is that pack on that plan — price and add alike —
+          // or no tile when the pack has none.
+          tierPlan = csAlloc(tierVariant);
+          tierAlloc = tierPlan ? { planId: tierPlan.planId, price: tierPlan.price } : null;
+        }
         if (!tierAlloc || !(Number(tierAlloc.price) > 0)) return;
         // Prepaid detector: a prepaid allocation's price is the multi-
         // delivery charge (per_delivery_price is not captured), so it
@@ -973,7 +989,8 @@
         offer: offer,
         variant: tierVariant,
         quantity: qty,
-        percent: tierAlloc ? subSavingsPercent(product, offer, addPriceCents) : savingsPercent(product, offer, tierVariant),
+        percent: csLine ? csSavingsPercent(product, offer, addPriceCents)
+          : (tierAlloc ? subSavingsPercent(product, offer, addPriceCents) : savingsPercent(product, offer, tierVariant)),
         perUnitCents: Math.round(addPriceCents / qty),
         addPriceCents: addPriceCents,
         // v40: the plan the upgrade add must carry when it differs from the
@@ -1015,6 +1032,10 @@
   }
 
   function findPlanForItem(item) {
+    // v41: no "switch to subscription" card where the new subscriptions
+    // app offers them (owner decision; the card's wording and "save X %"
+    // belong to another plan family) — B2B and kill switch notwithstanding.
+    if (cfg.cs === 1) return null;
     var product = productFor(item);
     if (!product) return null;
     var variant = currentVariant(product, item.variant_id);
@@ -1026,6 +1047,7 @@
     for (var i = 0; i < allocations.length; i++) {
       var alloc = allocations[i];
       if (!alloc || alloc.planId == null) continue;
+      if (csPlan(alloc.planId)) continue; // v41: a plan of the new app is never the card's plan — not by keyword, not as a fallback
       var m = meta[String(alloc.planId)] || null;
       var candidate = {
         id: alloc.planId,
@@ -1138,6 +1160,147 @@
     return false;
   }
 
+  // ------------- v41 Cellexia Subscriptions (the NEW app, SPEC-v41)
+  //
+  // The new subscriptions app is switched on COUNTRY BY COUNTRY (shop
+  // metafield cellexia.subscription_offer; cart-booster.liquid evaluates it
+  // for the visitor's country and emits the island member "cs":1) and
+  // prices a subscription like a one-time purchase — a discount may come
+  // later. Each size carries exactly ONE plan of that app: the allocation
+  // whose selling plan group has app_id "cellexia-subscriptions" (the "app"
+  // member of sellingPlanGroups in the island, the Ajax adapter and the
+  // proxy). A THIRD family beside owned (v17) and native (v40):
+  //
+  //   - where the app is offered and the kill switch is on (csOn) it is the
+  //     ONLY family: the native and owned resolvers stand down, so "the
+  //     first plan cheaper than one-time" — Joy's 5 % plan, still attached
+  //     to the same products for Spain — can never be picked there;
+  //   - subscription by default, the shopper's "Buy once" respected: a
+  //     subscribed line upgrades to the bigger pack ON THAT PACK'S OWN PLAN
+  //     (each size has its own rhythm), a one-time line to a one-time pack;
+  //     a cross-sell row adds with its own plan unless the cart shows the
+  //     shopper buys one-time (csXsOneTime);
+  //   - no "switch to subscription" card and no "Remove subscription"
+  //     button there (owner decision, 2026-11-18);
+  //   - where the app is NOT offered its plans are invisible to every
+  //     other family, and a line that carries one is left alone.
+  //
+  // Offers stay price-only (owner decision): no plan name, no rhythm.
+
+  var CS_APP = 'cellexia-subscriptions';
+  var csIds = {}; // plan id -> true: a plan of the new app (never unlearned)
+
+  function csLearn() {
+    // Union over every product entry on hand. A dozen products at most and
+    // run on demand, so no merge path can be forgotten; also called right
+    // BEFORE a proxy merge replaces entries.
+    try {
+      var map = state.products || {};
+      for (var key in map) {
+        if (!Object.prototype.hasOwnProperty.call(map, key)) continue;
+        var groups = map[key] && Array.isArray(map[key].sellingPlanGroups) ? map[key].sellingPlanGroups : [];
+        for (var g = 0; g < groups.length; g++) {
+          var plans = groups[g] && groups[g].app === CS_APP && Array.isArray(groups[g].plans) ? groups[g].plans : [];
+          for (var p = 0; p < plans.length; p++) {
+            if (plans[p] && plans[p].id != null) csIds[String(plans[p].id)] = true;
+          }
+        }
+      }
+    } catch (e) { /* noop */ }
+  }
+
+  function csPlan(planId) {
+    if (planId == null) return false;
+    csLearn();
+    return csIds[String(planId)] === true;
+  }
+
+  function csOffered() {
+    // The app offers subscriptions to THIS visitor: country on its list
+    // and not B2B (the two tests its own product-page block applies).
+    return cfg.cs === 1 && !isB2B();
+  }
+
+  function csOn() {
+    // ...and the admin kill switch ("Subscription prices in cart offers")
+    // is on. Off = the v17 safe-inert state: no tile on a subscribed line,
+    // one-time cross-sell.
+    return csOffered() && subscriptionAware();
+  }
+
+  function csAlloc(variant) {
+    // { planId, price } = the variant's own allocation on a plan of the new
+    // app, cheaper than one-time or not (usable = above zero and not above
+    // the one-time price); null = none.
+    var allocations = variant && Array.isArray(variant.planAllocations) ? variant.planAllocations : [];
+    var one = variant ? Number(variant.price) || 0 : 0;
+    for (var i = 0; i < allocations.length; i++) {
+      var a = allocations[i];
+      if (!a || a.planId == null || !csPlan(a.planId)) continue;
+      var cents = Number(a.price);
+      return cents > 0 && cents <= one ? { planId: a.planId, price: cents } : null;
+    }
+    return null;
+  }
+
+  function csLinePlan(item) {
+    // The line is subscribed on a plan of the new app.
+    return itemHasPlan(item) && csPlan(item.selling_plan_allocation.selling_plan.id);
+  }
+
+  function csSavingsPercent(product, offer, allocCents) {
+    // The pack saving of a subscribed tile: against qty x the 1-unit size's
+    // OWN subscription price — what this subscriber pays per unit today —
+    // so a later one-time price rise never inflates the badge. No baseline
+    // = 0, which hides the badge.
+    var tier1 = variantByPosition(product, 1);
+    var base = tier1 ? csAlloc(tier1) : null;
+    var qty = Number(offer.quantity);
+    if (base && Number(allocCents) > 0) {
+      var full = qty * base.price;
+      if (full > Number(allocCents)) return Math.round(((full - Number(allocCents)) / full) * 100);
+    }
+    return 0;
+  }
+
+  function csXsOneTime() {
+    // "Buy once" as the cart shows it: at least one line that COULD be
+    // subscribed (its variant carries a plan of the new app) and no
+    // subscribed line at all. A line whose product data has not landed
+    // counts as one that could (fail toward one-time, never toward an
+    // unexpected subscription); gift and sachet lines carry no plan and
+    // never count.
+    if (!state.cart || !Array.isArray(state.cart.items)) return false;
+    var could = false;
+    for (var i = 0; i < state.cart.items.length; i++) {
+      var item = state.cart.items[i];
+      if (!item) continue;
+      if (itemHasPlan(item)) return false;
+      var product = productFor(item);
+      var variant = product ? currentVariant(product, item.variant_id) : null;
+      if (!product || (variant && csAlloc(variant))) could = true;
+    }
+    return could;
+  }
+
+  function csXsPlanFor(productId, variantId) {
+    // What a cross-sell row adds with where the new app is on: the row
+    // variant's OWN plan — no cart line has to be subscribed first — or
+    // null (a one-time row) after "Buy once" and for a product the app
+    // does not cover (sachets, extras) or whose data has not landed.
+    if (csXsOneTime()) return null;
+    var entry = state.products[String(productId)];
+    var variant = entry ? currentVariant(entry, variantId) : null;
+    var own = variant ? csAlloc(variant) : null;
+    return own ? { planId: own.planId, priceCents: own.price } : null;
+  }
+
+  function subXsActive() {
+    // Cross-sell rows may be subscription rows: by default where the new
+    // app is on, behind an anchor line everywhere else (v17 / v40).
+    return csOn() ? !csXsOneTime() : !!subXsPlanLine();
+  }
+
   // ------------- v40 native selling plans (Joy Subscriptions, SPEC-v40)
   //
   // The merchant sells subscriptions through Joy (Avada) and keeps the
@@ -1190,11 +1353,13 @@
   }
 
   function nativeSubs() {
+    if (csOn()) return false; // v41: where the new subscriptions app is on, it is the only family
     return subscriptionAware() && !isB2B() && !inhouseLive() && nativeDenyList() !== null;
   }
 
   function nativeAlloc(variant, a) {
     if (!variant || !a || a.planId == null || subsDenied(a.planId)) return false;
+    if (csPlan(a.planId)) return false; // v41: a plan of the new app is never a native (Joy) offer, in any country
     var p = Number(a.price);
     var one = Number(variant.price) || 0;
     return p > 0 && p < one;
@@ -1252,6 +1417,7 @@
     // server without "xp" keeps it inert for good.
     try {
       if (cfg.sx || nativeDeny !== null || nativeDenyAsked) return;
+      if (csOn()) return; // v41: the native family is off here — nothing to ask the proxy for
       if (!subscriptionAware() || isB2B()) return;
       var need = featureOn('subscription');
       var items = state.cart && Array.isArray(state.cart.items) ? state.cart.items : [];
@@ -1349,6 +1515,9 @@
     //   3. the first owned allocation with a usable price;
     //   4. null = the row stays fully one-time, price AND add — degrade,
     //      never guess, never push.
+    // v41 — where the new subscriptions app is on, none of the above: the
+    // row's own plan of that app, by default (csXsPlanFor).
+    if (csOn()) return csXsPlanFor(productId, variantId);
     var anchor = subXsPlanLine();
     if (!anchor) return null;
     var entry = state.products[String(productId)];
@@ -1699,7 +1868,7 @@
       });
   }
 
-  function performCrossSellAdd(variantId, priceCents, sourceNode, planId) {
+  function performCrossSellAdd(variantId, priceCents, sourceNode, planId, productId) {
     // Cart cross-sell add (v4.8): one-click /cart/add.js with the
     // "_cellexia_upsell": "cart" attribution property — the orders webhook
     // already counts it. Follows the performUpgrade flow: busy-guard,
@@ -1716,7 +1885,14 @@
     // Add before the reconcile re-render). Never convert silently in EITHER
     // direction: abort the subscription add and refresh — the re-rendered
     // one-time row takes the next click.
-    if (planId && !subXsPlanLine()) { refresh(); return; }
+    // v41 — where the new subscriptions app is on, the same rule in BOTH
+    // directions: the row is re-resolved at click time, and one that no
+    // longer shows what the cart would add (the shopper's lines changed in
+    // between) is refreshed instead of sent.
+    if (csOn()) {
+      var csWant = csXsPlanFor(productId, variantId);
+      if (String(csWant ? csWant.planId : '') !== String(planId || '')) { refresh(); return; }
+    } else if (planId && !subXsPlanLine()) { refresh(); return; }
     var onCartPage = isCartPageContext(sourceNode);
     var wasDrawerOpen = drawerIsOpen();
     state.busy = true;
@@ -2104,7 +2280,7 @@
       btn.textContent = t('crosssell.adding');
     }
     btn.addEventListener('click', function () {
-      performCrossSellAdd(vid, priceCents, btn, planId);
+      performCrossSellAdd(vid, priceCents, btn, planId, row.getAttribute('data-product-id')); // v41: + the product, for the click-time re-resolve
     });
   }
 
@@ -2202,7 +2378,10 @@
     // still applies). Inline: the extracted-function sims stub state.rw.
     var rwPct = state.rw && state.rw.pct > 0 && !(state.rw.exc && state.rw.exc[String(row.p)] === true) ? state.rw.pct : 0;
     if (sub && rwPct > 0 && state.rw.subOk === false) rwPct = 0; // v17: SET codes skip subscription lines when includeSubscriptions is off — never display a price the code cannot deliver
-    if (sub || rwPct > 0) {
+    // v41: a plan priced like a one-time purchase (the new subscriptions
+    // app) strikes nothing — "57 struck 57" is no offer; the plain branch
+    // below prints that same price.
+    if ((sub && Number(sub.priceCents) < (Number(row.c) || 0)) || rwPct > 0) {
       // v14 set-savings reframe: the price once added (KIT tier one more
       // product reaches), the current price struck — not for products the
       // KIT code would not discount (market exclusions).
@@ -2519,6 +2698,7 @@
         // opportunistically (same shape ensureProductData consumes).
         var normalized = normalizeProductsPayload(data);
         if (normalized) {
+          csLearn(); // v41: see ensureProductData
           Object.keys(normalized).forEach(function (key) {
             state.products[key] = normalized[key];
           });
@@ -2689,7 +2869,10 @@
     // routeRoot()) and re-render when anything landed. Failures stay marked
     // so nothing re-hammers the endpoint; until data arrives the rows keep
     // rendering one-time — the honest fallback, never a guessed price.
-    if (!subXsPlanLine()) return;
+    // v41: where the new subscriptions app is on, rows are subscription
+    // rows by default (subXsActive), so their plan data is fetched there
+    // without an anchor line.
+    if (!subXsActive()) return;
     var jobs = [];
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i] || {};
@@ -2741,7 +2924,7 @@
       && !(state.rw.exc && state.rw.exc[String(row.productId)] === true)
       && !(state.rw.skipH && state.rw.skipH[String(row.handle)] === true) ? state.rw.pct : 0; // v14: see crosssellBuildRow
     if (sub && rwPct > 0 && state.rw.subOk === false) rwPct = 0; // v17: see crosssellBuildRow
-    if (sub || rwPct > 0) {
+    if ((sub && Number(sub.priceCents) < (Number(row.priceCents) || 0)) || rwPct > 0) { // v41: an equal-priced plan strikes nothing (see crosssellBuildRow)
       // v14 set-savings reframe + v17 subscription base (see crosssellBuildRow)
       var baseCents = sub ? Number(sub.priceCents) : (Number(row.priceCents) || 0);
       prices.appendChild(el('span', 'cx-crosssell__price', money(rwPct > 0 ? Math.round(baseCents * (1 - rwPct / 100)) : baseCents)));
@@ -6654,6 +6837,9 @@
     // everything null-guarded.
     try {
       if (!featureOn('subscription')) return;
+      // v41: no "Remove subscription" button where the new subscriptions
+      // app offers them — at any time (owner decision, 2026-11-18).
+      if (cfg.cs === 1) return;
       // Never decorate mid-mutation: a button minted disabled would stay
       // disabled forever behind the idempotency marker. v4.8: RE-QUEUE the
       // pass instead of swallowing it — a decorate request during a
@@ -6691,6 +6877,7 @@
         if (!line) continue;
         used[line.key] = true;
         row.setAttribute('data-cx-decorated', '1');
+        if (csLinePlan(line)) continue; // v41: never on a line that carries the new app's plan, in any country
         var btn = el('button', 'cx-sub-remove');
         btn.type = 'button';
         var glyph = el('span', 'cx-sub-remove__x', '×');

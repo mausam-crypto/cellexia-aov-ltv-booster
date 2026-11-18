@@ -80,6 +80,21 @@
  *   m49-name-preference-dropped  same-named plan no longer preferred
  *   m50-xp-reasked               the proxy list is re-asked on every render
  *   m51-xp-ttl-ignored           a stale cached list is served forever
+ *   v41 the NEW subscriptions app (Cellexia Subscriptions) — where it is
+ *   offered every row adds with its OWN plan of that app by default, a
+ *   Buy-once cart stays one-time, and Joy's plan is never borrowed:
+ *   m52-cs-native-stays-on       the native family stays on where the new app is
+ *   m53-cs-plan-native-offer     a plan of the new app becomes a Joy offer
+ *   m54-cs-default-needs-anchor  rows wait for a subscribed line again
+ *   m55-cs-buy-once-ignored      a Buy-once cart gets subscription rows
+ *   m56-cs-missing-data-subscribes  unknown lines no longer count as Buy once
+ *   m57 / m58                    an equal-priced plan strikes its own price
+ *   m59-cs-click-guard-dropped   a stale row is sent as rendered
+ *   m60-cs-tile-on-line-plan     the tile keeps the line's plan
+ *   m61-cs-enrichment-needs-anchor  row plan data waits for an anchor line
+ *   m62-cs-ajax-app-dropped      the Ajax adapter drops the app id
+ *   m63-cs-any-allocation        any allocation counts as the new app's
+ *   m64-cs-line-tile-where-off   a line on the new app's plan gets a tile where the app is off
  */
 "use strict";
 const path = require("path");
@@ -96,8 +111,21 @@ const SRC_PATH = process.env.CX_SIM_SRC || REAL_SRC;
 const SRC = fs.readFileSync(SRC_PATH, "utf8");
 
 const EXTRACTED = extractAll(SRC, {
-  vars: ["PROTECTION_HANDLE", "autoCrossSell", "CROSS_SELL_CACHE_TTL", "productPrefetch", "MARKET", "crossSellPlanFetch", "nativeDeny", "nativeDenyAsked"],
+  vars: ["PROTECTION_HANDLE", "autoCrossSell", "CROSS_SELL_CACHE_TTL", "productPrefetch", "MARKET", "crossSellPlanFetch", "nativeDeny", "nativeDenyAsked",
+    // v41 Cellexia Subscriptions
+    "CS_APP", "csIds"],
   functions: [
+    // v41 Cellexia Subscriptions (the new app's family)
+    "csLearn",
+    "csPlan",
+    "csOffered",
+    "csOn",
+    "csAlloc",
+    "csLinePlan",
+    "csSavingsPercent",
+    "csXsOneTime",
+    "csXsPlanFor",
+    "subXsActive",
     "routeRoot",
     "featureOn",
     "isB2B",
@@ -2167,6 +2195,307 @@ async function main() {
       "feature off: renderCrossSell renders nothing");
   }
 
+  // ============================================================================
+  // v41 — the NEW subscriptions app (Cellexia Subscriptions, SPEC-v41)
+  //
+  // Fixtures = the store since 2026-11-18: on every main product Joy's 5 %
+  // plans (listed first, ids per product) AND one plan of the new app per
+  // size at the size's own price — the same three ids on every product
+  // (group app "cellexia-subscriptions": 4 / 8 / 12 weeks). The sachet
+  // (product 9) carries no plan. cfg.cs === 1 = the visitor's country is on
+  // the new app's list (Luxembourg); the island's sx member is the leftover
+  // of the old in-house app (present, live:false).
+  // ============================================================================
+  {
+    const CS4 = "719235481975", CS8 = "719235514743", CS12 = "719235547511";
+    const CS_GROUP = { id: "gC", name: "Subscription", app: "cellexia-subscriptions", plans: [
+      { id: CS4, name: "Delivered every 4 weeks", valueType: null, value: 0 },
+      { id: CS8, name: "Delivered every 8 weeks", valueType: null, value: 0 },
+      { id: CS12, name: "Delivered every 12 weeks", valueType: null, value: 0 },
+    ] };
+    const JOY_APP = "gid://shopify/AppInstallation/839816774007";
+    // cs = the new app's price per size; csFirst lists it before Joy's
+    const csProduct = (plan2m, plan3m, vids, cs, csFirst) => {
+      cs = cs || [5700, 9690, 13680];
+      const pair = (joy, own) => (csFirst ? [own, joy] : [joy, own]);
+      return {
+        variants: [
+          { id: vids[0], position: 1, price: 5700, available: true, planAllocations: pair({ planId: plan2m, price: 5415 }, { planId: CS4, price: cs[0] }) },
+          { id: vids[1], position: 2, price: 9690, available: true, planAllocations: pair({ planId: plan3m, price: 9206 }, { planId: CS8, price: cs[1] }) },
+          { id: vids[2], position: 3, price: 13680, available: true, planAllocations: pair({ planId: plan3m, price: 12996 }, { planId: CS12, price: cs[2] }) },
+        ],
+        sellingPlanGroups: [
+          { id: "g2", name: "Every 2 months", app: JOY_APP, plans: [{ id: plan2m, name: "Every 2 Months", valueType: "percentage", value: 5 }] },
+          { id: "g3", name: "Every 3 months", app: JOY_APP, plans: [{ id: plan3m, name: "Every 3 Months", valueType: "percentage", value: 5 }] },
+          CS_GROUP,
+        ],
+      };
+    };
+    const A = (cs, first) => csProduct(JOY_A_2M, JOY_A_3M, [21, 22, 23], cs, first);
+    const B = (cs, first) => csProduct(JOY_B_2M, JOY_B_3M, [31, 32, 33], cs, first);
+    const SACHET = { variants: [{ id: 41, position: 1, price: 300, available: true, planAllocations: [] }], sellingPlanGroups: [], s: 1 };
+    const CHEAP = [5400, 9180, 12960];
+    const CS_LINE = { product_id: 7, variant_id: 21, quantity: 1, key: "kC", final_line_price: 5700, handle: "p7",
+      selling_plan_allocation: { selling_plan: { id: Number(CS4), name: "Delivered every 4 weeks" } } };
+    const ONE_LINE = LINE(7, 21, 1, 5700);
+    const SACHET_LINE = LINE(9, 41, 1, 300);
+    const ON = { sx: SX_DARK, cs: 1 };
+    const OFF = { sx: SX_DARK };
+    const csSim = (cfg, extra, products) => {
+      const s = makeSim(Object.assign({ cfg }, extra || {}));
+      s.sandbox.state.products = products || { 7: A(), 8: B(), 9: SACHET };
+      return s;
+    };
+    const planFor = (s, pid, vid) => vm.runInContext("crossSellPlanFor(" + pid + ", " + vid + ")", s.sandbox);
+    const withCart = (s, items) => { s.sandbox.state.cart = cartWith(items); return s; };
+
+    // --- which plan a row adds with, where the new app is on
+    {
+      const sub = withCart(csSim(ON), [CS_LINE]);
+      ok(vm.runInContext("csOn()", sub.sandbox) === true && vm.runInContext("nativeSubs()", sub.sandbox) === false,
+        "v41: where the new app is on it is the only family (the native family stands down)");
+      const p = planFor(sub, 8, 31);
+      ok(!!p && String(p.planId) === CS4 && p.priceCents === 5700,
+        "v41: subscribed cart: the row adds with ITS OWN plan of the new app, at that plan's price (not Joy's 54.15)");
+      const p2 = planFor(sub, 8, 32);
+      ok(!!p2 && String(p2.planId) === CS8 && p2.priceCents === 9690, "v41: a 2-unit row variant resolves to the 8-week plan");
+      ok(planFor(sub, 9, 41) === null, "v41: a product the app does not cover (sachet) stays one-time");
+
+      const once = withCart(csSim(ON), [ONE_LINE]);
+      ok(vm.runInContext("csXsOneTime()", once.sandbox) === true && planFor(once, 8, 31) === null,
+        "v41 Buy once: the cart holds a one-time line that could be subscribed and no subscription: rows are one-time");
+      const mixed = withCart(csSim(ON), [ONE_LINE, Object.assign({}, CS_LINE, { product_id: 8, variant_id: 31 })]);
+      ok(!!planFor(mixed, 7, 22) && vm.runInContext("csXsOneTime()", mixed.sandbox) === false,
+        "v41 mixed cart (one subscription, one one-time line): subscription by default");
+      const gift = withCart(csSim(ON), [SACHET_LINE]);
+      ok(!!planFor(gift, 8, 31) && String(planFor(gift, 8, 31).planId) === CS4,
+        "v41: no line that could be subscribed (a sachet only): subscription by default — no anchor line needed");
+      const unknown = withCart(csSim(ON), [LINE(99, 991, 1, 5700)]);
+      ok(planFor(unknown, 8, 31) === null,
+        "v41: a one-time line whose product data has not landed counts as Buy once (fail toward one-time)");
+      const joyOnly = B();
+      joyOnly.variants[0].planAllocations = [{ planId: JOY_B_2M, price: 5415 }];
+      ok(planFor(withCart(csSim(ON, null, { 7: A(), 8: joyOnly }), [CS_LINE]), 8, 31) === null,
+        "v41: a row with only another app's (cheaper) plan stays one-time — Joy's plan is never borrowed");
+      ok(planFor(withCart(csSim(ON, null, { 7: A() }), [CS_LINE]), 8, 31) === null,
+        "v41: row product data not landed: one-time until it does");
+
+      const cheap = withCart(csSim(ON, null, { 7: A(CHEAP), 8: B(CHEAP, true) }), [CS_LINE]);
+      const pc = planFor(cheap, 8, 31);
+      ok(!!pc && String(pc.planId) === CS4 && pc.priceCents === 5400, "v41 cheaper plan: the new app's price, whatever the order of the allocations");
+
+      // gates
+      const killed = withCart(csSim(ON, { settings: { subscriptionAware: false } }), [CS_LINE]);
+      ok(vm.runInContext("csOn()", killed.sandbox) === false && planFor(killed, 8, 31) === null,
+        "v41 kill switch off: one-time rows (the v17 safe-inert state)");
+      const b2b = withCart(csSim(ON), [CS_LINE]);
+      b2b.sandbox.window.isB2BCustomer = true;
+      ok(vm.runInContext("csOffered()", b2b.sandbox) === false && planFor(b2b, 8, 31) === null, "v41 B2B: not offered, one-time rows");
+    }
+
+    // --- a country where the new app is NOT offered (France, Spain)
+    {
+      const fr = withCart(csSim(OFF), [CS_LINE]);
+      ok(anchorOf(fr) === null && planFor(fr, 8, 31) === null,
+        "v41 off: a line on the new app's plan anchors nothing: rows stay one-time");
+      const frCheap = withCart(csSim(OFF, null, { 7: A(CHEAP), 8: B(CHEAP) }), [Object.assign({}, CS_LINE, { final_line_price: 5400 })]);
+      ok(anchorOf(frCheap) === null && planFor(frCheap, 8, 31) === null,
+        "v41 off: ...not even once that plan is cheaper than a one-time purchase (never a native line)");
+      // Joy, exactly as v40 — with the new app's plans on the same variants
+      const es = withCart(csSim(OFF), [JOY_LINE]);
+      const a = anchorOf(es);
+      ok(!!a && a.native === true && String(a.planId) === JOY_A_2M, "v41 off: a Joy line anchors natively, as in v40");
+      const pe = planFor(es, 8, 31);
+      ok(!!pe && String(pe.planId) === JOY_B_2M && pe.priceCents === 5415, "v41 off: the row resolves to its own Joy plan, as in v40");
+      // ...and when the new app's plans are cheaper than Joy's and listed first
+      const esCheap = withCart(csSim(OFF, null, { 7: A([5000, 9000, 12000], true), 8: B([5000, 9000, 12000], true) }), [JOY_LINE]);
+      const pe2 = planFor(esCheap, 8, 31);
+      ok(!!pe2 && String(pe2.planId) === JOY_B_2M && pe2.priceCents === 5415,
+        "v41 off: a cheaper plan of the new app listed first never replaces the row's Joy plan");
+      const pe3 = planFor(esCheap, 8, 32); // no plan named like the anchor's on this size: Joy's first offerable one
+      ok(!!pe3 && String(pe3.planId) === JOY_B_3M && pe3.priceCents === 9206,
+        "v41 off: ...nor is it the 'first offerable plan' when no plan is named like the anchor's");
+    }
+
+    // --- row building: price only, and no struck price for an equal-priced plan
+    {
+      const rowInfo = (s, builder, rowVar) => vm.runInContext(`
+        (function () {
+          var n = ${builder}(${rowVar});
+          var price = n.querySelector('.cx-crosssell__price');
+          var cmp = n.querySelector('.cx-crosssell__compare');
+          return {
+            cents: n.getAttribute('data-price-cents'),
+            plan: n.getAttribute('data-plan-id'),
+            price: price ? price.textContent : null,
+            cmp: cmp ? cmp.textContent : null,
+            text: n.textContent
+          };
+        })()`, s.sandbox);
+      const AUTO_ROW = { handle: "neck", productId: 8, title: "Neck", image: null, variantId: 31, priceCents: 5700, compareAtCents: 0 };
+      const MANUAL_ROW = { v: 31, p: 8, c: 5700, pf: "57,00 €", t: "Neck", n: "Neck", h: "neck" };
+      const prep = (s) => { s.sandbox.__row = AUTO_ROW; s.sandbox.__mrow = MANUAL_ROW; return s; };
+
+      const sim = prep(withCart(csSim(ON), [CS_LINE]));
+      const m5700 = vm.runInContext("money(5700)", sim.sandbox);
+      const a = rowInfo(sim, "buildAutoCrossSellRow", "__row");
+      ok(a.cents === "5700" && a.plan === CS4 && a.price === m5700, "v41 auto row: the new app's plan id and its price");
+      ok(a.cmp === null, "v41 auto row: a plan priced like a one-time purchase strikes NOTHING (no '57 struck 57')");
+      const m = rowInfo(sim, "crosssellBuildRow", "__mrow");
+      ok(m.cents === "5700" && m.plan === CS4 && m.price === "57,00 €" && m.cmp === null,
+        "v41 manual row: plan id set, the Liquid price verbatim, nothing struck");
+      ok(a.text.indexOf("Delivered") === -1 && a.text.indexOf("weeks") === -1 && m.text.indexOf("Delivered") === -1 && m.text.indexOf("weeks") === -1,
+        "v41 rows: price only — no plan name, no delivery rhythm");
+
+      // Buy once: the classic one-time row
+      const once = prep(withCart(csSim(ON), [ONE_LINE]));
+      const o = rowInfo(once, "buildAutoCrossSellRow", "__row");
+      ok(o.cents === "5700" && o.plan === null && o.cmp === null, "v41 Buy once: a one-time row, no plan");
+
+      // the day the plan is cheaper: its price, the one-time price struck
+      const cheap = prep(withCart(csSim(ON, null, { 7: A(CHEAP), 8: B(CHEAP), 9: SACHET }), [CS_LINE]));
+      const c = rowInfo(cheap, "buildAutoCrossSellRow", "__row");
+      ok(c.cents === "5400" && c.plan === CS4 && c.price === vm.runInContext("money(5400)", cheap.sandbox) && c.cmp === m5700,
+        "v41 cheaper plan, auto row: the plan's price with the one-time price struck");
+      const cm = rowInfo(cheap, "crosssellBuildRow", "__mrow");
+      ok(cm.cents === "5400" && cm.cmp === "57,00 €", "v41 cheaper plan, manual row: the same");
+
+      // set savings on top (includeSubscriptions on): the discounted price, the one-time price struck
+      const rw = prep(withCart(csSim(ON), [CS_LINE]));
+      rw.sandbox.state.rw = { pct: 10, subOk: true };
+      const r = rowInfo(rw, "buildAutoCrossSellRow", "__row");
+      ok(r.plan === CS4 && r.price === vm.runInContext("money(5130)", rw.sandbox) && r.cmp === m5700,
+        "v41 + set savings: the set price of the subscription row, one-time struck");
+      rw.sandbox.state.rw = { pct: 10, subOk: false };
+      const r2 = rowInfo(rw, "buildAutoCrossSellRow", "__row");
+      ok(r2.plan === CS4 && r2.price === m5700 && r2.cmp === null,
+        "v41 + set savings that skip subscriptions: the plain price, nothing struck");
+    }
+
+    // --- the add: the row's plan rides it; the click is re-resolved in both directions
+    {
+      const addSim = (items) => withCart(csSim(ON, { responders: {
+        "/cart/add.js": { ok: true }, "/cart.js": cartWith(items), [PROXY_URL]: { products: {} },
+      } }), items);
+      const addsOf = (s) => s.calls.fetches.filter((f) => f.url === "/cart/add.js").map((f) => JSON.parse(f.options.body));
+
+      const sub = addSim([CS_LINE]);
+      vm.runInContext("performCrossSellAdd(31, 5700, null, '" + CS4 + "', '8')", sub.sandbox);
+      await flush();
+      ok(addsOf(sub).length === 1 && addsOf(sub)[0].id === 31 && addsOf(sub)[0].selling_plan === Number(CS4) &&
+        addsOf(sub)[0].properties._cellexia_upsell === "cart",
+        "v41 add: the row variant on its own plan of the new app + the attribution property");
+
+      const once = addSim([ONE_LINE]);
+      vm.runInContext("performCrossSellAdd(31, 5700, null, null, '8')", once.sandbox);
+      await flush();
+      ok(addsOf(once).length === 1 && !("selling_plan" in addsOf(once)[0]), "v41 Buy once add: no selling_plan");
+
+      // rendered as a subscription row, but the shopper's cart is one-time by the time of the click
+      const stale = addSim([ONE_LINE]);
+      vm.runInContext("performCrossSellAdd(31, 5700, null, '" + CS4 + "', '8')", stale.sandbox);
+      await flush();
+      ok(addsOf(stale).length === 0 && (stale.calls.refresh || 0) === 1,
+        "v41 click guard: a subscription row over a Buy-once cart is refreshed, not sent");
+      // rendered one-time, but the cart is subscribed by the time of the click
+      const stale2 = addSim([CS_LINE]);
+      vm.runInContext("performCrossSellAdd(31, 5700, null, null, '8')", stale2.sandbox);
+      await flush();
+      ok(addsOf(stale2).length === 0 && (stale2.calls.refresh || 0) === 1,
+        "v41 click guard: a one-time row over a subscribed cart is refreshed, not sent as a one-time add");
+      // a sachet row is a one-time add either way
+      const sachet = addSim([CS_LINE]);
+      vm.runInContext("performCrossSellAdd(41, 300, null, null, '9')", sachet.sandbox);
+      await flush();
+      ok(addsOf(sachet).length === 1 && !("selling_plan" in addsOf(sachet)[0]), "v41: a row without a plan of the new app adds one-time");
+    }
+
+    // --- plan data of rows: fetched without an anchor line, and the Ajax product JSON carries the app
+    {
+      const NECK_JS = { id: 8, handle: "neck", variants: [
+        { id: 31, price: 5700, available: true, selling_plan_allocations: [
+          { selling_plan_id: Number(JOY_B_2M), price: 5415 }, { selling_plan_id: Number(CS4), price: 5700 }] },
+      ], selling_plan_groups: [
+        { id: "g2", name: "Every 2 months", app_id: JOY_APP, selling_plans: [{ id: Number(JOY_B_2M), name: "Every 2 Months", price_adjustments: [{ value_type: "percentage", value: 5 }] }] },
+        { id: "gC", name: "Subscription", app_id: "cellexia-subscriptions", selling_plans: [{ id: Number(CS4), name: "Delivered every 4 weeks", price_adjustments: [] }] },
+      ] };
+      const ROWS = [{ handle: "neck", productId: 8, variantId: 31, priceCents: 5700 }];
+      const enrich = withCart(csSim(ON, { responders: { "/products/neck.js": NECK_JS } }, { 9: SACHET }), [SACHET_LINE]);
+      enrich.sandbox.__rows = ROWS;
+      vm.runInContext("ensureCrossSellPlanData(__rows)", enrich.sandbox);
+      await flush();
+      const eh = planFor(enrich, 8, 31);
+      ok(enrich.calls.fetches.filter((f) => f.url === "/products/neck.js").length === 1,
+        "v41 enrichment: the row's plan data is fetched although no cart line is subscribed");
+      ok(!!eh && String(eh.planId) === CS4 && eh.priceCents === 5700,
+        "v41 enrichment: the product JSON's app_id names the new app's plan (Joy's cheaper plan ignored)");
+      // Buy once: nothing to fetch
+      const quiet = withCart(csSim(ON, { responders: { "/products/neck.js": NECK_JS } }, { 7: A() }), [ONE_LINE]);
+      quiet.sandbox.__rows = ROWS;
+      vm.runInContext("ensureCrossSellPlanData(__rows)", quiet.sandbox);
+      await flush();
+      ok(quiet.calls.fetches.length === 0, "v41 Buy once: no plan data is fetched for the rows");
+      // a country without the new app: as before, only behind an anchor line
+      const fr = withCart(csSim(OFF, { responders: { "/products/neck.js": NECK_JS } }, { 9: SACHET }), [SACHET_LINE]);
+      fr.sandbox.__rows = ROWS;
+      vm.runInContext("ensureCrossSellPlanData(__rows)", fr.sandbox);
+      await flush();
+      ok(fr.calls.fetches.length === 0, "v41 off: no anchor line, no fetch (unchanged)");
+    }
+
+    // --- the bigger-pack upgrade of a line on the new app's plan
+    {
+      const UP_SETTINGS = { volumeOffers: [{ quantity: 2, discountPct: 15 }, { quantity: 3, discountPct: 20 }], highlightQuantity: 3 };
+      const upSim = (addResponder, cfg) => {
+        const s = makeSim({
+          cfg: cfg || ON, effective: { volume: true }, settings: UP_SETTINGS,
+          responders: {
+            "/cart/change.js": { ok: true }, "/cart/add.js": addResponder,
+            "/cart.js": cartWith([Object.assign({}, CS_LINE, { key: "kNew", variant_id: 22 })]), [PROXY_URL]: { products: {} },
+          },
+        });
+        s.sandbox.state.products = { 7: A() };
+        s.sandbox.state.cart = cartWith([CS_LINE]);
+        s.sandbox.__line = CS_LINE;
+        s.sandbox.__cands = vm.runInContext("upgradeCandidates(__line)", s.sandbox);
+        return s;
+      };
+      const bodies = (s, url) => s.calls.fetches.filter((f) => f.url === url).map((f) => JSON.parse(f.options.body));
+
+      const sim = upSim({ ok: true });
+      ok(sim.sandbox.__cands.length === 2 && String(sim.sandbox.__cands[0].planId) === CS8 && String(sim.sandbox.__cands[1].planId) === CS12 &&
+        sim.sandbox.__cands[0].addPriceCents === 9690,
+        "v41 upgrade: both pack tiles, each on the pack's OWN plan of the new app, at the pack's price");
+      const tileTexts = vm.runInContext(`
+        (function () {
+          var tiles = buildVolumeGroup(__line, __cands, false).querySelectorAll('.cx-volume__tile');
+          var out = [];
+          for (var i = 0; i < tiles.length; i++) out.push(tiles[i].textContent);
+          return out;
+        })()`, sim.sandbox);
+      ok(tileTexts.length === 2 && tileTexts.every((x) => x.indexOf("Delivered") === -1 && x.indexOf("weeks") === -1),
+        "v41 tile: price only — no plan name, no rhythm");
+      vm.runInContext("performUpgrade(__line, __cands[0], null)", sim.sandbox);
+      await flush();
+      const chg = bodies(sim, "/cart/change.js");
+      const adds = bodies(sim, "/cart/add.js");
+      ok(chg.length === 1 && chg[0].id === "kC" && chg[0].quantity === 0, "v41 upgrade: the original line is removed first");
+      ok(adds.length === 1 && adds[0].id === 22 && adds[0].selling_plan === Number(CS8) && adds[0].properties._cellexia_upgrade === "1",
+        "v41 upgrade add: the 2-unit pack on ITS 8-week plan — a subscription stays a subscription");
+
+      let n = 0;
+      const fail = upSim(() => { n++; return n === 1 ? new Error("422") : { ok: true }; });
+      vm.runInContext("performUpgrade(__line, __cands[0], null)", fail.sandbox);
+      await flush();
+      const fadds = bodies(fail, "/cart/add.js");
+      ok(fadds.length === 2 && fadds[1].id === 21 && fadds[1].selling_plan === Number(CS4),
+        "v41 upgrade failure: the ORIGINAL size goes back on its ORIGINAL plan");
+
+      // where the new app is not offered, such a line is left alone
+      ok(upSim({ ok: true }, OFF).sandbox.__cands.length === 0, "v41 off: no tile for a line that carries the new app's plan");
+    }
+  }
+
   if (failures > 0) {
     console.error(`\n${failures}/${checks} CHECKS FAILED`);
     process.exit(1);
@@ -2422,6 +2751,72 @@ async function main() {
         name: "m51-xp-ttl-ignored",
         find: "Date.now() - parsed.t <= 600000 && Array.isArray(parsed.xp)",
         replace: "Array.isArray(parsed.xp)",
+      },
+      // v41 — the new subscriptions app's family
+      {
+        name: "m52-cs-native-stays-on",
+        find: "if (csOn()) return false; // v41: where the new subscriptions app is on, it is the only family",
+        replace: ";",
+      },
+      {
+        name: "m53-cs-plan-native-offer",
+        find: "if (csPlan(a.planId)) return false; // v41: a plan of the new app is never a native (Joy) offer, in any country",
+        replace: ";",
+      },
+      {
+        name: "m54-cs-default-needs-anchor",
+        find: "if (csOn()) return csXsPlanFor(productId, variantId);",
+        replace: ";",
+      },
+      {
+        name: "m55-cs-buy-once-ignored",
+        find: "    if (csXsOneTime()) return null;",
+        replace: "    ;",
+      },
+      {
+        name: "m56-cs-missing-data-subscribes",
+        find: "if (!product || (variant && csAlloc(variant))) could = true;",
+        replace: "if (variant && csAlloc(variant)) could = true;",
+      },
+      {
+        name: "m57-cs-equal-price-struck-auto",
+        find: "if ((sub && Number(sub.priceCents) < (Number(row.priceCents) || 0)) || rwPct > 0) {",
+        replace: "if (sub || rwPct > 0) {",
+      },
+      {
+        name: "m58-cs-equal-price-struck-manual",
+        find: "if ((sub && Number(sub.priceCents) < (Number(row.c) || 0)) || rwPct > 0) {",
+        replace: "if (sub || rwPct > 0) {",
+      },
+      {
+        name: "m59-cs-click-guard-dropped",
+        find: "if (String(csWant ? csWant.planId : '') !== String(planId || '')) { refresh(); return; }",
+        replace: ";",
+      },
+      {
+        name: "m60-cs-tile-on-line-plan",
+        find: "          tierAlloc = tierPlan ? { planId: tierPlan.planId, price: tierPlan.price } : null;",
+        replace: "          tierAlloc = variantPlanAlloc(tierVariant, linePlanId) || tierAlloc;",
+      },
+      {
+        name: "m61-cs-enrichment-needs-anchor",
+        find: "    if (!subXsActive()) return;",
+        replace: "    if (!subXsPlanLine()) return;",
+      },
+      {
+        name: "m62-cs-ajax-app-dropped",
+        find: "app: grp.app_id == null ? null : String(grp.app_id), ",
+        replace: "",
+      },
+      {
+        name: "m63-cs-any-allocation",
+        find: "      if (!a || a.planId == null || !csPlan(a.planId)) continue;",
+        replace: "      if (!a || a.planId == null) continue;",
+      },
+      {
+        name: "m64-cs-line-tile-where-off",
+        find: "    if (linePlanId != null && csLine !== csOn()) return [];",
+        replace: "    ;",
       },
     ];
     const bad = runMutants({ selfPath: __filename, srcPath: REAL_SRC, mutants: MUTANTS });
